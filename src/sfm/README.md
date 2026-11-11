@@ -1211,6 +1211,31 @@ the host, where it peaks at 22.7 GB.
 
 ## Tests
 
+Seed search preserves its inlier-ranked candidate order and acceptance thresholds.
+It estimates epipolar poses first and runs homography competition only after a
+candidate passes the triangulation and baseline gates. Homography can only veto
+that epipolar pose, so this avoids expensive fits on densely sampled video's
+near-identical frames without admitting planar seeds. Gyro-assisted estimates
+still run both fits up front because their fallback depends on the full verdict.
+Pose estimation, triangulation and homography checks run on the shared host worker
+pool, in batches growing to four candidates per worker. Rejected candidates retain
+only their geometry, point count and median angle; the first passing candidate in
+the original order is triangulated into the reconstruction. Single-threaded atom
+searches stay inline. The pool also serves CPU BA, so `SS_SFM_BA_THREADS` caps it.
+The search and its RANSAC workers poll cancellation; outstanding tasks finish before
+cancellation propagates to the GUI. `sfm_seed_test` checks ordering, model competition,
+identical serial/parallel reconstruction files and cancellation. Its `--probe MATCHES FEATURES`
+mode times setup and the first seed search on an existing database without writing
+to it or running bundle adjustment.
+
+On a 2,681-frame video with eight host threads, parallelizing the full candidate
+evaluation reduced the probe from 82.8 to 34.7 seconds, including graph setup.
+Average process CPU usage rose from 3.0 to 6.6 logical CPUs. Both chose the same
+seed with 125 points and a 17.0-degree median angle. The original GUI log, before
+deferring homography, recorded 199 seconds in seed search alone.
+The [global mapper comparison](../../docs/notes/global-sfm.md#seed-probe-removal-comparison)
+measures skipping this probe entirely when global calibration can replace it.
+
 Each `tests/*.cpp` builds to an executable of the same name that prints
 PASS/FAIL and returns 0/1 — the same convention as `src/backend/tests/`.
 

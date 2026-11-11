@@ -13,10 +13,11 @@
 using namespace sfm;
 
 static int testGlobalMapper(int argc, char** argv) {
-    bool gpu_ba = false, rig = false;
+    bool gpu_ba = false, rig = false, unknown_focal = false;
     for (int i = 1; i < argc; i++) {
         gpu_ba = gpu_ba || std::string(argv[i]) == "--vulkan";
         rig = rig || std::string(argv[i]) == "--rig";
+        unknown_focal = unknown_focal || std::string(argv[i]) == "--unknown-focal";
     }
     constexpr uint32_t nimages = 6, npoints = 160;
     MatchesDatabase db;
@@ -74,6 +75,11 @@ static int testGlobalMapper(int argc, char** argv) {
     cfg.mapper.initial_cameras = {{1, camera}};
     cfg.mapper.known_focal_cameras = {1};
     cfg.mapper.given_focal_cameras = {1};
+    if (unknown_focal) {
+        cfg.mapper.initial_cameras.at(1).setFocal(1200);
+        cfg.mapper.known_focal_cameras.clear();
+        cfg.mapper.given_focal_cameras.clear();
+    }
     cfg.mapper.ba_real = gpu_ba ? "float" : "cpu";
     cfg.mapper.ba_real_coarse = cfg.mapper.ba_real;
     cfg.manager.do_grow = false;
@@ -87,9 +93,10 @@ static int testGlobalMapper(int argc, char** argv) {
     if (!std::filesystem::create_directory(path)) return 1;
     RunContext context;
     context.set_progress_dir((path / "progress").string());
-    bool early_preview = false;
+    bool early_preview = false, incremental_seed = false;
     context.set_events([&](const Event& event) {
         progress::status(event);
+        incremental_seed = incremental_seed || event.stage == Stage::Seed;
         if (event.stage == Stage::GlobalInitialize && event.kind == Event::Kind::Progress &&
             event.done > 0 && event.done < 9000)
             early_preview = early_preview || std::filesystem::exists(path / "progress" / "model.bin");
@@ -107,7 +114,7 @@ static int testGlobalMapper(int argc, char** argv) {
     models[0].writeBinary(path.string());
     const Reconstruction loaded = Reconstruction::readBinary(path.string());
     std::filesystem::remove_all(path);
-    bool ok = early_preview && std::isfinite(mean) && mean < 2 && observations >= 300 &&
+    bool ok = early_preview && !incremental_seed && std::isfinite(mean) && mean < 2 && observations >= 300 &&
               loaded.numRegistered() == nimages &&
               loaded.points3D.size() == models[0].points3D.size();
     if (rig) {

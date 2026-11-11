@@ -51,6 +51,7 @@
 #include "sfm/core/Log.h"
 #include "sfm/map/BlockScale.h"
 #include "sfm/map/Bundle.h"
+#include "sfm/ba/CpuParallel.h"
 #include "i18n/catalog/Sfm.h"
 #include "sfm/map/CorrespondenceGraph.h"
 // For alignByStructure: the similarity two models' shared points determine, and
@@ -810,10 +811,25 @@ public:
         return snapshotModel();
     }
 
-    // Choose the starting intrinsics before any model is built (D48). Part of
-    // run(); public so a bottom-up schedule can do it once over the whole
-    // database, instead of leaving the choice to whichever small piece of the
-    // capture it happens to reconstruct first.
+    // Global initialization needs intrinsics before it needs the correspondence graph.
+    void initializeCameras() {
+        cancel::check();
+        if (!default_cams_.empty()) return;
+        if (cam_ids_.size() != db_.images.size()) cam_ids_.assign(db_.images.size(), 1);
+        for (uint32_t i = 0; i < db_.images.size(); i++) {
+            const uint32_t cid = cam_ids_[i];
+            if (default_cams_.count(cid)) continue;
+            auto proto = opt_.initial_cameras.find(cid);
+            Camera camera = proto != opt_.initial_cameras.end()
+                                ? proto->second
+                                : Camera::defaultFor(cid, feats_[i].width, feats_[i].height,
+                                                     opt_.focal, opt_.camera_model);
+            camera.id = cid;
+            default_cams_[cid] = camera;
+        }
+    }
+
+    // Bottom-up atoms share the focal estimated over the whole capture (D48).
     void bootstrapCameras() {
         ensureSetup();
         bootstrapFocalLength();
@@ -840,6 +856,9 @@ public:
         try {
             globalRefine(true);
         } catch (const BAOverBudget&) {
+            opt_.ba_final_tight = tight;
+            throw;
+        } catch (const Cancelled&) {
             opt_.ba_final_tight = tight;
             throw;
         } catch (const std::exception& e) {
@@ -1157,6 +1176,9 @@ public:
         final_.no_retri = true;
         try {
             globalRefine(true);
+        } catch (const Cancelled&) {
+            final_ = FinalRelease{};
+            throw;
         } catch (const std::exception& e) {
             final_ = FinalRelease{};
             slog::err_raw(slog::Tag::Map,
@@ -1270,6 +1292,9 @@ public:
         final_.extra = extra;
         try {
             globalRefine(true);
+        } catch (const Cancelled&) {
+            final_ = FinalRelease{};
+            throw;
         } catch (const std::exception& e) {
             final_ = FinalRelease{};
             slog::err_raw(slog::Tag::Map,
@@ -1304,6 +1329,9 @@ public:
         final_.no_sanitize = true;
         try {
             globalRefine(true);
+        } catch (const Cancelled&) {
+            final_ = FinalRelease{};
+            throw;
         } catch (const std::exception& e) {
             final_ = FinalRelease{};
             slog::err_raw(slog::Tag::Map,
@@ -1327,6 +1355,9 @@ public:
         final_.no_rig = true;
         try {
             globalRefine(true);
+        } catch (const Cancelled&) {
+            final_ = FinalRelease{};
+            throw;
         } catch (const std::exception& e) {
             final_ = FinalRelease{};
             slog::err_raw(slog::Tag::Map,
@@ -1851,6 +1882,8 @@ public:
                                "[map] the joint solve needs %.0f MB against a %.0f MB budget: "
                                "splitting it %d ways", e.need_mb, e.budget_mb, want);
                 batches = want;
+            } catch (const Cancelled&) {
+                throw;
             } catch (const std::exception& e) {
                 slog::err_raw(slog::Tag::Map,
                               "[map] joint solve failed: " + std::string(e.what()) +
@@ -3125,6 +3158,8 @@ private:
         }
         try {
             globalRefine(final_pass);
+        } catch (const Cancelled&) {
+            throw;
         } catch (const std::exception& e) {
             slog::err_raw(slog::Tag::Map,
                           "[map] global refinement failed: " + std::string(e.what()) +
@@ -3184,11 +3219,6 @@ private:
     // Unit viewing ray for feature f of image img (the geometry core's
     // interchange type, D31; fisheye-ready, unlike z=1 normalized coords).
     Vec3 bearing(uint32_t img, uint32_t f) const { return camOf(img).bearing(kp(img, f)); }
-    Mat34 Pmat(uint32_t img) const {
-        const Pose& p = rec_.images.at(img).pose;
-        return {p.R[0], p.R[1], p.R[2], p.t.x, p.R[3], p.R[4], p.R[5], p.t.y,
-                p.R[6], p.R[7], p.R[8], p.t.z};
-    }
     // A point is "in front" of a camera if it lies along the viewing ray. For
     // the pinhole family that is p.z > 0 (kept bit-identical); a wide-FOV camera
     // sees past 90 deg, where p.z < 0 is still valid, so the test becomes the
@@ -3200,18 +3230,19 @@ private:
     double reprojErr(uint32_t img, uint32_t f, const Vec3& X) const {
         const Pose& p = rec_.images.at(img).pose;
         const Camera& cam = camOf(img);
+        const Vec2 o = kp(img, f);
+        return reprojErrFor(cam, p, o, cam.wideFov() ? cam.bearing(o) : Vec3{}, X);
+    }
+
+    static double reprojErrFor(const Camera& cam, const Pose& p, const Vec2& o,
+                               const Vec3& bearing, const Vec3& X) {
         Vec3 pc = mul(p.R, X) + p.t;
-        // Cheirality: pinhole path stays exactly `pc.z < 1e-8` (no bearing cost);
-        // a wide-FOV camera sees past 90 deg, so it tests the sign along the ray
-        // (D33). For a spherical camera every direction is in view, and the dot
-        // test costs nothing beyond the bearing it already needs.
         if (cam.wideFov()) {
-            if (pc.dot(cam.bearing(kp(img, f))) <= 0) return 1e30;
+            if (pc.dot(bearing) <= 0) return 1e30;
         } else if (pc.z < 1e-8) {
             return 1e30;
         }
         Vec2 px = cam.project(pc);
-        Vec2 o = kp(img, f);
         return std::hypot(px.x - o.x, px.y - o.y);
     }
 
@@ -3267,17 +3298,35 @@ private:
     // every-frame video asked for the same ones millions of times a pass.
     double reprojErrAt(const ModelIndex& mi, uint32_t img, uint32_t f, const Vec3& X,
                        const Vec3& bearing) const {
-        const Pose& p = mi.img[img]->pose;
-        const Camera& cam = *mi.cam[img];
-        Vec3 pc = mul(p.R, X) + p.t;
-        if (cam.wideFov()) {
-            if (pc.dot(bearing) <= 0) return 1e30;
-        } else if (pc.z < 1e-8) {
-            return 1e30;
-        }
-        Vec2 px = cam.project(pc);
-        Vec2 o = kp(img, f);
-        return std::hypot(px.x - o.x, px.y - o.y);
+        return reprojErrFor(*mi.cam[img], mi.img[img]->pose, kp(img, f), bearing, X);
+    }
+
+    struct TriangulationView {
+        const Camera& camera;
+        const Pose& pose;
+        Mat34 projection;
+        Vec3 center;
+        double max_error;
+
+        TriangulationView(const Camera& c, const Pose& p, double error)
+            : camera(c), pose(p),
+              projection{p.R[0], p.R[1], p.R[2], p.t.x, p.R[3], p.R[4], p.R[5], p.t.y,
+                         p.R[6], p.R[7], p.R[8], p.t.z},
+              center(cameraCenter(p)), max_error(error) {}
+    };
+
+    bool triangulatePair(const TriangulationView& a, const Vec2& oa, const Vec3& ba,
+                         const TriangulationView& b, const Vec2& ob, const Vec3& bb,
+                         Vec3& X, double& angle) const {
+        X = triangulateDLT(a.projection, b.projection, ba, bb);
+        Vec3 pa = mul(a.pose.R, X) + a.pose.t;
+        Vec3 pb = mul(b.pose.R, X) + b.pose.t;
+        if (!inFront(a.camera, pa, ba, 1e-6) || !inFront(b.camera, pb, bb, 1e-6)) return false;
+        angle = triangulationAngle(X, a.center, b.center) * 180.0 / M_PI;
+        if (angle < opt_.min_tri_angle_deg) return false;
+        if (reprojErrFor(a.camera, a.pose, oa, ba, X) > a.max_error) return false;
+        if (reprojErrFor(b.camera, b.pose, ob, bb, X) > b.max_error) return false;
+        return true;
     }
 
     // triangulatePair() against the index.
@@ -3289,51 +3338,19 @@ private:
     bool triangulatePairAt(const ModelIndex& mi, uint32_t a, uint32_t fa, const Vec3& ba,
                            uint32_t b, uint32_t fb, const Vec3& bb, Vec3& X,
                            double err_scale = 1.0) const {
-        const Pose& pa_ = mi.img[a]->pose;
-        const Pose& pb_ = mi.img[b]->pose;
-        const Camera& ca = *mi.cam[a];
-        const Camera& cb = *mi.cam[b];
-        Mat34 Pa{pa_.R[0], pa_.R[1], pa_.R[2], pa_.t.x, pa_.R[3], pa_.R[4], pa_.R[5], pa_.t.y,
-                 pa_.R[6], pa_.R[7], pa_.R[8], pa_.t.z};
-        Mat34 Pb{pb_.R[0], pb_.R[1], pb_.R[2], pb_.t.x, pb_.R[3], pb_.R[4], pb_.R[5], pb_.t.y,
-                 pb_.R[6], pb_.R[7], pb_.R[8], pb_.t.z};
-        X = triangulateDLT(Pa, Pb, ba, bb);
-        Vec3 pa = mul(pa_.R, X) + pa_.t;
-        Vec3 pb = mul(pb_.R, X) + pb_.t;
-        if (!inFront(ca, pa, ba, 1e-6) || !inFront(cb, pb, bb, 1e-6)) return false;
-        double ang = triangulationAngle(X, cameraCenter(pa_), cameraCenter(pb_));
-        if (ang * 180.0 / M_PI < opt_.min_tri_angle_deg) return false;
-        if (reprojErrAt(mi, a, fa, X, ba) > err_scale * (opt_.max_reproj_error * mi.pixel_scale[a]))
-            return false;
-        if (reprojErrAt(mi, b, fb, X, bb) > err_scale * (opt_.max_reproj_error * mi.pixel_scale[b]))
-            return false;
-        return true;
-    }
-
-    // Triangulate the correspondence (a,fa)<->(b,fb); accept on cheirality,
-    // angle and reprojection. Returns true and fills X on success.
-    // `err_scale` tightens the reprojection acceptance (< 1 during
-    // retriangulation, so re-created points must beat the filter's kill
-    // threshold with margin -- the churn hysteresis, see D36).
-    bool triangulatePair(uint32_t a, uint32_t fa, uint32_t b, uint32_t fb, Vec3& X,
-                         double err_scale = 1.0) const {
-        Vec3 ba = bearing(a, fa), bb = bearing(b, fb);
-        X = triangulateDLT(Pmat(a), Pmat(b), ba, bb);
-        Vec3 pa = mul(rec_.images.at(a).pose.R, X) + rec_.images.at(a).pose.t;
-        Vec3 pb = mul(rec_.images.at(b).pose.R, X) + rec_.images.at(b).pose.t;
-        if (!inFront(camOf(a), pa, ba, 1e-6) || !inFront(camOf(b), pb, bb, 1e-6)) return false;
-        double ang = triangulationAngle(X, cameraCenter(rec_.images.at(a).pose),
-                                        cameraCenter(rec_.images.at(b).pose));
-        if (ang * 180.0 / M_PI < opt_.min_tri_angle_deg) return false;
-        if (reprojErr(a, fa, X) > err_scale * errPx(a)) return false;
-        if (reprojErr(b, fb, X) > err_scale * errPx(b)) return false;
-        return true;
+        const TriangulationView va(*mi.cam[a], mi.img[a]->pose,
+                                    err_scale * (opt_.max_reproj_error * mi.pixel_scale[a]));
+        const TriangulationView vb(*mi.cam[b], mi.img[b]->pose,
+                                    err_scale * (opt_.max_reproj_error * mi.pixel_scale[b]));
+        double angle;
+        return triangulatePair(va, kp(a, fa), ba, vb, kp(b, fb), bb, X, angle);
     }
 
     // Idempotent: every public entry point calls it, and only the first does
     // anything. The graph and the per-image records are properties of the
     // database, not of a particular model.
     void ensureSetup() {
+        cancel::check();
         if (!setup_done_) {
             setup();
             setup_done_ = true;
@@ -3341,25 +3358,13 @@ private:
     }
 
     void setup() {
-        if (cam_ids_.size() != db_.images.size()) cam_ids_.assign(db_.images.size(), 1);
-        // One Camera per distinct id, sized from the first image that uses it.
-        // The pristine default is kept so a camera whose images all get
-        // de-registered can start over instead of retrying from bad intrinsics.
-        for (uint32_t i = 0; i < db_.images.size(); i++) {
-            uint32_t cid = cam_ids_[i];
-            if (rec_.cameras.count(cid)) continue;
-            auto proto = opt_.initial_cameras.find(cid);
-            rec_.cameras[cid] = proto != opt_.initial_cameras.end()
-                                    ? proto->second
-                                    : Camera::defaultFor(cid, feats_[i].width, feats_[i].height,
-                                                         opt_.focal, opt_.camera_model);
-            rec_.cameras[cid].id = cid;
-            default_cams_[cid] = rec_.cameras[cid];
-        }
+        initializeCameras();
+        rec_.cameras = default_cams_;
         // Priors survive every reset; see MapperOptions::known_focal_cameras.
         for (uint32_t cid : opt_.known_focal_cameras)
             if (rec_.cameras.count(cid)) focal_known_.insert(cid);
         for (uint32_t i = 0; i < db_.images.size(); i++) {
+            cancel::check();
             Image im;
             im.id = i;
             im.camera_id = cam_ids_[i];
@@ -3368,7 +3373,7 @@ private:
             im.points2D.resize(feats_[i].count());
             im.point3D_ids.assign(feats_[i].count(), kInvalidPoint3D);
             for (uint32_t f = 0; f < feats_[i].count(); f++) im.points2D[f] = kp(i, f);
-            rec_.images[i] = im;
+            rec_.images[i] = std::move(im);
         }
         graph_.build(db_, [&] {
             std::vector<uint32_t> nf(db_.images.size());
@@ -3396,6 +3401,8 @@ private:
     // Wipe everything a previous seed attempt built, so the next attempt starts
     // from the same state setup() left behind.
     void resetModel() {
+        // Reset may adopt a camera consensus newer than the cached two-view pose.
+        for (auto& entry : seed_geom_) entry.second.created = -1;
         scale_cache_ = 0;
         bss_stamp_.clear();
         bss_stored_.clear();
@@ -3755,6 +3762,7 @@ private:
     }
 
     bool initialize(size_t& from) {
+        cancel::check();
         init_tally_ = InitTally();
         // The relaxation level and, with sequences, the phase (neighbour pairs
         // first, every pair once those are exhausted, D79) are sticky across
@@ -3780,12 +3788,7 @@ private:
 
     bool initializeAttempt(size_t& from, double min_ang_deg, int min_inliers,
                            bool allow_forward) {
-        // Candidate pairs: verified, non-planar, most inliers first. Built once
-        // per restriction and reused: the relaxation ladder only ever *lowers*
-        // min_inliers, so every level's candidate set is a prefix of this one
-        // ordering, and rebuilding it per level per attempt meant scanning and
-        // sorting the whole pair list (74k of them on a 5400-image capture)
-        // once per cluster -- a quarter of a bottom-up run's mapper time.
+        // Relaxation changes thresholds, never candidate order.
         if (!seed_cand_valid_) {
             seed_cand_.clear();
             seed_cand_far_.clear();
@@ -3807,54 +3810,28 @@ private:
         }
         const std::vector<const TwoViewMatches*>& cand = seed_phase_ ? seed_cand_far_ : seed_cand_;
 
-        // The scan is serial by construction -- the first candidate that clears
-        // the level's thresholds wins, and each trial mutates rec_ -- but the
-        // expensive part of a trial is `seedGeometry`, a pure function of the
-        // pair (D38's memoization already relies on that). So the candidates
-        // ahead of the cursor are precomputed a block at a time on all cores
-        // and the serial loop below then only reads the cache. Same answer,
-        // same order; a rejected candidate's RANSAC just no longer costs wall
-        // clock. On a capture where the seed search rejects hundreds of pairs
-        // this is the difference between minutes and seconds of dead GPU.
-        // The block doubles rather than starting at full width. Speculating a
-        // core's worth of RANSACs ahead is free only when the search is going
-        // to reject that many candidates; on a small restricted graph -- a
-        // bottom-up atom -- the first candidate usually seeds, and every other
-        // pair in the block was computed for nothing, once per atom.
-        //
-        // With one thread it is not speculation at all, only extra work: the
-        // block would be computed on this very thread, in order, and the loop
-        // below computes exactly what it needs on demand (trySeedPair fills the
-        // same cache). That is the atom case -- the parallelism there is over
-        // atoms, so each mapper runs single-threaded -- and leaving the
-        // prefetch on cost 2578 two-view RANSACs where 34 atoms needed 84.
+        // Speculate in growing blocks without changing which passing pair wins.
+        // Single-threaded atoms compute only the pair they are about to try.
         const unsigned hc = spirula::hardware_threads();
-        const size_t max_block =
+        const size_t workers =
             std::max<size_t>(1, opt_.threads > 0 ? (size_t)opt_.threads : (hc ? hc : 1));
+        const size_t max_block = workers > 1 ? 4 * workers : 1;
         size_t block = 1;
         size_t prefetched = max_block > 1 ? from : cand.size();
 
         for (size_t ci = from; ci < cand.size(); ci++) {
+            cancel::check();
             const TwoViewMatches* p = cand[ci];
             // Sorted by inlier count, so the first pair under this level's
             // threshold ends the level.
             if ((int)p->matches.size() < min_inliers) break;
             uint32_t a = p->image1, b = p->image2;
-            // Relaxation levels re-scan the (re-sorted) candidate list, so the
-            // cursor alone cannot prevent rebuilding a seed a previous attempt
-            // already grew and rejected -- burning retry budget on duplicates.
             if (used_seeds_.count({a, b})) continue;
-            // A further model must start somewhere no kept model reached, or it
-            // would just rebuild the model that is already written (COLMAP
-            // FindFirstInitialImage's `num_registrations == 0` rule, D41).
-            // Inert while the primary model is being built -- but the same
-            // argument applies between that model's own seed attempts, where
-            // nothing is claimed yet: a retry that starts inside what the last
-            // attempt registered rebuilds it (D58).
+            // Retries start outside every earlier model, including discarded attempts.
             if (claimed(a) || claimed(b) || seedBlocked(a) || seedBlocked(b)) continue;
             if (ci >= prefetched) {
                 prefetched = std::min(cand.size(), ci + block);
-                prefetchSeedGeometry(cand, ci, prefetched);
+                prefetchSeedGeometry(cand, ci, prefetched, {min_ang_deg, min_inliers, allow_forward});
                 block = std::min(max_block, block * 2);
             }
             if (!trySeedPair(*p, min_ang_deg, min_inliers, allow_forward, true)) continue;
@@ -3865,23 +3842,24 @@ private:
         return false;
     }
 
-    // Two-view geometry for a seed candidate. Pure: it reads the pristine
-    // cameras and the features, and touches no reconstruction state -- which is
-    // what lets it be memoized (D38) and precomputed off-thread.
-    TwoViewGeometry seedGeometry(const TwoViewMatches& pm) const {
+    struct SeedGeometry {
+        TwoViewGeometry geometry;
+        bool complete = false;
+        int created = -1;
+        double median_angle = 0;
+    };
+
+    // Homography can only veto an epipolar seed; defer it until the baseline passes.
+    SeedGeometry seedGeometry(const TwoViewMatches& pm, bool complete = false) const {
+        cancel::check();
         ProfTimer pt(g_map_prof.seed_geom);
         g_map_prof.n_seed_geom++;
         const uint32_t a = pm.image1, b = pm.image2;
         TwoViewOptions tvo;
         tvo.recover_pose = true;
-        // Whether to re-derive planar-or-panoramic here. `pm.matches` are
-        // verification's surviving inliers and `pm.config` is its verdict on
-        // the pair; only Uncalibrated ones reach here (initializeAttempt filters
-        // on it). Re-deriving it costs a homography RANSAC, which is ~90% of the
-        // seed search on a 550-image capture -- H's inlier ratio on a
-        // non-planar pair is low, so its trial count adapts into the hundreds
-        // where F, fed its own inliers, converges in a handful.
-        tvo.estimate_homography = opt_.seed_homography;
+        tvo.ransac.check_interrupt = cancel::check;
+        complete = complete || !opt_.seed_homography;
+        tvo.estimate_homography = complete && opt_.seed_homography;
         const Camera& ca = camOf(a);
         const Camera& cb = camOf(b);
         tvo.calibrated_essential = opt_.seed_essential == 2 ||
@@ -3890,6 +3868,8 @@ private:
         Mat3 Rp;
         double sig;
         if (priors_ && priors_->relativeRotation(a, b, Rp, sig)) {
+            // The gyro fallback depends on the full free-pose verdict.
+            tvo.estimate_homography = opt_.seed_homography;
             // The gyro's rotation, with the translation from the two-point
             // fit, when it explains what the free estimate did: a seed whose
             // rotation is measured rather than fitted.
@@ -3917,7 +3897,7 @@ private:
                 g.pose = k.pose;
                 g.has_pose = true;
             }
-            return g;
+            return {std::move(g), true};
         }
         if (ca.wideFov() || cb.wideFov() || tvo.calibrated_essential || opt_.seed_essential == 3) {
             // Same reason verification works on bearings (D45): a pinhole seed
@@ -3931,7 +3911,7 @@ private:
             }
             tvo.ransac.max_error =
                 0.5 * (ca.errRad(tvo.ransac.max_error) + cb.errRad(tvo.ransac.max_error));
-            return estimateTwoViewBearing(b1, b2, tvo);
+            return {estimateTwoViewBearing(b1, b2, tvo), complete};
         }
         std::vector<Vec2> q1(pm.matches.size()), q2(pm.matches.size());
         for (size_t k = 0; k < pm.matches.size(); k++) {
@@ -3940,35 +3920,114 @@ private:
         }
         tvo.K1 = ca.K();
         tvo.K2 = cb.K();
-        return estimateTwoView(q1, q2, tvo);
+        return {estimateTwoView(q1, q2, tvo), complete};
     }
 
-    // Fill seed_geom_ for cand[lo, hi) on a thread pool. Candidates already
-    // cached are skipped; the map itself is only written on this thread.
+    template <class Emit>
+    void triangulateSeed(const TwoViewMatches& pm, const TwoViewGeometry& geometry, Emit emit) const {
+        const uint32_t a = pm.image1, b = pm.image2;
+        const Camera& ca = camOf(a);
+        const Camera& cb = camOf(b);
+        const Pose origin{mat3Identity(), {0, 0, 0}};
+        const TriangulationView va(ca, origin, ca.errPx(opt_.max_reproj_error));
+        const TriangulationView vb(cb, geometry.pose, cb.errPx(opt_.max_reproj_error));
+        for (size_t k = 0; k < pm.matches.size(); k++) {
+            if (k % 256 == 0) cancel::check();
+            if (!geometry.inlier_mask[k]) continue;
+            const uint32_t fa = pm.matches[k].idx1, fb = pm.matches[k].idx2;
+            if (opt_.tracks.ignore_two_view && graph_.isolatedPair(a, fa)) continue;
+            const Vec2 oa = kp(a, fa), ob = kp(b, fb);
+            Vec3 X;
+            double angle;
+            if (triangulatePair(va, oa, ca.bearing(oa), vb, ob, cb.bearing(ob), X, angle))
+                emit(fa, fb, X, angle);
+        }
+    }
+
+    static double seedForwardMotion(const TwoViewGeometry& g) {
+        const Vec3 c2 = cameraCenter(g.pose).normalized();
+        return std::max(std::fabs(c2.z),
+                        std::fabs(c2.x * g.pose.R[6] + c2.y * g.pose.R[7] + c2.z * g.pose.R[8]));
+    }
+
+    bool seedPosePasses(const TwoViewMatches& pm, const SeedGeometry& candidate,
+                        const InitLevel& level) const {
+        const auto& g = candidate.geometry;
+        return g.has_pose && g.config == TwoViewConfig::Uncalibrated &&
+               g.num_inliers >= level.inliers &&
+               (level.allow_forward || (camOf(pm.image1).isSpherical() && camOf(pm.image2).isSpherical()) ||
+                !(seedForwardMotion(g) > opt_.init_max_forward_motion));
+    }
+
+    static bool seedStructurePasses(const SeedGeometry& candidate, const InitLevel& level) {
+        return candidate.created >= std::max(30, level.inliers / 2) &&
+               candidate.median_angle >= level.angle;
+    }
+
+    bool seedNeedsEvaluation(const TwoViewMatches& pm, const SeedGeometry& candidate,
+                             const InitLevel& level) const {
+        return seedPosePasses(pm, candidate, level) &&
+               (candidate.created < 0 || (!candidate.complete && seedStructurePasses(candidate, level)));
+    }
+
+    void evaluateSeed(const TwoViewMatches& pm, SeedGeometry& candidate, const InitLevel& level) const {
+        if (!seedNeedsEvaluation(pm, candidate, level)) return;
+        if (candidate.created < 0) {
+            std::vector<double> angles;
+            angles.reserve(candidate.geometry.num_inliers);
+            triangulateSeed(pm, candidate.geometry, [&](uint32_t, uint32_t, const Vec3&, double angle) {
+                angles.push_back(angle);
+            });
+            candidate.created = (int)angles.size();
+            candidate.median_angle = 0;
+            if (!angles.empty()) {
+                std::sort(angles.begin(), angles.end());
+                candidate.median_angle = angles[angles.size() / 2];
+            }
+        }
+        if (!candidate.complete && seedStructurePasses(candidate, level)) {
+            auto full = seedGeometry(pm, true);
+            candidate.geometry = std::move(full.geometry);
+            candidate.complete = full.complete;
+        }
+    }
+
+    // Workers read the model; only the ordered consumer may commit a seed to it.
     void prefetchSeedGeometry(const std::vector<const TwoViewMatches*>& cand, size_t lo,
-                              size_t hi) {
+                              size_t hi, const InitLevel& level) {
+        cancel::check();
         std::vector<const TwoViewMatches*> todo;
+        std::vector<SeedGeometry> out;
+        std::vector<uint8_t> estimate;
         for (size_t i = lo; i < hi; i++) {
             const TwoViewMatches* p = cand[i];
-            std::pair<uint32_t, uint32_t> key{p->image1, p->image2};
-            if (used_seeds_.count(key) || claimed(key.first) || claimed(key.second)) continue;
-            if (seed_geom_.count(key)) continue;
+            const std::pair<uint32_t, uint32_t> key{p->image1, p->image2};
+            if ((int)p->matches.size() < level.inliers) break;
+            if (used_seeds_.count(key) || claimed(key.first) || claimed(key.second) ||
+                seedBlocked(key.first) || seedBlocked(key.second)) continue;
+            auto cached = seed_geom_.find(key);
+            if (cached != seed_geom_.end() && !seedNeedsEvaluation(*p, cached->second, level)) continue;
             todo.push_back(p);
+            estimate.push_back(cached == seed_geom_.end());
+            out.push_back(cached == seed_geom_.end() ? SeedGeometry{} : cached->second);
         }
-        if (todo.size() < 2) return;  // one pair is not worth a pool
-        std::vector<TwoViewGeometry> out(todo.size());
-        std::atomic<size_t> next{0};
-        const unsigned hc = spirula::hardware_threads();
-        const size_t want = opt_.threads > 0 ? (size_t)opt_.threads : std::max(1u, hc);
-        const size_t nt = std::min<size_t>(todo.size(), want);
-        std::vector<std::thread> pool;
-        pool.reserve(nt);
-        for (size_t t = 0; t < nt; t++)
-            pool.emplace_back([&] {
-                for (size_t i = next++; i < todo.size(); i = next++)
-                    out[i] = seedGeometry(*todo[i]);
-            });
-        for (std::thread& t : pool) t.join();
+        if (todo.size() < 2) return;
+        std::atomic<bool> failed{false};
+        std::vector<std::exception_ptr> errors(todo.size());
+        auto& pool = bacpu::Pool::get();
+        const int workers = opt_.threads > 0 ? std::min(opt_.threads, pool.size()) : pool.size();
+        pool.run((int)todo.size(), workers, [&](int i, int) {
+            if (failed || cancel::requested()) return;
+            try {
+                if (estimate[i]) out[i] = seedGeometry(*todo[i]);
+                evaluateSeed(*todo[i], out[i], level);
+            } catch (...) {
+                errors[i] = std::current_exception();
+                failed = true;
+            }
+        });
+        for (const auto& error : errors) if (error) std::rethrow_exception(error);
+        cancel::check();
         for (size_t i = 0; i < todo.size(); i++)
             seed_geom_[{todo[i]->image1, todo[i]->image2}] = std::move(out[i]);
     }
@@ -3976,105 +4035,56 @@ private:
     // Focal hypotheses must rebuild the same seed pair for their scores to be comparable.
     bool trySeedPair(const TwoViewMatches& pm, double min_ang_deg, int min_inliers,
                      bool allow_forward, bool memoize) {
-        const TwoViewMatches* p = &pm;
-        const uint32_t a = p->image1, b = p->image2;
+        cancel::check();
+        const uint32_t a = pm.image1, b = pm.image2;
+        const InitLevel level{min_ang_deg, min_inliers, allow_forward};
         // Focal bootstrapping changes intrinsics, so it cannot reuse cached geometry (D38).
-        TwoViewGeometry g;
         auto cached = memoize ? seed_geom_.find({a, b}) : seed_geom_.end();
-        if (cached != seed_geom_.end()) {
-            g = cached->second;
-        } else {
-            g = seedGeometry(pm);
-            if (memoize) seed_geom_[{a, b}] = g;
-        }
+        SeedGeometry candidate = cached != seed_geom_.end() ? cached->second : seedGeometry(pm);
+        evaluateSeed(pm, candidate, level);
+        if (memoize) seed_geom_[{a, b}] = candidate;
+        const TwoViewGeometry& g = candidate.geometry;
         init_tally_.candidates++;
+        if (candidate.created >= 0 &&
+            (!seedPosePasses(pm, candidate, level) || !seedStructurePasses(candidate, level)))
+            rec_.next_point3D_id = 1;
         if (!g.has_pose) { init_tally_.no_pose++; return false; }
         if (g.config != TwoViewConfig::Uncalibrated) { init_tally_.config++; return false; }
         if (g.num_inliers < min_inliers) { init_tally_.few_inliers++; return false; }
 
-        // Forward motion leaves narrow views poorly conditioned around the epipole.
-        // Spherical views retain transverse rays with useful parallax (D49).
-        double fwd;
-        {
-            Vec3 c2 = cameraCenter(g.pose).normalized();  // cam1 is at origin
-            fwd = std::max(std::fabs(c2.z),
-                           std::fabs(c2.x * g.pose.R[6] + c2.y * g.pose.R[7] +
-                                     c2.z * g.pose.R[8]));
-            init_tally_.best_forward = std::min(init_tally_.best_forward, fwd);
-            const bool spherical = camOf(a).isSpherical() && camOf(b).isSpherical();
-            if (!allow_forward && !spherical && fwd > opt_.init_max_forward_motion) {
-                init_tally_.forward++;
-                return false;
-            }
-        }
+        const double fwd = seedForwardMotion(g);
+        init_tally_.best_forward = std::min(init_tally_.best_forward, fwd);
+        if (!seedPosePasses(pm, candidate, level)) { init_tally_.forward++; return false; }
+        init_tally_.best_angle = std::max(init_tally_.best_angle, candidate.median_angle);
+        if (candidate.created < std::max(30, min_inliers / 2)) init_tally_.few_points++;
+        else if (candidate.median_angle < min_ang_deg) init_tally_.low_angle++;
+        if (!seedStructurePasses(candidate, level)) return false;
 
-        // Set up the two cameras and triangulate the inliers.
         rec_.images[a].pose = {mat3Identity(), {0, 0, 0}};
         rec_.images[a].registered = true;
         rec_.images[b].pose = g.pose;
         rec_.images[b].registered = true;
-
-        std::vector<double> angles;
-        int created = 0;
-        for (size_t k = 0; k < p->matches.size(); k++) {
-            if (!g.inlier_mask[k]) continue;
-            uint32_t fa = p->matches[k].idx1, fb = p->matches[k].idx2;
-            if (opt_.tracks.ignore_two_view && graph_.isolatedPair(a, fa)) continue;
-            Vec3 X;
-            if (!triangulatePair(a, fa, b, fb, X)) continue;
-            double ang = triangulationAngle(X, cameraCenter(rec_.images[a].pose),
-                                            cameraCenter(rec_.images[b].pose));
-            angles.push_back(ang * 180.0 / M_PI);
+        triangulateSeed(pm, g, [&](uint32_t fa, uint32_t fb, const Vec3& X, double) {
             rec_.addPoint3D(X, {{a, fa}, {b, fb}});
-            created++;
+        });
+        // The seed cameras' first BA must not be overwritten by a later focal search.
+        focal_known_.insert(rec_.images[a].camera_id);
+        focal_known_.insert(rec_.images[b].camera_id);
+        if (opt_.report_progress) {
+            events::map_placed(a);
+            events::map_placed(b);
         }
-        double medAng = 0;
-        if (!angles.empty()) {
-            std::sort(angles.begin(), angles.end());
-            medAng = angles[angles.size() / 2];
-        }
-        init_tally_.best_angle = std::max(init_tally_.best_angle, medAng);
-        if (created < std::max(30, min_inliers / 2)) init_tally_.few_points++;
-        else if (medAng < min_ang_deg) init_tally_.low_angle++;
-        if (created >= std::max(30, min_inliers / 2) && medAng >= min_ang_deg) {
-            // The seed cameras are about to be refined by the first global
-            // BA; do not let a later focal search overwrite that.
-            focal_known_.insert(rec_.images[a].camera_id);
-            focal_known_.insert(rec_.images[b].camera_id);
-            // Only now: a rolled-back candidate is not progress, and the scan
-            // tries dozens. Counting each one that merely had a pose put 120 of
-            // a 120-image capture on the bar before the model existed.
-            if (opt_.report_progress) {
-                events::map_placed(a);
-                events::map_placed(b);
-            }
-            seed_pair_ = &pm;
-            seed_forward_ = fwd;
-            completeFrameOf(a);
-            completeFrameOf(b);
-            if (opt_.verbose)
-                slog::out(slog::Tag::Map, spirula::i18n::msg::sfm::map_init_pair,
-                         {(long long)a, (long long)b, (long long)created, slog::num(medAng, 1),
-                          (fwd > 0.5 ? spirula::i18n::msg::sfm::baseline_forward
-                                     : spirula::i18n::msg::sfm::baseline_sideways).get()});
-            return true;
-        }
-        // Roll back and let the caller try the next candidate.
-        rollbackInit(a, b);
-        return false;
-    }
-
-    // Candidates are tried on a reset model (resetModel precedes initialize) and
-    // touch only their two images: sweeping every image cost a 3000-frame video,
-    // which rejects every neighbour pair, 80 MB of stores per candidate.
-    void rollbackInit(uint32_t a, uint32_t b) {
-        rec_.points3D.clear();
-        rec_.next_point3D_id = 1;
-        for (uint32_t i : {a, b}) {
-            Image& im = rec_.images[i];
-            im.registered = false;
-            std::fill(im.point3D_ids.begin(), im.point3D_ids.end(), kInvalidPoint3D);
-        }
+        seed_pair_ = &pm;
+        seed_forward_ = fwd;
+        completeFrameOf(a);
+        completeFrameOf(b);
+        if (opt_.verbose)
+            slog::out(slog::Tag::Map, spirula::i18n::msg::sfm::map_init_pair,
+                     {(long long)a, (long long)b, (long long)candidate.created,
+                      slog::num(candidate.median_angle, 1),
+                      (fwd > 0.5 ? spirula::i18n::msg::sfm::baseline_forward
+                                 : spirula::i18n::msg::sfm::baseline_sideways).get()});
+        return true;
     }
 
     // ---- registration ----
@@ -6029,7 +6039,7 @@ private:
     const TwoViewMatches* seed_pair_ = nullptr;  // pair the last seed was built on
     double seed_forward_ = 0;         // its |baseline . viewing dir|
     std::set<std::pair<uint32_t, uint32_t>> used_seeds_;  // seeds already grown
-    std::map<std::pair<uint32_t, uint32_t>, TwoViewGeometry> seed_geom_;  // memoized (D38)
+    std::map<std::pair<uint32_t, uint32_t>, SeedGeometry> seed_geom_;
     Reconstruction rec_;
     CorrespondenceGraph graph_;
     std::vector<std::vector<uint16_t>> support_;  // per (image, feature), see rebuildScores

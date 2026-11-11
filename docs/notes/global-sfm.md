@@ -4,9 +4,13 @@
 initialization. `spirula sfm map` accepts the same option for an existing
 feature and match database. The usual finishing, gauge and export stages follow.
 
-The mapper bootstraps camera groups using the existing calibration machinery,
-then fits unknown pinhole focal lengths jointly over fundamental matrices
-re-estimated from verified correspondences. Fixed focal priors are held constant.
+The mapper starts from the supplied or matching-stage camera calibration, then
+fits unknown pinhole focal lengths jointly over fundamental matrices re-estimated
+from verified correspondences. Fixed focal priors are held constant. It skips
+the incremental seed search and trial reconstruction, except for a fisheye
+without a supplied focal, which view-graph calibration cannot refine. The incremental
+correspondence graph and per-feature mapping state are allocated at refinement,
+after global initialization has released its temporary buffers.
 Relative poses are re-estimated using those intrinsics. Rotation averaging
 initializes from a spanning forest ranked by triangle consistency and inlier
 count, then solves L1 regression through ADMM followed by Geman--McClure IRLS over coupled
@@ -43,8 +47,8 @@ joint BA; both stages retain the available pose priors.
 This is an experimental implementation, not a port or a validated equivalent
 of GLOMAP. Its current limits matter when choosing a test capture:
 
-- Positioning has not been profiled on large scenes or validated on a physical
-  GPU. The reduced system still includes points, and fp32 arithmetic may limit
+- Large-scene validation is limited to the capture comparison below and synthetic
+  tests. The reduced system still includes points, and fp32 arithmetic may limit
   precision.
 - View-graph calibration only adjusts focal length for pinhole-family cameras;
   it has not been validated on real captures or against GLOMAP. Planar and
@@ -81,3 +85,25 @@ the preview in its own gauge; the largest filtered model is forced to disk
 before refinement, and the usual final snapshot replaces it after assembly.
 The solver downloads only camera and point coordinates for these previews;
 observation scales remain on the device until the final readback.
+
+## Seed-probe removal comparison
+
+On a 2,681-frame 1920x1080 video, with the same saved SIFT features and 49,002
+verified pairs, an RTX 5070 and eight host threads:
+
+| Global mapping | Incremental probe | No probe |
+|---|---:|---:|
+| Wall time | 8m44s | 4m52s |
+| Registered cameras | 2,681 | 2,681 |
+| Points | 907,212 | 906,005 |
+| Mean / median reprojection error | 0.830 / 0.669 px | 0.829 / 0.668 px |
+| Peak process RSS | 4.64 GiB | 4.61 GiB |
+
+Both runs used `map --mapper global --threads 8 --no-manage
+--no-final-principal-point --no-final-extra-params`; no build ran alongside either.
+The second run had warm file and shader caches. The original GUI log independently
+recorded 199 seconds finding the probe seed and about one second growing it.
+After a similarity alignment, median / 95th-percentile camera rotation differences
+were 0.0036 / 0.0185 degrees; median centre displacement was 0.0074% of the capture's
+RMS camera radius. These compare two reconstructions, not ground truth, and do not
+establish quality across other captures. Refinement still determines peak RAM.

@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "sfm/core/Matches.h"
+#include "sfm/core/Cancel.h"
 #include "sfm/core/Spill.h"
 
 namespace sfm {
@@ -89,7 +90,8 @@ public:
 
         // Count, prefix-sum, scatter. The +1 offset in the counting pass makes
         // the prefix sum land directly in the final offsets array.
-        for (const TwoViewMatches& p : db.pairs)
+        for (const TwoViewMatches& p : db.pairs) {
+            cancel::check();
             for (const FeatureMatch& m : p.matches) {
                 if (m.idx1 + 1 >= starts_[p.image1].size() ||
                     m.idx2 + 1 >= starts_[p.image2].size())
@@ -97,8 +99,10 @@ public:
                 starts_[p.image1][m.idx1 + 1]++;
                 starts_[p.image2][m.idx2 + 1]++;
             }
+        }
         std::vector<std::vector<uint32_t>> fill(n);
         for (size_t i = 0; i < n; i++) {
+            cancel::check();
             std::vector<uint32_t>& s = starts_[i];
             for (size_t f = 1; f < s.size(); f++) s[f] += s[f - 1];
             data_[i].resize(s.empty() ? 0 : (size_t)s.back() * stride_);
@@ -113,7 +117,8 @@ public:
                 e[0] = (other << shift_) | other_feat;
             }
         };
-        for (const TwoViewMatches& p : db.pairs)
+        for (const TwoViewMatches& p : db.pairs) {
+            cancel::check();
             for (const FeatureMatch& m : p.matches) {
                 if (m.idx1 + 1 >= starts_[p.image1].size() ||
                     m.idx2 + 1 >= starts_[p.image2].size())
@@ -121,6 +126,7 @@ public:
                 put(p.image1, m.idx1, p.image2, m.idx2);
                 put(p.image2, m.idx2, p.image1, m.idx1);
             }
+        }
         rows_.resize(n);
         for (size_t i = 0; i < n; i++)
             rows_[i] = {starts_[i].data(), data_[i].data(), num_features[i]};

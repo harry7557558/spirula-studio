@@ -1412,7 +1412,15 @@ std::vector<Reconstruction> runMapper(Mapper& mapper, const MatchesDatabase& db,
     if (cfg.mapper_mode == "global") {
         if (!cfg.quiet) L::out(Tag::Map, M::map_global_start);
         events::stage_begin(Stage::GlobalInitialize, 10000);
-        mapper.bootstrapCameras();
+        mapper.initializeCameras();
+        // View-graph calibration cannot refine fisheye focals.
+        for (const auto& camera : mapper.startingCameras()) {
+            if (camera.second.isFisheye() &&
+                !mapper.options().given_focal_cameras.count(camera.first)) {
+                mapper.bootstrapCameras();
+                break;
+            }
+        }
         GlobalReconstructionOptions go;
         go.progress = [](double work) {
             events::progress(Stage::GlobalInitialize, (int64_t)(work * 10000), 10000);

@@ -19,6 +19,7 @@ struct RansacOptions {
     double min_inlier_ratio = 0.0;   // give up early if clearly below this
     unsigned seed = 0;
     int lo_iters = 10;               // local-optimization refit rounds
+    void (*check_interrupt)() = nullptr;
 };
 
 template <class Model>
@@ -82,6 +83,7 @@ static auto refitModels(const Refit& refit, const std::vector<int>& idx, const M
 template <class Model, class Fit, class Refit, class Res>
 RansacReport<Model> loransac(int n, int min_samples, const Fit& fit, const Refit& refit,
                              const Res& res, const RansacOptions& opt) {
+    if (opt.check_interrupt) opt.check_interrupt();
     RansacReport<Model> best;
     best.score = 1e300;
     if (n < min_samples) return best;
@@ -107,6 +109,7 @@ RansacReport<Model> loransac(int n, int min_samples, const Fit& fit, const Refit
     std::vector<int> lo_idx;
     auto localOptimize = [&](int rounds) {
         for (int it = 0; it < rounds; it++) {
+            if (opt.check_interrupt) opt.check_interrupt();
             lo_idx.clear();
             for (int i = 0; i < n; i++)
                 if (best.inlier_mask[i]) lo_idx.push_back(i);
@@ -122,6 +125,7 @@ RansacReport<Model> loransac(int n, int min_samples, const Fit& fit, const Refit
     std::vector<int> sample;
     sample.reserve(min_samples);
     for (; trial < max_trials; trial++) {
+        if (opt.check_interrupt && trial % 32 == 0) opt.check_interrupt();
         sample.clear();
         while ((int)sample.size() < min_samples) {
             int idx = uni(rng);
