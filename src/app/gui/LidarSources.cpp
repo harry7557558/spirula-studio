@@ -110,8 +110,10 @@ bool GuiApp::read_lidar_input(const std::string& path, LidarInput& in) {
         if (r.e57())
             for (const auto& im : r.e57()->images()) in.photos += im.has_pose;
         if (spirula::xbin::Reader* x = r.xbin()) {
-            for (const spirula::xbin::Camera& c : x->cameras())
-                in.cameras.push_back({c.name, c.fisheye, c.frames, c.seconds});
+            for (const spirula::xbin::Camera& c : x->cameras()) {
+                in.cameras.push_back({c.name, c.fisheye, c.frames, c.seconds, c.spare});
+                in.cameras.back().pick.taken = !c.spare;
+            }
             in.photos = taken_photos(in);
         }
         in.points = r.info().points;
@@ -266,7 +268,7 @@ void GuiApp::draw_capture_cameras(LidarInput& in, float rate_x) {
             refresh_sources();
         }
         ImGui::EndDisabled();
-        ui::help_on_hover(pmsg::camera_toggle_help);
+        ui::help_on_hover(cam.spare ? ldmsg::capture_camera_spare_help : ldmsg::capture_camera_help);
         ImGui::SameLine();
         ui::TextDisabled(cam.fisheye ? dmsg::lens_fisheye_opencv : dmsg::lens_pinhole);
         ImGui::SameLine();

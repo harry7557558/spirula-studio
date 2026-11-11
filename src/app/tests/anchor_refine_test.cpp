@@ -73,6 +73,9 @@ int main() {
 
     // Camera 1 sits 6 cm to the right of camera 0 and looks 90 deg to its right.
     const Pose cam1_from_cam0{sfm::angleAxisToRotation({0, kPi / 2, 0}), {-0.06, 0, 0}};
+    // The factory rig, turned 0.8 deg off the true one about the lens axis.
+    const Pose device_cam1_from_cam0{
+        sfm::mul(sfm::angleAxisToRotation({0, 0, 0.8 * kPi / 180}), cam1_from_cam0.R), cam1_from_cam0.t};
     sfm::Camera lens;
     lens.width = kWidth;
     lens.height = kHeight;
@@ -97,7 +100,7 @@ int main() {
         const Pose device_rig{off.R, sfm::mul(off.R, off_centre) * -1.0};
         for (int c = 0; c < 2; c++) {
             const Pose p = c == 0 ? rig : sfm::composePose(cam1_from_cam0, rig);
-            const Pose d = c == 0 ? device_rig : sfm::composePose(cam1_from_cam0, device_rig);
+            const Pose d = c == 0 ? device_rig : sfm::composePose(device_cam1_from_cam0, device_rig);
             char name[64];
             std::snprintf(name, sizeof name, "cap/camera_%d/%06d", c, t);
             app::lidar::Anchor a;
@@ -189,11 +192,13 @@ int main() {
     expect(lonely_kept, "an instant that sees no point keeps the device's poses and lens");
     double rig = 0;
     for (int t = 0; t < kInstants; t++) {
+        if (t == kLonely) continue;
         const Pose p0{sfm::transpose(anchors[2 * t].R), {}};
         const Pose p1{sfm::transpose(anchors[2 * t + 1].R), {}};
         rig = std::max(rig, angle_deg(sfm::mul(p1.R, sfm::transpose(p0.R)), cam1_from_cam0.R));
     }
-    expect(rig < 0.2, "the rig stays within 0.2 deg of the truth");
+    std::printf("     rig %.3f deg off the truth, from 0.8\n", rig);
+    expect(rig < 0.2, "a factory rig 0.8 deg off comes back within 0.2 deg of the truth");
 
     std::printf("%s (%d failures)\n", g_failures ? "FAILED" : "PASSED", g_failures);
     return g_failures ? 1 : 0;

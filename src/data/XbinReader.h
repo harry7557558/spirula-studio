@@ -25,6 +25,7 @@ struct Camera {
     double params[8] = {};     // fx fy cx cy, then k1..k4 (fisheye) or k1 k2 p1 p2
     int64_t frames = 0;
     double seconds = 0;        // first frame to last, from the index; 0 when it has none
+    bool spare = false;        // XGRIDS' own LCC Studio uses none of its frames
 };
 
 struct Frame {

@@ -170,7 +170,8 @@ taken for it. Every case above was exercised on the FJD workspace
   scanner's camera poses" needs no reconstruction. "Add LiDAR scan..." takes
   the `.xbin`, and a capture folder dropped or added as a dataset is taken as
   its `.xbin`. Each camera has a line under the scan's row: a checkbox takes
-  it, and a rate box in the video rows' rate column thins its frames
+  it (`camera_3` starts unticked, because LCC Studio takes no frame of it
+  either), and a rate box in the video rows' rate column thins its frames
   (`FrameRate`: the first frame of each 1/rate s, so cameras at one rate keep
   the same instants). The camera's own rate comes from the index (fields 4
   and 5, its first and last frame time). Measured on one 110 s indoor capture: the device's poses,

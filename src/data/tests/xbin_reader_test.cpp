@@ -147,6 +147,7 @@ struct Layout {
     bool code_written = true;                      // field 7 of the device message
     uint64_t first_chunk = 0;                      // written over the real offset when set
     size_t cut_at = 0;                             // the file ends after this many bytes
+    bool frame_predicted = false;                  // camera_3's frame a P slice, no IDR
 };
 
 Bytes capture_bytes(const char* poses, const std::vector<Bytes>& imu, const Layout& layout) {
@@ -181,7 +182,9 @@ Bytes capture_bytes(const char* poses, const std::vector<Bytes>& imu, const Layo
         field(frame, 2, 3);
         if (layout.frame_width) field(frame, 3, (uint64_t)layout.frame_width);
         if (layout.frame_height) field(frame, 4, (uint64_t)layout.frame_height);
-        field(frame, 5, Bytes{0, 0, 0, 1, (uint8_t)ch});
+        // SPS, PPS and an IDR slice; the last byte tells the channels apart.
+        const uint8_t slice = layout.frame_predicted && ch == 40 ? 0x41 : 0x65;
+        field(frame, 5, Bytes{0, 0, 0, 1, 0x67, 0, 0, 0, 1, 0x68, 0, 0, 0, 1, slice, (uint8_t)ch});
         channels[ch] = {frame};
     }
     if (layout.extra_channel) channels[layout.extra_channel] = {Bytes{0x08, 0x01}};
@@ -305,8 +308,8 @@ void check_capture(const fs::path& dir, const fs::path& path) {
 
     std::vector<spirula::xbin::Frame> frames;
     r.read_frames(2, [&](const spirula::xbin::Frame& f) { frames.push_back(f); return true; });
-    check(frames.size() == 1 && frames[0].time_us == 1250032 && frames[0].h264.size() == 5 &&
-              frames[0].h264[4] == 32,
+    check(frames.size() == 1 && frames[0].time_us == 1250032 && frames[0].h264.size() == 16 &&
+              frames[0].h264[15] == 32,
           "camera_2 is channel 32");
 
     spirula::cloud::Reader cr(path.string());
@@ -496,6 +499,11 @@ void check_refusals(const fs::path& dir) {
           "a chunk header laid out otherwise is refused");
     check(patched("index_tag", index_at + 6, 13).find("chunk index laid out") != std::string::npos,
           "an index header laid out otherwise is refused");
+    Layout predicted;
+    predicted.frame_predicted = true;
+    check(refusal(write_capture(dir / "predicted", kPoses, {}, predicted)).find("camera_3 of an XGRIDS PortalCam") !=
+              std::string::npos,
+          "a frame that does not decode alone is refused");
     check(refusal(write_capture(dir / "portalcam")).empty(), "a PortalCam reads through to its frames");
 }
 

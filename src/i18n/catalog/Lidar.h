@@ -1319,6 +1319,43 @@ SS_MSG(capture_camera_fps_help,
     TR("Bu kameradan saniyede alınacak fotoğraf sayısı. Kamera {0} kaydeder. Daha düşük bir değer "
        "daha az fotoğraf ve daha hızlı bir çalışma verir. 0 her fotoğrafı tutar."));
 
+SS_MSG(capture_camera_help,
+    EN("Use this camera's frames as photos."),
+    JA("このカメラのフレームを写真として使います。"),
+    ZH_HANS("把该相机的帧用作照片。"),
+    ZH_HANT("把該相機的影格用作照片。"),
+    KO("이 카메라의 프레임을 사진으로 씁니다."),
+    DE("Die Bilder dieser Kamera als Fotos verwenden."),
+    FR("Utiliser les images de cette caméra comme photos."),
+    ES("Usar los fotogramas de esta cámara como fotos."),
+    PT("Usar os quadros desta câmera como fotos."),
+    IT("Usa i fotogrammi di questa fotocamera come foto."),
+    NL("De beelden van deze camera als foto's gebruiken."),
+    RU("Использовать кадры этой камеры как фото."),
+    TR("Bu kameranın karelerini fotoğraf olarak kullan."));
+
+SS_MSG(capture_camera_spare_help,
+    EN("Off at first: XGRIDS LCC Studio also uses no frames of this camera. Tick it to use them."),
+    JA("最初はオフです。XGRIDS LCC Studio もこのカメラのフレームを使いません。使うにはチェックします。"),
+    ZH_HANS("默认关闭：XGRIDS LCC Studio 也不使用该相机的帧。勾选即可使用。"),
+    ZH_HANT("預設關閉：XGRIDS LCC Studio 也不使用該相機的影格。勾選即可使用。"),
+    KO("처음에는 꺼져 있습니다. XGRIDS LCC Studio도 이 카메라의 프레임을 쓰지 않습니다. 쓰려면 체크하세요."),
+    DE("Zuerst aus: Auch XGRIDS LCC Studio verwendet keine Bilder dieser Kamera. Zum Verwenden anhaken."),
+    FR("Désactivée au départ : XGRIDS LCC Studio n'utilise pas non plus les images de cette caméra. "
+       "Cochez pour les utiliser."),
+    ES("Desactivada al inicio: XGRIDS LCC Studio tampoco usa los fotogramas de esta cámara. Márquela "
+       "para usarlos."),
+    PT("Desligada no início: o XGRIDS LCC Studio também não usa os quadros desta câmera. Marque para "
+       "usá-los."),
+    IT("Spenta all'inizio: anche XGRIDS LCC Studio non usa i fotogrammi di questa fotocamera. "
+       "Selezionala per usarli."),
+    NL("Eerst uit: ook XGRIDS LCC Studio gebruikt geen beelden van deze camera. Vink aan om ze te "
+       "gebruiken."),
+    RU("Сначала выключена: XGRIDS LCC Studio тоже не использует кадры этой камеры. Отметьте, чтобы "
+       "использовать их."),
+    TR("Başta kapalı: XGRIDS LCC Studio da bu kameranın karelerini kullanmaz. Kullanmak için "
+       "işaretleyin."));
+
 SS_MSG(scan_photos_extracting,
     EN("Taking the photographs out of {0} to draw on..."),
     JA("{0} から描画用に写真を取り出しています..."),
