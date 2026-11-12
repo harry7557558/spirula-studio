@@ -289,7 +289,7 @@ neighbour-at-a-time path. `pca_reg_parity` holds the two to each other on the
 lists the slab chose, every covariance and scale mode.
 
 `pca_reg_bench` on bicycle's 1M splats, k = 31, gaussian-mixture, rank weight
-0.01, RTX 5070, ms per pass (the extreme floater-suppression defaults):
+0.01, RTX 5070, ms per pass (the strong floater-suppression defaults):
 
 | | Vulkan | CUDA |
 |---|---:|---:|

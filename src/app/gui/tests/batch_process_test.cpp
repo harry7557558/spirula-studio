@@ -30,7 +30,7 @@ static void training_overrides(const fs::path& root) {
     gui::TrainPreset preset;
     train_apply_preset(preset.cfg, preset.base);
     preset.cfg.quality = "high";
-    preset.cfg.floater_suppression = "strong";
+    preset.cfg.floater_suppression = "moderate";
     preset.cfg.sh_reg = 0.25f;
     preset.touched = {"quality", "floater_suppression", "sh_reg"};
     preset.cfg.finish_command = "shutdown now";
@@ -52,7 +52,7 @@ static void training_overrides(const fs::path& root) {
     };
 
     SS_CHECK(build());
-    SS_CHECK(cfg.floater_suppression == "strong");
+    SS_CHECK(cfg.floater_suppression == "moderate");
     SS_CHECK(cfg.num_iterations == 50000 && cfg.cap_max == 3000000);
     SS_CHECK(close(cfg.depth_distortion_reg, 0.03f));
     SS_CHECK(close(cfg.sh_reg, 0.25f));
@@ -75,7 +75,7 @@ static void training_overrides(const fs::path& root) {
     SS_CHECK(touched.count("cap_max") && touched.count("num_iterations") &&
              touched.count("sh_degree") && touched.count("floater_suppression"));
 
-    run.floater_suppression = "extreme";
+    run.floater_suppression = "strong";
     SS_CHECK(build());
     SS_CHECK(cfg.pca_reg_neighbors == 31);
     SS_CHECK(close(cfg.depth_distortion_reg, 0.1f) && close(cfg.max_screen_size, 0.1f));
@@ -172,7 +172,7 @@ static void queue_roundtrip(const fs::path& root) {
     row.dataset = root.string();
     const char* regions[] = {"", "roi/castle.json", "off", "roi/castle.json", "off"};
     int n = 0;
-    for (const auto& value : {"", "off", "mild", "strong", "extreme"}) {
+    for (const auto& value : {"", "off", "mild", "moderate", "strong"}) {
         gui::BatchRun run;
         run.iterations = "123";
         run.cap_max = "456";

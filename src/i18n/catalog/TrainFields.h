@@ -4316,19 +4316,19 @@ SS_MSG(floater_suppression,
     RU("Подавление «летающих» артефактов"),
     TR("Uçuşan artıkların bastırılması"));
 SS_MSG(floater_suppression_help,
-    EN("Tightens depth/color consistency and limits view-dependent color to reduce floaters.\n- strong: crispest geometry, but may flatten thin or translucent detail.\n- extreme: adds neighborhood regularization, potentially slower with many splats."),
-    JA("深度・色の整合性を強め、視点依存色を抑えて浮遊物を減らします。\n- strong：形状が最も鮮明ですが、薄い・半透明な細部が平坦になる恐れ。\n- extreme：近傍正則化を追加。スプラットが多いと遅くなる場合があります。"),
-    ZH_HANS("加强深度与颜色一致性，限制视角相关颜色以减少漂浮物。\n- strong：几何最清晰，但可能压平薄小或半透明细节。\n- extreme：增加邻域正则化，泼溅较多时可能变慢。"),
-    ZH_HANT("加強深度與顏色一致性，限制視角相關顏色以減少漂浮物。\n- strong：幾何最清晰，但可能壓平薄小或半透明細節。\n- extreme：增加鄰域正規化，潑濺較多時可能變慢。"),
-    KO("깊이/색 일관성을 강화하고 시점별 색을 제한해 부유물을 줄입니다.\n- strong: 가장 선명한 형상이지만 얇거나 반투명한 세부를 평평하게 만들 수 있습니다.\n- extreme: 이웃 정규화를 추가해 스플랫이 많으면 느려질 수 있습니다."),
-    DE("Verstärkt Tiefen-/Farbkonsistenz und begrenzt blickabhängige Farbe gegen Floater.\n- strong: schärfste Geometrie, kann dünne oder durchscheinende Details abflachen.\n- extreme: zusätzliche Nachbarschaftsregularisierung, bei vielen Splats eventuell langsamer."),
-    FR("Renforce cohérence profondeur/couleur et limite la couleur selon la vue contre les flottants.\n- strong : géométrie très nette, mais peut aplatir les détails fins ou translucides.\n- extreme : régularisation du voisinage en plus, potentiellement plus lente avec beaucoup de splats."),
-    ES("Refuerza coherencia de profundidad/color y limita color por vista para reducir flotantes.\n- strong: geometría más nítida, pero puede aplanar detalles finos o translúcidos.\n- extreme: añade regularización vecinal, quizá más lenta con muchos splats."),
-    PT("Reforça coerência de profundidade/cor e limita cor por vista para reduzir flutuantes.\n- strong: geometria mais nítida, mas pode achatar detalhes finos ou translúcidos.\n- extreme: regularização de vizinhança extra, talvez mais lenta com muitos splats."),
-    IT("Rafforza coerenza profondità/colore e limita colore per vista contro i flottanti.\n- strong: geometria più netta, ma può appiattire dettagli sottili o traslucidi.\n- extreme: aggiunge regolarizzazione del vicinato, forse più lenta con molti splat."),
-    NL("Versterkt diepte-/kleurconsistentie en beperkt kijkafhankelijke kleur tegen floaters.\n- strong: scherpste geometrie, maar kan dunne of doorschijnende details afvlakken.\n- extreme: extra buurregularisatie, mogelijk langzamer bij veel splats."),
-    RU("Усиливает согласованность глубины/цвета и ограничивает цвет по ракурсу против плавающих пятен.\n- strong: чёткая геометрия, но может сгладить тонкие или полупрозрачные детали.\n- extreme: добавляет регуляризацию соседей, возможное замедление при множестве сплатов."),
-    TR("Yüzenleri azaltmak için derinlik/renk tutarlılığını artırır ve görüş rengini sınırlar.\n- strong: en keskin geometri; ince veya yarı saydam ayrıntıyı düzleştirebilir.\n- extreme: komşuluk düzenlemesi ekler, çok splatta yavaşlayabilir."));
+    EN("Tightens depth/color consistency and limits view-dependent color to reduce floaters.\n- moderate: crispest geometry, but may flatten thin or translucent detail.\n- strong: adds neighborhood regularization, potentially slower with many splats."),
+    JA("深度・色の整合性を強め、視点依存色を抑えて浮遊物を減らします。\n- moderate：形状が最も鮮明ですが、薄い・半透明な細部が平坦になる恐れ。\n- strong：近傍正則化を追加。スプラットが多いと遅くなる場合があります。"),
+    ZH_HANS("加强深度与颜色一致性，限制视角相关颜色以减少漂浮物。\n- moderate：几何最清晰，但可能压平薄小或半透明细节。\n- strong：增加邻域正则化，泼溅较多时可能变慢。"),
+    ZH_HANT("加強深度與顏色一致性，限制視角相關顏色以減少漂浮物。\n- moderate：幾何最清晰，但可能壓平薄小或半透明細節。\n- strong：增加鄰域正規化，潑濺較多時可能變慢。"),
+    KO("깊이/색 일관성을 강화하고 시점별 색을 제한해 부유물을 줄입니다.\n- moderate: 가장 선명한 형상이지만 얇거나 반투명한 세부를 평평하게 만들 수 있습니다.\n- strong: 이웃 정규화를 추가해 스플랫이 많으면 느려질 수 있습니다."),
+    DE("Verstärkt Tiefen-/Farbkonsistenz und begrenzt blickabhängige Farbe gegen Floater.\n- moderate: schärfste Geometrie, kann dünne oder durchscheinende Details abflachen.\n- strong: zusätzliche Nachbarschaftsregularisierung, bei vielen Splats eventuell langsamer."),
+    FR("Renforce cohérence profondeur/couleur et limite la couleur selon la vue contre les flottants.\n- moderate : géométrie très nette, mais peut aplatir les détails fins ou translucides.\n- strong : régularisation du voisinage en plus, potentiellement plus lente avec beaucoup de splats."),
+    ES("Refuerza coherencia de profundidad/color y limita color por vista para reducir flotantes.\n- moderate: geometría más nítida, pero puede aplanar detalles finos o translúcidos.\n- strong: añade regularización vecinal, quizá más lenta con muchos splats."),
+    PT("Reforça coerência de profundidade/cor e limita cor por vista para reduzir flutuantes.\n- moderate: geometria mais nítida, mas pode achatar detalhes finos ou translúcidos.\n- strong: regularização de vizinhança extra, talvez mais lenta com muitos splats."),
+    IT("Rafforza coerenza profondità/colore e limita colore per vista contro i flottanti.\n- moderate: geometria più netta, ma può appiattire dettagli sottili o traslucidi.\n- strong: aggiunge regolarizzazione del vicinato, forse più lenta con molti splat."),
+    NL("Versterkt diepte-/kleurconsistentie en beperkt kijkafhankelijke kleur tegen floaters.\n- moderate: scherpste geometrie, maar kan dunne of doorschijnende details afvlakken.\n- strong: extra buurregularisatie, mogelijk langzamer bij veel splats."),
+    RU("Усиливает согласованность глубины/цвета и ограничивает цвет по ракурсу против плавающих пятен.\n- moderate: чёткая геометрия, но может сгладить тонкие или полупрозрачные детали.\n- strong: добавляет регуляризацию соседей, возможное замедление при множестве сплатов."),
+    TR("Yüzenleri azaltmak için derinlik/renk tutarlılığını artırır ve görüş rengini sınırlar.\n- moderate: en keskin geometri; ince veya yarı saydam ayrıntıyı düzleştirebilir.\n- strong: komşuluk düzenlemesi ekler, çok splatta yavaşlayabilir."));
 
 SS_MSG(depth_distortion_reg,
     EN("Depth consistency"), JA("深度の一貫性"), ZH_HANS("深度一致性"),
@@ -8541,21 +8541,21 @@ SS_MSG(choice_off,
 
 SS_MSG(choice_mild,
     EN("mild"),          JA("弱め"),          ZH_HANS("轻度"),     ZH_HANT("輕度"),
-    KO("약하게"),         DE("leicht"),       FR("modéré"),       ES("suave"),
+    KO("약하게"),         DE("leicht"),       FR("léger"),        ES("suave"),
     PT("suave"),         IT("leggero"),      NL("licht"),        RU("слабое"),
     TR("hafif"));
+
+SS_MSG(choice_moderate,
+    EN("moderate"),      JA("中程度"),        ZH_HANS("中度"),     ZH_HANT("中度"),
+    KO("보통"),           DE("mittel"),       FR("modéré"),       ES("moderada"),
+    PT("moderada"),      IT("moderata"),     NL("gematigd"),     RU("умеренное"),
+    TR("orta"));
 
 SS_MSG(choice_strong,
     EN("strong"),        JA("強め"),          ZH_HANS("强力"),     ZH_HANT("強力"),
     KO("강하게"),         DE("stark"),        FR("fort"),         ES("fuerte"),
     PT("forte"),         IT("forte"),        NL("sterk"),        RU("сильное"),
     TR("güçlü"));
-
-SS_MSG(choice_extreme,
-    EN("extreme"),       JA("最大"),          ZH_HANS("极强"),     ZH_HANT("極強"),
-    KO("매우 강하게"),    DE("extrem"),       FR("extrême"),      ES("extrema"),
-    PT("extrema"),       IT("estrema"),      NL("extreem"),      RU("экстремальное"),
-    TR("aşırı"));
 
 SS_MSG(choice_basic,
     EN("basic"),         JA("基本"),          ZH_HANS("基本"),     ZH_HANT("基本"),
@@ -8882,8 +8882,8 @@ inline constexpr ChoiceText kChoiceText[] = {
 
     {"floater_suppression", "off",    &choice_off},
     {"floater_suppression", "mild",   &choice_mild},
+    {"floater_suppression", "moderate", &choice_moderate},
     {"floater_suppression", "strong", &choice_strong},
-    {"floater_suppression", "extreme", &choice_extreme},
 
     {"distraction_robustness", "off",    &choice_off},
     {"distraction_robustness", "mild",   &choice_mild},

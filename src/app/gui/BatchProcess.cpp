@@ -82,8 +82,8 @@ bool is_set(const std::string& text) {
 }
 
 bool valid_floater_override(const std::string& value) {
-    return value.empty() || value == "off" || value == "mild" || value == "strong" ||
-           value == "extreme";
+    return value.empty() || value == "off" || value == "mild" || value == "moderate" ||
+           value == "strong";
 }
 
 // Which built-in a row's Dataset stage runs on. A row written before there

@@ -12,7 +12,7 @@ trains at all, and the training loop never splits an image to save it (see
 
 An user-provided dataset (6336x9504, 60.2 MP) on the RTX 5070
 (12 GB), 1M splats, `SS_PROFILE=1`, 100 steps. "Worst" is the most expensive
-combination the presets offer: `hdr` + `--floater-suppression strong` +
+combination the presets offer: `hdr` + `--floater-suppression moderate` +
 masks + depth maps (`--depth-supervision-weight 0.05`) + normal maps, the
 depth and normal maps at `spirula geometry`'s 1064 px. The 120 MP rows are
 40 of its frames upscaled to 8960x13440, 30 steps.
@@ -32,7 +32,7 @@ direction, and float16 images halve what the grid and the loss read. At
 Quality (`cc_psnr`, which moves ~0.1 dB between identical runs), `hdr` at
 quarter resolution, 3000 steps: 30.74 / 30.74 (CUDA) and 30.73 / 30.83
 (Vulkan) before; 30.81 / 30.61 / 30.75 / 30.77 / 30.75 / 30.68 (CUDA) and
-30.79 / 30.77 (Vulkan) after. With strong floater suppression, 30.71 before
+30.79 / 30.77 (Vulkan) after. With moderate floater suppression, 30.71 before
 and 30.70 after the fused chain (means of five). `meshing` at an eighth,
 2000 steps: 28.69 before and 28.69 after (means of five, 28.62 to 28.78).
 

@@ -262,7 +262,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(float, view_deficit_max_ratio, 8.0f, "loss", "advanced", "")           \
                                                                              \
     /* ==== geometry -- how crisp the surfaces come out, and depth/normal guidance ==== */ \
-    X(std::string, floater_suppression, "off", "geometry", "basic", "off|mild|strong|extreme") \
+    X(std::string, floater_suppression, "off", "geometry", "basic", "off|mild|moderate|strong") \
     X(float, depth_distortion_reg, 0.0f, "geometry", "basic", "")            \
     X(float, normal_distortion_reg, 0.0f, "geometry", "basic", "")           \
     X(float, rgb_distortion_reg, 0.0f, "geometry", "basic", "")              \
@@ -484,7 +484,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.load_depths = true;
         c.load_normals = true;
         c.mask_boundary_offset = -0.005f;
-        c.floater_suppression= "extreme";
+        c.floater_suppression = "strong";
         // c.distraction_robustness = "strong";
         c.sh_degree_warmup_every = 0;
         c.long_axis_split_opacity_k = {0.5f, 0.55f, 30000.0f};
@@ -544,7 +544,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.overexposure_reg = 10.0f;
         c.background_mode = "noise";
         // c.depth_distortion_reg = 0.01f;
-        c.floater_suppression = "extreme";
+        c.floater_suppression = "strong";
         c.normal_distortion_reg = 0.01f;
         c.mean_median_depth_weight = 0.01f;
         c.median_depth_normal_reg_weight = 0.01f;
@@ -725,17 +725,17 @@ inline void train_resolve_macros(TrainConfig& c,
     restore("floater_suppression", "pca_reg_neighbors",
             &TrainConfig::pca_reg_neighbors);
     if (c.floater_suppression != "off") {
+        const bool moderate = c.floater_suppression == "moderate";
         const bool strong = c.floater_suppression == "strong";
-        const bool extreme = c.floater_suppression == "extreme";
         put("depth_distortion_reg", c.depth_distortion_reg,
-            extreme ? 0.1f : strong ? 0.03f : 0.01f);
+            strong ? 0.1f : moderate ? 0.03f : 0.01f);
         put("rgb_distortion_reg", c.rgb_distortion_reg,
-            extreme ? 0.1f : strong ? 0.05f : 0.01f);
-        put("sh_reg", c.sh_reg, extreme ? 0.15f : strong ? 0.1f : 0.067f);  // above the 0.04 default
-        put("max_screen_size", c.max_screen_size, extreme || strong ? 0.1f : 0.2f);
-        put("max_screen_size_clip_hardness", c.max_screen_size_clip_hardness, extreme || strong ? 1.1f : 1.25f);
+            strong ? 0.1f : moderate ? 0.05f : 0.01f);
+        put("sh_reg", c.sh_reg, strong ? 0.15f : moderate ? 0.1f : 0.067f);  // above the 0.04 default
+        put("max_screen_size", c.max_screen_size, strong || moderate ? 0.1f : 0.2f);
+        put("max_screen_size_clip_hardness", c.max_screen_size_clip_hardness, strong || moderate ? 1.1f : 1.25f);
     }
-    if (c.floater_suppression == "extreme") {
+    if (c.floater_suppression == "strong") {
         put("pca_reg_neighbors", c.pca_reg_neighbors, 31);
         put("pca_reg_start_iter", c.pca_reg_start_iter, 4500);
     }
