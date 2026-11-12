@@ -10,10 +10,14 @@ namespace dsparse {
 
 struct NavigationHint {
     bool orbit = true;
+    bool pivot_focus = false;   // orbit about `focus`, else about the camera median
     std::array<double, 3> focus{};
+    double inward = 0;          // distance-weighted mean cosine, view vs way to the camera median
+    double aimed = 0;           // fraction of views within 40 degrees of `focus`
 };
 
 // OpenGL c2w, row-major 3x4. No poses retains orbit; ambiguous captures use fly.
+// Thresholds and the captures that set them: docs/notes/viewer-navigation.md.
 template<class T>
 NavigationHint navigation_hint(const T* c2w, int64_t n) {
     NavigationHint out;
@@ -63,6 +67,21 @@ NavigationHint navigation_hint(const T* c2w, int64_t n) {
     scale = median(values);
     if (!(scale > 1e-12)) return out;
     for (auto& ray : rays) for (double& p : ray.p) p /= scale;
+    // A view's way to the median is undefined at the median, so weight by distance.
+    double inward = 0, total = 0;
+    for (const auto& ray : rays) {
+        double dist = 0, along = 0;
+        for (int k = 0; k < 3; k++) {
+            dist += ray.p[k]*ray.p[k];
+            along -= ray.p[k]*ray.d[k];
+        }
+        dist = std::sqrt(dist);
+        if (!(dist > 1e-12)) continue;
+        inward += std::min(dist, 1.0)*along/dist;
+        total += std::min(dist, 1.0);
+    }
+    out.inward = total > 0 ? inward/total : 0;
+    out.orbit = out.inward >= 0.5;
     std::array<double, 3> focus{};
     for (int pass = 0; pass < 8; pass++) {
         double a[3][4] = {};
@@ -97,7 +116,7 @@ NavigationHint navigation_hint(const T* c2w, int64_t n) {
             ray.weight = std::min(1.0, 0.15/std::max(residual, 1e-12));
         }
     }
-    int front = 0, aligned = 0;
+    int aimed = 0;
     std::array<double, 3> mean{};
     for (const auto& ray : rays) {
         double depth = 0, d2 = 0;
@@ -105,17 +124,17 @@ NavigationHint navigation_hint(const T* c2w, int64_t n) {
             double v = focus[k] - ray.p[k];
             depth += v*ray.d[k]; d2 += v*v;
         }
-        front += depth > 0;
-        if (depth > 0 && depth*depth > 0.82*d2 && d2-depth*depth < 0.25) {
-            aligned++;
+        if (depth > 0 && depth*depth > 0.58682409*d2) {   // cos^2(40 deg)
+            aimed++;
             for (int k = 0; k < 3; k++) mean[k] += ray.d[k];
         }
     }
     double coherence = 0;
     for (double v : mean) coherence += v*v;
-    // At least ~23 degrees of directional spread, with 80% facing a common focus.
-    out.orbit = front >= 0.85*rays.size() && aligned >= 0.8*rays.size()
-        && coherence < 0.96*aligned*aligned;
+    out.aimed = (double)aimed / rays.size();
+    // At least ~23 degrees of directional spread among the aimed views.
+    out.pivot_focus = out.aimed >= 0.75 && coherence < 0.96*aimed*aimed;
+    out.orbit |= out.pivot_focus;
     for (int k = 0; k < 3; k++) out.focus[k] = origin[k] + scale*focus[k];
     return out;
 }

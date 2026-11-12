@@ -1020,7 +1020,7 @@ CenterTable scene_centers_t(const double* c2w, int64_t n, const T* points,
     CenterTable out{};
     const auto nav = navigation_hint(c2w, n);
     for (int i = 0; i < kNumCenterModes; i++) {
-        const std::array<double, 3> c = i == (int)CenterMode::CameraFocus && nav.orbit && n > 0
+        const std::array<double, 3> c = i == (int)CenterMode::CameraFocus && nav.pivot_focus
             ? nav.focus : scene_center_t(
             (CenterMode)i, c2w, n, points, m, stride, 1 << 18);
         for (int r = 0; r < 3; r++)

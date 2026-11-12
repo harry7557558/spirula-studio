@@ -200,13 +200,40 @@ bool ViewportPanel::maybe_frame(const spirula::TrainerSession& session) {
     _framed_key = key;
     const dsparse::CenterTable centers = dsparse::scene_centers(session.ds);
     set_centers(&centers, session.ds.num_cameras > 0);
-    _cam.mode = dsparse::navigation_hint(session.ds.c2w.data(), session.ds.num_cameras).orbit
-        ? NavCamera::Turntable : NavCamera::Fps;
-    _center_mode = (int)(_cam.mode == NavCamera::Turntable && session.ds.num_cameras > 0
-        ? dsparse::CenterMode::CameraFocus : dsparse::CenterMode::CameraMedian);
+    follow_navigation_hint(session.ds, true);
     compute_framing(session);
     _show_cams = true;   // default on for a fresh dataset preview
     return true;
+}
+
+void ViewportPanel::pivot_on_center() {
+    float c[3];
+    center_shared(c);
+    recenter_at(c);
+    const NavCamera live = _cam;
+    reset_pose(_home_dist);
+    _cam = live;
+}
+
+void ViewportPanel::follow_navigation_hint(const ParsedDataset& ds, bool first) {
+    if (first) _auto_nav_mode = _auto_center = true;
+    if (!_auto_nav_mode && !_auto_center) return;
+    const auto hint = dsparse::navigation_hint(ds.c2w.data(), ds.num_cameras);
+    bool repivot = false;
+    if (_auto_nav_mode) {
+        const NavCamera::Mode mode = hint.orbit ? NavCamera::Turntable : NavCamera::Fps;
+        // Looking around in first person leaves the target off the view axis.
+        repivot = hint.orbit && mode != _cam.mode;
+        _cam.mode = mode;
+    }
+    const int center = (int)(hint.pivot_focus ? dsparse::CenterMode::CameraFocus
+                                              : dsparse::CenterMode::CameraMedian);
+    if (_auto_center && center != _center_mode) {
+        _center_mode = center;
+        repivot = true;
+    }
+    // A new dataset is framed about the centre by the caller.
+    if (repivot && !first) pivot_on_center();
 }
 
 void ViewportPanel::reset_view() {
@@ -796,17 +823,29 @@ void ViewportPanel::attach_preview_data(const ParsedDataset& ds,
         _last_error = "preview renderer unavailable (OpenGL 3.2 required)";
         return;
     }
+    // A live model is renormalized on its own cameras at every snapshot and
+    // re-gauged at the end: the pivot follows the centre to stay on the subject.
+    // Not the scale, which jumps where 2 cameras are framed by points, 3 by baseline.
+    const bool reframed = !first && _centers_known && ds.train_to_normalized != _preview_frame;
+    _preview_frame = ds.train_to_normalized;
+    float was[3];
+    center_shared(was);
     {
         const dsparse::CenterTable centers = dsparse::scene_centers(ds);
         set_centers(&centers, ds.num_cameras > 0);
     }
     adopt_gauge(ds, first);
+    if (reframed) {
+        float now[3];
+        center_shared(now);
+        const float S[12] = {1, 0, 0, now[0] - was[0], 0, 1, 0, now[1] - was[1],
+                             0, 0, 1, now[2] - was[2]};
+        move_view(S);
+    }
+    // A live reconstruction refreshes under one key; its mode follows it.
+    follow_navigation_hint(ds, first);
     if (first) {
         _framed_key = key;
-        _cam.mode = dsparse::navigation_hint(ds.c2w.data(), ds.num_cameras).orbit
-            ? NavCamera::Turntable : NavCamera::Fps;
-        _center_mode = (int)(_cam.mode == NavCamera::Turntable && ds.num_cameras > 0
-            ? dsparse::CenterMode::CameraFocus : dsparse::CenterMode::CameraMedian);
         reset_pose(radius);
     }
     _last_error.clear();
@@ -1590,6 +1629,7 @@ void ViewportPanel::draw_controls(bool engine) {
                 if (ui::SelectableRaw(center_label(i), i == _center_mode) &&
                     i != _center_mode) {
                     _center_mode = i;
+                    _auto_center = false;
                     // What is live now, not what the file held.
                     if (_center_provider) {
                         dsparse::CenterTable live;
@@ -1597,12 +1637,7 @@ void ViewportPanel::draw_controls(bool engine) {
                     }
                     // The model stays where it is; the pivot moves to the new
                     // centre, and so does the pose Reset view returns to.
-                    float c[3];
-                    center_shared(c);
-                    recenter_at(c);
-                    const NavCamera live = _cam;
-                    reset_pose(_home_dist);
-                    _cam = live;
+                    pivot_on_center();
                 }
             }
             ImGui::EndCombo();
@@ -1746,8 +1781,10 @@ void ViewportPanel::draw_nav_controls() {
     place(px(150.0f));
     ImGui::SetNextItemWidth(px(150.0f));
     if (ui::ComboRaw("##navmode", &nav,
-                     {kNavModes[0], kNavModes[1], kNavModes[2], kNavModes[3]}))
+                     {kNavModes[0], kNavModes[1], kNavModes[2], kNavModes[3]})) {
         _cam.mode = (NavCamera::Mode)nav;
+        _auto_nav_mode = false;
+    }
     ui::help_on_hover(msg::viewport_nav_help,
                       {kNavModes[0]->get(), kNavModes[1]->get(),
                        kNavModes[2]->get(), kNavModes[3]->get()});

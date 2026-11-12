@@ -470,7 +470,7 @@ KEEP float* ssv_ds_fit_sphere(int mode) {
         std::vector<double> c2w(g_ds.c2w.begin(), g_ds.c2w.begin() + ncam * 12);
         mode = std::max(0, std::min(mode, dsparse::kNumCenterModes - 1));
         const auto hint = dsparse::navigation_hint(c2w.data(), ncam);
-        const std::array<double, 3> c = mode == 3 && hint.orbit && ncam > 0 ? hint.focus : dsparse::scene_center(
+        const std::array<double, 3> c = mode == 3 && hint.pivot_focus ? hint.focus : dsparse::scene_center(
             (dsparse::CenterMode)mode, c2w.data(), ncam, g_pts.data(), np, 3, 1 << 20);
         for (int k = 0; k < 3; k++) g_fit[k] = (float)c[k];
     }
@@ -529,8 +529,10 @@ KEEP float* ssv_ds_pick_point(float ox, float oy, float oz,
     return g_pick;
 }
 
-KEEP int ssv_ds_orbit_navigation() {
-    return dsparse::navigation_hint(g_ds.c2w.data(), g_ds.num_cameras).orbit;
+// 0 fly, 1 orbit about the camera median, 2 orbit about the camera focus.
+KEEP int ssv_ds_navigation() {
+    const auto hint = dsparse::navigation_hint(g_ds.c2w.data(), g_ds.num_cameras);
+    return !hint.orbit ? 0 : hint.pivot_focus ? 2 : 1;
 }
 
 KEEP int ssv_ds_num_validation() { return (int)g_ds.val_indices.size(); }

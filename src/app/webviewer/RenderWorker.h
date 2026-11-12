@@ -59,6 +59,7 @@ struct ViewerRenderConfig {
     dsparse::CenterTable centers{};
     bool center_cameras = false;
     bool orbit_navigation = true;
+    bool focus_pivot = false;   // orbit about the camera-focus centre
     std::vector<dsparse::CameraWireSegment> held_out_cameras;
 };
 

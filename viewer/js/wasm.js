@@ -553,4 +553,5 @@ export function dsPickPoint(ox, oy, oz, dx, dy, dz) {
 }
 export function dsFree() { call('ssv_ds_free'); }
 
-export function dsOrbitNavigation() { return !!call('ssv_ds_orbit_navigation'); }
+// 0 fly, 1 orbit about the camera median, 2 orbit about the camera focus.
+export function dsNavigation() { return call('ssv_ds_navigation'); }

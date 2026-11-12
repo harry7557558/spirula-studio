@@ -1,7 +1,7 @@
 // Application entry: wires the WASM loader, WebGL renderer, camera controller,
 // and the UI panel together.
 
-import { dsOrbitNavigation, initWasm, loadModel, sortSplats, freeSplatSh, reduceSh, splatHistogram, meshHistogram, meshEdgeCount, fitSphere, raycastMesh, dsFree, dsFitSphere, dsPickPoint } from './wasm.js';
+import { dsNavigation, initWasm, loadModel, sortSplats, freeSplatSh, reduceSh, splatHistogram, meshHistogram, meshEdgeCount, fitSphere, raycastMesh, dsFree, dsFitSphere, dsPickPoint } from './wasm.js';
 import { loadDatasetFiles, parseDatasetComponent } from './dataset.js';
 import { Renderer } from './renderer.js';
 import { Camera, Nav } from './camera.js';
@@ -433,9 +433,10 @@ async function loadDataset(entries, token) {
   model = { type:'dataset', numCameras: res.cameras.length, numPoints: res.points.count };
   opts.hoverCam = -1;
   showDatasetUI(res.summary);
-  nav.mode = dsOrbitNavigation() ? 'trackball' : 'fly';
+  const navHint = dsNavigation();
+  nav.mode = navHint ? 'trackball' : 'fly';
   $('nav-mode').value = nav.mode;
-  opts.centerMode = res.cameras.length && nav.mode === 'trackball' ? 3 : 2;
+  opts.centerMode = res.cameras.length && navHint === 2 ? 3 : 2;
   $('center-mode').value = String(opts.centerMode);
   updateNavLegend();
   syncCenterMenu();

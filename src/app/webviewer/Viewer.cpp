@@ -41,6 +41,7 @@ struct ViewerServer::Impl {
     dsparse::CenterTable centers{};
     bool center_cameras = false;
     bool orbit_navigation = true;
+    bool focus_pivot = false;
     bool started = false;
 
     // ---- endpoint handlers -------------------------------------------------
@@ -189,6 +190,8 @@ struct ViewerServer::Impl {
         body += center_cameras ? "true" : "false";
         body += ", \"orbit_navigation\": ";
         body += orbit_navigation ? "true" : "false";
+        body += ", \"focus_pivot\": ";
+        body += focus_pivot ? "true" : "false";
         body += "}";
         return HttpResponse::json(body);
     }
@@ -217,6 +220,7 @@ void ViewerServer::start(const std::string& host, int port,
     im.centers = cfg.centers;
     im.center_cameras = cfg.center_cameras;
     im.orbit_navigation = cfg.orbit_navigation;
+    im.focus_pivot = cfg.focus_pivot;
     im.worker.start(std::move(cfg), std::move(hooks));
     im.buffer_keys = im.worker.buffer_keys();
     im.started = true;

@@ -11,6 +11,7 @@
 #include "app/gui/PreviewRenderer.h"
 #include "app/gui/ViewportInput.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -279,6 +280,11 @@ private:
     void set_centers(const dsparse::CenterTable* centers, bool has_cameras);
     // The chosen centre in the shared frame; the origin when none is known.
     void center_shared(float out[3]) const;
+    // Make the chosen centre the pivot and the home pose's centre, keeping the view.
+    void pivot_on_center();
+    // The capture's navigation mode and centre (data/NavigationHint.h), each
+    // until the user picks one; `first` re-arms both for a new dataset.
+    void follow_navigation_hint(const ParsedDataset& ds, bool first);
     // The mode the menu shows: the point statistic a camera one fell back to
     // when there are no cameras.
     int effective_center_mode() const;
@@ -334,6 +340,7 @@ private:
     Mode _mode = Mode::None;
     RenderWorker _worker;
     PreviewRenderer _preview;
+    std::array<float, 16> _preview_frame{};   // ParsedDataset::train_to_normalized
 
     // Browser-identical camera + navigation.
     double _focus_until = 0;
@@ -382,6 +389,8 @@ private:
     // What the view orbits about and Reset view frames (dsparse::CenterMode),
     // a point per mode in the model frame. Moves only the camera.
     int _center_mode = (int)dsparse::CenterMode::CameraMedian;
+    bool _auto_nav_mode = true;
+    bool _auto_center = true;
     dsparse::CenterTable _centers{};
     bool _centers_known = false;
     bool _center_has_cameras = false;

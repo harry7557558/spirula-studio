@@ -957,7 +957,7 @@ async function fetchScene() {
     Nav.mode = j.orbit_navigation === false ? "fly" : "turntable";
     $("nav-mode").value = Nav.mode;
     showHint(hintFor(Nav.mode));
-    Scene.mode = Scene.hasCameras && j.orbit_navigation ? 3 : 2;
+    Scene.mode = Scene.hasCameras && j.orbit_navigation && j.focus_pivot ? 3 : 2;
   } catch (e) {
     // A server without /scene (an older build) keeps the model origin.
     Scene.modes = [];
