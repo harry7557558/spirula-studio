@@ -380,10 +380,9 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
 
     for (int pi = 0; pi < npass; pi++) {
         std::lock_guard<std::mutex> lk(s.engine_mutex);
-        // The file itself is shown unwarped; the training copy as the loss reads it.
         const int views = engine_preview_forward(
             j.index, s.cfg.primitive, sh_deg, s.cfg.packed,
-            j.color_correct, !j.source_gt, step_cfg, pi, &npass);
+            j.color_correct, j.calib_warp && !j.source_gt, step_cfg, pi, &npass);
         auto shape = engine_get_render_rgb_shape();
         Pass q;
         q.views = (int)std::get<0>(shape);
@@ -832,7 +831,7 @@ void ImageCompare::place(float w) {
     }
 }
 
-void ImageCompare::draw_toolbar(bool training) {
+void ImageCompare::draw_toolbar() {
     const ImGuiStyle& st = ImGui::GetStyle();
     _row_w = ImGui::GetContentRegionAvail().x;
     _row_used = 0.0f;
@@ -874,6 +873,15 @@ void ImageCompare::draw_toolbar(bool training) {
     // A split image has no single source frame its views line up with, so
     // there is nothing to offer there.
     const bool split = faces() > 1;
+
+    if (_session->cfg.use_calib_warp) {
+        place(check_w(msg::compare_calib_warp));
+        ImGui::BeginDisabled(_source_gt && !split);
+        if (ui::Checkbox(msg::compare_calib_warp, &_calib_warp)) _dirty = true;
+        ImGui::EndDisabled();
+        ui::help_on_hover(msg::compare_calib_warp_help);
+    }
+
     place(check_w(msg::compare_source_gt));
     ImGui::BeginDisabled(split);
     if (ui::Checkbox(msg::compare_source_gt, &_source_gt)) _dirty = true;
@@ -896,30 +904,6 @@ void ImageCompare::draw_toolbar(bool training) {
         ui::Checkbox(msg::compare_show_error, &_show_error);
         ui::help_on_hover(msg::compare_show_error_help);
     }
-
-    place(check_w(msg::compare_smooth));
-    ui::Checkbox(msg::compare_smooth, &_smooth);
-    ui::help_on_hover(msg::compare_smooth_help);
-
-    if (training) {
-        place(check_w(msg::viewport_live));
-        ui::Checkbox(msg::viewport_live, &_live);
-        ui::help_on_hover(msg::compare_live_help);
-    }
-
-    // A percentage is a percentage in every language.
-    char z[16];
-    std::snprintf(z, sizeof z, "%d%%", (int)std::lround(_zoom * 100.0f));
-    place(ImGui::CalcTextSize(msg::compare_reset_zoom.get()).x +
-          2.0f * st.FramePadding.x + st.ItemSpacing.x +
-          ImGui::CalcTextSize(z).x);
-    if (ui::Button(msg::compare_reset_zoom)) {
-        _zoom = 1.0f;
-        _cx = _cy = 0.5f;
-    }
-    ImGui::SameLine();
-    ui::TextDisabledRaw(z);
-    ui::help_on_hover(msg::compare_zoom_help);
 
     if (_blend) {
         static_assert(sizeof(_blend_amount) / sizeof(*_blend_amount) == BlendPairCount);
@@ -1004,6 +988,16 @@ void ImageCompare::handle_view_input() {
     }
 }
 
+void ImageCompare::draw_view_menu() {
+    ui::MenuItem(msg::compare_smooth, nullptr, &_smooth);
+    ui::help_on_hover(msg::compare_smooth_help);
+    if (ui::MenuItem(msg::compare_reset_zoom, nullptr, false, _zoom != 1.0f)) {
+        _zoom = 1.0f;
+        _cx = _cy = 0.5f;
+    }
+    ui::help_on_hover(msg::compare_zoom_help);
+}
+
 void ImageCompare::draw_pane(const Pane& p, const ImVec2& box,
                              const char* id, const char* caption,
                              const Pane* overlay, float opacity) {
@@ -1032,6 +1026,10 @@ void ImageCompare::draw_pane(const Pane& p, const ImVec2& box,
                    ImGui::GetCursorPosY() + (avail.y - vh) * 0.5f));
         const ImVec2 org = ImGui::GetCursorScreenPos();
         ImGui::Dummy(ImVec2(vw, vh));
+        if (ImGui::BeginPopupContextItem("##viewmenu")) {
+            draw_view_menu();
+            ImGui::EndPopup();
+        }
 
         const float ox = org.x - (_cx - fu * 0.5f) * disp_w;
         const float oy = org.y - (_cy - fv * 0.5f) * disp_h;
@@ -1237,14 +1235,14 @@ void ImageCompare::draw(bool training, int step) {
     }
 
     poll();
-    draw_toolbar(training);
+    draw_toolbar();
     handle_keys();
 
     // Pace refreshes in iterations, keeping preview work near 8% of training time.
-    const Job want{_index, _color_correct, _source_gt && faces() == 1,
+    const Job want{_index, _color_correct, _source_gt && faces() == 1, _calib_warp,
                    _has_error_map && (_blend ? blends_error(_blend_pair) : _show_error)};
     bool follow = false;
-    if (training && _live && _rendered_step >= 0 && step >= 0) {
+    if (training && _rendered_step >= 0 && step >= 0) {
         const int interval = (_job_secs > 0 && _step_secs > 0)
             ? (int)std::clamp(std::ceil(_job_secs / (0.08 * _step_secs)),
                               25.0, 2000.0)

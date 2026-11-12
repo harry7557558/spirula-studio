@@ -547,8 +547,11 @@ struct CalibWarpState {
     DeviceTensor2D<float> params;     // [N, n*n*D]
     DeviceTensor2D<float> grad, hess; // [C, ...] for the step's images
     int64_t zeroed_rows = 0;
-    // While gt.rgb points at the warped copy: the step's own ground truth.
+    // While gt points at the warped copies: the step's own ground truth.
     TorchTensorView src_gt;
+    DeviceTensor3D<float>  src_depth;
+    DeviceTensor3D<float3> src_normal;
+    DeviceTensor3D<bool>   src_alpha;
     bool swapped = false;
     bool active_this_step = false;
 };

@@ -6,6 +6,8 @@
 // corner, each D floats: a displacement in milliradians (x fx/1000 -> pixels),
 // then with D = 4 a parallax term that is divided by the rendered depth.
 // The gradient and Hessian tables are per image of the batch, not per table row.
+// calib_warp_aux_forward moves a uint8 mask (nearest), a depth or a normal map
+// (bilinear over valid taps) through the same table at its own size.
 
 #include <core/Tensor.h>
 
@@ -25,6 +27,13 @@ void calib_warp_gt_forward(
     TorchTensorView gt_rgb, TorchTensorView render_rgb, TorchTensorView render_depth,
     TorchTensorView render_Ts, TorchTensorView params, TorchTensorView intrins,
     TorchTensorView cam_indices, int grid_n, int D, TorchTensorView out_rgb
+);
+
+
+void calib_warp_aux_forward(
+    TorchTensorView src, TorchTensorView render_depth, TorchTensorView render_Ts,
+    TorchTensorView params, TorchTensorView intrins, TorchTensorView cam_indices,
+    int grid_n, int D, int render_H, int render_W, TorchTensorView out
 );
 
 

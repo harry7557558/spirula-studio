@@ -7231,6 +7231,44 @@ SS_MSG(compare_source_gt_split,
     TR("Bölünmüş bir görüntüde kullanılamaz: kaybın gördüğü görünümler tek bir "
        "kaynak kareyle örtüşmez."));
 
+SS_MSG(compare_calib_warp,
+    EN("Calibration warp"), JA("キャリブレーションワープ"),
+    ZH_HANS("标定形变"), ZH_HANT("校準形變"),
+    KO("캘리브레이션 워프"), DE("Kalibrierverzerrung"),
+    FR("Déformation d'étalonnage"), ES("Deformación de calibración"),
+    PT("Deformação de calibração"), IT("Deformazione di calibrazione"),
+    NL("Kalibratievervorming"), RU("Деформация калибровки"),
+    TR("Kalibrasyon bükmesi"));
+
+SS_MSG(compare_calib_warp_help,
+    EN("Show the reference through this image's calibration warp, as the loss "
+       "reads it. The mask, depth and normals follow."),
+    JA("損失が読むのと同じく、この画像のキャリブレーションワープを通した参照を"
+       "表示します。マスク・深度・法線も同様です。"),
+    ZH_HANS("像损失读取时那样，显示经过这张图像标定形变的参考图。掩码、深度和法线"
+            "也一样。"),
+    ZH_HANT("像損失讀取時那樣，顯示經過這張影像校準形變的參考圖。遮罩、深度和法線"
+            "也一樣。"),
+    KO("손실이 읽는 그대로, 이 이미지의 캘리브레이션 워프를 거친 참조를 "
+       "보여줍니다. 마스크, 깊이, 법선도 같습니다."),
+    DE("Die Referenz durch die Kalibrierverzerrung dieses Bildes zeigen, so wie "
+       "der Verlust sie liest. Maske, Tiefe und Normalen ebenso."),
+    FR("Montrer la référence à travers la déformation d'étalonnage de cette "
+       "image, telle que la perte la lit. Masque, profondeur et normales aussi."),
+    ES("Mostrar la referencia a través de la deformación de calibración de esta "
+       "imagen, como la lee la pérdida. También máscara, profundidad y normales."),
+    PT("Mostrar a referência através da deformação de calibração desta imagem, "
+       "como a perda a lê. Também máscara, profundidade e normais."),
+    IT("Mostrare il riferimento attraverso la deformazione di calibrazione di "
+       "questa immagine, come lo legge la perdita. Anche maschera, profondità e "
+       "normali."),
+    NL("De referentie tonen door de kalibratievervorming van dit beeld, zoals "
+       "het verlies die leest. Masker, diepte en normalen ook."),
+    RU("Показать эталон через деформацию калибровки этого снимка — так, как его "
+       "читает функция потерь. Маска, глубина и нормали тоже."),
+    TR("Referansı, kaybın okuduğu gibi bu görüntünün kalibrasyon bükmesinden "
+       "geçirerek göster. Maske, derinlik ve normaller de öyle."));
+
 SS_MSG(compare_smooth,
     EN("Smooth"),        JA("なめらか"),      ZH_HANS("平滑"),     ZH_HANT("平滑"),
     KO("부드럽게"),       DE("Weich"),        FR("Lissé"),        ES("Suave"),
@@ -7262,31 +7300,6 @@ SS_MSG(compare_smooth_help,
        "отдельные пиксели."),
     TR("Yakınlaştırırken pikseller arasında ara değer hesapla. Kapalıyken "
        "pikseller tek tek görünür."));
-
-SS_MSG(compare_live_help,
-    EN("Re-render the shown image while training, so the comparison keeps up "
-       "with the optimization."),
-    JA("学習中も表示中の画像を描き直し、比較が最適化に追いつくようにします。"),
-    ZH_HANS("训练时不断重新渲染当前图像，让对比跟上优化过程。"),
-    ZH_HANT("訓練時不斷重新算繪目前影像，讓比較跟上最佳化過程。"),
-    KO("학습 중에도 보고 있는 이미지를 다시 렌더링해서 비교가 최적화를 "
-       "따라가게 합니다."),
-    DE("Das gezeigte Bild während des Trainings neu rendern, damit der "
-       "Vergleich der Optimierung folgt."),
-    FR("Refaire le rendu de l'image affichée pendant l'entraînement, pour que "
-       "la comparaison suive l'optimisation."),
-    ES("Volver a renderizar la imagen mostrada durante el entrenamiento, para "
-       "que la comparación siga a la optimización."),
-    PT("Renderizar de novo a imagem mostrada durante o treinamento, para que a "
-       "comparação acompanhe a otimização."),
-    IT("Rifare il render dell'immagine mostrata durante l'addestramento, così "
-       "il confronto segue l'ottimizzazione."),
-    NL("Het getoonde beeld tijdens het trainen opnieuw renderen, zodat de "
-       "vergelijking de optimalisatie volgt."),
-    RU("Перерисовывать показанный снимок во время обучения, чтобы сравнение "
-       "поспевало за оптимизацией."),
-    TR("Eğitim sürerken gösterilen görüntüyü yeniden oluştur, böylece "
-       "karşılaştırma eniyilemeye ayak uydurur."));
 
 SS_MSG(compare_reset_zoom,
     EN("Fit"),           JA("全体表示"),      ZH_HANS("适应窗口"), ZH_HANT("符合視窗"),

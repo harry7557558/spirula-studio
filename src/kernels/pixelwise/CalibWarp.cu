@@ -5,6 +5,7 @@
 #include "kernels/pixelwise/CalibWarp.cuh"
 
 #include "core/Common.cuh"
+#include "core/Interpolation.cuh"
 #include "core/PixelFormat.h"
 
 namespace {
@@ -448,6 +449,66 @@ __global__ void calib_warp_downsample2_kernel(const void* __restrict__ in, Pixel
     out[3 * i + 2] = acc.z;
 }
 
+// One aux map at its own size (Ha, Wa), through the flow of the render pixel
+// it covers. Kind 0: uint8 mask, nearest; 1 depth, 2 normal: bilinear over
+// the valid taps (core/Interpolation.cuh), so a hole does not bleed.
+template <int Kind>
+__global__ void calib_warp_aux_fwd_kernel(
+    const void* __restrict__ src_v, const float* __restrict__ depth,
+    const float* __restrict__ Ts, const float* __restrict__ params, int P,
+    const float4* __restrict__ intrins, const int32_t* __restrict__ cam_idx,
+    int H, int W, int Ha, int Wa, int n, int D, void* __restrict__ out_v
+) {
+    const int pix = blockIdx.x * blockDim.x + threadIdx.x;
+    const int b = blockIdx.y;
+    if (pix >= Ha * Wa) return;
+    const int x = pix % Wa, y = pix / Wa;
+    const int cam = cam_idx ? cam_idx[b] : b;
+    const float4 intr = intrins[b];
+    const CwCell c = cw_cell(x, y, Wa, Ha, n);
+    float e = 0.0f;
+    if (D == 4) {
+        const int xr = min((int)(((float)x + 0.5f) * W / Wa), W - 1);
+        const int yr = min((int)(((float)y + 0.5f) * H / Ha), H - 1);
+        e = cw_inv_depth(depth, Ts, ((size_t)b * H + yr) * W + xr);
+    }
+    const float2 fl = cw_flow(params + (size_t)cam * P, c, n, D, e,
+                              1e-3f * intr.x * Wa / W, 1e-3f * intr.y * Ha / H);
+    const float sx = (float)x + fl.x, sy = (float)y + fl.y;
+    const size_t plane = (size_t)b * Ha * Wa;
+    if constexpr (Kind == 0) {
+        const uint8_t* src = (const uint8_t*)src_v;
+        const int ix = (int)floorf(sx + 0.5f), iy = (int)floorf(sy + 0.5f);
+        const bool in = ix >= 0 && ix < Wa && iy >= 0 && iy < Ha;
+        // Also cut by its own value here, so it never reaches a tile the
+        // forward skipped (compute_tile_active reads the unwarped mask).
+        ((uint8_t*)out_v)[plane + pix] =
+            in && src[plane + pix] ? src[plane + (size_t)iy * Wa + ix] : 0;
+    } else {
+        constexpr int Ch = Kind == 1 ? 1 : 3;
+        const float* src = (const float*)src_v;
+        const int x0 = (int)floorf(sx), y0 = (int)floorf(sy);
+        const float fx = sx - (float)x0, fy = sy - (float)y0;
+        float acc[Ch] = {};
+        float wsum = 0.0f;
+        for (int q = 0; q < 4; ++q) {
+            const int tx = x0 + (q & 1), ty = y0 + (q >> 1);
+            if (tx < 0 || tx >= Wa || ty < 0 || ty >= Ha) continue;
+            const float* v = src + (plane + (size_t)ty * Wa + tx) * Ch;
+            bool ok;
+            if constexpr (Kind == 1) ok = _bilinear_detail::gt_depth_valid(v[0]);
+            else ok = _bilinear_detail::gt_normal_valid(make_float3(v[0], v[1], v[2]));
+            if (!ok) continue;
+            const float w = ((q & 1) ? fx : 1.0f - fx) * ((q >> 1) ? fy : 1.0f - fy);
+            for (int k = 0; k < Ch; ++k) acc[k] += w * v[k];
+            wsum += w;
+        }
+        float* out = (float*)out_v + (plane + pix) * Ch;
+        for (int k = 0; k < Ch; ++k)
+            out[k] = wsum > 0.0f ? acc[k] / wsum : (Kind == 1 ? 0.0f : -1.0f);
+    }
+}
+
 const void* _cw_ptr(const TorchTensorView& t) { return (const void*)std::get<0>(t); }
 
 void _cw_check(int n, int D) {
@@ -478,6 +539,34 @@ void calib_warp_gt_forward(
         (const float*)_cw_ptr(params), P,
         (const float4*)_cw_ptr(intrins), (const int32_t*)_cw_ptr(cam_indices),
         H, W, grid_n, D, PixelOut((void*)_cw_ptr(out_rgb), pixel_format(out_rgb)));
+    CHECK_DEVICE_ERROR(cudaGetLastError());
+}
+
+/*[AutoHeaderGeneratorExport]*/
+void calib_warp_aux_forward(
+    TorchTensorView src, TorchTensorView render_depth, TorchTensorView render_Ts,
+    TorchTensorView params, TorchTensorView intrins, TorchTensorView cam_indices,
+    int grid_n, int D, int render_H, int render_W, TorchTensorView out
+) {
+    _cw_check(grid_n, D);
+    const auto& s = std::get<2>(src);
+    const int B = (int)s[0], Ha = (int)s[1], Wa = (int)s[2], Ch = (int)s[3];
+    if (B <= 0 || Ha <= 0 || Wa <= 0 || render_H <= 0 || render_W <= 0) return;
+    const int P = (int)std::get<2>(params)[1];
+    const uint32_t elem = std::get<1>(src);
+    if (!((elem == 1 && Ch == 1) || (elem == 4 && (Ch == 1 || Ch == 3))))
+        throw std::runtime_error("calib_warp_aux_forward: a uint8 mask, depth or normal map");
+    dim3 grid(_CEIL_DIV(Ha * Wa, kCwBlock), B);
+    auto launch = [&](auto kernel) {
+        kernel<<<grid, kCwBlock>>>(
+            _cw_ptr(src), (const float*)_cw_ptr(render_depth), (const float*)_cw_ptr(render_Ts),
+            (const float*)_cw_ptr(params), P, (const float4*)_cw_ptr(intrins),
+            (const int32_t*)_cw_ptr(cam_indices), render_H, render_W, Ha, Wa, grid_n, D,
+            (void*)_cw_ptr(out));
+    };
+    if (elem == 1) launch(calib_warp_aux_fwd_kernel<0>);
+    else if (Ch == 1) launch(calib_warp_aux_fwd_kernel<1>);
+    else launch(calib_warp_aux_fwd_kernel<2>);
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 

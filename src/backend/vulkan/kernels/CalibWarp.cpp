@@ -69,7 +69,10 @@ CalibWarpParams base_params(TorchTensorView gt_rgb, TorchTensorView render_rgb,
     return p;
 }
 
-backend::vk::SpecList spec(int D) { return backend::vk::SpecList{D == 4 ? 1u : 0u}; }
+// Every dispatch passes both constants; aux_kind is calib_warp_aux_fwd's.
+backend::vk::SpecList spec(int D, uint32_t aux_kind = 0) {
+    return backend::vk::SpecList{D == 4 ? 1u : 0u, aux_kind};
+}
 
 }  // namespace
 
@@ -90,6 +93,45 @@ void calib_warp_gt_forward(
         throw std::runtime_error("calib_warp: grid dimension exceeds 65535");
     vkk::dispatch_ring("calib_warp.calib_warp_gt_fwd", spec(D), f.per_row, f.rows, 1, &p,
                        sizeof(p));
+}
+
+void calib_warp_aux_forward(
+    TorchTensorView src, TorchTensorView render_depth, TorchTensorView render_Ts,
+    TorchTensorView params, TorchTensorView intrins, TorchTensorView cam_indices,
+    int grid_n, int D, int render_H, int render_W, TorchTensorView out
+) {
+    check(grid_n, D);
+    const auto& s = std::get<2>(src);
+    const uint32_t elem = std::get<1>(src);
+    const int64_t ch = s.size() >= 4 ? s[3] : 1;
+    if (!((elem == 1 && ch == 1) || (elem == 4 && (ch == 1 || ch == 3))))
+        throw std::runtime_error("calib_warp_aux_forward: a uint8 mask, depth or normal map");
+    CalibWarpParams p{};
+    p.render = p.v_rgb = p.grad = p.hess = p.mask = vkk::or_fallback(nullptr);
+    p.gt = ptr(src);
+    p.out = ptr(out);
+    p.depth = vkk::or_fallback(ptr(render_depth));
+    p.Ts = vkk::or_fallback(ptr(render_Ts));
+    p.has_depth = ptr(render_depth) != 0 ? 1 : 0;
+    p.has_Ts = ptr(render_Ts) != 0 ? 1 : 0;
+    p.params = ptr(params);
+    p.intrins = vkk::or_fallback(ptr(intrins));
+    p.cam_indices = vkk::or_fallback(ptr(cam_indices));
+    p.has_cam = ptr(cam_indices) != 0 ? 1 : 0;
+    p.B = (int32_t)s[0];
+    p.Hm = (int32_t)s[1];
+    p.Wm = (int32_t)s[2];
+    p.H = render_H;
+    p.W = render_W;
+    p.n = grid_n;
+    if (p.B <= 0 || p.Hm <= 0 || p.Wm <= 0 || p.H <= 0 || p.W <= 0) return;
+    vkk::Fold f = vkk::fold_1d((int64_t)p.B * p.Hm * p.Wm, 256);
+    p.wgs_per_row = f.per_row;
+    if (f.rows > 65535)
+        throw std::runtime_error("calib_warp: grid dimension exceeds 65535");
+    const uint32_t kind = elem == 1 ? 0u : ch == 1 ? 1u : 2u;
+    vkk::dispatch_ring("calib_warp.calib_warp_aux_fwd", spec(D, kind), f.per_row, f.rows, 1,
+                       &p, sizeof(p));
 }
 
 void calib_warp_accumulate(

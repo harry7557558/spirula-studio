@@ -61,11 +61,13 @@ private:
         bool color_correct = true;
         // Show the file itself rather than the downscaled copy the loss sees.
         bool source_gt = false;
+        bool calib_warp = true;
         // Also compute the densification error map, which costs a loss pass.
         bool error_map = false;
         bool covers(const Job& o) const {
             return index == o.index && color_correct == o.color_correct &&
-                   source_gt == o.source_gt && (!o.error_map || error_map);
+                   source_gt == o.source_gt && calib_warp == o.calib_warp &&
+                   (!o.error_map || error_map);
         }
     };
 
@@ -123,7 +125,7 @@ private:
     // costing a render.
     void rebuild_textures();
     void upload(GLuint& tex, const uint8_t* rgb, int w, int h);
-    void draw_toolbar(bool training);
+    void draw_toolbar();
     void draw_image_picker();
     // Put the next control on this row if `w` still fits, else start a row.
     void place(float w);
@@ -131,6 +133,7 @@ private:
     // One modality's panes: the reference / render pair, or a lone map.
     struct Block;
     int  collect(Block* out) const;
+    void draw_view_menu();
     void draw_pane(const Pane& p, const ImVec2& box,
                    const char* id, const char* caption,
                    const Pane* overlay = nullptr, float opacity = 0.0f);
@@ -148,8 +151,8 @@ private:
     MaskShow _mask_show = MaskShow::Dim;
     bool _color_correct = true;
     bool _source_gt = false;
+    bool _calib_warp = true;
     bool _smooth = false;
-    bool _live = true;
     bool _show_depth = true;
     bool _show_normal = true;
     bool _show_error = true;

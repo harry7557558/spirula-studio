@@ -20,8 +20,8 @@ only changes which ground truth the loss reads.
 `calib_correction` is a macro (`train_resolve_macros`), the dropdown under the
 bilateral grid and PPISP in the GUI's basic options; the `synthetic` and
 `academic-baseline` presets set it to `off`. The GUI's compare view shows the
-ground truth through the warp, as the loss reads it, unless "Original file" is
-ticked.
+ground truth through the warp, as the loss reads it, while its "Calibration
+warp" box is ticked and "Original file" is not.
 
 ## Model
 
@@ -36,6 +36,15 @@ half-pixel offset halves the response at half Nyquist and the loss fits that
 blur: on capture A it cost 0.006 LPIPS-A of the 0.015 the warp gains. A pixel
 whose sample falls outside the image takes the render's own value, so it adds
 no loss and no gradient. The copy the loss reads is float16.
+
+The mask, depth and normal ground truth go through the same table at their own
+resolution. Depth and normals are bilinear over the valid taps, renormalized,
+the way the loss resamples them (`core/Interpolation.cuh`), so a hole does not
+bleed; with no valid tap the pixel is invalid. The mask takes the nearest tap
+and is also cut by the unwarped one, so it never reaches a tile the forward
+skipped. With a depth or normal bilateral
+grid, its gradient comes back at the warped positions, a sub-pixel shift on a
+grid that smooth.
 
 ## Fitting
 

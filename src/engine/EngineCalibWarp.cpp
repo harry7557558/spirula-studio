@@ -152,7 +152,24 @@ bool engine_calib_warp_wants_depth() {
     return engine().calib_warp.enabled && engine().calib_warp.D == 4;
 }
 
-// Point gt.rgb at the ground truth warped through the installed cameras' rows;
+template <typename T>
+static void warp_aux(DeviceTensor3D<T>& map, const char* key) {
+    if (map.data_ptr() == nullptr || map.numel() == 0 ||
+        map.template size<0>() != engine().camera.num)
+        return;
+    const TorchTensorView src = _dt3d_tv(map);
+    void* out = DevicePool::global().acquire_dynamic(VramCategory::Image, key,
+                                                     (size_t)map.numel() * sizeof(T));
+    auto& cw = engine().calib_warp;
+    calib_warp_aux_forward(src, depth_tv(), ts_tv(), table_tv(cw.params), intrins_tv(), cam_tv(),
+                           cw.grid_n, cw.D, (int)engine().camera.height,
+                           (int)engine().camera.width,
+                           TorchTensorView((uint64_t)out, std::get<1>(src), std::get<2>(src)));
+    map = DeviceTensor3D<T>(TorchTensorView((uint64_t)out, std::get<1>(src), std::get<2>(src)));
+}
+
+// Point gt.rgb, and the depth, normal and mask beside it, at the ground truth
+// warped through the installed cameras' rows;
 // _engine_calib_warp_restore_gt() points it back. False when it cannot apply.
 static bool _swap_in_warped_gt() {
     auto& cw = engine().calib_warp;
@@ -170,6 +187,12 @@ static bool _swap_in_warped_gt() {
                           cam_tv(), cw.grid_n, cw.D, out_tv);
     cw.src_gt = gt;
     engine().gt.rgb = out_tv;
+    cw.src_depth = engine().gt.depth;
+    cw.src_normal = engine().gt.normal;
+    cw.src_alpha = engine().gt.alpha;
+    warp_aux(engine().gt.depth, "eng.calib_warp.depth");
+    warp_aux(engine().gt.normal, "eng.calib_warp.normal");
+    if (engine().gt.has_mask) warp_aux(engine().gt.alpha, "eng.calib_warp.mask");
     cw.swapped = true;
     return true;
 }
@@ -216,6 +239,9 @@ void _engine_calib_warp_restore_gt() {
     auto& cw = engine().calib_warp;
     if (!cw.swapped) return;
     engine().gt.rgb = cw.src_gt;
+    engine().gt.depth = cw.src_depth;
+    engine().gt.normal = cw.src_normal;
+    engine().gt.alpha = cw.src_alpha;
     cw.swapped = false;
 }
 

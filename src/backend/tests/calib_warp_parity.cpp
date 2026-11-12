@@ -257,6 +257,102 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "D=%d: float16 resample off by %g\n", D, worst16);
             ++failures;
         }
+        // Mask, depth and normal through the same table at another size, against
+        // the host. A tap on a rounding tie may land apart: loose.
+        {
+            const int Ha = k.H / 2 + 1, Wa = k.W / 2, A = Ha * Wa;
+            std::vector<float> dm((size_t)k.B * A), nm((size_t)k.B * A * 3);
+            std::vector<uint8_t> mm((size_t)k.B * A);
+            for (size_t i = 0; i < dm.size(); ++i) {
+                dm[i] = i % 11 ? 1.0f + 0.01f * (float)(i % Wa) + 0.02f * (float)(i / Wa) : 0.0f;
+                for (int c = 0; c < 3; ++c) nm[3 * i + c] = std::sin(0.3f * (float)i + (float)c);
+                mm[i] = (i % 13) != 0;
+            }
+            float* d_dm = upload(dm);
+            float* d_nm = upload(nm);
+            uint8_t* d_mm = upload(mm);
+            float* o_dm = upload(dm);
+            float* o_nm = upload(nm);
+            uint8_t* o_mm = upload(mm);
+            const TorchTensorView td = ttv(d_dm, {k.B, Ha, Wa, 1}), tn = ttv(d_nm, {k.B, Ha, Wa, 3}),
+                                  tm = ttv(d_mm, {k.B, Ha, Wa, 1}, 1);
+            for (bool planted : {false, true}) {
+                const TorchTensorView t = tab(planted ? d_truth : params, P);
+                calib_warp_aux_forward(td, t_depth, t_ts, t, ttv(d_intr, {k.B, 4}), ttv(d_cams, {k.B}),
+                                       k.n, k.D, k.H, k.W, ttv(o_dm, {k.B, Ha, Wa, 1}));
+                calib_warp_aux_forward(tn, t_depth, t_ts, t, ttv(d_intr, {k.B, 4}), ttv(d_cams, {k.B}),
+                                       k.n, k.D, k.H, k.W, ttv(o_nm, {k.B, Ha, Wa, 3}));
+                calib_warp_aux_forward(tm, t_depth, t_ts, t, ttv(d_intr, {k.B, 4}), ttv(d_cams, {k.B}),
+                                       k.n, k.D, k.H, k.W, ttv(o_mm, {k.B, Ha, Wa, 1}, 1));
+                const auto gd = download(o_dm, dm.size()), gn = download(o_nm, nm.size());
+                const auto gm = download(o_mm, mm.size());
+                int64_t bad = 0;
+                for (int b = 0; b < k.B; ++b)
+                    for (int y = 0; y < Ha; ++y)
+                        for (int x = 0; x < Wa; ++x) {
+                            const size_t i = ((size_t)b * Ha + y) * Wa + x;
+                            double sx = x, sy = y;
+                            if (planted) {
+                                const float* row = truth.data() + (size_t)cams[(size_t)b] * P;
+                                const double u = (x + 0.5) * (k.n - 1) / Wa, v = (y + 0.5) * (k.n - 1) / Ha;
+                                const int i0 = std::min(std::max((int)u, 0), k.n - 2);
+                                const int j0 = std::min(std::max((int)v, 0), k.n - 2);
+                                const double fu = u - i0, fv = v - j0;
+                                const double w[4] = {(1 - fu) * (1 - fv), fu * (1 - fv), (1 - fu) * fv, fu * fv};
+                                double e = 0.0;
+                                if (k.D == 4) {
+                                    const int xr = std::min((int)((x + 0.5) * k.W / Wa), k.W - 1);
+                                    const int yr = std::min((int)((y + 0.5) * k.H / Ha), k.H - 1);
+                                    e = 1.0 / depth[((size_t)b * k.H + yr) * k.W + xr];
+                                }
+                                double fx = 0.0, fy = 0.0;
+                                for (int q = 0; q < 4; ++q) {
+                                    const float* c = row + ((j0 + (q >> 1)) * k.n + i0 + (q & 1)) * k.D;
+                                    fx += w[q] * (c[0] + (k.D == 4 ? e * c[2] : 0.0));
+                                    fy += w[q] * (c[1] + (k.D == 4 ? e * c[3] : 0.0));
+                                }
+                                sx += fx * Wa / k.W;
+                                sy += fy * Ha / k.H;
+                            }
+                            const int ix = (int)std::floor(sx + 0.5), iy = (int)std::floor(sy + 0.5);
+                            const bool in = ix >= 0 && ix < Wa && iy >= 0 && iy < Ha;
+                            const uint8_t wm = in && mm[i] ? mm[((size_t)b * Ha + iy) * Wa + ix] : 0;
+                            // Bilinear over the valid taps.
+                            const int x0 = (int)std::floor(sx), y0 = (int)std::floor(sy);
+                            double ad = 0, wd = 0, an[3] = {}, wn = 0;
+                            for (int q = 0; q < 4; ++q) {
+                                const int tx = x0 + (q & 1), ty = y0 + (q >> 1);
+                                if (tx < 0 || tx >= Wa || ty < 0 || ty >= Ha) continue;
+                                const double w = ((q & 1) ? sx - x0 : 1 - (sx - x0)) *
+                                                 ((q >> 1) ? sy - y0 : 1 - (sy - y0));
+                                const size_t j = ((size_t)b * Ha + ty) * Wa + tx;
+                                if (dm[j] > 0.0f) { ad += w * dm[j]; wd += w; }
+                                const float* nv = &nm[3 * j];
+                                if (nv[0] + nv[1] + nv[2] > -2.366f &&
+                                    nv[0] * nv[0] + nv[1] * nv[1] + nv[2] * nv[2] > 0.25f) {
+                                    for (int c = 0; c < 3; ++c) an[c] += w * nv[c];
+                                    wn += w;
+                                }
+                            }
+                            const auto close_to = [](double a, double b) { return std::fabs(a - b) <= 1e-4 * (1 + std::fabs(b)); };
+                            bool ok = gm[i] == wm && close_to(gd[i], wd > 0 ? ad / wd : 0.0);
+                            for (int c = 0; c < 3; ++c) ok = ok && close_to(gn[3 * i + c], wn > 0 ? an[c] / wn : -1.0);
+                            bad += !ok;
+                        }
+                if (bad > (planted ? (int64_t)k.B * A / 200 : 0)) {
+                    std::fprintf(stderr, "D=%d: aux warp (%s) off at %lld of %lld pixels\n", D,
+                                 planted ? "planted" : "zero", (long long)bad, (long long)k.B * A);
+                    ++failures;
+                }
+                if (planted) {
+                    loose.insert(loose.end(), gd.begin(), gd.end());
+                    loose.insert(loose.end(), gn.begin(), gn.end());
+                    for (uint8_t m : gm) loose.push_back((float)m);
+                }
+            }
+            for (void* q : std::initializer_list<void*>{d_dm, d_nm, d_mm, o_dm, o_nm, o_mm})
+                backend::device_free(q);
+        }
 
         calib_warp_accumulate(img(gt), img(render), t_depth, t_ts, ttv_null(), 0.0f, tab(params, P),
                               ttv(d_intr, {k.B, 4}), ttv(d_cams, {k.B}),

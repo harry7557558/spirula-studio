@@ -5,6 +5,7 @@
 // Spec constants (IDs by declaration order -- dispatches must pass ALL):
 //   0: kParallax -- 1: four floats per control point, the last two divided
 //                   by the rendered depth; 0: two.
+//   1: kAuxKind  -- calib_warp_aux_fwd only: 0 uint8 mask, 1 depth, 2 normal.
 
 #include "atomic_float.slang"
 #include "int64_compat.slang"
@@ -12,6 +13,8 @@
 
 [SpecializationConstant]
 const int kParallax = 0;
+[SpecializationConstant]
+const int kAuxKind = 0;
 
 static const int kMaxQ = 13;   // 4 gradient + 9 Hessian floats with parallax
 static const uint kBlock = 256;
@@ -458,4 +461,74 @@ void calib_warp_downsample2(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     p.out[3 * i] = asuint(acc.x);
     p.out[3 * i + 1] = asuint(acc.y);
     p.out[3 * i + 2] = asuint(acc.z);
+}
+
+// One aux map at its own size (Hm, Wm); see calib_warp_aux_fwd_kernel in
+// CalibWarp.cu for the sampling.
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void calib_warp_aux_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                        uniform CalibWarpParams* pp) {
+    CalibWarpParams p = *pp;
+    uint gid = (wg.y * p.wgs_per_row + wg.x) * kBlock + tid;
+    uint hw = uint(p.Hm * p.Wm);
+    if (gid >= uint(p.B) * hw) return;
+    uint b = gid / hw, pix = gid % hw;
+    int x = int(pix % uint(p.Wm)), y = int(pix / uint(p.Wm));
+    int cam = cw_cam(p, b);
+    float4 intr = p.intrins[b];
+    CwCell c = cw_cell(x, y, p.Wm, p.Hm, p.n);
+    float e = 0.0f;
+    if (kParallax != 0) {
+        int xr = min(int((float(x) + 0.5f) * float(p.W) / float(p.Wm)), p.W - 1);
+        int yr = min(int((float(y) + 0.5f) * float(p.H) / float(p.Hm)), p.H - 1);
+        e = cw_inv_depth(p, (gindex_t(b) * gindex_t(p.H) + gindex_t(yr)) * gindex_t(p.W) +
+                                gindex_t(xr));
+    }
+    gindex_t row = gindex_t(cam) * gindex_t(p.n * p.n * cw_D());
+    float2 fl = cw_flow(p, row, c, e, 1e-3f * intr.x * float(p.Wm) / float(p.W),
+                        1e-3f * intr.y * float(p.Hm) / float(p.H));
+    float sx = float(x) + fl.x, sy = float(y) + fl.y;
+    gindex_t plane = gindex_t(b) * gindex_t(hw);
+    gindex_t o = gindex_t(gid);
+    if (kAuxKind == 0) {
+        int ix = int(floor(sx + 0.5f)), iy = int(floor(sy + 0.5f));
+        bool inb = ix >= 0 && ix < p.Wm && iy >= 0 && iy < p.Hm;
+        uint v = 0u;
+        if (inb && u8_load(p.gt, o) != 0u)
+            v = u8_load(p.gt, plane + gindex_t(iy) * gindex_t(p.Wm) + gindex_t(ix));
+        u8_store(p.out, o, v);
+        return;
+    }
+    const int ch = kAuxKind == 1 ? 1 : 3;
+    int x0 = int(floor(sx)), y0 = int(floor(sy));
+    float fx = sx - float(x0), fy = sy - float(y0);
+    float3 acc = float3(0.0f);
+    float wsum = 0.0f;
+    [ForceUnroll]
+    for (int q = 0; q < 4; ++q) {
+        int tx = x0 + (q & 1), ty = y0 + (q >> 1);
+        if (tx < 0 || tx >= p.Wm || ty < 0 || ty >= p.Hm) continue;
+        gindex_t t = (plane + gindex_t(ty) * gindex_t(p.Wm) + gindex_t(tx)) * gindex_t(ch);
+        float3 v = float3(asfloat(elem_at(p.gt, t)[0]), 0.0f, 0.0f);
+        bool ok;
+        if (kAuxKind == 1) {
+            ok = v.x > 0.0f;   // core/Interpolation.cuh's gt_depth_valid
+        } else {
+            v.y = asfloat(elem_at(p.gt, t + 1)[0]);
+            v.z = asfloat(elem_at(p.gt, t + 2)[0]);
+            // core/Interpolation.cuh's gt_normal_valid.
+            ok = v.x + v.y + v.z > -2.366f && dot(v, v) > 0.25f;
+        }
+        if (!ok) continue;
+        float w = ((q & 1) != 0 ? fx : 1.0f - fx) * ((q >> 1) != 0 ? fy : 1.0f - fy);
+        acc += w * v;
+        wsum += w;
+    }
+    float3 r = wsum > 0.0f ? acc / wsum : float3(kAuxKind == 1 ? 0.0f : -1.0f);
+    elem_at(p.out, o * gindex_t(ch))[0] = asuint(r.x);
+    if (kAuxKind == 2) {
+        elem_at(p.out, o * gindex_t(ch) + 1)[0] = asuint(r.y);
+        elem_at(p.out, o * gindex_t(ch) + 2)[0] = asuint(r.z);
+    }
 }
