@@ -310,7 +310,7 @@ void set_gap(SensorSeries& s) {
 }
 
 // Each factor as the stops of light it lets in (log2 t, log2 ISO, -2 log2 N),
-// and their sum over the factors every record has, which is what
+// and their sum over the factors every record has: for one source, what
 // --ppisp-exposure-from-exif compares (app/TrainerCore.cpp). 0 is the mean.
 void add_exposure(SensorData& d) {
     const std::vector<SensorExposure>& in = d.exposure;

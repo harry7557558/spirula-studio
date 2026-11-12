@@ -1883,6 +1883,35 @@ SS_MSG(ppisp_exif_exposure,
     RU("Экспозиция PPISP инициализирована из EXIF ({0} из {1} фото)"),
     TR("PPISP pozlaması EXIF'ten başlatıldı ({1} fotoğraftan {0})"));
 
+// After ppisp_exif_exposure when the images split into several groups.
+SS_MSG(ppisp_exif_groups,
+    EN("EXIF exposure compared in {0} groups: images lacking shutter, aperture "
+       "or ISO only within their own folder."),
+    JA("EXIF の露出を {0} グループに分けて比較しました。シャッター、絞り、"
+       "ISO のどれかがない画像は、同じフォルダー内でのみ比較します。"),
+    ZH_HANS("EXIF 曝光分 {0} 组比较：缺少快门、光圈或 ISO 的图像"
+            "只在所在文件夹内比较。"),
+    ZH_HANT("EXIF 曝光分 {0} 組比較：缺少快門、光圈或 ISO 的影像"
+            "只在所在資料夾內比較。"),
+    KO("EXIF 노출을 {0}개 그룹으로 나눠 비교했습니다. 셔터·조리개·ISO 중 "
+       "하나가 없는 이미지는 같은 폴더 안에서만 비교합니다."),
+    DE("EXIF-Belichtung in {0} Gruppen verglichen: Bilder ohne Verschlusszeit, "
+       "Blende oder ISO nur innerhalb ihres Ordners."),
+    FR("Exposition EXIF comparée en {0} groupes : une image sans vitesse, "
+       "ouverture ou ISO ne l'est que dans son dossier."),
+    ES("Exposición EXIF comparada en {0} grupos: las imágenes sin obturación, "
+       "apertura o ISO, solo dentro de su carpeta."),
+    PT("Exposição EXIF comparada em {0} grupos: imagens sem obturador, "
+       "abertura ou ISO, só dentro da sua pasta."),
+    IT("Esposizione EXIF confrontata in {0} gruppi: immagini senza tempo, "
+       "apertura o ISO solo all'interno della loro cartella."),
+    NL("EXIF-belichting vergeleken in {0} groepen: beelden zonder sluitertijd, "
+       "diafragma of ISO alleen binnen hun eigen map."),
+    RU("Экспозиция EXIF сравнивается в {0} группах: снимки без выдержки, "
+       "диафрагмы или ISO — только внутри своей папки."),
+    TR("EXIF pozlaması {0} grupta karşılaştırıldı: enstantane, diyafram ya da "
+       "ISO'su eksik görüntüler yalnızca kendi klasörlerinde."));
+
 // Printed when the images declare their colour space -- an EXR's header, a
 // TIFF's ICC profile -- and none was given on the command line. {0} is the
 // format ("EXR", "TIFF"), {1} the gamut read out of the file.

@@ -146,7 +146,7 @@ photo's EXIF records (with the APEX tags as fallback) is plotted in stops:
 - **Exposure (EV)** -- shown by default. Each factor as the light it lets in
   (log2 t, log2 ISO, -2 log2 N) about its own mean, and their sum over the
   factors every record has, which is what `--ppisp-exposure-from-exif`
-  compares; 0 is the input's mean, +1 twice as bright. Factors that do not
+  compares within one source; 0 is the input's mean, +1 twice as bright. Factors that do not
   move are left out of it; with only one factor logged, the sum is that factor.
 - **Shutter speed, ISO, Aperture** -- hidden until picked: each on a log axis,
   read as 1/250 s, ISO 400, f/2.8. Hovering any of the four reads the record's

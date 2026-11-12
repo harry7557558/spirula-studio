@@ -160,8 +160,8 @@ the browser sees exactly what the reconstruction pipeline sees —
   rather than the capture length.
 - **Exposure** -- shutter, ISO and aperture as a camera logged them per frame,
   or as each photo's EXIF records them -- is a plot in stops about the clip's
-  mean (the sum the trainer's `--ppisp-exposure-from-exif` compares, with the
-  factors that move beside it), plus shutter / ISO / aperture rows on log axes
+  mean (the sum the trainer's `--ppisp-exposure-from-exif` compares within one
+  source, with the factors that move beside it), plus shutter / ISO / aperture rows on log axes
   off by default. The track can be coloured by it, and the readout gives the
   values at the playhead.
 - **Screenshot-safe mode** (one toggle, also in the header) hides the basemap,

@@ -245,8 +245,10 @@ inline void parseIfd(const TiffReader& r, size_t off, ExifData& out, int depth) 
             case 0x829A: if (tiffValue(r, e, v) && v > 0) out.exposure_time = v; break;
             case 0x829D: if (tiffValue(r, e, v) && v > 0) out.f_number = v; break;
             case 0x8827: if (tiffValue(r, e, v) && v > 0) out.iso = v; break;
-            case 0x8831: case 0x8832: case 0x8833:  // SOS / REI / ISOSpeed
-                if (out.iso == 0 && tiffValue(r, e, v) && v > 0) out.iso = v;
+            // SOS / REI / ISOSpeed, also where ISOSpeedRatings stops at 65535
+            case 0x8831: case 0x8832: case 0x8833:
+                if ((out.iso == 0 || out.iso >= 65535) && tiffValue(r, e, v) && v > 0)
+                    out.iso = v;
                 break;
             case 0x9201: if (tiffValue(r, e, v)) out.shutter_apex = v; break;
             case 0x9202: if (tiffValue(r, e, v)) out.aperture_apex = v; break;
@@ -538,14 +540,15 @@ inline void exifClearFocal(uint8_t* tiff, size_t size) {
 // ---------------------------------------------------------------------------
 
 // An APP1 Exif payload ("Exif\0\0" + a little-endian TIFF block) that records
-// a capture exposure and nothing else; a value <= 0 is left out. Empty when
-// all three are.
+// a capture exposure and nothing else. A value that is unknown (<= 0) or that
+// its tag cannot hold is left out, not clamped. Empty when none is left.
 inline std::vector<uint8_t> exifExposureSegment(double exposure_time, double f_number,
                                                 double iso) {
     struct Entry { uint16_t tag, type; uint32_t value; };
     std::vector<Entry> entries;
     std::vector<uint32_t> rationals;
     auto rational = [&](uint16_t tag, double v) {
+        if (!(v >= 2.5e-10 && v < 4e9)) return;   // 1/4e9 .. 4e9; NaN fails too
         uint32_t num, den;
         const double n = std::round(1.0 / v);
         if (v < 1 && n <= 4e9 && std::fabs(1.0 / n - v) <= 1e-3 * v) {
@@ -554,7 +557,7 @@ inline std::vector<uint8_t> exifExposureSegment(double exposure_time, double f_n
         } else {
             den = 1000000;
             while (den > 1 && v * den > 4e9) den /= 10;
-            num = (uint32_t)std::min(4e9, std::round(v * den));
+            num = (uint32_t)std::round(v * den);
             uint32_t a = num, b = den;
             while (b) { const uint32_t r = a % b; a = b; b = r; }
             if (a > 1) { num /= a; den /= a; }
@@ -563,9 +566,11 @@ inline std::vector<uint8_t> exifExposureSegment(double exposure_time, double f_n
         rationals.push_back(num);
         rationals.push_back(den);
     };
-    if (exposure_time > 0) rational(0x829A, exposure_time);
-    if (f_number > 0) rational(0x829D, f_number);
-    if (iso > 0) entries.push_back({0x8827, 3, (uint32_t)std::clamp(std::round(iso), 1.0, 65535.0)});
+    rational(0x829A, exposure_time);
+    rational(0x829D, f_number);
+    // ISOSpeedRatings 65535 reads as "65535 or more".
+    const double s = std::round(iso);
+    if (s >= 1 && s < 65535) entries.push_back({0x8827, 3, (uint32_t)s});
     if (entries.empty()) return {};
     entries.push_back({0x9000, 7, 0x30333230});   // ExifVersion "0230"
 

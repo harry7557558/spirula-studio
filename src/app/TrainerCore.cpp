@@ -1214,52 +1214,50 @@ static void check_cuda_runtime() {
 }
 #endif  // SS_BACKEND_VULKAN
 
-// PPISP exposure seeds: 0.5 x EXIF EV per POST-split slot, centred like the
-// exposure-mean regularizer; empty without tags. 0.5: PPISP scales the sRGB
-// render, where a bracketed +1 EV measures x2^0.49 (0.34-0.76 by tone curve).
+// PPISP exposure seeds: 0.5 x EXIF EV (a bracketed +1 EV measures x2^0.49 in
+// the sRGB render) per POST-split slot, centred per group: all-factor images
+// together, the rest by folder and factor set (docs/datasets.md).
 static std::vector<float> exif_exposure_evs(const ParsedDataset& ds,
                                             const PostSplitCameras& post,
                                             bool arithmetic_mean,
-                                            int& n_found) {
-    int64_t n = ds.num_cameras;
-    std::vector<sfm::ExifData> exif((size_t)n);
-    // Factors every tagged image has: a video frame logging only its shutter
-    // would otherwise sit log2(ISO / N^2) stops from a photo beside it.
-    unsigned parts = ~0u;
-    for (int64_t i = 0; i < n; i++) {
-        exif[i] = sfm::readExif(ds.image_filenames[i]);
-        if (const unsigned p = sfm::exifExposureParts(exif[i])) parts &= p;
-    }
+                                            int& n_found, int& n_groups) {
+    const int64_t n = ds.num_cameras;
+    constexpr unsigned kAll = sfm::kExifTime | sfm::kExifAperture | sfm::kExifIso;
+    std::map<std::pair<std::string, unsigned>, std::vector<int64_t>> groups;
     std::vector<double> gain(n, 0.0);
-    std::vector<char> has(n, 0);
-    double sum = 0.0;
     n_found = 0;
     for (int64_t i = 0; i < n; i++) {
+        const sfm::ExifData e = sfm::readExif(ds.image_filenames[i]);
+        const unsigned parts = sfm::exifExposureParts(e);
         double v;
-        if (sfm::exifExposureEv(exif[i], v, parts)) {
-            gain[i] = 0.5 * v;
-            has[i] = 1;
-            sum += gain[i];
-            n_found++;
-        }
+        if (!sfm::exifExposureEv(e, v)) continue;
+        gain[i] = 0.5 * v;
+        const std::string dir =
+            parts == kAll ? std::string()
+                          : fs::path(ds.image_filenames[i]).parent_path().string();
+        groups[{dir, parts}].push_back(i);
+        n_found++;
     }
+    n_groups = (int)groups.size();
     if (n_found == 0) return {};
-    double center = sum / n_found;
-    if (arithmetic_mean) {
-        double sum_exp = 0.0;
-        for (int64_t i = 0; i < n; i++)
-            if (has[i]) sum_exp += std::exp2(gain[i] - center);
-        center += std::log2(sum_exp / n_found);
-    }
     std::vector<float> out((size_t)post.n_post, 0.0f);
-    for (int64_t i = 0; i < n; i++) {
-        if (!has[i]) continue;
-        float v = (float)(gain[i] - center);
-        if (post.K_per_camera.empty()) {
-            out[i] = v;
-        } else {
-            for (int k = 0; k < post.K_per_camera[i]; k++)
-                out[post.post_offsets[i] + k] = v;
+    for (const auto& [key, members] : groups) {
+        double center = 0.0;
+        for (int64_t i : members) center += gain[i];
+        center /= (double)members.size();
+        if (arithmetic_mean) {
+            double sum_exp = 0.0;
+            for (int64_t i : members) sum_exp += std::exp2(gain[i] - center);
+            center += std::log2(sum_exp / (double)members.size());
+        }
+        for (int64_t i : members) {
+            const float v = (float)(gain[i] - center);
+            if (post.K_per_camera.empty()) {
+                out[i] = v;
+            } else {
+                for (int k = 0; k < post.K_per_camera[i]; k++)
+                    out[post.post_offsets[i] + k] = v;
+            }
         }
     }
     return out;
@@ -1604,13 +1602,15 @@ void TrainerSession::setup_engine() {
         (cfg.use_adagrad_ppisp_optim ? cfg.ppisp_adagrad_lr : cfg.ppisp_lr) > 0.0f) {
         std::vector<float> exif_ev;
         if (cfg.ppisp_exposure_from_exif) {
-            int n_exif = 0;
+            int n_exif = 0, n_groups = 0;
             exif_ev = exif_exposure_evs(ds, post,
                                         cfg.ppisp_exposure_arithmetic_mean,
-                                        n_exif);
+                                        n_exif, n_groups);
             if (n_exif > 0)
                 log(lfmt(lmsg::ppisp_exif_exposure,
                          {(long long)n_exif, (long long)ds.num_cameras}));
+            if (n_groups > 1)
+                log(lfmt(lmsg::ppisp_exif_groups, {(long long)n_groups}));
         }
         engine_init_ppisp(n_grids, cfg.ppisp_param_type,
                           cfg.use_adagrad_ppisp_optim,

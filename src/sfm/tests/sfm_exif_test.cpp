@@ -99,6 +99,30 @@ std::vector<uint8_t> make_gps_tiff(double lat_deg, double lon_deg) {
     return b;
 }
 
+// IFD0 pointing at an Exif sub-IFD with ISOSpeedRatings and
+// RecommendedExposureIndex.
+std::vector<uint8_t> make_iso_tiff(unsigned ratings, uint32_t rei) {
+    std::vector<uint8_t> b;
+    auto u16 = [&b](unsigned v) {
+        b.push_back((uint8_t)v);
+        b.push_back((uint8_t)(v >> 8));
+    };
+    auto u32 = [&b](uint32_t v) {
+        for (int i = 0; i < 4; i++) b.push_back((uint8_t)(v >> (8 * i)));
+    };
+    b.push_back('I'); b.push_back('I');
+    u16(42);
+    u32(8);
+    u16(1);
+    u16(0x8769); u16(4); u32(1); u32(8 + 2 + 12 + 4);
+    u32(0);
+    u16(2);
+    u16(0x8827); u16(3); u32(1); u16(ratings); u16(0);
+    u16(0x8832); u16(4); u32(1); u32(rei);
+    u32(0);
+    return b;
+}
+
 // A file whose marker chain readExifSegment can walk: SOI, a decoy APP1 that
 // is XMP rather than Exif, the Exif APP1, then EOI. No picture -- nothing here
 // decodes one.
@@ -281,6 +305,18 @@ static void check_exposure_written() {
               e.iso == 0,
           "exposure segment: an odd shutter within 0.1%, the aperture exact");
     check(exifExposureSegment(0, 0, 0).empty(), "exposure segment: nothing to record, no segment");
+    check(exifExposureSegment(INFINITY, NAN, 1e9).empty(),
+          "exposure segment: nothing finite and in range, no segment");
+    seg = exifExposureSegment(1e10, 2.0, 70000);
+    e = parseExifTiff(seg.data() + 6, seg.size() - 6);
+    check(e.exposure_time == 0 && e.f_number == 2 && e.iso == 0,
+          "exposure segment: what its tag cannot hold is left out, not clamped");
+
+    std::vector<uint8_t> t = make_iso_tiff(65535, 102400);
+    check(parseExifTiff(t.data(), t.size()).iso == 102400,
+          "ISO: past 65535 from RecommendedExposureIndex");
+    t = make_iso_tiff(400, 500);
+    check(parseExifTiff(t.data(), t.size()).iso == 400, "ISO: ISOSpeedRatings first");
 
     std::vector<uint8_t> jpeg{0xFF, 0xD8, 0xFF, 0xD9};
     std::vector<uint8_t> not_jpeg{0x89, 'P', 'N', 'G'};

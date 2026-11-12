@@ -129,7 +129,7 @@ export function buildGps(a) {
 
 // Shutter, ISO and aperture as the stops of light each lets in (log2 t,
 // log2 ISO, -2 log2 N), each about its own mean, and their sum over the factors
-// every record has: what the trainer's --ppisp-exposure-from-exif compares.
+// every record has: for one source, what --ppisp-exposure-from-exif compares.
 export function buildExposure(t, shutter, iso, fnum) {
   const n = t.length, val = [shutter, iso, fnum];
   const log2 = [0, 1, 2].map(() => new Float32Array(n));

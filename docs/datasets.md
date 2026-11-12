@@ -963,10 +963,13 @@ orientation, no GPS (SfM reads a video's GPS from the video itself). It needs
 the telemetry reader and shared extraction, so a build without `SS_BUILD_SFM`
 or `SS_BUILD_SAM` writes none, and a PNG frame carries none.
 
-No video logs an aperture, and only some log an ISO, so a dataset that mixes
-sources compares the factors **every** tagged image records: a frame whose
-EXIF holds only a shutter would otherwise sit `log2(ISO / N^2)` stops (about
-five, for an f/2 lens at ISO 100) from a photograph beside it.
+No video logs an aperture, and only some log an ISO, so the trainer compares
+images across sources only when each records shutter, aperture **and** ISO.
+An image missing any is compared only with its own folder's images that record
+the same factors, and each such group starts at its own mean. A night video
+locked at 1/500 s with an unlogged auto ISO is as bright as photos taken at
+1/50 s; compared on shutter alone, the photos would count as over three
+stops brighter.
 
 A 360 photograph -- an Insta360 `.insp`, cut into one JPEG per lens -- keeps
 its own EXIF through the cut: exposure and GPS as written, the focal cleared
