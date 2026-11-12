@@ -127,6 +127,7 @@ void write_jpeg_with_exif(const std::string& path, const std::vector<uint8_t>& t
 static void check_up_matches_turn();
 static void check_turn_is_invertible();
 static void check_model_up();
+static void check_exposure_written();
 
 static int cmdExifTest(int, char**) {
     // ---- the tag, through a file ----
@@ -174,6 +175,7 @@ static int cmdExifTest(int, char**) {
     check_up_matches_turn();
     check_turn_is_invertible();
     check_model_up();
+    check_exposure_written();
 
     if (fails == 0) std::printf("sfm_exif_test: OK\n");
     return fails == 0 ? 0 : 1;
@@ -262,6 +264,51 @@ static void check_model_up() {
     check(fillExifOrientations(kept, dir) == 0, "features beat the files");
     check(kept[0].images[0].exif_orientation == 6, "and are left alone");
     std::filesystem::remove_all(dir);
+}
+
+// What extraction writes into a video frame reads back as the exposure it
+// logged, and a factor one image lacks is left out of every image's EV.
+static void check_exposure_written() {
+    std::vector<uint8_t> seg = exifExposureSegment(1.0 / 2622, 0, 101);
+    ExifData e = seg.size() > 6 ? parseExifTiff(seg.data() + 6, seg.size() - 6) : ExifData();
+    check(e.valid && std::fabs(e.exposure_time * 2622 - 1) < 1e-9 && e.iso == 101 &&
+              e.f_number == 0,
+          "exposure segment: shutter as 1/n and ISO read back, no aperture");
+    check(exifExposureParts(e) == (kExifTime | kExifIso), "exposure segment: its parts");
+    seg = exifExposureSegment(0.0049923691, 2.8, 0);
+    e = parseExifTiff(seg.data() + 6, seg.size() - 6);
+    check(std::fabs(e.exposure_time / 0.0049923691 - 1) < 1e-3 && std::fabs(e.f_number - 2.8) < 1e-12 &&
+              e.iso == 0,
+          "exposure segment: an odd shutter within 0.1%, the aperture exact");
+    check(exifExposureSegment(0, 0, 0).empty(), "exposure segment: nothing to record, no segment");
+
+    std::vector<uint8_t> jpeg{0xFF, 0xD8, 0xFF, 0xD9};
+    std::vector<uint8_t> not_jpeg{0x89, 'P', 'N', 'G'};
+    check(jpegInsertApp1(jpeg, exifExposureSegment(0.01, 0, 400)) && !jpegInsertApp1(not_jpeg, seg),
+          "APP1 splice: a JPEG takes it, anything else does not");
+    const std::string path = "sfm_exif_test.exposure.tmp.jpg";
+    {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        out.write((const char*)jpeg.data(), (std::streamsize)jpeg.size());
+    }
+    e = readExif(path);
+    check(std::fabs(e.exposure_time - 0.01) < 1e-12 && e.iso == 400 && e.orientation == 1,
+          "APP1 splice: the file reads back");
+    std::remove(path.c_str());
+
+    ExifData frame, photo;
+    frame.valid = photo.valid = true;
+    frame.exposure_time = photo.exposure_time = 0.01;
+    photo.f_number = 2;
+    photo.iso = 400;
+    double ev_frame = 0, ev_photo = 0;
+    exifExposureEv(frame, ev_frame);
+    exifExposureEv(photo, ev_photo);
+    check(std::fabs(ev_photo - ev_frame - std::log2(100.0)) < 1e-9, "EV: every factor by default");
+    const unsigned parts = exifExposureParts(frame) & exifExposureParts(photo);
+    exifExposureEv(frame, ev_frame, parts);
+    exifExposureEv(photo, ev_photo, parts);
+    check(parts == kExifTime && ev_photo == ev_frame, "EV: only the factors both record");
 }
 
 int main(int argc, char** argv) { return sfmTestMain(argc, argv, cmdExifTest); }

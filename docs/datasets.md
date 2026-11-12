@@ -950,6 +950,28 @@ rebuild interactively first or choose a fresh output folder for the batch.
 Changing the clip also re-extracts.
 See docs/notes/source-preview.md and docs/notes/dataset-rerun.md.
 
+### The exposure each frame records
+
+Several cameras log their exposure per frame beside their IMU
+(`sfm/core/Telemetry.h`): a GoPro's `SHUT` and `ISOE`, the Insta360 trailer's
+shutter record, a DJI Avata 360's ISO and shutter, a QooCam's `EXP`. Shared
+extraction writes the one nearest each frame into that frame's JPEG as EXIF
+`ExposureTime` / `ISOSpeedRatings`, timed `index / fps` exactly as SfM times
+the frame, so the `hdr` preset's `--ppisp-exposure-from-exif` seeds PPISP from
+video as it does from photos. Nothing else goes into the block: no focal, no
+orientation, no GPS (SfM reads a video's GPS from the video itself). It needs
+the telemetry reader and shared extraction, so a build without `SS_BUILD_SFM`
+or `SS_BUILD_SAM` writes none, and a PNG frame carries none.
+
+No video logs an aperture, and only some log an ISO, so a dataset that mixes
+sources compares the factors **every** tagged image records: a frame whose
+EXIF holds only a shutter would otherwise sit `log2(ISO / N^2)` stops (about
+five, for an f/2 lens at ISO 100) from a photograph beside it.
+
+A 360 photograph -- an Insta360 `.insp`, cut into one JPEG per lens -- keeps
+its own EXIF through the cut: exposure and GPS as written, the focal cleared
+because it describes the whole frame, not one lens.
+
 ### Colour LUTs
 
 Log footage is flat; a video row can name a 3D LUT that is baked into its

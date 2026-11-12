@@ -1222,13 +1222,21 @@ static std::vector<float> exif_exposure_evs(const ParsedDataset& ds,
                                             bool arithmetic_mean,
                                             int& n_found) {
     int64_t n = ds.num_cameras;
+    std::vector<sfm::ExifData> exif((size_t)n);
+    // Factors every tagged image has: a video frame logging only its shutter
+    // would otherwise sit log2(ISO / N^2) stops from a photo beside it.
+    unsigned parts = ~0u;
+    for (int64_t i = 0; i < n; i++) {
+        exif[i] = sfm::readExif(ds.image_filenames[i]);
+        if (const unsigned p = sfm::exifExposureParts(exif[i])) parts &= p;
+    }
     std::vector<double> gain(n, 0.0);
     std::vector<char> has(n, 0);
     double sum = 0.0;
     n_found = 0;
     for (int64_t i = 0; i < n; i++) {
         double v;
-        if (sfm::exifExposureEv(sfm::readExif(ds.image_filenames[i]), v)) {
+        if (sfm::exifExposureEv(exif[i], v, parts)) {
             gain[i] = 0.5 * v;
             has[i] = 1;
             sum += gain[i];

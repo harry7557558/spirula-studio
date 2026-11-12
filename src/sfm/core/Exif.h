@@ -533,6 +533,79 @@ inline void exifClearFocal(uint8_t* tiff, size_t size) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Writing
+// ---------------------------------------------------------------------------
+
+// An APP1 Exif payload ("Exif\0\0" + a little-endian TIFF block) that records
+// a capture exposure and nothing else; a value <= 0 is left out. Empty when
+// all three are.
+inline std::vector<uint8_t> exifExposureSegment(double exposure_time, double f_number,
+                                                double iso) {
+    struct Entry { uint16_t tag, type; uint32_t value; };
+    std::vector<Entry> entries;
+    std::vector<uint32_t> rationals;
+    auto rational = [&](uint16_t tag, double v) {
+        uint32_t num, den;
+        const double n = std::round(1.0 / v);
+        if (v < 1 && n <= 4e9 && std::fabs(1.0 / n - v) <= 1e-3 * v) {
+            num = 1;
+            den = (uint32_t)n;
+        } else {
+            den = 1000000;
+            while (den > 1 && v * den > 4e9) den /= 10;
+            num = (uint32_t)std::min(4e9, std::round(v * den));
+            uint32_t a = num, b = den;
+            while (b) { const uint32_t r = a % b; a = b; b = r; }
+            if (a > 1) { num /= a; den /= a; }
+        }
+        entries.push_back({tag, 5, (uint32_t)rationals.size()});
+        rationals.push_back(num);
+        rationals.push_back(den);
+    };
+    if (exposure_time > 0) rational(0x829A, exposure_time);
+    if (f_number > 0) rational(0x829D, f_number);
+    if (iso > 0) entries.push_back({0x8827, 3, (uint32_t)std::clamp(std::round(iso), 1.0, 65535.0)});
+    if (entries.empty()) return {};
+    entries.push_back({0x9000, 7, 0x30333230});   // ExifVersion "0230"
+
+    std::vector<uint8_t> out = {'E', 'x', 'i', 'f', 0, 0};
+    auto u16 = [&](uint32_t v) { out.push_back((uint8_t)v); out.push_back((uint8_t)(v >> 8)); };
+    auto u32 = [&](uint32_t v) { u16(v & 0xFFFF); u16(v >> 16); };
+    const uint32_t exif_ifd = 8 + 2 + 12 + 4;
+    const uint32_t data = exif_ifd + 2 + 12 * (uint32_t)entries.size() + 4;
+    out.insert(out.end(), {'I', 'I'});
+    u16(42);
+    u32(8);
+    u16(1);
+    u16(0x8769); u16(4); u32(1); u32(exif_ifd);
+    u32(0);
+    u16((uint32_t)entries.size());
+    for (const Entry& e : entries) {
+        u16(e.tag);
+        u16(e.type);
+        u32(e.type == 7 ? 4 : 1);
+        u32(e.type == 5 ? data + 4 * e.value : e.value);
+    }
+    u32(0);
+    for (uint32_t v : rationals) u32(v);
+    return out;
+}
+
+// `segment`, an APP1 payload with its signature, spliced into `jpeg` behind
+// the SOI. False with `jpeg` untouched when it is not a JPEG or the segment
+// is past what a marker's 16-bit length addresses.
+inline bool jpegInsertApp1(std::vector<uint8_t>& jpeg, const std::vector<uint8_t>& segment) {
+    if (jpeg.size() < 2 || jpeg[0] != 0xFF || jpeg[1] != 0xD8 || segment.empty() ||
+        segment.size() + 2 > 65535)
+        return false;
+    const size_t len = segment.size() + 2;
+    const uint8_t head[4] = {0xFF, 0xE1, (uint8_t)(len >> 8), (uint8_t)len};
+    jpeg.insert(jpeg.begin() + 2, segment.begin(), segment.end());
+    jpeg.insert(jpeg.begin() + 2, head, head + 4);
+    return true;
+}
+
 // The focal length in pixels of the *stored* image, or 0 if EXIF cannot say.
 // COLMAP's rules (sensor/bitmap.cc ExifFocalLength), in the same order:
 //
@@ -574,16 +647,29 @@ inline double exifFocalPx(const ExifData& e, int width, int height) {
     return 0;
 }
 
+enum ExifExposurePart : unsigned { kExifTime = 1, kExifAperture = 2, kExifIso = 4 };
+
+// Which of the three exposure factors the file records.
+inline unsigned exifExposureParts(const ExifData& e) {
+    if (!e.valid) return 0;
+    return (e.exposure_time > 0 || std::isfinite(e.shutter_apex) ? kExifTime : 0) |
+           (e.f_number > 0 || std::isfinite(e.aperture_apex) ? kExifAperture : 0) |
+           (e.iso > 0 ? kExifIso : 0);
+}
+
 // Relative capture exposure in EV stops, log2(t / N^2 * ISO), preferring the
-// direct tags over their APEX forms. A missing component counts as 1; false
-// only when the file records none of the three.
-inline bool exifExposureEv(const ExifData& e, double& ev) {
+// direct tags over their APEX forms. Factors missing or outside `parts` count
+// as 1; false when no factor is left.
+inline bool exifExposureEv(const ExifData& e, double& ev,
+                           unsigned parts = kExifTime | kExifAperture | kExifIso) {
     if (!e.valid) return false;
-    double t = e.exposure_time > 0 ? e.exposure_time
+    double t = !(parts & kExifTime) ? 0
+             : e.exposure_time > 0 ? e.exposure_time
              : std::isfinite(e.shutter_apex) ? std::exp2(-e.shutter_apex) : 0;
-    double N = e.f_number > 0 ? e.f_number
+    double N = !(parts & kExifAperture) ? 0
+             : e.f_number > 0 ? e.f_number
              : std::isfinite(e.aperture_apex) ? std::exp2(e.aperture_apex / 2) : 0;
-    double s = e.iso;
+    double s = (parts & kExifIso) ? e.iso : 0;
     if (t <= 0 && N <= 0 && s <= 0) return false;
     double rel = (t > 0 ? t : 1) / ((N > 0 ? N : 1) * (N > 0 ? N : 1)) * (s > 0 ? s : 1);
     if (!(rel > 0) || !std::isfinite(rel)) return false;

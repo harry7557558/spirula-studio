@@ -19,6 +19,7 @@
 #include "nn/core/Log.h"
 #include "nn/io/Image.h"
 #include "sam/Sam.h"
+#include "sfm/core/Exif.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -41,6 +42,7 @@ struct WriteJob {
     int                   depth_w = 0, depth_h = 0;
     std::string           path;
     int                   quality = 95;
+    std::vector<uint8_t>  exif;     // APP1 payload for a JPEG image; empty writes none
     std::string           geometry_key; // opt-in checked, atomic geometry publication
     bool                  geometry_overwrite = false;
 };
@@ -92,6 +94,23 @@ public:
     int    failures() const { return failures_.load(); }
 
 private:
+    static bool save_jpeg_with_exif(const WriteJob& job, const std::string& path) {
+        std::vector<uint8_t> jpeg;
+        auto sink = [](void* ctx, void* data, int size) {
+            auto* out = static_cast<std::vector<uint8_t>*>(ctx);
+            out->insert(out->end(), (uint8_t*)data, (uint8_t*)data + size);
+        };
+        const auto& im = job.image;
+        if (!stbi_write_jpg_to_func(sink, &jpeg, im.width, im.height, im.channels,
+                                    im.data.data(), job.quality))
+            return false;
+        sfm::jpegInsertApp1(jpeg, job.exif);
+        std::FILE* file = std::fopen(path.c_str(), "wb");
+        if (!file) return false;
+        const bool good = std::fwrite(jpeg.data(), 1, jpeg.size(), file) == jpeg.size();
+        return std::fclose(file) == 0 && good;
+    }
+
     void run() {
         while (true) {
             WriteJob job;
@@ -114,6 +133,9 @@ private:
                 auto encode = [&](const std::string& path) {
                     if (!job.depth.empty())
                         return save_depth_png16(path, job.depth.data(), job.depth_w, job.depth_h);
+                    if (job.geometry_key.empty() && !job.image.empty() && !job.exif.empty() &&
+                        job.quality >= 0 && job.quality <= 100)
+                        return save_jpeg_with_exif(job, path);
                     if (job.geometry_key.empty())
                         return job.image.empty() ? sam::save_mask_png(job.mask, path)
                                                  : nn::save_image(job.image, path, job.quality);

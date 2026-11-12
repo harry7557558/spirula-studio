@@ -18,6 +18,8 @@
 #include "nn/Device.h"
 #include "nn/io/Image.h"
 #include "sam/Sam.h"
+#include "sfm/core/Exif.h"
+#include "sfm/core/Telemetry.h"
 
 #include <algorithm>
 #include <atomic>
@@ -180,6 +182,43 @@ bool measure_motion(const FrameExtractJob& job, const FrameExtractSinks& sinks,
 using Decode = std::function<bool(const std::vector<int>& tracks, bool convert,
                                   const InstantSink& on_frame)>;
 
+// The exposure the camera logged for a source frame, as the EXIF block its
+// JPEG carries for --ppisp-exposure-from-exif. Timed index / fps on the
+// telemetry's clock, as SfM times the same frame (sfm/core/Manifest.h).
+class FrameExposure {
+public:
+    explicit FrameExposure(const std::string& video) {
+#ifdef SS_TOOL_SFM
+        sfm::Telemetry t;
+        std::string err;
+        if (!sfm::telemetry_read(video, t, err) || !(t.video_fps > 0)) return;
+        fps_ = t.video_fps;
+        exp_ = std::move(t.exposure);
+        std::stable_sort(exp_.begin(), exp_.end(),
+                         [](const sfm::TelemetryExposure& a,
+                            const sfm::TelemetryExposure& b) { return a.t < b.t; });
+#else
+        (void)video;
+#endif
+    }
+    bool empty() const { return exp_.empty(); }
+    std::vector<uint8_t> exif(int64_t index) const {
+        if (exp_.empty()) return {};
+        const double t = (double)index / fps_;
+        auto it = std::lower_bound(exp_.begin(), exp_.end(), t,
+                                   [](const sfm::TelemetryExposure& e, double v) {
+                                       return e.t < v;
+                                   });
+        if (it == exp_.end() || (it != exp_.begin() && t - (it - 1)->t < it->t - t)) --it;
+        if (std::fabs(it->t - t) > 0.5) return {};
+        return sfm::exifExposureSegment(it->shutter, it->fnum, it->iso);
+    }
+
+private:
+    std::vector<sfm::TelemetryExposure> exp_;
+    double fps_ = 0;
+};
+
 }  // namespace
 
 bool scan_motion(const FrameExtractJob& job, const FrameExtractSinks& sinks,
@@ -205,7 +244,8 @@ namespace {
 // One track into one folder, masked on the way when there is a masker.
 bool extract_track(const FrameExtractJob& o, const FrameExtractSinks& sinks,
                    const Decode& decode, int track, const fs::path& image_dir,
-                   const fs::path& mask_dir, sam::Masker* masker, WriterPool& pool,
+                   const fs::path& mask_dir, sam::Masker* masker,
+                   const FrameExposure& exposure, WriterPool& pool,
                    FrameExtractStats& t) {
     fs::create_directories(image_dir);
     if (masker) fs::create_directories(mask_dir);
@@ -241,6 +281,7 @@ bool extract_track(const FrameExtractJob& o, const FrameExtractSinks& sinks,
         if (sinks.preview && image.channels == 3)
             sinks.preview(image.data.data(), image.width, image.height, job.path);
         job.quality = o.quality;
+        job.exif = exposure.exif(index);
         job.image = std::move(image);
         const double t0 = nn::now_ms();
         pool.submit(std::move(job));
@@ -254,7 +295,8 @@ bool extract_track(const FrameExtractJob& o, const FrameExtractSinks& sinks,
 // A 360 file's tracks, laid out as one canvas and resampled into every view.
 bool extract_pair(const FrameExtractJob& o, const FrameExtractSinks& sinks,
                   const Decode& decode, const Decoder& d, const fs::path& image_dir,
-                  WriterPool& pool, FrameExtractStats& t, std::string& error) {
+                  const FrameExposure& exposure, WriterPool& pool,
+                  FrameExtractStats& t, std::string& error) {
     const std::vector<int> want = pano360_needs_track1(o.eac)
                                       ? std::vector<int>{0, 1}
                                       : std::vector<int>{0};
@@ -287,6 +329,7 @@ bool extract_pair(const FrameExtractJob& o, const FrameExtractSinks& sinks,
         t.convert += nn::now_ms() - t0;
         char stem[64];
         std::snprintf(stem, sizeof(stem), "%05lld", (long long)index);
+        const std::vector<uint8_t> exif = exposure.exif(index);
         for (size_t i = 0; i < o.views.size(); i++) {
             t0 = nn::now_ms();
             WriteJob job;
@@ -300,6 +343,7 @@ bool extract_pair(const FrameExtractJob& o, const FrameExtractSinks& sinks,
             job.path = (image_dir / o.views[i].dir /
                         (std::string(stem) + (jpeg ? ".jpg" : ".png"))).string();
             job.quality = o.quality;
+            job.exif = exif;
             if (sinks.preview)
                 sinks.preview(job.image.data.data(), job.image.width, job.image.height,
                               job.path);
@@ -319,7 +363,8 @@ bool extract_pair(const FrameExtractJob& o, const FrameExtractSinks& sinks,
 // track: the rig the frames of one stem form is then a rig in fact.
 bool extract_synced(const FrameExtractJob& o, const FrameExtractSinks& sinks,
                     const Decode& decode, const std::vector<int>& tracks,
-                    const fs::path& base, WriterPool& pool, FrameExtractStats& t) {
+                    const fs::path& base, const FrameExposure& exposure,
+                    WriterPool& pool, FrameExtractStats& t) {
     std::vector<fs::path> dirs;
     for (size_t k = 0; k < tracks.size(); k++) {
         dirs.push_back(base / ("cam" + std::to_string(k)));
@@ -330,12 +375,14 @@ bool extract_synced(const FrameExtractJob& o, const FrameExtractSinks& sinks,
     auto on_frame = [&](std::vector<nn::Image>& imgs, int64_t index, std::string&) {
         char stem[64];
         std::snprintf(stem, sizeof(stem), "%05lld", (long long)index);
+        const std::vector<uint8_t> exif = exposure.exif(index);
         for (size_t k = 0; k < imgs.size(); k++) {
             WriteJob job;
             job.path = (dirs[k] / (std::string(stem) + (jpeg ? ".jpg" : ".png"))).string();
             if (sinks.preview && imgs[k].channels == 3)
                 sinks.preview(imgs[k].data.data(), imgs[k].width, imgs[k].height, job.path);
             job.quality = o.quality;
+            job.exif = exif;
             job.image = std::move(imgs[k]);
             const double t0 = nn::now_ms();
             pool.submit(std::move(job));
@@ -446,6 +493,9 @@ bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sink
         if (!masker->init(job.mask, error)) return false;
     }
 
+    const FrameExposure exposure(job.input);
+    if (!exposure.empty()) log_line(sinks, lmsg::video_exposure_exif.get());
+
     stats.encoder_threads =
         job.threads > 0 ? job.threads
                         : std::max(1, (int)spirula::hardware_threads() - 1);
@@ -471,6 +521,7 @@ bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sink
                 w.path = (fs::path(job.skipped_dir) /
                           (std::string(stem) + (jpeg ? ".jpg" : ".png"))).string();
                 w.quality = job.quality;
+                w.exif = exposure.exif(p.index);
                 pool.submit(std::move(w));
             }
             if (sinks_in.judged) sinks_in.judged(p, im);
@@ -523,9 +574,9 @@ bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sink
     };
     if (pano) {
         stats.tracks = 2;
-        ok = extract_pair(job, sinks, decode, dec, base, pool, stats, error);
+        ok = extract_pair(job, sinks, decode, dec, base, exposure, pool, stats, error);
     } else if (synced) {
-        ok = extract_synced(job, sinks, decode, tracks, base, pool, stats);
+        ok = extract_synced(job, sinks, decode, tracks, base, exposure, pool, stats);
     }
     for (size_t ti = 0; ti < tracks.size() && ok && !pano && !synced; ++ti) {
         // A multi-track file (an Insta360 .insv carries two fisheye streams)
@@ -538,7 +589,7 @@ bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sink
             log_line(sinks, "track " + std::to_string(tracks[ti]) + " -> " +
                                 image_dir.string());
         ok = extract_track(job, sinks, decode, tracks[ti], image_dir, mask_dir,
-                           masker.get(), pool, stats);
+                           masker.get(), exposure, pool, stats);
     }
 
     const double t_drain = nn::now_ms();

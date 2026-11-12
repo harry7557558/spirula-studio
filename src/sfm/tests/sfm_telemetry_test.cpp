@@ -222,9 +222,16 @@ static Bytes gpmf_payload(uint64_t stmp_us, int16_t a0, int16_t a1, int16_t a2, 
     Bytes strm_grav = cat({klv("STMP", 'J', 8, 1, stmp), klv_str("STNM", "Gravity Vector"),
                            klv("SCAL", 's', 2, 1, gscal2), klv("GRAV", 's', 6, 2, grav)});
 
+    Bytes shut, isoe;
+    for (int i = 0; i < 4; i++) { put_bef32(shut, 1.0f / (1000 + 1000 * i)); put_be16(isoe, (uint16_t)(100 + i)); }
+    Bytes strm_shut = cat({klv("STMP", 'J', 8, 1, stmp), klv_str("STNM", "Exposure time (shutter speed)"),
+                           klv_str("SIUN", "s"), klv("SHUT", 'f', 4, 4, shut)});
+    Bytes strm_isoe = cat({klv("STMP", 'J', 8, 1, stmp), klv_str("STNM", "Sensor ISO"), klv("ISOE", 'S', 2, 4, isoe)});
+
     Bytes dvid; put_be32(dvid, 1);
     Bytes devc = cat({klv("DVID", 'L', 4, 1, dvid), klv_str("DVNM", "GoPro Max"),
-                      klv_nest("STRM", strm_accl), klv_nest("STRM", strm_gps), klv_nest("STRM", strm_grav)});
+                      klv_nest("STRM", strm_accl), klv_nest("STRM", strm_gps), klv_nest("STRM", strm_grav),
+                      klv_nest("STRM", strm_shut), klv_nest("STRM", strm_isoe)});
     return klv_nest("DEVC", devc);
 }
 
@@ -256,6 +263,10 @@ static void test_gpmf() {
         check(close_to(tm.gps[0].t, 0.0, 1e-9) && close_to(tm.gps[2].t, 1.0, 1e-9), "gpmf: GPS anchored to its own first payload");
     }
     check(tm.gravity.size() == 4 && close_to(tm.gravity[0].y, -1.0, 1e-4) && tm.orientation_axes == "XYZ", "gpmf: GRAV swapped into the ORIN frame");
+    check(tm.exposure.size() == 8 && close_to(tm.exposure[1].t, 0.25, 1e-9) &&
+              close_to(tm.exposure[1].shutter, 1.0 / 2000, 1e-9) && tm.exposure[1].iso == 101 &&
+              close_to(tm.exposure[5].t, 1.25, 1e-9) && tm.exposure[5].iso == 101,
+          "gpmf: SHUT with the ISOE of the same frame");
 
     // A receiver without a fix: the first payload's first row is 0, 0.
     TrackSpec z{"gpmd", "meta", "GoPro MET", 1000, 1000, {}};
@@ -269,12 +280,14 @@ static void test_gpmf() {
     check(zt.gps.size() == 3 && !any_zero, "gpmf zeros: the fix at 0, 0 is dropped");
 }
 
-static Bytes insta_trailer(const Bytes& meta, const Bytes& gyro, const Bytes& gps) {
+static Bytes insta_trailer(const Bytes& meta, const Bytes& gyro, const Bytes& gps,
+                           const Bytes& exposure = {}) {
     Bytes out;
     auto rec = [&](uint8_t id, uint8_t format, const Bytes& data) {
         put_raw(out, data);
         put_u8(out, format); put_u8(out, id); put_le32(out, (uint32_t)data.size());
     };
+    if (!exposure.empty()) rec(4, 0, exposure);
     rec(7, 0, gps);
     rec(3, 0, gyro);
     rec(1, 1, meta);
@@ -312,8 +325,14 @@ static void test_insta360(bool raw) {
         put_lef64(gps, 79.4); put_u8(gps, 'W');
         put_lef64(gps, 1.5); put_lef64(gps, 270.0); put_lef64(gps, 64.8);
     }
+    // On the gyro's clock: microseconds with raw gyro, milliseconds without.
+    Bytes exposure;
+    for (int i = 0; i < 2; i++) {
+        put_le64(exposure, raw ? 1000000 + 41667ull * i : 1000 + 42ull * i);
+        put_lef64(exposure, i == 0 ? 0.005 : 0.008);
+    }
     Bytes file = build_mp4({}, 24000, 24000 * 44, (uint32_t)(creation_unix + 2082844800ull));
-    put_raw(file, insta_trailer(meta, gyro, gps));
+    put_raw(file, insta_trailer(meta, gyro, gps, exposure));
 
     Telemetry tm;
     std::string err;
@@ -335,6 +354,10 @@ static void test_insta360(bool raw) {
         check(close_to(tm.gps[0].t, 0.5, 1e-6) && close_to(tm.gps[1].t, 1.5, 1e-6), tag + "gps time from the movie header");
     }
     check(close_to(tm.video_duration, 44.0, 1e-9), tag + "duration from the movie header");
+    check(tm.exposure.size() == 2 && close_to(tm.exposure[0].t, 0.0, 1e-9) &&
+              close_to(tm.exposure[1].t, raw ? 0.041667 : 0.042, 1e-9) &&
+              tm.exposure[1].shutter == 0.008 && tm.exposure[1].iso < 0,
+          tag + "exposure: a shutter per frame, on the gyro's clock");
 }
 
 // The Antigravity A1 layout: each record at the start of a slot, the slot's

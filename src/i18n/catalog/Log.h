@@ -596,6 +596,21 @@ SS_MSG(video_lut_applied,
     RU("Цветовая LUT {0} применяется к каждому извлечённому кадру."),
     TR("{0} renk LUT'u çıkarılan her kareye uygulanıyor."));
 
+SS_MSG(video_exposure_exif,
+    EN("Each frame's EXIF records the exposure the camera logged for it."),
+    JA("各フレームの EXIF に、カメラが記録した露出を書き込みます。"),
+    ZH_HANS("每帧的 EXIF 写入相机记录的曝光。"),
+    ZH_HANT("每幀的 EXIF 寫入相機記錄的曝光。"),
+    KO("각 프레임의 EXIF에 카메라가 기록한 노출을 기록합니다."),
+    DE("Die EXIF-Daten jedes Einzelbilds erhalten die von der Kamera aufgezeichnete Belichtung."),
+    FR("L'EXIF de chaque image reçoit l'exposition enregistrée par la caméra."),
+    ES("El EXIF de cada fotograma recoge la exposición registrada por la cámara."),
+    PT("O EXIF de cada fotograma regista a exposição gravada pela câmara."),
+    IT("L'EXIF di ogni fotogramma riporta l'esposizione registrata dalla fotocamera."),
+    NL("De EXIF van elk beeld krijgt de belichting die de camera heeft vastgelegd."),
+    RU("В EXIF каждого кадра записывается экспозиция, зафиксированная камерой."),
+    TR("Her karenin EXIF verisine kameranın kaydettiği pozlama yazılıyor."));
+
 SS_MSG(video_autorotate,
     EN("The capture asks to be turned {0} degrees; the frames are written already turned."),
     JA("この撮影は {0} 度回転して表示するよう指定されています。フレームは回転済みで書き出されます。"),

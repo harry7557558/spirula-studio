@@ -18,9 +18,11 @@
 #include "external/stb_image_write.h"
 #include "i18n/catalog/Log.h"
 #include "i18n/catalog/MaskEdit.h"
+#include "sfm/core/Exif.h"
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -512,6 +514,68 @@ void test_packed_photo_one_lens() {
           "one lens: another lens is the same source");
 }
 
+// An .insp as a 360 camera writes one: its EXIF holds the exposure, the
+// whole frame's 35 mm focal and a GPS fix (43.25 N, 79.5 W).
+void write_insp_with_exif(const fs::path& p) {
+    std::vector<uint8_t> t;
+    auto u16 = [&t](uint32_t v) { t.push_back((uint8_t)v); t.push_back((uint8_t)(v >> 8)); };
+    auto u32 = [&](uint32_t v) { u16(v & 0xFFFF); u16(v >> 16); };
+    auto entry = [&](uint32_t tag, uint32_t type, uint32_t count, uint32_t value) {
+        u16(tag); u16(type); u32(count); u32(value);
+    };
+    const uint32_t exif_ifd = 8 + 2 + 2 * 12 + 4, gps_ifd = exif_ifd + 2 + 3 * 12 + 4;
+    const uint32_t data = gps_ifd + 2 + 4 * 12 + 4;
+    t = {'I', 'I'};
+    u16(42); u32(8);
+    u16(2); entry(0x8769, 4, 1, exif_ifd); entry(0x8825, 4, 1, gps_ifd); u32(0);
+    u16(3); entry(0x829A, 5, 1, data); entry(0x8827, 3, 1, 166); entry(0xA405, 3, 1, 6); u32(0);
+    u16(4);
+    entry(0x0001, 2, 2, 'N'); entry(0x0002, 5, 3, data + 8);
+    entry(0x0003, 2, 2, 'W'); entry(0x0004, 5, 3, data + 32);
+    u32(0);
+    u32(1); u32(25);
+    for (uint32_t v : {43u, 15u, 0u, 79u, 30u, 0u}) { u32(v); u32(1); }
+    std::vector<uint8_t> seg = {'E', 'x', 'i', 'f', 0, 0};
+    seg.insert(seg.end(), t.begin(), t.end());
+
+    std::vector<uint8_t> px(32 * 16 * 3, 128), jpeg;
+    stbi_write_jpg_to_func([](void* c, void* d, int n) {
+        auto* v = (std::vector<uint8_t>*)c;
+        v->insert(v->end(), (uint8_t*)d, (uint8_t*)d + n);
+    }, &jpeg, 32, 16, 3, px.data(), 90);
+    sfm::jpegInsertApp1(jpeg, seg);
+    std::error_code ec;
+    fs::create_directories(p.parent_path(), ec);
+    std::ofstream(p, std::ios::binary).write((const char*)jpeg.data(), (std::streamsize)jpeg.size());
+}
+
+// Each lens of an .insp keeps the photo's GPS and exposure, which SfM's
+// position prior and PPISP's exposure seeds read, but not its focal.
+void test_packed_photo_keeps_exif() {
+    const fs::path root = scratch("insp_exif");
+    const fs::path ws = root / "dataset";
+    for (const char* name : {"IMG_0001.insp", "IMG_0002.insp"})
+        write_insp_with_exif(root / "dual" / name);
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    job.photo_import = gui::PhotoImport::Copy;
+    gui::PrepInput in;
+    in.path = (root / "dual").string();
+    in.packed_lenses = 2;
+    job.inputs.push_back(in);
+    gui::RunProgress prog;
+    std::string err;
+    check(run_prep(job, prog, err), "insp exif: run: " + err);
+    for (const char* cam : {"cam0", "cam1"}) {
+        const sfm::ExifData e = sfm::readExif((ws / "images" / cam / "IMG_0001.jpg").string());
+        const std::string tag = std::string("insp exif: ") + cam;
+        check(e.has_gps && std::fabs(e.lat_deg - 43.25) < 1e-9 && std::fabs(e.lon_deg + 79.5) < 1e-9,
+              tag + " keeps the GPS fix");
+        check(std::fabs(e.exposure_time - 0.04) < 1e-12 && e.iso == 166, tag + " keeps the exposure");
+        check(!e.hasFocal(), tag + " drops the whole frame's focal");
+    }
+}
+
 // A review's sheet: a looser threshold brings a frame back by a rename, and
 // what is still left out is deleted without touching anything else there.
 void test_pick_sheet_discards() {
@@ -839,6 +903,7 @@ int main() {
     test_skipped_photos();
     test_frames_reel_counts_images();
     test_packed_photo_one_lens();
+    test_packed_photo_keeps_exif();
     test_pick_sheet_discards();
     test_sort_in_place();
     test_sort_rig_in_place();

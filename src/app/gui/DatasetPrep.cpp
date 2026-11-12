@@ -2696,15 +2696,12 @@ bool write_jpeg_with_exif(const fs::path& to, int w, int h, int channels,
     if (!stbi_write_jpg_to_func(sink, &jpeg, w, h, channels, px, kPhotoJpegQuality))
         return false;
     if (jpeg.size() < 2) return false;
-    // 65533 is all a segment's 16-bit length can address; a maker note that
-    // long is dropped rather than written back malformed.
+    // A maker note past a segment's 16-bit length is dropped rather than
+    // written back malformed.
     if (exif.size() > 6 && exif.size() + 2 <= 65535) {
         sfm::exifFlattenOrientation(exif.data() + 6, exif.size() - 6, w, h);
         if (drop_focal) sfm::exifClearFocal(exif.data() + 6, exif.size() - 6);
-        const size_t len = exif.size() + 2;
-        const uint8_t head[4] = {0xFF, 0xE1, (uint8_t)(len >> 8), (uint8_t)len};
-        jpeg.insert(jpeg.begin() + 2, exif.begin(), exif.end());
-        jpeg.insert(jpeg.begin() + 2, head, head + 4);
+        sfm::jpegInsertApp1(jpeg, exif);
     }
     std::ofstream f(to, std::ios::binary | std::ios::trunc);
     if (!f) return false;
