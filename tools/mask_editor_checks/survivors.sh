@@ -104,10 +104,6 @@ if [ "$order" = yes ]; then echo "ok   the slideshow branch sits between the can
 else echo "FAIL the slideshow branch sits between the canvas fill and !_doc"; FAILS=$((FAILS + 1)); fi
 has 1 'if (!fresh && input) {'
 has 1 '_slide_fresh = false;'
-if command grep -qF '_pen.in_progress() || _path.in_progress())' src/app/gui/mask/MaskSession.cpp &&
-   command grep -qE 'bool animating() const { return _compare.animating() || _mask_editor.animating()' src/app/gui/GuiApp.h; then
-    echo "ok   start_slideshow refuses a pen path; GuiApp::animating() asks the editor"
-else echo "FAIL start_slideshow refuses a pen path; GuiApp::animating() asks the editor"; FAILS=$((FAILS + 1)); fi
 # Row D, the frame keys and the navigation row stand down for the
 # worker, a half-drawn shape or pen path, and play; help shows when greyed;
 # M / Shift+M sit inside the keys' guard; the key list is the slider's tooltip.

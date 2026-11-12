@@ -336,7 +336,7 @@ bool cw_cholesky_solve4(float4x4 M, inout float4 g) {
             }
         }
     }
-    float z[4];
+    float z[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     for (int i = 0; i < 4; ++i) {
         float s = g[i];
         for (int k = 0; k < i; ++k) s -= L[i][k] * z[k];
