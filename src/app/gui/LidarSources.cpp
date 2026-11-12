@@ -205,7 +205,9 @@ LidarJob GuiApp::lidar_job() const {
         for (const LidarInput::Camera& c : l.cameras) j.xbin_cameras[l.path].push_back(c.pick);
         if (!l.cameras.empty() && l.place_only && !_sources.empty()) j.xbin_place_only.insert(l.path);
     }
-    j.ffmpeg_exe = _ffmpeg_exe;
+    j.decoder.ffmpeg_exe = _ffmpeg_exe;
+    j.decoder.external = _sfm_job.prep.force_external_decode;
+    j.decoder.device = _native_device_uuid;
     // With nothing else, the scans' photographs are the dataset: always used,
     // and there is no other model to be in their frame.
     j.scan_photos = _lidar_photos || _sources.empty();
