@@ -9232,6 +9232,16 @@ SS_MSG(seed_choice_sparse,
     EN("Sparse points"), JA("疎な点群"), ZH_HANS("稀疏点云"), ZH_HANT("稀疏點雲"), KO("희소 점 구름"),
     DE("Dünne Punktwolke"), FR("Points épars"), ES("Puntos dispersos"), PT("Pontos esparsos"), IT("Punti sparsi"),
     NL("IJle punten"), RU("Разреженные точки"), TR("Seyrek noktalar"));
+SS_MSG(seed_choice_sparse_model,
+    EN("Sparse points: {0}"), JA("疎な点群：{0}"), ZH_HANS("稀疏点云：{0}"), ZH_HANT("稀疏點雲：{0}"),
+    KO("희소 점 구름: {0}"), DE("Dünne Punktwolke: {0}"), FR("Points épars : {0}"),
+    ES("Puntos dispersos: {0}"), PT("Pontos esparsos: {0}"), IT("Punti sparsi: {0}"),
+    NL("IJle punten: {0}"), RU("Разреженные точки: {0}"), TR("Seyrek noktalar: {0}"));
+SS_MSG(seed_choice_dense_file,
+    EN("Dense cloud: {0}"), JA("高密度点群：{0}"), ZH_HANS("稠密点云：{0}"), ZH_HANT("稠密點雲：{0}"),
+    KO("고밀도 점 구름: {0}"), DE("Dichte Punktwolke: {0}"), FR("Nuage dense : {0}"),
+    ES("Nube densa: {0}"), PT("Nuvem densa: {0}"), IT("Nuvola densa: {0}"),
+    NL("Dichte puntenwolk: {0}"), RU("Плотное облако: {0}"), TR("Yoğun bulut: {0}"));
 SS_MSG(seed_choice_other,
     EN("Other PLY file"), JA("その他の PLY ファイル"), ZH_HANS("其他 PLY 文件"), ZH_HANT("其他 PLY 檔案"),
     KO("다른 PLY 파일"), DE("Andere PLY-Datei"), FR("Autre fichier PLY"), ES("Otro archivo PLY"),

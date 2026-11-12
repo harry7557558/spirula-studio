@@ -59,15 +59,18 @@ public:
     // save under.
     void set_pick_save(std::function<void(int target, const std::string& ext,
                                           bool folder,
-                                          const std::string& suggested)> f) {
+                                          const std::string& suggested,
+                                          const std::string& start_dir)> f) {
         _pick_save = std::move(f);
     }
     // Offered as a button when set: over to the render mode on this pane.
     void set_to_render(std::function<void()> f) { _to_render = std::move(f); }
-    // Offered as a button on a dataset's sparse reconstruction once it is
-    // saved: train on `dataset`, a copy of `source` when a save made one.
+    // Offered as a button on a dataset's sparse reconstruction or dense cloud
+    // once it is saved: train on `dataset`, a copy of `source` when a save made
+    // one, starting from `seed` ("" for the trainer's own choice).
     void set_to_trainer(std::function<void(const std::string& dataset,
-                                           const std::string& source)> f) {
+                                           const std::string& source,
+                                           const std::string& seed)> f) {
         _to_trainer = std::move(f);
     }
     // Told after every successful save: what the document came from, where it
@@ -367,10 +370,10 @@ private:
     bool _tab_force = false;
     bool _saved_over_source = false;
 
-    std::function<void(int, const std::string&, bool, const std::string&)>
+    std::function<void(int, const std::string&, bool, const std::string&, const std::string&)>
         _pick_save;
     std::function<void()> _to_render;
-    std::function<void(const std::string&, const std::string&)> _to_trainer;
+    std::function<void(const std::string&, const std::string&, const std::string&)> _to_trainer;
     // The save in flight, or the one being asked for, ends in the trainer.
     bool _train_after_save = false;
     bool _ask_train = false;
@@ -378,6 +381,9 @@ private:
     std::string trainer_dataset() const;
     // The dataset whose dense cloud is being edited, or "".
     std::string dense_dataset() const;
+    // The dataset to train after writing `saved`, and the starting points to
+    // pick there: the cloud just written, so the run starts from the edit.
+    std::pair<std::string, std::string> trainer_handoff(const std::string& saved) const;
     int folder_target() const;
     void draw_trainer_button(float full);
     void take_save_result();

@@ -116,6 +116,23 @@ int main() {
         auto native = parse_colmap_dataset(root.string(), cfg);
         check(native.points.num() == 1 && native.points.xyz[0] == 1,
               "unset path retains native sparse points");
+        {
+            DatasetParserConfig model = cfg;
+            model.center_mode = "none";
+            spirula::SparseKeep keep;
+            keep.points.assign(1, 0);
+            spirula::sparse_write_model(root.string(), (root / "sparse/edit").string(), keep);
+            check(fs::exists(root / "sparse/edit/cameras.txt") && fs::exists(root / "sparse/edit/images.txt"),
+                  "a model copy beside sparse/0 carries the cameras");
+            rejects([&] { spirula::sparse_write_model(root.string(), (root / "sparse/edit").string(), keep); },
+                    "a model copy refuses a folder that holds one");
+            std::ofstream(root / "sparse/edit/points3D.txt") << "1 7 8 9 255 0 0 0\n2 4 5 6 0 255 0 0\n";
+            model.seed_pointcloud = "sparse/edit";
+            const auto edited = parse_colmap_dataset(root.string(), model);
+            check(edited.points.num() == 2 && edited.points.xyz[0] == 7 && edited.c2w == native.c2w,
+                  "a model folder seeds with its own points and keeps the dataset's cameras");
+            fs::remove_all(root / "sparse/edit");
+        }
         const double precise_xyz[] = {4000000.123456789, -3000000.987654321, 2000000.314159265};
         const uint8_t precise_rgb[] = {17, 129, 241};
         spirula::write_ply_points((root / "precise.ply").string(), precise_xyz, precise_rgb, 1, nullptr,

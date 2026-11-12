@@ -285,6 +285,18 @@ std::string PointsDoc::default_save_path(int target) const {
     return source_path() == _dataset_dir ? std::string() : source_path();
 }
 
+std::string PointsDoc::copy_dir(int target) const {
+    const std::vector<SaveTarget> t = save_targets();
+    if (target < 0 || target >= (int)t.size()) return {};
+    std::error_code ec;
+    if (t[(size_t)target].folder) {
+        const fs::path sparse = fs::path(_dataset_dir) / "sparse";
+        return fs::is_directory(sparse, ec) ? sparse.string() : std::string();
+    }
+    const std::string dense = spirula::dense::dense_dataset_of(source_path());
+    return dense.empty() ? std::string() : (fs::path(dense) / "dense").string();
+}
+
 void PointsDoc::save(int target, const std::string& path,
                      std::atomic<int>* progress) {
     const std::vector<SaveTarget> t = save_targets();
@@ -300,6 +312,8 @@ void PointsDoc::save(int target, const std::string& path,
         std::error_code ec;
         if (fs::equivalent(path, _dataset_dir, ec)) {
             spirula::sparse_write_filtered(_dataset_dir, keep, &moved, &_baseline);
+        } else if (fs::equivalent(fs::path(path).parent_path(), fs::path(_dataset_dir) / "sparse", ec)) {
+            spirula::sparse_write_model(_dataset_dir, path, keep, &moved, &_baseline);
         } else {
             spirula::sparse_write_copy(_dataset_dir, path, keep, &moved, &_baseline);
             // A copy trains from the same pictures. Best effort: where links

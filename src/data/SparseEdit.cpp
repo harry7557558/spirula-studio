@@ -856,6 +856,18 @@ std::vector<std::string> sparse_write_copy(const std::string& dataset_dir,
                                            const SparseKeep& keep,
                                            const Sim3* moved,
                                            SparseBaseline* loaded) {
+    std::error_code ec;
+    const fs::path sparse = fs::path(out_dir) / "sparse";
+    if (fs::exists(sparse, ec))
+        throw std::runtime_error(sparse.string() + " already exists");
+    return sparse_write_model(dataset_dir, (sparse / "0").string(), keep, moved, loaded);
+}
+
+std::vector<std::string> sparse_write_model(const std::string& dataset_dir,
+                                            const std::string& model_dir,
+                                            const SparseKeep& keep,
+                                            const Sim3* moved,
+                                            SparseBaseline* loaded) {
     SparseBaseline local;
     if (!loaded) loaded = &local;
     if (!loaded->loaded()) *loaded = load_baseline(dataset_dir);
@@ -863,10 +875,9 @@ std::vector<std::string> sparse_write_copy(const std::string& dataset_dir,
     if (base.format != SparseFormat::Colmap)
         throw std::runtime_error("only a COLMAP reconstruction can be saved as a copy");
     std::error_code ec;
-    const fs::path sparse = fs::path(out_dir) / "sparse";
-    if (fs::exists(sparse, ec))
-        throw std::runtime_error(sparse.string() + " already exists");
-    const fs::path model = sparse / "0";
+    const fs::path model(model_dir);
+    if (fs::exists(model, ec) && !fs::is_empty(model, ec))
+        throw std::runtime_error(model.string() + " already exists");
     fs::create_directories(model, ec);
     if (ec) throw std::runtime_error("cannot create " + model.string());
     const std::string ext = base.text ? ".txt" : ".bin";
@@ -885,7 +896,7 @@ std::vector<std::string> sparse_write_copy(const std::string& dataset_dir,
     }
     SparseBaseline b = base;
     b.model_dir = model.string();
-    std::vector<std::string> written = sparse_write_filtered(out_dir, keep, moved, &b);
+    std::vector<std::string> written = sparse_write_filtered(model_dir, keep, moved, &b);
     // Only what the edit changed was written; the rest is the model as found.
     if (!fs::exists(images, ec)) write_file(images, b.images);
     if (!b.frames.empty() && !fs::exists(frames, ec)) write_file(frames, b.frames);

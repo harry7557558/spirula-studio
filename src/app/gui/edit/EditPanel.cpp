@@ -706,9 +706,8 @@ void EditSession::draw_panel() {
     }
 }
 
-// Training reads the reconstruction from disk, so an edit that is only in
-// memory is saved first -- over the model, or as a copy that becomes the
-// dataset trained on.
+// Training reads the cloud from disk, so an edit that is only in memory is
+// saved first -- over the original, or as a copy the run then starts from.
 void EditSession::draw_trainer_button(float full) {
     const std::string dataset = trainer_dataset();
     if (dataset.empty()) return;
@@ -718,7 +717,8 @@ void EditSession::draw_trainer_button(float full) {
     ImGui::Spacing();
     if (ui::Button(msg::to_trainer, ImVec2(full, 0))) {
         if (!_doc->dirty()) {
-            _to_trainer(dataset, dataset);
+            const auto [to, seed] = trainer_handoff(dense ? _doc->source_path() : dataset);
+            _to_trainer(to, dataset, seed);
         } else {
             _save_target = target;
             _ask_train = true;

@@ -6,7 +6,7 @@
 #include "app/gui/ViewportPanel.h"
 #include "i18n/Message.h"
 #include "app/gui/edit/PointsDoc.h"
-#include "dense/Generation.h"
+#include "dense/Artifact.h"
 #include "app/gui/edit/WorldGrid.h"
 #include "i18n/catalog/Edit.h"
 #include "i18n/catalog/EditTransform.h"
@@ -674,6 +674,23 @@ std::string EditSession::dense_dataset() const {
     return spirula::dense::dense_dataset_of(_doc->source_path());
 }
 
+std::pair<std::string, std::string> EditSession::trainer_handoff(const std::string& saved) const {
+    namespace fs = std::filesystem;
+    const std::string dense = dense_dataset();
+    const std::string dataset = dense.empty() ? trainer_dataset() : dense;
+    std::error_code ec;
+    if (dense.empty() && fs::equivalent(saved, dataset, ec))
+        return {dataset, spirula::dense::kSparseSeed};
+    // A copy outside the dataset's own folders is a dataset of its own.
+    const bool beside = !dense.empty() ||
+        fs::equivalent(fs::path(saved).parent_path(), fs::path(dataset) / "sparse", ec);
+    if (!beside) return {saved, {}};
+    // Relative, as the trainer's list names it, and so a moved dataset keeps it.
+    const fs::path rel = fs::relative(saved, dataset, ec);
+    const bool inside = !ec && !rel.empty() && *rel.begin() != "..";
+    return {dataset, inside ? rel.generic_string() : saved};
+}
+
 int EditSession::folder_target() const {
     if (!_doc) return -1;
     const std::vector<SaveTarget> t = _doc->save_targets();
@@ -711,7 +728,7 @@ void EditSession::ask_save_copy() {
             .string();
     if (stem.empty()) stem = "model";
     _pick_save(_save_target, target.ext, target.folder,
-               stem + "_edited" + target.ext);
+               stem + "_edited" + target.ext, _doc->copy_dir(_save_target));
 }
 
 // On a worker, because one linked mesh is several hundred-megabyte files and
@@ -753,10 +770,10 @@ void EditSession::take_save_result() {
         _status = spirula::i18n::format(msg::saved_to, {_save_path});
         _status_err = false;
         // Last: the owner is free to end this session in answer.
-        // A dense cloud is saved inside its dataset, which is what trains.
-        const std::string dense = dense_dataset();
-        if (to_trainer && _to_trainer)
-            _to_trainer(dense.empty() ? _save_path : dense, trainer_dataset());
+        if (to_trainer && _to_trainer) {
+            const auto [dataset, seed] = trainer_handoff(_save_path);
+            _to_trainer(dataset, trainer_dataset(), seed);
+        }
     } else {
         _status = spirula::i18n::format(msg::save_failed, {_save_error});
         _status_err = true;
