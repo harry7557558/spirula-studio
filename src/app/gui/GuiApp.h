@@ -97,7 +97,7 @@ public:
     void frame();
     // Something is moving without the user touching anything -- a render
     // playing back or being written -- so frames must keep coming.
-    bool animating() const { return _compare.animating() || _mask_editor.animating() || _source_view.animating(); }
+    bool animating() const { return _compare.animating() || _images.animating() || _mask_editor.animating() || _source_view.animating(); }
 
     // What a script needs to know that is not on screen as a widget: the
     // screen, what is running, what is open. A JSON object body without the

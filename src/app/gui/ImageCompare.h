@@ -38,6 +38,10 @@ public:
     void attach(spirula::TrainerSession& session);
     void detach();
     bool attached() const { return _session != nullptr; }
+    // Blend playback wants every frame drawn while the toolbar is on screen.
+    bool animating() const {
+        return _blend_playing && ImGui::GetFrameCount() - _blend_play_frame <= 1;
+    }
 
     // Draw into the current window. `step` is the training iteration that has
     // just finished (< 0 when unknown); `training` enables the follow-along
@@ -152,6 +156,9 @@ private:
     bool _blend = false;
     int _blend_pair = 0;
     float _blend_amount[5] = {50.0f, 50.0f, 50.0f, 50.0f, 50.0f};
+    bool _blend_playing = false;
+    float _blend_phase = 0.0f;    // [0, 2): rising then falling
+    int _blend_play_frame = -10;  // last frame the playback advanced
     // Whether this run builds a densification error map at all -- a mode of
     // `none`, or a score taken entirely from the world gradient, builds none.
     bool _has_error_map = false;

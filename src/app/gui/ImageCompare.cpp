@@ -12,6 +12,7 @@
 #include "external/stb_image.h"
 
 #include "i18n/catalog/Gui.h"
+#include "i18n/catalog/SourcePreview.h"
 
 #include "imgui.h"
 
@@ -24,10 +25,14 @@
 #include <filesystem>
 
 namespace msg = spirula::i18n::msg::gui;
+namespace pmsg = spirula::i18n::msg::preview;
 
 namespace gui {
 
 namespace {
+
+// Blend playback: end-to-end sweeps per second (one there-and-back cycle every 2/kBlendSweepHz s).
+constexpr float kBlendSweepHz = 2.5f;
 
 enum BlendPair { PhotoRender, PhotoError, RenderError, DepthRender, NormalRender, BlendPairCount };
 
@@ -69,6 +74,24 @@ void blend_slider(float* amount, float width) {
     ImGui::PopStyleColor(3);
     if (ImGui::IsItemHovered() || ImGui::IsItemActive())
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+}
+
+bool play_button(const char* id, bool playing) {
+    const float h = ImGui::GetFrameHeight();
+    const bool pressed = ui::ButtonRaw(id, ImVec2(h, h));
+    const ImVec2 o = ImGui::GetItemRectMin();
+    const float cx = o.x + h * 0.5f, cy = o.y + h * 0.5f, r = h * 0.25f;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImU32 col = ImGui::GetColorU32(ImGuiCol_Text);
+    if (playing) {
+        const float bw = r * 0.6f;
+        dl->AddRectFilled(ImVec2(cx - r, cy - r), ImVec2(cx - r + bw, cy + r), col);
+        dl->AddRectFilled(ImVec2(cx + r - bw, cy - r), ImVec2(cx + r, cy + r), col);
+    } else {
+        dl->AddTriangleFilled(ImVec2(cx - r * 0.8f, cy - r), ImVec2(cx - r * 0.8f, cy + r),
+                              ImVec2(cx + r, cy), col);
+    }
+    return pressed;
 }
 
 uint8_t to_byte(float v) {
@@ -926,20 +949,29 @@ void ImageCompare::draw_toolbar(bool training) {
         const auto& right = *kBlendPairs[_blend_pair][1];
         const int right_share = (int)std::lround(_blend_amount[_blend_pair]);
         const float value_w = ImGui::CalcTextSize("100%").x;
-        const float labels_w = ImGui::CalcTextSize(left.get()).x +
-                               ImGui::CalcTextSize(right.get()).x + 2.0f * value_w +
-                               4.0f * st.ItemSpacing.x;
         ImGui::SameLine();
         ui::TextDisabled(left);
         ImGui::SameLine();
         ui::TextDisabledRaw(std::to_string(100 - right_share) + "%");
         ImGui::SameLine(0.0f, st.ItemSpacing.x + value_w - ImGui::GetItemRectSize().x);
-        blend_slider(&_blend_amount[_blend_pair],
-                      std::max(px(60.0f), _row_w - pair_w - st.ItemSpacing.x - labels_w));
+        blend_slider(&_blend_amount[_blend_pair], px(160.0f));
+        if (ImGui::IsItemActive()) _blend_playing = false;
         ImGui::SameLine();
         ui::TextDisabledRaw(std::to_string(right_share) + "%");
         ImGui::SameLine(0.0f, st.ItemSpacing.x + value_w - ImGui::GetItemRectSize().x);
         ui::TextDisabled(right);
+        ImGui::SameLine();
+        if (play_button("##blendplay", _blend_playing)) {
+            _blend_playing = !_blend_playing;
+            _blend_phase = _blend_amount[_blend_pair] / 100.0f;
+        }
+        ui::help_on_hover(_blend_playing ? pmsg::pause : pmsg::play);
+        if (_blend_playing) {
+            _blend_phase = std::fmod(_blend_phase + ImGui::GetIO().DeltaTime * kBlendSweepHz, 2.0f);
+            _blend_amount[_blend_pair] =
+                100.0f * (_blend_phase < 1.0f ? _blend_phase : 2.0f - _blend_phase);
+            _blend_play_frame = ImGui::GetFrameCount();
+        }
     }
 }
 
