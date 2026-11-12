@@ -163,8 +163,8 @@ FusionStatistics fuse_surfaces(const fs::path& source, const fs::path& destinati
     const uint64_t source_records = fs::file_size(source,size_error) / sizeof(Surface);
     const uint64_t tick = std::max<uint64_t>(1, source_records / 200);
     {
-        std::ifstream input(source,std::ios::binary);
-        std::ofstream output(keyed,std::ios::binary | std::ios::trunc);
+        BufferedInputFile input(source,std::ios::binary, disk_io_buffer_bytes(budget));
+        BufferedOutputFile output(keyed,std::ios::binary | std::ios::trunc, disk_io_buffer_bytes(budget));
         if (!input || !output) throw std::runtime_error("cannot open dense fusion surfaces");
         Surface p;
         while (read_disk_record(input,p)) {
@@ -187,7 +187,7 @@ FusionStatistics fuse_surfaces(const fs::path& source, const fs::path& destinati
     fs::remove(keyed);
     DiskArray<Partition> partitions(work / "fusion-partitions.bin",budget / 16);
     {
-        std::ifstream input(ordered,std::ios::binary); Surface p; Cell previous{}; uint64_t index = 0, begin = 0;
+        BufferedInputFile input(ordered,std::ios::binary, disk_io_buffer_bytes(budget)); Surface p; Cell previous{}; uint64_t index = 0, begin = 0;
         while (read_disk_record(input,p)) {
             if (check) check();
             if (index > begin && cell(p) != previous && index - begin >= partition_records) {
@@ -202,8 +202,8 @@ FusionStatistics fuse_surfaces(const fs::path& source, const fs::path& destinati
     std::atomic<uint64_t> local_done{0}, neighbour_done{0};
     statistics.workers = parallel_partitions(partitions,requested_workers,budget / 2,check,
         [&](uint64_t index,Partition part,uint64_t worker_budget,const auto& stopped) {
-            std::ifstream input(ordered,std::ios::binary); input.seekg((std::streamoff)(part.begin * sizeof(Surface)));
-            std::ofstream output(part_file(work,"local",index),std::ios::binary | std::ios::trunc);
+            BufferedInputFile input(ordered,std::ios::binary, disk_io_buffer_bytes(worker_budget)); input.seekg((std::streamoff)(part.begin * sizeof(Surface)));
+            BufferedOutputFile output(part_file(work,"local",index),std::ios::binary | std::ios::trunc, disk_io_buffer_bytes(worker_budget));
             DiskArray<Cluster> group(part_file(work,"cell",index),worker_budget / 2);
             auto publish = [&] { for (const auto& value : group) write_disk_record(output,value); group.clear(); };
             for (auto i = part.begin; i < part.end; ++i) {
@@ -224,13 +224,13 @@ FusionStatistics fuse_surfaces(const fs::path& source, const fs::path& destinati
     const auto clusters = work / "fusion-clusters.bin", cells = work / "fusion-cells.bin";
     uint64_t cluster_count = 0, cell_count = 0;
     {
-        std::ofstream output(clusters,std::ios::binary | std::ios::trunc), index(cells,std::ios::binary | std::ios::trunc);
+        BufferedOutputFile output(clusters,std::ios::binary | std::ios::trunc, disk_io_buffer_bytes(budget)), index(cells,std::ios::binary | std::ios::trunc, disk_io_buffer_bytes(budget));
         CellRange range;
         for (uint64_t i = 0; i < partitions.size(); ++i) {
             if (check) check();
             report(Gather,i,partitions.size());
             {
-                std::ifstream input(part_file(work,"local",i),std::ios::binary); Cluster value;
+                BufferedInputFile input(part_file(work,"local",i),std::ios::binary, disk_io_buffer_bytes(budget)); Cluster value;
                 while (read_disk_record(input,value)) {
                     if (cluster_count && range.cell != cell(value.surface)) {
                         write_disk_record(index,range); ++cell_count; range.begin = cluster_count;
@@ -252,7 +252,7 @@ FusionStatistics fuse_surfaces(const fs::path& source, const fs::path& destinati
         [&](uint64_t index,Partition part,uint64_t worker_budget,const auto& stopped) {
             DiskTable<CellRange> cell_index(cells,worker_budget / 4);
             DiskTable<Cluster> points(clusters,worker_budget / 2);
-            std::ofstream output(part_file(work,"edges",index),std::ios::binary | std::ios::trunc);
+            BufferedOutputFile output(part_file(work,"edges",index),std::ios::binary | std::ios::trunc, disk_io_buffer_bytes(worker_budget));
             for (auto i = part.begin; i < part.end; ++i) {
                 stopped(); const auto core = cell_index.get(i);
                 for (int x = -1; x <= 1; ++x) for (int y = -1; y <= 1; ++y) for (int z = -1; z <= 1; ++z) {
@@ -279,10 +279,10 @@ FusionStatistics fuse_surfaces(const fs::path& source, const fs::path& destinati
         }));
     const auto edges = work / "fusion-edges.bin", sorted_edges = work / "fusion-edges-ordered.bin";
     {
-        std::ofstream output(edges,std::ios::binary | std::ios::trunc);
+        BufferedOutputFile output(edges,std::ios::binary | std::ios::trunc, disk_io_buffer_bytes(budget));
         for (uint64_t i = 0; i < partitions.size(); ++i) {
             {
-                std::ifstream input(part_file(work,"edges",i),std::ios::binary); Edge value;
+                BufferedInputFile input(part_file(work,"edges",i),std::ios::binary, disk_io_buffer_bytes(budget)); Edge value;
                 while (read_disk_record(input,value)) { if (check) check(); write_disk_record(output,value); ++statistics.boundary_candidates; }
             }
             fs::remove(part_file(work,"edges",i));
@@ -295,7 +295,7 @@ FusionStatistics fuse_surfaces(const fs::path& source, const fs::path& destinati
     },check,[&](uint64_t done,uint64_t total) { report(SortEdges,done,total); }); fs::remove(edges);
     {
         DiskTable<Cluster> states(clusters,budget / 2,true);
-        std::ifstream input(sorted_edges,std::ios::binary); Edge edge;
+        BufferedInputFile input(sorted_edges,std::ios::binary, disk_io_buffer_bytes(budget)); Edge edge;
         const uint64_t edge_tick = std::max<uint64_t>(1,statistics.boundary_candidates / 100);
         uint64_t merged = 0;
         while (read_disk_record(input,edge)) {
@@ -308,7 +308,7 @@ FusionStatistics fuse_surfaces(const fs::path& source, const fs::path& destinati
             if (!compatible(va,vb,voxel)) continue;
             merge(va,vb); vb.parent = a; states.set(a,va); states.set(b,vb);
         }
-        std::ofstream output(destination,std::ios::binary | std::ios::trunc);
+        BufferedOutputFile output(destination,std::ios::binary | std::ios::trunc, disk_io_buffer_bytes(budget));
         for (uint64_t i = 0; i < cluster_count; ++i) {
             if (check) check();
             const auto value = states.get(i);

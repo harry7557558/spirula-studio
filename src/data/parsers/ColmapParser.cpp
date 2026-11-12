@@ -2,6 +2,7 @@
 // readers, frame assembly and pose conventions. Shared bake helpers live in
 // DatasetCommon.cpp.
 
+#include "core/BufferedFile.h"
 #include "data/DatasetParser.h"
 #include "i18n/catalog/Data.h"
 #include "data/FastFloat.h"
@@ -29,7 +30,7 @@ constexpr double kPi = 3.14159265358979323846;   // MSVC has no M_PI by default
 
 
 // ===========================================================================
-// Little-endian binary readers (colmap_utils.py read_next_bytes)
+// Little-endian binary readers
 // ===========================================================================
 
 namespace {
@@ -43,7 +44,7 @@ struct BinReader {
     std::vector<uint8_t> buf;
     size_t pos = 0, end = 0;
 
-    explicit BinReader(const std::string& p, size_t buffer = 1 << 20)
+    explicit BinReader(const std::string& p, size_t buffer = spirula::kFileBufferBytes)
         : path(p), buf(buffer) {
         f = std::fopen(p.c_str(), "rb");
         if (!f) throw std::runtime_error("ColmapParser: cannot open " + p);

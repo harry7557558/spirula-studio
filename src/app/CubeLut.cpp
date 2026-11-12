@@ -1,5 +1,6 @@
 // CubeLut.cpp -- see CubeLut.h.
 
+#include "core/BufferedFile.h"
 #include "app/CubeLut.h"
 
 #include "app/LogLuts.h"
@@ -69,7 +70,7 @@ std::string lut_display_name(const std::string& spec) {
 
 bool load_cube_lut(const std::string& path, CubeLut& out, std::string& error) {
     out = CubeLut();
-    std::ifstream f(path, std::ios::binary);
+    spirula::BufferedInputFile f(path, std::ios::binary);
     if (!f) {
         error = "cannot open " + path;
         return false;
@@ -148,11 +149,13 @@ bool load_cube_lut(const std::string& path, CubeLut& out, std::string& error) {
 }
 
 bool write_cube_lut(const CubeLut& lut, const std::string& path, std::string& error) {
+    std::unique_ptr<char[]> buffer(new char[spirula::kFileBufferBytes]);
     std::FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) {
         error = "cannot write " + path;
         return false;
     }
+    std::setvbuf(f, buffer.get(), _IOFBF, spirula::kFileBufferBytes);
     if (!lut.title.empty()) std::fprintf(f, "TITLE \"%s\"\n", lut.title.c_str());
     std::fprintf(f, "LUT_3D_SIZE %d\nDOMAIN_MIN %.9g %.9g %.9g\nDOMAIN_MAX %.9g %.9g %.9g\n",
                  lut.size, lut.domain_min[0], lut.domain_min[1], lut.domain_min[2],

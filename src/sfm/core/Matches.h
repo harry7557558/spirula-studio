@@ -7,6 +7,7 @@
 // parse; it is not COLMAP's SQLite database.
 #pragma once
 
+#include "core/BufferedFile.h"
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -143,7 +144,7 @@ struct MatchesDatabase {
 // ---------------------------------------------------------------------------
 
 inline void writeMatches(const std::string& path, const MatchesDatabase& db) {
-    std::ofstream f(path, std::ios::binary);
+    spirula::BufferedOutputFile f(path, std::ios::binary);
     if (!f) throw std::runtime_error("cannot write " + path);
     uint32_t version = 5, nimg = (uint32_t)db.images.size();
     f.write("VKMT", 4);
@@ -204,10 +205,12 @@ inline void writeMatches(const std::string& path, const MatchesDatabase& db) {
         }
         f.write((const char*)&db.sensor_calibration_fingerprint, 8);
     }
+    f.close();
+    if (!f) throw std::runtime_error("cannot write " + path);
 }
 
 inline MatchesDatabase readMatches(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
+    spirula::BufferedInputFile f(path, std::ios::binary);
     if (!f) throw std::runtime_error("cannot read " + path);
     char magic[4];
     f.read(magic, 4);

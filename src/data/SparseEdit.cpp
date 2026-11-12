@@ -1,5 +1,6 @@
 // SparseEdit.cpp -- see SparseEdit.h.
 
+#include "core/BufferedFile.h"
 #include "data/SparseEdit.h"
 
 #include "data/DatasetParser.h"
@@ -24,7 +25,7 @@ namespace spirula {
 namespace {
 
 std::string read_file(const fs::path& p) {
-    std::ifstream f(p, std::ios::binary);
+    BufferedInputFile f(p, std::ios::binary);
     if (!f) throw std::runtime_error("cannot read " + p.string());
     return std::string((std::istreambuf_iterator<char>(f)),
                        std::istreambuf_iterator<char>());
@@ -601,7 +602,7 @@ SparseStats read_sparse_stats(const std::string& dataset_dir) {
 
     // The text model: images.txt is two lines a record, points3D.txt one.
     {
-        std::ifstream f(fs::path(model) / "images.txt");
+        BufferedInputFile f(fs::path(model) / "images.txt");
         std::string line, obs;
         while (std::getline(f, line)) {
             if (line.empty() || line[0] == '#') continue;
@@ -633,7 +634,7 @@ SparseStats read_sparse_stats(const std::string& dataset_dir) {
             out.image_points.push_back(seen);
         }
     }
-    std::ifstream f(fs::path(model) / "points3D.txt");
+    BufferedInputFile f(fs::path(model) / "points3D.txt");
     std::string line;
     out.track_beg.push_back(0);
     while (std::getline(f, line)) {

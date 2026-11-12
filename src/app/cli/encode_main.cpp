@@ -3,6 +3,7 @@
 // frames into; a separate process because it needs a Vulkan device of its
 // own beside the engine's (AGENTS.md, "Three Vulkan devices"). PATENT-GATED.
 
+#include "core/BufferedFile.h"
 #include "app/Tools.h"
 #include "i18n/catalog/Render.h"
 #include "nn/vk/Context.h"
@@ -117,10 +118,13 @@ int spirula_encode_main(int argc, char** argv) {
                      ends_with(out, ".h265") || ends_with(out, ".265") ||
                      ends_with(out, ".hevc") || ends_with(out, ".obu");
     video::Mp4Writer mp4;
+    std::unique_ptr<char[]> raw_buffer;
     std::FILE* raw_file = nullptr;
     if (raw) {
+        raw_buffer.reset(new char[spirula::kFileBufferBytes]);
         raw_file = std::fopen(out.c_str(), "wb");
         if (!raw_file) err = "cannot create " + out;
+        else std::setvbuf(raw_file, raw_buffer.get(), _IOFBF, spirula::kFileBufferBytes);
     } else if (mp4.open(out, o.codec, o.width + (o.width & 1), o.height + (o.height & 1), o.fps,
                         spherical, err)) {
         // 4:2:0 crops in pairs of pixels, so an odd size decodes one larger.

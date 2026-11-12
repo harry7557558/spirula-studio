@@ -8,6 +8,7 @@
 // ours to rewrite, so the edit lands beside it as a Nerfstudio dataset, which
 // parse_dataset reads first from then on.
 
+#include "core/BufferedFile.h"
 #include "core/Similarity.h"
 #include "data/DatasetParser.h"
 
@@ -93,7 +94,7 @@ public:
     void finish();
     uint64_t count() const { return count_; }
 private:
-    std::fstream file_;
+    BufferedOutputFile file_;
     std::string path_;
     PlyCoordinates coordinates_;
     std::streampos count_position_;

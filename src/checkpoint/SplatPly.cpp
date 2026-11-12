@@ -1,5 +1,6 @@
 // SplatPly.cpp -- see SplatPly.h.
 
+#include "core/BufferedFile.h"
 #include "checkpoint/SplatPly.h"
 
 #include "checkpoint/SplatTransform.h"
@@ -304,7 +305,7 @@ public:
             return;
         }
         // Row-blocked: one read() per vertex is most of a large model's load time.
-        const int64_t kRows = 1 << 14;
+        const int64_t kRows = std::max<size_t>(1, kFileBufferBytes / _h.row_bytes);
         _raw.resize((size_t)_h.row_bytes * kRows);
         for (int64_t done = 0; done < nr; done += kRows) {
             const int64_t m = std::min(kRows, nr - done);
@@ -391,7 +392,7 @@ void write_splat_ply(const SplatCloud& c, const std::string& path,
     ply << splat_ply_header(kept, basis, c.primitive);
 
     const int row_floats = splat_ply_row_floats(basis);
-    constexpr int kRowsPerFlush = 1024;
+    const int kRowsPerFlush = (int)std::max<size_t>(1, kFileBufferBytes / (row_floats * sizeof(float)));
     std::vector<float> buf((size_t)row_floats * kRowsPerFlush);
     int rows = 0;
     auto flush = [&] {

@@ -1,3 +1,4 @@
+#include "core/BufferedFile.h"
 #include "app/LidarDataset.h"
 
 #include "app/DepthPng.h"
@@ -136,7 +137,7 @@ template <class T> void wr(std::ofstream& f, T v) { f.write((const char*)&v, siz
 ColModel read_model(const fs::path& dir) {
     ColModel m;
     {
-        std::ifstream f(dir / "cameras.bin", std::ios::binary);
+        spirula::BufferedInputFile f(dir / "cameras.bin", std::ios::binary);
         if (!f) throw std::runtime_error("cannot read " + (dir / "cameras.bin").string());
         const uint64_t n = rd<uint64_t>(f);
         for (uint64_t i = 0; i < n; i++) {
@@ -150,7 +151,7 @@ ColModel read_model(const fs::path& dir) {
         }
     }
     {
-        std::ifstream f(dir / "images.bin", std::ios::binary);
+        spirula::BufferedInputFile f(dir / "images.bin", std::ios::binary);
         if (!f) throw std::runtime_error("cannot read " + (dir / "images.bin").string());
         const uint64_t n = rd<uint64_t>(f);
         for (uint64_t i = 0; i < n; i++) {
@@ -172,7 +173,7 @@ ColModel read_model(const fs::path& dir) {
         }
     }
     {
-        std::ifstream f(dir / "points3D.bin", std::ios::binary);
+        spirula::BufferedInputFile f(dir / "points3D.bin", std::ios::binary);
         if (!f) return m;
         const uint64_t n = rd<uint64_t>(f);
         for (uint64_t i = 0; i < n; i++) {
@@ -192,7 +193,7 @@ ColModel read_model(const fs::path& dir) {
 void write_model(const ColModel& m, const fs::path& dir) {
     fs::create_directories(dir);
     {
-        std::ofstream f(dir / "cameras.bin", std::ios::binary | std::ios::trunc);
+        spirula::BufferedOutputFile f(dir / "cameras.bin", std::ios::binary | std::ios::trunc);
         wr<uint64_t>(f, m.cameras.size());
         for (const auto& [id, c] : m.cameras) {
             wr<uint32_t>(f, id);
@@ -201,10 +202,11 @@ void write_model(const ColModel& m, const fs::path& dir) {
             wr<uint64_t>(f, c.height);
             for (double p : c.params) wr<double>(f, p);
         }
+        f.close();
         if (!f) throw std::runtime_error("cannot write " + (dir / "cameras.bin").string());
     }
     {
-        std::ofstream f(dir / "images.bin", std::ios::binary | std::ios::trunc);
+        spirula::BufferedOutputFile f(dir / "images.bin", std::ios::binary | std::ios::trunc);
         wr<uint64_t>(f, m.images.size());
         for (const auto& [id, im] : m.images) {
             wr<uint32_t>(f, id);
@@ -219,10 +221,11 @@ void write_model(const ColModel& m, const fs::path& dir) {
                 wr<uint64_t>(f, im.point[k]);
             }
         }
+        f.close();
         if (!f) throw std::runtime_error("cannot write " + (dir / "images.bin").string());
     }
     {
-        std::ofstream f(dir / "points3D.bin", std::ios::binary | std::ios::trunc);
+        spirula::BufferedOutputFile f(dir / "points3D.bin", std::ios::binary | std::ios::trunc);
         wr<uint64_t>(f, m.points.size());
         for (const auto& [id, p] : m.points) {
             wr<uint64_t>(f, id);
@@ -232,6 +235,7 @@ void write_model(const ColModel& m, const fs::path& dir) {
             wr<uint64_t>(f, p.track.size() / 2);
             for (uint32_t v : p.track) wr<uint32_t>(f, v);
         }
+        f.close();
         if (!f) throw std::runtime_error("cannot write " + (dir / "points3D.bin").string());
     }
 }
@@ -413,7 +417,7 @@ uint64_t fnv1a(const std::string& s) {
 uint64_t file_hash(const fs::path& p) {
     std::ifstream f(p, std::ios::binary);
     uint64_t h = 1469598103934665603ull;
-    std::vector<char> buf(1 << 20);
+    thread_local std::vector<char> buf(spirula::kFileBufferBytes);
     while (f) {
         f.read(buf.data(), (std::streamsize)buf.size());
         for (std::streamsize i = 0; i < f.gcount(); i++)

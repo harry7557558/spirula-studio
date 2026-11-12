@@ -1,5 +1,6 @@
 // LabelField.cpp -- see LabelField.h; the metric mirrors shaders/region.slang.
 
+#include "data/FileBytes.h"
 #include "data/LabelField.h"
 
 #include "data/RegionProgram.h"
@@ -316,13 +317,7 @@ void LabelField::write_file(const std::string& path) const {
 }
 
 LabelField LabelField::read_file(const std::string& path) {
-    FILE* f = std::fopen(path.c_str(), "rb");
-    if (!f) throw std::runtime_error("cannot read " + path);
-    std::string bytes;
-    char buf[1 << 16];
-    size_t got;
-    while ((got = std::fread(buf, 1, sizeof buf, f)) > 0) bytes.append(buf, got);
-    std::fclose(f);
+    const std::string bytes = read_file_bytes(path, "LabelField");
     LabelField v;
     size_t used = 0;
     if (!read(bytes.data(), bytes.size(), used, v))

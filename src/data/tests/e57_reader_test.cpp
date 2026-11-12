@@ -63,7 +63,7 @@ int main() {
     // 90 degrees about +z, then a translation.
     spec.scan_q[0] = std::sqrt(0.5); spec.scan_q[3] = std::sqrt(0.5);
     spec.scan_t[0] = 1000.0; spec.scan_t[1] = -2.0; spec.scan_t[2] = 0.5;
-    for (int i = 0; i < 3000; i++) spec.blob.push_back((char)(i * 7 + 3));
+    for (int i = 0; i < (34 << 20) + 37; i++) spec.blob.push_back((char)(i * 7 + 3));
     const double q[4] = {1, 0, 0, 0}, t[3] = {1, 2, 3};
     spec.images.push_back(
         "<name type=\"String\"><![CDATA[cam]]></name>"
@@ -123,7 +123,11 @@ int main() {
     check(reader.images()[1].projection == e57::Projection::Spherical &&
           !reader.images()[1].has_pose, "spherical image without a pose");
     const std::vector<uint8_t> blob = reader.read_blob(pin.jpeg);
-    check(std::string(blob.begin(), blob.end()) == spec.blob, "blob across page boundaries");
+    check(std::string(blob.begin(), blob.end()) == spec.blob, "blob across page and read-window boundaries");
+
+    size_t reread = 0;
+    reader.read_points(scan, [&](const e57::Point*, size_t n) { reread += n; });
+    check(reread == valid.size(), "seek back to points after a multi-window blob");
 
     std::atomic<bool> stop{true};
     check(!reader.read_points(scan, [](const e57::Point*, size_t) {}, &stop), "cancel");

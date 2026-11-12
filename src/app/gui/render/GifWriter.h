@@ -5,6 +5,7 @@
 // frame -- and LZW. Frames compress independently, so several threads can
 // work on them while one writes them out in order.
 
+#include "core/BufferedFile.h"
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -27,6 +28,7 @@ public:
     bool close();
 
 private:
+    std::unique_ptr<char[]> _io_buffer;
     std::FILE* _f = nullptr;
     bool _ok = false;
 };

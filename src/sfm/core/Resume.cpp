@@ -184,7 +184,7 @@ bool readJournal(const fs::path& file, const std::string& signature,
                  const std::vector<ImageEntry>& images,
                  std::unordered_map<uint64_t, TwoViewMatches>& kept,
                  std::vector<uint64_t>& done, uint64_t& putative) {
-    std::ifstream f(file, std::ios::binary);
+    spirula::BufferedInputFile f(file, std::ios::binary);
     if (!f || !magic_is(f, "VKRJ") || !check_signature(f, signature)) return false;
     std::unordered_map<uint64_t, TwoViewMatches> k;
     std::vector<uint64_t> d;

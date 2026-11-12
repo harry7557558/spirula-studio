@@ -644,6 +644,36 @@ GUI rendering and other languages use their original localized strings.
   `--audit`, `SS_SFM_MAP_PROF`, `SS_MESH_DEBUG_RENDER` — and `spirula sam`'s
   machine-readable detection table, which a script reads.
 
+## File I/O — buffer repeated reads and writes
+
+Repeated sequential reads or writes to the same regular file must use a
+reusable **8–32 MiB buffer**, with **16 MiB as the default**. This includes
+binary records, text rows, hashing and file comparisons; the standard stream's
+small default buffer is not enough for these bulk paths.
+
+- Use `spirula::BufferedInputFile` / `BufferedOutputFile` from
+  `src/core/BufferedFile.h`. They own the buffer and handle the different
+  buffer-setup order on MSVC and libstdc++. Preserve their types when returning
+  or storing them; slicing into a plain file stream loses buffer ownership.
+- Existing explicit chunk loops should use `spirula::kFileBufferBytes`.
+  For `FILE*`, call `setvbuf` after opening and before any I/O, and keep its
+  backing storage alive until after `fclose`.
+- Reuse buffers across chunks and repeated operations. Account for every
+  simultaneously open stream and worker in memory budgets and forecasts.
+  Dense code uses `disk_io_buffer_bytes()` in `src/dense/ExternalSort.h`;
+  small budgets may retain standard buffering rather than exceed their limit.
+- Frequent seeks can discard read-ahead and flush pending writes. Use a cached
+  read window for nearby reads, as in `src/data/E57Reader.cpp`; keep genuinely
+  sparse random access on its existing page cache or small-buffer path.
+- Check the final flush or close before reporting success or publishing an
+  output. Do not flush per record unless visibility or durability requires it.
+- Small metadata files, single bulk transfers, memory-mapped files and paths
+  already using suitably sized chunks need no additional large buffer. Preserve
+  timely flushing for live logs, progress output and subprocess protocols.
+- Buffering changes must preserve file bytes, seek/EOF behavior and error
+  reporting. Run the affected format tests; `buffered_file_test` covers chunk
+  boundaries, stream ownership, reopening and deferred write failures.
+
 ## Gotchas worth knowing before you hit them
 
 - **The quantized codecs in `core/Tensor.h` are host-callable.** They carry

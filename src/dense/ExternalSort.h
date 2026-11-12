@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/BufferedFile.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
@@ -10,6 +12,12 @@
 #include <vector>
 
 namespace spirula::dense {
+
+// Small worker budgets retain the standard stream buffer instead of overspending RAM.
+inline size_t disk_io_buffer_bytes(uint64_t budget) {
+    const uint64_t share = budget / 32;
+    return share >= kFileBufferBytes ? kFileBufferBytes : share >= (8u << 20) ? (8u << 20) : 0;
+}
 
 template<class T> bool read_disk_record(std::istream& input, T& value) {
     input.read(reinterpret_cast<char*>(&value), sizeof(T));
@@ -34,7 +42,8 @@ template<class T, class Compare> void external_sort(const std::filesystem::path&
     const std::filesystem::path& destination, uint64_t budget, Compare compare, const std::function<void()>& check = {},
     const std::function<void(uint64_t,uint64_t)>& progress = {}) {
     namespace fs = std::filesystem;
-    const uint64_t capacity = std::max<uint64_t>(1, budget / (4 * sizeof(T)));
+    const size_t buffer_bytes = disk_io_buffer_bytes(budget);
+    const uint64_t capacity = std::max<uint64_t>(1, (budget - 3 * buffer_bytes) / (4 * sizeof(T)));
     std::error_code size_error;
     const uint64_t records = fs::file_size(source, size_error) / sizeof(T);
     uint64_t passes = 0;
@@ -50,7 +59,8 @@ template<class T, class Compare> void external_sort(const std::filesystem::path&
         return destination.string() + ".sort-" + std::to_string(pass) + "-" + std::to_string(index);
     };
     {
-        std::ifstream input(source, std::ios::binary);
+        BufferedInputFile input(source, std::ios::binary, buffer_bytes);
+        BufferedOutputFile output;
         if (!input) throw std::runtime_error("cannot read dense sort input");
         std::vector<T> chunk; chunk.reserve((size_t)capacity); T value;
         for (;;) {
@@ -61,12 +71,16 @@ template<class T, class Compare> void external_sort(const std::filesystem::path&
             advance(chunk.size());
             std::stable_sort(chunk.begin(), chunk.end(), compare);
             const auto path = run_file(0,run_count++);
-            std::ofstream output(path, std::ios::binary | std::ios::trunc);
+            output.open(path, std::ios::binary | std::ios::trunc, buffer_bytes);
             for (const auto& record : chunk) write_disk_record(output, record);
             flush_disk_output(output);
+            output.close();
+            if (!output) throw std::runtime_error("cannot close dense sort run");
         }
     }
     uint64_t pass = 0;
+    BufferedInputFile a, b;
+    BufferedOutputFile output;
     while (run_count > 1) {
         for (uint64_t i = 0; i < run_count; i += 2) {
             if (check) check();
@@ -76,8 +90,9 @@ template<class T, class Compare> void external_sort(const std::filesystem::path&
                 fs::rename(first,path); continue;
             }
             {
-                std::ifstream a(first, std::ios::binary), b(second, std::ios::binary);
-                std::ofstream output(path, std::ios::binary | std::ios::trunc);
+                a.open(first, std::ios::binary, buffer_bytes);
+                b.open(second, std::ios::binary, buffer_bytes);
+                output.open(path, std::ios::binary | std::ios::trunc, buffer_bytes);
                 T va, vb; bool has_a = read_disk_record(a, va), has_b = read_disk_record(b, vb);
                 while (has_a || has_b) {
                     if (check) check();
@@ -87,6 +102,8 @@ template<class T, class Compare> void external_sort(const std::filesystem::path&
                     } else { write_disk_record(output, vb); has_b = read_disk_record(b, vb); }
                 }
                 flush_disk_output(output);
+                a.close(); b.close(); output.close();
+                if (!output) throw std::runtime_error("cannot close dense sort merge");
             }
             fs::remove(first); fs::remove(second);
         }
