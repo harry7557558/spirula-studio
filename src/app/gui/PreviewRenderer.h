@@ -15,10 +15,9 @@ namespace spirula { class TrainerSession; struct RegionOverlay; }
 
 namespace gui {
 
-// Projection selector for render() (matches ViewportPanel's camera-model
-// dropdown order / the web client's #camera-model).
+// Values match CameraModelType and the persisted viewport lens IDs.
 enum class PreviewProjection {
-    Pinhole = 0, Fisheye, Equisolid, Equirectangular
+    Pinhole = 0, Fisheye, Equisolid, Equirectangular, Orthographic
 };
 
 // How a frame for a FILE is drawn, as opposed to one for the viewport
@@ -96,9 +95,6 @@ public:
                     float scene_radius, float view_dist,
                     const float view_target[3], bool show_cams,
                     float frustum_scale, bool show_grid,
-                    // How far an orthographic view's camera was pulled back
-                    // along its axis (ViewportPanel::ortho_pullback), 0 if not.
-                    float ortho_back = 0.0f,
                     const PreviewStyle* style = nullptr);
 
     // A region's boundary drawn over the cloud (app/webviewer/RegionOverlay.h),
@@ -192,7 +188,7 @@ private:
     std::vector<float> _ov_dash;      // per layer, dash period
     int _u_alpha = -1, _u_dash = -1;
     void upload_overlay();
-    void draw_overlay(const float view[16]);
+    void draw_overlay(const float view[16], bool orthographic);
     void destroy_overlay_gl();
 
     unsigned _fbo = 0, _color_tex = 0, _depth_rb = 0;

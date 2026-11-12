@@ -312,6 +312,7 @@ float3 unproject_raydir(
 
     float3 raydir;
     bool is_unit = false;  // base ray already has unit length
+    if (model == CameraModelType::ORTHOGRAPHIC) return float3(0, 0, 1);
     if (model == CameraModelType::FISHEYE) {
         float theta = length(uv);
         raydir = float3(uv / max(theta, 1e-7f) * sin(theta), cos(theta));
@@ -373,6 +374,8 @@ float3 depth_to_point<D : ICameraDistortion>(
         return float3(0.0f);
     }
 
+    if (camera_model == (int)CameraModelType::ORTHOGRAPHIC)
+        return float3(uv, depth);
     return depth * unproject_raydir(uv_u, camera_model, is_ray_depth);
 }
 

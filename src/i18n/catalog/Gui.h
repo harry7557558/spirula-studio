@@ -9154,19 +9154,19 @@ SS_MSG(gizmo_to_ortho,
     TR("Ortografik görünüme geç (sayısal tuş takımı 5)."));
 
 SS_MSG(gizmo_to_perspective,
-    EN("Switch to the perspective view (numeric-pad 5)."),
-    JA("透視投影に切り替えます（テンキーの 5）。"),
-    ZH_HANS("切换到透视视图（数字键盘 5）。"),
-    ZH_HANT("切換到透視視圖（數字鍵盤 5）。"),
-    KO("원근 투영으로 전환합니다(숫자 패드 5)."),
-    DE("Zur perspektivischen Ansicht wechseln (Ziffernblock 5)."),
-    FR("Passer à la vue en perspective (pavé numérique 5)."),
-    ES("Cambiar a la vista en perspectiva (teclado numérico 5)."),
-    PT("Mudar para a vista em perspectiva (teclado numérico 5)."),
-    IT("Passa alla vista prospettica (tastierino numerico 5)."),
-    NL("Overschakelen naar perspectiefweergave (numeriek toetsenblok 5)."),
-    RU("Переключиться на перспективный вид (цифровая клавиатура 5)."),
-    TR("Perspektif görünüme geç (sayısal tuş takımı 5)."));
+    EN("Restore the previous projection (numeric-pad 5)."),
+    JA("前の投影に戻します（テンキーの 5）。"),
+    ZH_HANS("恢复上次的投影（数字键盘 5）。"),
+    ZH_HANT("恢復上次的投影（數字鍵盤 5）。"),
+    KO("이전 투영으로 돌아갑니다(숫자 패드 5)."),
+    DE("Vorherige Projektion wiederherstellen (Ziffernblock 5)."),
+    FR("Rétablir la projection précédente (pavé numérique 5)."),
+    ES("Restaurar la proyección anterior (teclado numérico 5)."),
+    PT("Restaurar a projeção anterior (teclado numérico 5)."),
+    IT("Ripristina la proiezione precedente (tastierino numerico 5)."),
+    NL("Vorige projectie herstellen (numeriek toetsenblok 5)."),
+    RU("Вернуть предыдущую проекцию (цифровая клавиатура 5)."),
+    TR("Önceki projeksiyona dön (sayısal tuş takımı 5)."));
 
 
 

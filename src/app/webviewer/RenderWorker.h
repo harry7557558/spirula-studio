@@ -189,16 +189,11 @@ float viewer_upload_cameras(const PostSplitCameras& post);
 // frame), for renderers that draw frusta without the engine.
 float viewer_camera_size_heuristic(const PostSplitCameras& post);
 
-// Unit ray direction (CV convention: x right, y down, z forward) for a
-// viewer pixel, u = (px - cx)/fx, v = (py - cy)/fy. Host port of
-// projection_utils generate_ray for the distortion-free display models
-// 0 pinhole / 1 fisheye-equidistant / 2 equisolid / 3 equirectangular;
-// false when the pixel is outside the model's domain.
+// Unit CV direction for u = (px-cx)/fx, v = (py-cy)/fy.
+// Orthographic origins are (u,v,0); false outside the model's domain.
 bool viewer_pixel_ray(int camera_model, float u, float v, float dir[3]);
 
-// Its inverse: a camera-space direction (need not be unit) to the same
-// normalized coordinates, false behind the model's horizon. Selecting in the
-// viewport is this run over every element, so the two must stay one pair.
+// Camera-space point to normalized image coordinates; false behind the horizon.
 bool viewer_ray_pixel(int camera_model, const float dir[3], float& u, float& v);
 
 // One-shot upload of the axes/grid overlay (engine_viewer_set_grid). The

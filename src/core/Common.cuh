@@ -125,6 +125,7 @@ enum class CameraModelType {
     FISHEYE = 1,
     EQUISOLID = 2,
     EQUIRECTANGULAR = 3,
+    ORTHOGRAPHIC = 4,
 };
 
 // Lens distortion tier, orthogonal to CameraModelType and a COMPILE-TIME axis
@@ -202,6 +203,7 @@ inline CameraModelType cmt(const std::string &s) {
     return (s == "PINHOLE") ? CameraModelType::PINHOLE :
         (s == "FISHEYE") ? CameraModelType::FISHEYE :
         (s == "EQUISOLID") ? CameraModelType::EQUISOLID :
+        (s == "ORTHOGRAPHIC") ? CameraModelType::ORTHOGRAPHIC :
         (s == "EQUIRECTANGULAR") ? CameraModelType::EQUIRECTANGULAR :
         (CameraModelType)-1;
 }

@@ -66,6 +66,18 @@ _SS_DEF_3DGS_PROJ_TIERS(FISHEYE, fisheye)
 _SS_DEF_3DGS_PROJ_TIERS(EQUISOLID, equisolid)
 _SS_DEF_3DGS_PROJ(EQUIRECTANGULAR, None, equirect, _none)
 
+template<>
+struct Slang3DGSProj<CameraModelType::ORTHOGRAPHIC, CameraDistortionType::None> {
+    template<typename... Args>
+    static __device__ __forceinline__ void fwd_2d(bool antialiased, Args... args) {
+        Slang3DGS::projection_3dgs_ortho_none(antialiased, args...);
+    }
+    template<typename... Args>
+    static __device__ __forceinline__ void fwd_3d(bool antialiased, Args... args) {
+        Slang3DGS::projection_3dgut_ortho_none(antialiased, args...);
+    }
+};
+
 #undef _SS_DEF_3DGS_PROJ_TIERS
 #undef _SS_DEF_3DGS_PROJ
 

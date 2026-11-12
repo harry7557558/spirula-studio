@@ -127,9 +127,6 @@ public:
     // a placement is dragged: the model moves through it, the grid does not.
     void nav_camera(int W, int H, float w2c[12], float& fx, float& fy,
                     int& camera_model, float eye[3]) const;
-    // How far the orthographic emulation pulled the render camera back along
-    // its axis, in the frame view_camera / nav_camera report; 0 in perspective.
-    float ortho_pullback(bool shared) const;
     // The orbit pivot, shared frame: what the view is looking at.
     void nav_target(float out[3]) const {
         for (int i = 0; i < 3; i++) out[i] = _cam.target[i];
@@ -363,7 +360,8 @@ private:
 
     // Camera model + per-model FOV memory (browser _fovMemory equivalent).
     int _cam_model = 0;              // index into kViewerCameraModels
-    float _fov_deg[4] = {90, 180, 180, 0};
+    float _fov_deg[5] = {90, 180, 180, 0, 90};
+    int _previous_cam_model = 0;
 
     // Whether there are training cameras behind what is being rendered. A
     // splat file has none, so the frustum controls are hidden rather than
@@ -407,12 +405,9 @@ private:
     void draw_overlays();
     void animate_view(double now);
     bool external_grid() const;
-    // Camera-to-world in the shared frame, pulled back when orthographic.
+    // Camera-to-world in the shared frame.
     void render_c2w(float out[12]) const;
-    float ortho_back() const;
 
-    // Orthographic is a pinhole a long way off with a long lens: every
-    // renderer, primitive and selection test then works unchanged.
     bool _ortho = false;
     bool _ortho_auto = false;        // entered by an axis click: orbit leaves it
     // A view change in flight (axis snap): rotation slerped, pivot distance kept.

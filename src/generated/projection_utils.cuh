@@ -1269,6 +1269,12 @@ inline __device__ bool unproject_point_none(float2  uv_14, int camera_model_2, F
     bool _S263;
     for(;;)
     {
+        if(camera_model_2 == int(4))
+        {
+            *raydir_1 = make_float3 (0.0f, 0.0f, 1.0f);
+            _S263 = true;
+            break;
+        }
         int3  _S264 = make_int3 (int(0));
         float3  _S265 = make_float3 ((float)_S264.x, (float)_S264.y, (float)_S264.z);
         *raydir_1 = _S265;
@@ -1332,6 +1338,12 @@ inline __device__ bool generate_ray_none(float2  uv_15, int camera_model_3, Fixe
     bool _S269;
     for(;;)
     {
+        if(camera_model_3 == int(4))
+        {
+            *raydir_2 = make_float3 (0.0f, 0.0f, 1.0f);
+            _S269 = true;
+            break;
+        }
         if(camera_model_3 == int(3))
         {
             float _S270 = uv_15.x;
@@ -2086,6 +2098,12 @@ inline __device__ bool unproject_point_opencv(float2  uv_23, int camera_model_6,
     bool _S487;
     for(;;)
     {
+        if(camera_model_6 == int(4))
+        {
+            *raydir_4 = make_float3 (0.0f, 0.0f, 1.0f);
+            _S487 = true;
+            break;
+        }
         int3  _S488 = make_int3 (int(0));
         float3  _S489 = make_float3 ((float)_S488.x, (float)_S488.y, (float)_S488.z);
         *raydir_4 = _S489;
@@ -2144,6 +2162,12 @@ inline __device__ bool generate_ray_opencv(float2  uv_24, int camera_model_7, Fi
     bool _S493;
     for(;;)
     {
+        if(camera_model_7 == int(4))
+        {
+            *raydir_5 = make_float3 (0.0f, 0.0f, 1.0f);
+            _S493 = true;
+            break;
+        }
         if(camera_model_7 == int(3))
         {
             float _S494 = uv_24.x;
@@ -2898,6 +2922,12 @@ inline __device__ bool unproject_point_prism(float2  uv_32, int camera_model_10,
     bool _S711;
     for(;;)
     {
+        if(camera_model_10 == int(4))
+        {
+            *raydir_7 = make_float3 (0.0f, 0.0f, 1.0f);
+            _S711 = true;
+            break;
+        }
         int3  _S712 = make_int3 (int(0));
         float3  _S713 = make_float3 ((float)_S712.x, (float)_S712.y, (float)_S712.z);
         *raydir_7 = _S713;
@@ -2956,6 +2986,12 @@ inline __device__ bool generate_ray_prism(float2  uv_33, int camera_model_11, Fi
     bool _S717;
     for(;;)
     {
+        if(camera_model_11 == int(4))
+        {
+            *raydir_8 = make_float3 (0.0f, 0.0f, 1.0f);
+            _S717 = true;
+            break;
+        }
         if(camera_model_11 == int(3))
         {
             float _S718 = uv_33.x;

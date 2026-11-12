@@ -115,7 +115,7 @@ inline std::tuple<
         if (camera_model == CameraModelType::M && distortion == CameraDistortionType::D) \
             projection_packed_mask_kernel_wrapper<SplatPrimitive, \
                 CameraModelType::M, CameraDistortionType::D> _LAUNCH_ARGS; else
-    SS_FOR_EACH_CAMERA_VARIANT(_DISPATCH)
+    SS_FOR_EACH_FORWARD_CAMERA_VARIANT(_DISPATCH)
         throw std::runtime_error("Unsupported camera model / distortion tier");
     #undef _DISPATCH
     CHECK_DEVICE_ERROR(cudaGetLastError());
@@ -156,7 +156,7 @@ inline std::tuple<
         if (camera_model == CameraModelType::M && distortion == CameraDistortionType::D) \
             projection_packed_fwd_kernel_wrapper<SplatPrimitive, \
                 CameraModelType::M, CameraDistortionType::D> _LAUNCH_ARGS; else
-    SS_FOR_EACH_CAMERA_VARIANT(_DISPATCH)
+    SS_FOR_EACH_FORWARD_CAMERA_VARIANT(_DISPATCH)
         throw std::runtime_error("Unsupported camera model / distortion tier");
     #undef _DISPATCH
     CHECK_DEVICE_ERROR(cudaGetLastError());

@@ -149,7 +149,6 @@ bool EditSession::view(ViewProjection& out) const {
                         out.camera_model, out.eye);
     out.cx = 0.5f * (float)out.W;
     out.cy = 0.5f * (float)out.H;
-    out.ortho_back = _panel->ortho_pullback(false);
     return true;
 }
 

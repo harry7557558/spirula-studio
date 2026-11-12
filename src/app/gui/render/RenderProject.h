@@ -19,8 +19,8 @@ namespace gui::render {
 // The camera models every renderer here knows; the values are
 // CameraModelType's (core/CameraModel.h), which this header cannot include
 // next to the engine's copy of the same enum.
-enum class Projection { Perspective = 0, Fisheye, Equisolid, Equirect };
-constexpr int kNumProjections = 4;
+enum class Projection { Perspective = 0, Fisheye, Equisolid, Equirect, Orthographic };
+constexpr int kNumProjections = 5;
 // The width of a distortion row, core/CameraModel.h's kCameraDistortionParams.
 constexpr int kLensCoeffs = 8;
 
@@ -29,6 +29,8 @@ struct Lens {
     // fx / image width: resolution-free, and the pixels stay square. An
     // equirectangular lens ignores it -- its image is the whole sphere.
     double focal = 0.8660254;
+    // Orthographic FOV reference distance, in project world units.
+    double ortho_distance = 1.0;
     // CameraDistortionType, and its coefficients in that tier's own order.
     int tier = 0;
     float dist[kLensCoeffs] = {};
@@ -45,7 +47,7 @@ void lens_set_fov(Lens& l, double degrees);
 // sensor is 36 mm across.
 inline double lens_mm(const Lens& l) { return 36.0 * l.focal; }
 // Pixels for an image `w` x `h`: fx, fy, cx, cy.
-void lens_intrinsics(const Lens& l, int w, int h, float out[4]);
+void lens_intrinsics(const Lens& l, int w, int h, float out[4], double model_to_world_scale = 1.0);
 // Whether splats seen through `l` at `w` x `h` want 3DGUT rather than 3DGS:
 // the whole sphere, or a distortion folding over itself (the engine's
 // is_valid_distortion failing) somewhere in the frame.

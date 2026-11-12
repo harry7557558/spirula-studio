@@ -193,7 +193,11 @@ __global__ void depth_to_normal_forward_kernel(
             {fx, fy, cx, cy}, dist_coeffs,
             (int)camera_model, is_ray_depth
         );
-        shared_points[jt][it] = ray * depth;
+        float3 point = ray * depth;
+        if (camera_model == CameraModelType::ORTHOGRAPHIC)
+            point += make_float3(((float)ig + 0.5f - cx) / fx,
+                                 ((float)jg + 0.5f - cy) / fy, 0.0f);
+        shared_points[jt][it] = point;
     }
     __syncthreads();
     if (!inside) return;

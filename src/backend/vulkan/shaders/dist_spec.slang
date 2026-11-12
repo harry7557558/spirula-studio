@@ -81,3 +81,8 @@ bool pixel_ray<D : ICameraDistortion>(float* dist_coeffs, uint cid,
         }                                                               \
         break;                                                          \
     }
+
+// Orthographic is a viewer-only forward path.
+#define SS_DISPATCH_CAM_DIST_FWD(CALL) \
+    if (kCameraModel == 4) { CALL(CameraModelType::ORTHOGRAPHIC, DistNone); } \
+    else { SS_DISPATCH_CAM_DIST(CALL) }

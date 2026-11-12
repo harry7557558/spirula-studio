@@ -15,12 +15,13 @@ inline const char* const kTierNames[3] = {"NONE", "OPENCV", "THIN_PRISM"};
 // Tiers compiled for each camera model, in CameraModelType order; see
 // camera_distortion_is_compiled in core/CameraModel.h. Rows are padded with
 // tier 0 so a fixed-width table indexes cleanly -- read only kNumTiers[m].
-inline constexpr int kNumTiers[4] = {3, 3, 3, 1};
-inline constexpr int kTiers[4][3] = {
+inline constexpr int kNumTiers[5] = {3, 3, 3, 1, 1};
+inline constexpr int kTiers[5][3] = {
     {0, 1, 2},   // PINHOLE
     {0, 1, 2},   // FISHEYE
     {0, 1, 2},   // EQUISOLID
     {0, 0, 0},   // EQUIRECTANGULAR
+    {0, 0, 0},   // ORTHOGRAPHIC
 };
 
 // [tier][camera][kCameraDistortionParams], each row in ITS OWN tier's slot

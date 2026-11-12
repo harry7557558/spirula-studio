@@ -23,6 +23,7 @@ enum class CameraModelType {
     FISHEYE = 1,
     EQUISOLID = 2,
     EQUIRECTANGULAR = 3,
+    ORTHOGRAPHIC = 4,
 };
 
 // Lens distortion, orthogonal to CameraModelType and chosen per camera group at
@@ -146,6 +147,7 @@ inline CameraModelType camera_model_from_name(const std::string& name) {
         name == "RADIAL_FISHEYE" ||
         name == "OPENCV_FISHEYE" ||
         name == "THIN_PRISM_FISHEYE") return CameraModelType::FISHEYE;
+    if (name == "ORTHOGRAPHIC") return CameraModelType::ORTHOGRAPHIC;
     if (name == "EQUISOLID")          return CameraModelType::EQUISOLID;
     if (name == "EQUIRECTANGULAR")    return CameraModelType::EQUIRECTANGULAR;
     return (CameraModelType)-1;
@@ -153,6 +155,7 @@ inline CameraModelType camera_model_from_name(const std::string& name) {
 
 inline const char* camera_model_to_string(CameraModelType m) {
     switch (m) {
+        case CameraModelType::ORTHOGRAPHIC:    return "ORTHOGRAPHIC";
         case CameraModelType::PINHOLE:         return "PINHOLE";
         case CameraModelType::FISHEYE:         return "FISHEYE";
         case CameraModelType::EQUISOLID:       return "EQUISOLID";

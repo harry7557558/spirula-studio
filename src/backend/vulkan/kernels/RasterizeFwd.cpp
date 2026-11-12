@@ -297,7 +297,7 @@ std::tuple<
     bool output_depth,
     SplatScoreRender score
 ) {
-    const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
+    const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion, true);
 
     const int64_t batch = tile_offsets.size<0>();
     const uint32_t tile_height = (uint32_t)tile_offsets.size<1>();

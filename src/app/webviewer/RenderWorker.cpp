@@ -217,6 +217,11 @@ struct RenderWorker::Impl {
         float vm[16];
         engine_viewmat(q.c2w, vm);
         float intr[4] = {q.fx, q.fy, q.cx, q.cy};
+        if (q.model == "ORTHOGRAPHIC") {
+            const float scale = cfg.train_frame_scale * cfg.relative_scale.value_or(1.0f);
+            intr[0] /= scale;
+            intr[1] /= scale;
+        }
         float dist[8];
         std::memcpy(dist, q.dist, sizeof dist);
         const int sh_deg = q.sh_degree >= 0 ? q.sh_degree : 100;
@@ -322,6 +327,11 @@ struct RenderWorker::Impl {
         vm[15] = 1.f;
 
         float intr[4] = {q.fx, q.fy, q.cx, q.cy};
+        if (q.model == "ORTHOGRAPHIC") {
+            const float scale = cfg.train_frame_scale * cfg.relative_scale.value_or(1.0f);
+            intr[0] /= scale;
+            intr[1] /= scale;
+        }
         float dist0[8] = {0};
         // Distortion images are FULL render resolution (never-freed pool
         // slots) -- emit them only when the user is actually LOOKING at a
@@ -341,7 +351,7 @@ struct RenderWorker::Impl {
 
         const bool want_raw = cfg.color_space_on && q.key == "rgb_raw";
         std::shared_ptr<const spirula::RegionOverlay> ov;
-        if (q.show_roi && q.model == "PINHOLE") {
+        if (q.show_roi && (q.model == "PINHOLE" || q.model == "ORTHOGRAPHIC")) {
             std::lock_guard<std::mutex> lk(mu);
             ov = overlay;
         }
@@ -363,6 +373,12 @@ struct RenderWorker::Impl {
                 p[r] = c2w[r*4+3] + d * (c2w[r*4+0]*dcv[0] -
                                          c2w[r*4+1]*dcv[1] -
                                          c2w[r*4+2]*dcv[2]);
+            if (q.model == "ORTHOGRAPHIC") {
+                const float u = ((float)q.pick_px + 0.5f - q.cx) / intr[0];
+                const float v = ((float)q.pick_py + 0.5f - q.cy) / intr[1];
+                for (int r = 0; r < 3; r++)
+                    p[r] += c2w[r*4] * u - c2w[r*4+1] * v;
+            }
             // Train -> client normalized frame (inverse similarity,
             // same gating as the forward remap above).
             if (remaps(cfg.train_to_normalized)) {
@@ -567,7 +583,8 @@ struct RenderWorker::Impl {
                     const float a = alpha3[(size_t)i * 3];
                     scene[(size_t)i] = a > 0.1f ? depth[(size_t)i] / std::min(a / 0.5f, 1.0f) : 0.0f;
                 }
-                spirula::draw_region_overlay(*ov, out_host.data(), W, H, scene.data(), c2w, q.fx, q.fy, q.cx, q.cy);
+                spirula::draw_region_overlay(*ov, out_host.data(), W, H, scene.data(), c2w, intr[0], intr[1], q.cx, q.cy,
+                                             q.model == "ORTHOGRAPHIC");
             }
         };
         {
@@ -708,6 +725,11 @@ float viewer_upload_cameras(const PostSplitCameras& post) {
 
 bool viewer_pixel_ray(int camera_model, float u, float v, float dir[3]) {
     constexpr float kPi = 3.14159265358979323846f;
+    if (camera_model == 4) {
+        dir[0] = dir[1] = 0.0f;
+        dir[2] = 1.0f;
+        return true;
+    }
     if (camera_model == 3) {                       // equirectangular
         if (std::abs(u) > kPi || std::abs(v) > 0.5f * kPi) return false;
         float cl = std::cos(v);
@@ -744,6 +766,11 @@ bool viewer_pixel_ray(int camera_model, float u, float v, float dir[3]) {
 bool viewer_ray_pixel(int camera_model, const float dir[3], float& u, float& v) {
     constexpr float kPi = 3.14159265358979323846f;
     const float x = dir[0], y = dir[1], z = dir[2];
+    if (camera_model == 4) {
+        u = x;
+        v = y;
+        return z > 0.0f;
+    }
     const float len = std::sqrt(x*x + y*y + z*z);
     if (!(len > 0.0f)) return false;
     if (camera_model == 3) {                       // equirectangular

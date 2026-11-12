@@ -203,7 +203,11 @@ void _d2n_fill_apron<D : ICameraDistortion>(DepthToNormalParams p, uint bid,
         float3 ray = generate_ray_d2n<D>(
             float2(float(ig) + 0.5f, float(jg) + 0.5f), intrin, dist,
             p.camera_model, p.is_ray_depth != 0);
-        _d2n_points[k] = ray * depth;
+        float3 point = ray * depth;
+        if (p.camera_model == 4)
+            point += float3((float(ig) + 0.5f - intrin.z) / intrin.x,
+                            (float(jg) + 0.5f - intrin.w) / intrin.y, 0);
+        _d2n_points[k] = point;
     }
 }
 

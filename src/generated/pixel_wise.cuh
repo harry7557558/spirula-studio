@@ -1999,6 +1999,10 @@ inline __device__ float3  normalize_0(float3  x_20)
 
 inline __device__ float3  unproject_raydir_0(float2  uv_5, int camera_model_0, bool is_ray_depth_0)
 {
+    if(camera_model_0 == int(4))
+    {
+        return make_float3 (0.0f, 0.0f, 1.0f);
+    }
     float3  raydir_0;
     bool is_unit_0;
     if(camera_model_0 == int(1))
@@ -2010,25 +2014,28 @@ inline __device__ float3  unproject_raydir_0(float2  uv_5, int camera_model_0, b
     }
     else
     {
-        bool _S378 = camera_model_0 == int(2);
-        if(_S378)
+        if(camera_model_0 == int(2))
         {
             float r_4 = length_1(uv_5);
-            raydir_0 = make_float3 ((uv_5 * make_float2 ((F32_sqrt(((F32_max((0.0f), (1.0f - 0.25f * r_4 * r_4)))))))).x, (uv_5 * make_float2 ((F32_sqrt(((F32_max((0.0f), (1.0f - 0.25f * r_4 * r_4)))))))).y, 1.0f - 0.5f * r_4 * r_4);
+            float3  _S378 = make_float3 ((uv_5 * make_float2 ((F32_sqrt(((F32_max((0.0f), (1.0f - 0.25f * r_4 * r_4)))))))).x, (uv_5 * make_float2 ((F32_sqrt(((F32_max((0.0f), (1.0f - 0.25f * r_4 * r_4)))))))).y, 1.0f - 0.5f * r_4 * r_4);
             is_unit_0 = true;
-        }
-        else if(camera_model_0 == int(3))
-        {
-            float lon_0 = uv_5.x;
-            float lat_0 = uv_5.y;
-            float cl_0 = F32_cos((lat_0));
-            raydir_0 = make_float3 (cl_0 * F32_sin((lon_0)), F32_sin((lat_0)), cl_0 * F32_cos((lon_0)));
-            is_unit_0 = true;
+            raydir_0 = _S378;
         }
         else
         {
-            raydir_0 = make_float3 (uv_5.x, uv_5.y, 1.0f);
-            is_unit_0 = false;
+            bool _S379 = camera_model_0 == int(3);
+            if(_S379)
+            {
+                float lon_0 = uv_5.x;
+                float lat_0 = uv_5.y;
+                float cl_0 = (F32_cos((lat_0)));
+                raydir_0 = make_float3 (cl_0 * (F32_sin((lon_0))), (F32_sin((lat_0))), cl_0 * (F32_cos((lon_0))));
+            }
+            else
+            {
+                raydir_0 = make_float3 (uv_5.x, uv_5.y, 1.0f);
+            }
+            is_unit_0 = _S379;
         }
     }
     if(is_ray_depth_0)
@@ -2050,151 +2057,211 @@ inline __device__ float3  unproject_raydir_0(float2  uv_5, int camera_model_0, b
 
 inline __device__ float3  generate_ray_d2n_none(float2  pix_pos_0, float4  intrins_0, FixedArray<float, 1>  dist_coeffs_3, int camera_model_1, bool is_ray_depth_1)
 {
-    float3  _S379;
+    float3  _S380;
     for(;;)
     {
         float2  uv_6 = (pix_pos_0 - float2 {intrins_0.z, intrins_0.w}) / float2 {intrins_0.x, intrins_0.y};
-        FixedArray<float, 1>  _S380 = dist_coeffs_3;
+        FixedArray<float, 1>  _S381 = dist_coeffs_3;
         float2  uv_u_0;
-        bool _S381 = undistort_point_0(uv_6, &_S380, int(12), &uv_u_0);
-        if(!_S381)
+        bool _S382 = undistort_point_0(uv_6, &_S381, int(12), &uv_u_0);
+        if(!_S382)
         {
-            int3  _S382 = make_int3 (int(0));
-            float3  _S383 = make_float3 ((float)_S382.x, (float)_S382.y, (float)_S382.z);
-            _S379 = _S383;
+            int3  _S383 = make_int3 (int(0));
+            float3  _S384 = make_float3 ((float)_S383.x, (float)_S383.y, (float)_S383.z);
+            _S380 = _S384;
             break;
         }
-        _S379 = unproject_raydir_0(uv_u_0, camera_model_1, is_ray_depth_1);
+        _S380 = unproject_raydir_0(uv_u_0, camera_model_1, is_ray_depth_1);
         break;
     }
-    return _S379;
+    return _S380;
 }
 
 inline __device__ float3  depth_to_point_none(float2  pix_pos_1, float4  intrins_1, FixedArray<float, 1>  dist_coeffs_4, int camera_model_2, bool is_ray_depth_2, float depth_2)
 {
-    float3  _S384;
+    float3  _S385;
     for(;;)
     {
         float2  uv_7 = (pix_pos_1 - float2 {intrins_1.z, intrins_1.w}) / float2 {intrins_1.x, intrins_1.y};
-        FixedArray<float, 1>  _S385 = dist_coeffs_4;
+        FixedArray<float, 1>  _S386 = dist_coeffs_4;
         float2  uv_u_1;
-        bool _S386 = undistort_point_0(uv_7, &_S385, int(12), &uv_u_1);
-        if(!_S386)
+        bool _S387 = undistort_point_0(uv_7, &_S386, int(12), &uv_u_1);
+        if(!_S387)
         {
-            _S384 = make_float3 (0.0f);
+            _S385 = make_float3 (0.0f);
             break;
         }
-        _S384 = make_float3 (depth_2) * unproject_raydir_0(uv_u_1, camera_model_2, is_ray_depth_2);
+        if(camera_model_2 == int(4))
+        {
+            _S385 = make_float3 (uv_7.x, uv_7.y, depth_2);
+            break;
+        }
+        _S385 = make_float3 (depth_2) * unproject_raydir_0(uv_u_1, camera_model_2, is_ray_depth_2);
         break;
     }
-    return _S384;
+    return _S385;
 }
 
 struct s_bwd_prop_depth_to_point_Intermediates_0
 {
-    float2  _S387;
-    bool _S388;
+    float2  _S388;
+    bool _S389;
 };
 
-inline __device__ float s_primal_ctx_sin_0(float _S389)
+inline __device__ float s_primal_ctx_sin_0(float _S390)
 {
-    return (F32_sin((_S389)));
+    return (F32_sin((_S390)));
 }
 
-inline __device__ float s_primal_ctx_cos_0(float _S390)
+inline __device__ float s_primal_ctx_cos_0(float _S391)
 {
-    return (F32_cos((_S390)));
+    return (F32_cos((_S391)));
 }
 
-inline __device__ float s_primal_ctx_sqrt_0(float _S391)
+inline __device__ float s_primal_ctx_sqrt_0(float _S392)
 {
-    return (F32_sqrt((_S391)));
+    return (F32_sqrt((_S392)));
 }
 
 inline __device__ float3  s_primal_ctx_unproject_raydir_0(float2  dpuv_2, int camera_model_3, bool is_ray_depth_3)
 {
+    bool _S393 = camera_model_3 == int(4);
     float3  raydir_1;
-    bool is_unit_1;
-    if(camera_model_3 == int(1))
+    if(_S393)
     {
-        float _S392 = length_1(dpuv_2);
-        float3  _S393 = make_float3 ((dpuv_2 / make_float2 ((F32_max((_S392), (1.00000001168609742e-07f)))) * make_float2 (s_primal_ctx_sin_0(_S392))).x, (dpuv_2 / make_float2 ((F32_max((_S392), (1.00000001168609742e-07f)))) * make_float2 (s_primal_ctx_sin_0(_S392))).y, s_primal_ctx_cos_0(_S392));
-        is_unit_1 = true;
-        raydir_1 = _S393;
+        raydir_1 = make_float3 (0.0f, 0.0f, 1.0f);
     }
-    else
+    bool _S394 = !_S393;
+    if(_S394)
     {
-        bool _S394 = camera_model_3 == int(2);
-        if(_S394)
+        bool is_unit_1;
+        if(camera_model_3 == int(1))
         {
             float _S395 = length_1(dpuv_2);
-            raydir_1 = make_float3 ((dpuv_2 * make_float2 (s_primal_ctx_sqrt_0((F32_max((0.0f), (1.0f - 0.25f * _S395 * _S395)))))).x, (dpuv_2 * make_float2 (s_primal_ctx_sqrt_0((F32_max((0.0f), (1.0f - 0.25f * _S395 * _S395)))))).y, 1.0f - 0.5f * _S395 * _S395);
+            float3  _S396 = make_float3 ((dpuv_2 / make_float2 ((F32_max((_S395), (1.00000001168609742e-07f)))) * make_float2 (s_primal_ctx_sin_0(_S395))).x, (dpuv_2 / make_float2 ((F32_max((_S395), (1.00000001168609742e-07f)))) * make_float2 (s_primal_ctx_sin_0(_S395))).y, s_primal_ctx_cos_0(_S395));
             is_unit_1 = true;
-        }
-        else if(camera_model_3 == int(3))
-        {
-            float lon_1 = dpuv_2.x;
-            float lat_1 = dpuv_2.y;
-            float cl_1 = s_primal_ctx_cos_0((lat_1));
-            raydir_1 = make_float3 (cl_1 * s_primal_ctx_sin_0((lon_1)), s_primal_ctx_sin_0((lat_1)), cl_1 * s_primal_ctx_cos_0((lon_1)));
-            is_unit_1 = true;
+            raydir_1 = _S396;
         }
         else
         {
-            raydir_1 = make_float3 (dpuv_2.x, dpuv_2.y, 1.0f);
-            is_unit_1 = false;
+            if(camera_model_3 == int(2))
+            {
+                float _S397 = length_1(dpuv_2);
+                float3  _S398 = make_float3 ((dpuv_2 * make_float2 (s_primal_ctx_sqrt_0((F32_max((0.0f), (1.0f - 0.25f * _S397 * _S397)))))).x, (dpuv_2 * make_float2 (s_primal_ctx_sqrt_0((F32_max((0.0f), (1.0f - 0.25f * _S397 * _S397)))))).y, 1.0f - 0.5f * _S397 * _S397);
+                is_unit_1 = true;
+                raydir_1 = _S398;
+            }
+            else
+            {
+                bool _S399 = camera_model_3 == int(3);
+                if(_S399)
+                {
+                    float lon_1 = dpuv_2.x;
+                    float lat_1 = dpuv_2.y;
+                    float _S400 = s_primal_ctx_cos_0(lat_1);
+                    raydir_1 = make_float3 (_S400 * s_primal_ctx_sin_0(lon_1), s_primal_ctx_sin_0(lat_1), _S400 * s_primal_ctx_cos_0(lon_1));
+                }
+                else
+                {
+                    raydir_1 = make_float3 (dpuv_2.x, dpuv_2.y, 1.0f);
+                }
+                is_unit_1 = _S399;
+            }
         }
-    }
-    if(is_ray_depth_3)
-    {
-        if(is_unit_1)
+        if(is_ray_depth_3)
         {
+            if(is_unit_1)
+            {
+            }
+            else
+            {
+                raydir_1 = normalize_0(raydir_1);
+            }
         }
         else
         {
-            raydir_1 = normalize_0(raydir_1);
+            raydir_1 = raydir_1 / make_float3 (raydir_1.z);
         }
-    }
-    else
-    {
-        raydir_1 = raydir_1 / make_float3 (raydir_1.z);
     }
     return raydir_1;
 }
 
 inline __device__ float depth_to_point_vjp_none(float2  pix_pos_2, float4  intrins_2, FixedArray<float, 1>  dist_coeffs_5, int camera_model_4, bool is_ray_depth_4, float depth_3, float3  v_point_0)
 {
-    float2  _S396 = make_float2 (0.0f);
-    s_bwd_prop_depth_to_point_Intermediates_0 _S397;
-    (&_S397)->_S387 = _S396;
-    (&_S397)->_S388 = false;
+    float2  _S401 = make_float2 (0.0f);
+    s_bwd_prop_depth_to_point_Intermediates_0 _S402;
+    (&_S402)->_S388 = _S401;
+    (&_S402)->_S389 = false;
     float2  uv_8 = (pix_pos_2 - float2 {intrins_2.z, intrins_2.w}) / float2 {intrins_2.x, intrins_2.y};
-    float2  _S398 = _S396;
-    FixedArray<float, 1>  _S399 = dist_coeffs_5;
-    bool _S400 = undistort_point_0(uv_8, &_S399, int(12), &_S398);
-    (&_S397)->_S387 = _S398;
-    (&_S397)->_S388 = _S400;
-    s_bwd_prop_depth_to_point_Intermediates_0 _S401 = _S397;
-    float3  _S402 = make_float3 (0.0f);
-    bool _S403 = !!_S397._S388;
-    float3  _S404;
-    if(_S403)
+    float2  _S403 = _S401;
+    FixedArray<float, 1>  _S404 = dist_coeffs_5;
+    bool _S405 = undistort_point_0(uv_8, &_S404, int(12), &_S403);
+    (&_S402)->_S388 = _S403;
+    (&_S402)->_S389 = _S405;
+    s_bwd_prop_depth_to_point_Intermediates_0 _S406 = _S402;
+    float3  _S407 = make_float3 (0.0f);
+    bool _S408 = !!_S402._S389;
+    bool _runFlag_3;
+    bool _S409;
+    float3  _S410;
+    if(_S408)
     {
-        _S404 = s_primal_ctx_unproject_raydir_0(_S401._S387, camera_model_4, is_ray_depth_4);
+        bool _S411 = camera_model_4 == int(4);
+        if(_S411)
+        {
+            _runFlag_3 = false;
+        }
+        else
+        {
+            _runFlag_3 = _S408;
+        }
+        if(_runFlag_3)
+        {
+            _S410 = s_primal_ctx_unproject_raydir_0(_S406._S388, camera_model_4, is_ray_depth_4);
+        }
+        else
+        {
+            _S410 = _S407;
+        }
+        _S409 = _S411;
     }
     else
     {
-        _S404 = _S402;
+        _runFlag_3 = false;
+        _S410 = _S407;
+        _S409 = false;
     }
-    if(_S403)
+    float _S412;
+    if(_S408)
     {
-        _S404 = _S404 * v_point_0;
+        float3  _S413;
+        if(_runFlag_3)
+        {
+            float3  _S414 = _S410 * v_point_0;
+            _S410 = _S407;
+            _S413 = _S414;
+        }
+        else
+        {
+            _S410 = v_point_0;
+            _S413 = _S407;
+        }
+        if(_S409)
+        {
+            _S412 = _S410.z;
+        }
+        else
+        {
+            _S412 = 0.0f;
+        }
+        _S410 = _S413;
     }
     else
     {
-        _S404 = _S402;
+        _S410 = _S407;
+        _S412 = 0.0f;
     }
-    return _S404.x + _S404.y + _S404.z;
+    return _S410.x + _S410.y + _S410.z + _S412;
 }
 
 inline __device__ float3  depth_to_normal_none(float2  pix_center_0, float4  intrins_3, FixedArray<float, 1>  dist_coeffs_6, int camera_model_5, bool is_ray_depth_5, float4  depths_0)
@@ -2202,142 +2269,142 @@ inline __device__ float3  depth_to_normal_none(float2  pix_center_0, float4  int
     float3  normal_2;
     for(;;)
     {
-        bool _S405;
+        bool _S415;
         if((depths_0.x) == 0.0f)
         {
-            _S405 = true;
+            _S415 = true;
         }
         else
         {
-            _S405 = (depths_0.y) == 0.0f;
+            _S415 = (depths_0.y) == 0.0f;
         }
-        if(_S405)
+        if(_S415)
         {
-            _S405 = true;
+            _S415 = true;
         }
         else
         {
-            _S405 = (depths_0.z) == 0.0f;
+            _S415 = (depths_0.z) == 0.0f;
         }
-        if(_S405)
+        if(_S415)
         {
-            _S405 = true;
+            _S415 = true;
         }
         else
         {
-            _S405 = (depths_0.w) == 0.0f;
+            _S415 = (depths_0.w) == 0.0f;
         }
-        if(_S405)
+        if(_S415)
         {
             normal_2 = make_float3 (0.0f);
             break;
         }
-        float3  * _S406;
-        float3  * _S407;
-        float3  * _S408;
-        float3  * _S409;
-        int _S410;
+        float3  * _S416;
+        float3  * _S417;
+        float3  * _S418;
+        float3  * _S419;
+        int _S420;
         FixedArray<float3 , 4>  points_2;
         for(;;)
         {
-            float2  _S411 = float2 {intrins_3.z, intrins_3.w};
-            float2  _S412 = float2 {intrins_3.x, intrins_3.y};
-            float2  uv_9 = (pix_center_0 + make_float2 (-1.0f, -0.0f) - _S411) / _S412;
-            FixedArray<float, 1>  _S413 = dist_coeffs_6;
+            float2  _S421 = float2 {intrins_3.z, intrins_3.w};
+            float2  _S422 = float2 {intrins_3.x, intrins_3.y};
+            float2  uv_9 = (pix_center_0 + make_float2 (-1.0f, -0.0f) - _S421) / _S422;
+            FixedArray<float, 1>  _S423 = dist_coeffs_6;
             float2  uv_u_2;
-            bool _S414 = undistort_point_0(uv_9, &_S413, int(12), &uv_u_2);
-            if(!_S414)
+            bool _S424 = undistort_point_0(uv_9, &_S423, int(12), &uv_u_2);
+            if(!_S424)
             {
-                float3  _S415 = make_float3 (0.0f);
-                _S410 = int(0);
-                _S409 = nullptr;
-                _S408 = nullptr;
-                _S407 = nullptr;
-                _S406 = nullptr;
-                normal_2 = _S415;
+                float3  _S425 = make_float3 (0.0f);
+                _S420 = int(0);
+                _S419 = nullptr;
+                _S418 = nullptr;
+                _S417 = nullptr;
+                _S416 = nullptr;
+                normal_2 = _S425;
                 break;
             }
             points_2[int(0)] = make_float3 (depths_0.x) * unproject_raydir_0(uv_u_2, camera_model_5, is_ray_depth_5);
             for(;;)
             {
-                float2  uv_10 = (pix_center_0 + make_float2 (1.0f, -0.0f) - _S411) / _S412;
-                FixedArray<float, 1>  _S416 = dist_coeffs_6;
+                float2  uv_10 = (pix_center_0 + make_float2 (1.0f, -0.0f) - _S421) / _S422;
+                FixedArray<float, 1>  _S426 = dist_coeffs_6;
                 float2  uv_u_3;
-                bool _S417 = undistort_point_0(uv_10, &_S416, int(12), &uv_u_3);
-                if(!_S417)
+                bool _S427 = undistort_point_0(uv_10, &_S426, int(12), &uv_u_3);
+                if(!_S427)
                 {
-                    float3  _S418 = make_float3 (0.0f);
-                    _S410 = int(0);
-                    _S409 = nullptr;
-                    normal_2 = _S418;
+                    float3  _S428 = make_float3 (0.0f);
+                    _S420 = int(0);
+                    _S419 = nullptr;
+                    normal_2 = _S428;
                     break;
                 }
                 points_2[int(1)] = make_float3 (depths_0.y) * unproject_raydir_0(uv_u_3, camera_model_5, is_ray_depth_5);
-                _S410 = int(2);
-                _S409 = &points_2[int(1)];
+                _S420 = int(2);
+                _S419 = &points_2[int(1)];
                 break;
             }
-            if(_S410 != int(2))
+            if(_S420 != int(2))
             {
-                _S408 = &points_2[int(0)];
-                _S407 = nullptr;
-                _S406 = nullptr;
+                _S418 = &points_2[int(0)];
+                _S417 = nullptr;
+                _S416 = nullptr;
                 break;
             }
-            float2  uv_11 = (pix_center_0 + make_float2 (0.0f, -1.0f) - _S411) / _S412;
-            FixedArray<float, 1>  _S419 = dist_coeffs_6;
+            float2  uv_11 = (pix_center_0 + make_float2 (0.0f, -1.0f) - _S421) / _S422;
+            FixedArray<float, 1>  _S429 = dist_coeffs_6;
             float2  uv_u_4;
-            bool _S420 = undistort_point_0(uv_11, &_S419, int(12), &uv_u_4);
-            if(!_S420)
+            bool _S430 = undistort_point_0(uv_11, &_S429, int(12), &uv_u_4);
+            if(!_S430)
             {
-                float3  _S421 = make_float3 (0.0f);
-                _S410 = int(0);
-                _S408 = &points_2[int(0)];
-                _S407 = nullptr;
-                _S406 = nullptr;
-                normal_2 = _S421;
+                float3  _S431 = make_float3 (0.0f);
+                _S420 = int(0);
+                _S418 = &points_2[int(0)];
+                _S417 = nullptr;
+                _S416 = nullptr;
+                normal_2 = _S431;
                 break;
             }
             points_2[int(2)] = make_float3 (depths_0.z) * unproject_raydir_0(uv_u_4, camera_model_5, is_ray_depth_5);
             for(;;)
             {
-                float2  uv_12 = (pix_center_0 + make_float2 (0.0f, 1.0f) - _S411) / _S412;
-                FixedArray<float, 1>  _S422 = dist_coeffs_6;
+                float2  uv_12 = (pix_center_0 + make_float2 (0.0f, 1.0f) - _S421) / _S422;
+                FixedArray<float, 1>  _S432 = dist_coeffs_6;
                 float2  uv_u_5;
-                bool _S423 = undistort_point_0(uv_12, &_S422, int(12), &uv_u_5);
-                if(!_S423)
+                bool _S433 = undistort_point_0(uv_12, &_S432, int(12), &uv_u_5);
+                if(!_S433)
                 {
-                    float3  _S424 = make_float3 (0.0f);
-                    _S410 = int(0);
-                    _S408 = nullptr;
-                    normal_2 = _S424;
+                    float3  _S434 = make_float3 (0.0f);
+                    _S420 = int(0);
+                    _S418 = nullptr;
+                    normal_2 = _S434;
                     break;
                 }
                 points_2[int(3)] = make_float3 (depths_0.w) * unproject_raydir_0(uv_u_5, camera_model_5, is_ray_depth_5);
-                _S410 = int(2);
-                _S408 = &points_2[int(3)];
+                _S420 = int(2);
+                _S418 = &points_2[int(3)];
                 break;
             }
-            if(_S410 != int(2))
+            if(_S420 != int(2))
             {
-                float3  * _S425 = _S408;
-                _S408 = &points_2[int(0)];
-                _S407 = _S425;
-                _S406 = &points_2[int(2)];
+                float3  * _S435 = _S418;
+                _S418 = &points_2[int(0)];
+                _S417 = _S435;
+                _S416 = &points_2[int(2)];
                 break;
             }
-            float3  * _S426 = _S408;
-            _S410 = int(1);
-            _S408 = &points_2[int(0)];
-            _S407 = _S426;
-            _S406 = &points_2[int(2)];
+            float3  * _S436 = _S418;
+            _S420 = int(1);
+            _S418 = &points_2[int(0)];
+            _S417 = _S436;
+            _S416 = &points_2[int(2)];
             break;
         }
-        if(_S410 != int(1))
+        if(_S420 != int(1))
         {
             break;
         }
-        float3  normal_3 = cross_0(*_S409 - *_S408, - (*_S407 - *_S406));
+        float3  normal_3 = cross_0(*_S419 - *_S418, - (*_S417 - *_S416));
         if((dot_0(normal_3, normal_3)) != 0.0f)
         {
             normal_2 = normal_3 / make_float3 (length_0(normal_3));
@@ -2353,673 +2420,673 @@ inline __device__ float3  depth_to_normal_none(float2  pix_center_0, float4  int
 
 struct s_bwd_prop_depth_to_normal_Intermediates_0
 {
-    float2  _S427;
-    bool _S428;
-    float2  _S429;
-    bool _S430;
-    float2  _S431;
-    bool _S432;
-    float2  _S433;
-    bool _S434;
+    float2  _S437;
+    bool _S438;
+    float2  _S439;
+    bool _S440;
+    float2  _S441;
+    bool _S442;
+    float2  _S443;
+    bool _S444;
 };
 
 inline __device__ void depth_to_normal_vjp_none(float2  pix_center_1, float4  intrins_4, FixedArray<float, 1>  dist_coeffs_7, int camera_model_6, bool is_ray_depth_6, float4  depths_1, float3  v_normal_1, float4  * v_depths_0)
 {
-    float2  _S435 = make_float2 (0.0f);
-    s_bwd_prop_depth_to_normal_Intermediates_0 _S436;
-    (&_S436)->_S427 = _S435;
-    (&_S436)->_S428 = false;
-    (&_S436)->_S429 = _S435;
-    (&_S436)->_S430 = false;
-    (&_S436)->_S431 = _S435;
-    (&_S436)->_S432 = false;
-    (&_S436)->_S433 = _S435;
-    (&_S436)->_S434 = false;
-    (&_S436)->_S427 = _S435;
-    (&_S436)->_S428 = false;
-    (&_S436)->_S429 = _S435;
-    (&_S436)->_S430 = false;
-    (&_S436)->_S431 = _S435;
-    (&_S436)->_S432 = false;
-    (&_S436)->_S433 = _S435;
-    (&_S436)->_S434 = false;
-    bool _S437 = (depths_1.x) == 0.0f;
-    bool _runFlag_3;
-    if(_S437)
-    {
-        _runFlag_3 = true;
-    }
-    else
-    {
-        _runFlag_3 = (depths_1.y) == 0.0f;
-    }
-    if(_runFlag_3)
-    {
-        _runFlag_3 = true;
-    }
-    else
-    {
-        _runFlag_3 = (depths_1.z) == 0.0f;
-    }
-    if(_runFlag_3)
-    {
-        _runFlag_3 = true;
-    }
-    else
-    {
-        _runFlag_3 = (depths_1.w) == 0.0f;
-    }
-    int _S438;
-    if(!_runFlag_3)
-    {
-        float2  _S439 = float2 {intrins_4.z, intrins_4.w};
-        float2  _S440 = float2 {intrins_4.x, intrins_4.y};
-        float2  uv_13 = (pix_center_1 + make_float2 (-1.0f, -0.0f) - _S439) / _S440;
-        float2  _S441 = _S435;
-        FixedArray<float, 1>  _S442 = dist_coeffs_7;
-        bool _S443 = undistort_point_0(uv_13, &_S442, int(12), &_S441);
-        (&_S436)->_S427 = _S441;
-        (&_S436)->_S428 = _S443;
-        bool _S444 = !!_S443;
-        if(_S444)
-        {
-            float2  uv_14 = (pix_center_1 + make_float2 (1.0f, -0.0f) - _S439) / _S440;
-            float2  _S445 = _S435;
-            FixedArray<float, 1>  _S446 = dist_coeffs_7;
-            bool _S447 = undistort_point_0(uv_14, &_S446, int(12), &_S445);
-            (&_S436)->_S429 = _S445;
-            (&_S436)->_S430 = _S447;
-            if(!!_S447)
-            {
-                _S438 = int(2);
-            }
-            else
-            {
-                _S438 = int(0);
-            }
-            if(_S438 != int(2))
-            {
-                _runFlag_3 = false;
-            }
-            else
-            {
-                _runFlag_3 = _S444;
-            }
-            if(_runFlag_3)
-            {
-                float2  uv_15 = (pix_center_1 + make_float2 (0.0f, -1.0f) - _S439) / _S440;
-                float2  _S448 = _S435;
-                FixedArray<float, 1>  _S449 = dist_coeffs_7;
-                bool _S450 = undistort_point_0(uv_15, &_S449, int(12), &_S448);
-                (&_S436)->_S431 = _S448;
-                (&_S436)->_S432 = _S450;
-                if(!_S450)
-                {
-                    _runFlag_3 = false;
-                }
-                if(_runFlag_3)
-                {
-                    float2  uv_16 = (pix_center_1 + make_float2 (0.0f, 1.0f) - _S439) / _S440;
-                    float2  _S451 = _S435;
-                    FixedArray<float, 1>  _S452 = dist_coeffs_7;
-                    bool _S453 = undistort_point_0(uv_16, &_S452, int(12), &_S451);
-                    (&_S436)->_S433 = _S451;
-                    (&_S436)->_S434 = _S453;
-                }
-            }
-        }
-    }
-    s_bwd_prop_depth_to_normal_Intermediates_0 _S454 = _S436;
-    float3  _S455 = make_float3 (0.0f);
-    if(_S437)
-    {
-        _runFlag_3 = true;
-    }
-    else
-    {
-        _runFlag_3 = (depths_1.y) == 0.0f;
-    }
-    if(_runFlag_3)
-    {
-        _runFlag_3 = true;
-    }
-    else
-    {
-        _runFlag_3 = (depths_1.z) == 0.0f;
-    }
-    if(_runFlag_3)
-    {
-        _runFlag_3 = true;
-    }
-    else
-    {
-        _runFlag_3 = (depths_1.w) == 0.0f;
-    }
-    bool _S456 = !_runFlag_3;
+    float2  _S445 = make_float2 (0.0f);
+    s_bwd_prop_depth_to_normal_Intermediates_0 _S446;
+    (&_S446)->_S437 = _S445;
+    (&_S446)->_S438 = false;
+    (&_S446)->_S439 = _S445;
+    (&_S446)->_S440 = false;
+    (&_S446)->_S441 = _S445;
+    (&_S446)->_S442 = false;
+    (&_S446)->_S443 = _S445;
+    (&_S446)->_S444 = false;
+    (&_S446)->_S437 = _S445;
+    (&_S446)->_S438 = false;
+    (&_S446)->_S439 = _S445;
+    (&_S446)->_S440 = false;
+    (&_S446)->_S441 = _S445;
+    (&_S446)->_S442 = false;
+    (&_S446)->_S443 = _S445;
+    (&_S446)->_S444 = false;
+    bool _S447 = (depths_1.x) == 0.0f;
     bool _runFlag_4;
-    bool _runFlag_5;
-    bool _S457;
-    bool _runFlag_6;
-    bool _S458;
-    bool _S459;
-    FixedArray<float3 , 4>  points_3;
-    float3  _S460;
-    float3  _S461;
-    float3  _S462;
-    float3  _S463;
-    float3  _S464;
-    float3  _S465;
-    float3  _S466;
-    float3  _S467;
-    float3  _S468;
-    if(_S456)
+    if(_S447)
     {
-        bool _S469 = !!_S454._S428;
-        if(_S469)
+        _runFlag_4 = true;
+    }
+    else
+    {
+        _runFlag_4 = (depths_1.y) == 0.0f;
+    }
+    if(_runFlag_4)
+    {
+        _runFlag_4 = true;
+    }
+    else
+    {
+        _runFlag_4 = (depths_1.z) == 0.0f;
+    }
+    if(_runFlag_4)
+    {
+        _runFlag_4 = true;
+    }
+    else
+    {
+        _runFlag_4 = (depths_1.w) == 0.0f;
+    }
+    int _S448;
+    if(!_runFlag_4)
+    {
+        float2  _S449 = float2 {intrins_4.z, intrins_4.w};
+        float2  _S450 = float2 {intrins_4.x, intrins_4.y};
+        float2  uv_13 = (pix_center_1 + make_float2 (-1.0f, -0.0f) - _S449) / _S450;
+        float2  _S451 = _S445;
+        FixedArray<float, 1>  _S452 = dist_coeffs_7;
+        bool _S453 = undistort_point_0(uv_13, &_S452, int(12), &_S451);
+        (&_S446)->_S437 = _S451;
+        (&_S446)->_S438 = _S453;
+        bool _S454 = !!_S453;
+        if(_S454)
         {
-            float3  _S470 = s_primal_ctx_unproject_raydir_0(_S454._S427, camera_model_6, is_ray_depth_6);
-            float3  _S471 = make_float3 (depths_1.x) * _S470;
-            bool _S472 = !!_S454._S430;
-            if(_S472)
+            float2  uv_14 = (pix_center_1 + make_float2 (1.0f, -0.0f) - _S449) / _S450;
+            float2  _S455 = _S445;
+            FixedArray<float, 1>  _S456 = dist_coeffs_7;
+            bool _S457 = undistort_point_0(uv_14, &_S456, int(12), &_S455);
+            (&_S446)->_S439 = _S455;
+            (&_S446)->_S440 = _S457;
+            if(!!_S457)
             {
-                float3  _S473 = s_primal_ctx_unproject_raydir_0(_S454._S429, camera_model_6, is_ray_depth_6);
-                float3  _S474 = make_float3 (depths_1.y) * _S473;
-                _S438 = int(2);
-                points_3[int(0)] = _S471;
-                points_3[int(1)] = _S474;
-                points_3[int(2)] = _S455;
-                points_3[int(3)] = _S455;
-                _S460 = _S473;
+                _S448 = int(2);
             }
             else
             {
-                _S438 = int(0);
-                points_3[int(0)] = _S471;
-                points_3[int(1)] = _S455;
-                points_3[int(2)] = _S455;
-                points_3[int(3)] = _S455;
-                _S460 = _S455;
+                _S448 = int(0);
             }
-            if(_S438 != int(2))
+            if(_S448 != int(2))
             {
-                _runFlag_3 = false;
+                _runFlag_4 = false;
             }
             else
             {
-                _runFlag_3 = _S469;
-                _S438 = int(0);
+                _runFlag_4 = _S454;
             }
-            if(_runFlag_3)
+            if(_runFlag_4)
             {
-                if(!_S454._S432)
+                float2  uv_15 = (pix_center_1 + make_float2 (0.0f, -1.0f) - _S449) / _S450;
+                float2  _S458 = _S445;
+                FixedArray<float, 1>  _S459 = dist_coeffs_7;
+                bool _S460 = undistort_point_0(uv_15, &_S459, int(12), &_S458);
+                (&_S446)->_S441 = _S458;
+                (&_S446)->_S442 = _S460;
+                if(!_S460)
                 {
                     _runFlag_4 = false;
-                    _S438 = int(0);
-                }
-                else
-                {
-                    _runFlag_4 = _runFlag_3;
                 }
                 if(_runFlag_4)
                 {
-                    float3  _S475 = s_primal_ctx_unproject_raydir_0(_S454._S431, camera_model_6, is_ray_depth_6);
-                    points_3[int(2)] = make_float3 (depths_1.z) * _S475;
-                    bool _S476 = !!_S454._S434;
-                    int _S477;
-                    if(_S476)
-                    {
-                        float3  _S478 = s_primal_ctx_unproject_raydir_0(_S454._S433, camera_model_6, is_ray_depth_6);
-                        points_3[int(3)] = make_float3 (depths_1.w) * _S478;
-                        _S477 = int(2);
-                        _S461 = _S478;
-                    }
-                    else
-                    {
-                        _S477 = int(0);
-                        _S461 = _S455;
-                    }
-                    if(_S477 != int(2))
-                    {
-                        _runFlag_5 = false;
-                        _S438 = _S477;
-                    }
-                    else
-                    {
-                        _runFlag_5 = _runFlag_4;
-                    }
-                    if(_runFlag_5)
-                    {
-                        _S438 = int(1);
-                    }
-                    _runFlag_5 = _S476;
-                    _S462 = _S475;
+                    float2  uv_16 = (pix_center_1 + make_float2 (0.0f, 1.0f) - _S449) / _S450;
+                    float2  _S461 = _S445;
+                    FixedArray<float, 1>  _S462 = dist_coeffs_7;
+                    bool _S463 = undistort_point_0(uv_16, &_S462, int(12), &_S461);
+                    (&_S446)->_S443 = _S461;
+                    (&_S446)->_S444 = _S463;
+                }
+            }
+        }
+    }
+    s_bwd_prop_depth_to_normal_Intermediates_0 _S464 = _S446;
+    float3  _S465 = make_float3 (0.0f);
+    if(_S447)
+    {
+        _runFlag_4 = true;
+    }
+    else
+    {
+        _runFlag_4 = (depths_1.y) == 0.0f;
+    }
+    if(_runFlag_4)
+    {
+        _runFlag_4 = true;
+    }
+    else
+    {
+        _runFlag_4 = (depths_1.z) == 0.0f;
+    }
+    if(_runFlag_4)
+    {
+        _runFlag_4 = true;
+    }
+    else
+    {
+        _runFlag_4 = (depths_1.w) == 0.0f;
+    }
+    bool _S466 = !_runFlag_4;
+    bool _runFlag_5;
+    bool _runFlag_6;
+    bool _S467;
+    bool _runFlag_7;
+    bool _S468;
+    bool _S469;
+    FixedArray<float3 , 4>  points_3;
+    float3  _S470;
+    float3  _S471;
+    float3  _S472;
+    float3  _S473;
+    float3  _S474;
+    float3  _S475;
+    float3  _S476;
+    float3  _S477;
+    float3  _S478;
+    if(_S466)
+    {
+        bool _S479 = !!_S464._S438;
+        if(_S479)
+        {
+            float3  _S480 = s_primal_ctx_unproject_raydir_0(_S464._S437, camera_model_6, is_ray_depth_6);
+            float3  _S481 = make_float3 (depths_1.x) * _S480;
+            bool _S482 = !!_S464._S440;
+            if(_S482)
+            {
+                float3  _S483 = s_primal_ctx_unproject_raydir_0(_S464._S439, camera_model_6, is_ray_depth_6);
+                float3  _S484 = make_float3 (depths_1.y) * _S483;
+                _S448 = int(2);
+                points_3[int(0)] = _S481;
+                points_3[int(1)] = _S484;
+                points_3[int(2)] = _S465;
+                points_3[int(3)] = _S465;
+                _S470 = _S483;
+            }
+            else
+            {
+                _S448 = int(0);
+                points_3[int(0)] = _S481;
+                points_3[int(1)] = _S465;
+                points_3[int(2)] = _S465;
+                points_3[int(3)] = _S465;
+                _S470 = _S465;
+            }
+            if(_S448 != int(2))
+            {
+                _runFlag_4 = false;
+            }
+            else
+            {
+                _runFlag_4 = _S479;
+                _S448 = int(0);
+            }
+            if(_runFlag_4)
+            {
+                if(!_S464._S442)
+                {
+                    _runFlag_5 = false;
+                    _S448 = int(0);
                 }
                 else
                 {
-                    _runFlag_5 = false;
-                    _S461 = _S455;
-                    _S462 = _S455;
+                    _runFlag_5 = _runFlag_4;
+                }
+                if(_runFlag_5)
+                {
+                    float3  _S485 = s_primal_ctx_unproject_raydir_0(_S464._S441, camera_model_6, is_ray_depth_6);
+                    points_3[int(2)] = make_float3 (depths_1.z) * _S485;
+                    bool _S486 = !!_S464._S444;
+                    int _S487;
+                    if(_S486)
+                    {
+                        float3  _S488 = s_primal_ctx_unproject_raydir_0(_S464._S443, camera_model_6, is_ray_depth_6);
+                        points_3[int(3)] = make_float3 (depths_1.w) * _S488;
+                        _S487 = int(2);
+                        _S471 = _S488;
+                    }
+                    else
+                    {
+                        _S487 = int(0);
+                        _S471 = _S465;
+                    }
+                    if(_S487 != int(2))
+                    {
+                        _runFlag_6 = false;
+                        _S448 = _S487;
+                    }
+                    else
+                    {
+                        _runFlag_6 = _runFlag_5;
+                    }
+                    if(_runFlag_6)
+                    {
+                        _S448 = int(1);
+                    }
+                    _runFlag_6 = _S486;
+                    _S472 = _S485;
+                }
+                else
+                {
+                    _runFlag_6 = false;
+                    _S471 = _S465;
+                    _S472 = _S465;
                 }
             }
             else
             {
-                _runFlag_4 = false;
                 _runFlag_5 = false;
-                _S461 = _S455;
-                _S462 = _S455;
+                _runFlag_6 = false;
+                _S471 = _S465;
+                _S472 = _S465;
             }
-            float3  _S479 = _S460;
-            _S460 = _S461;
-            _S461 = _S462;
-            _S457 = _S472;
-            _S462 = _S479;
-            _S463 = _S470;
+            float3  _S489 = _S470;
+            _S470 = _S471;
+            _S471 = _S472;
+            _S467 = _S482;
+            _S472 = _S489;
+            _S473 = _S480;
         }
         else
         {
-            _S438 = int(0);
-            points_3[int(0)] = _S455;
-            points_3[int(1)] = _S455;
-            points_3[int(2)] = _S455;
-            points_3[int(3)] = _S455;
-            _runFlag_3 = false;
+            _S448 = int(0);
+            points_3[int(0)] = _S465;
+            points_3[int(1)] = _S465;
+            points_3[int(2)] = _S465;
+            points_3[int(3)] = _S465;
             _runFlag_4 = false;
             _runFlag_5 = false;
-            _S460 = _S455;
-            _S461 = _S455;
-            _S457 = false;
-            _S462 = _S455;
-            _S463 = _S455;
-        }
-        if(_S438 != int(1))
-        {
             _runFlag_6 = false;
+            _S470 = _S465;
+            _S471 = _S465;
+            _S467 = false;
+            _S472 = _S465;
+            _S473 = _S465;
+        }
+        if(_S448 != int(1))
+        {
+            _runFlag_7 = false;
         }
         else
         {
-            _runFlag_6 = _S456;
+            _runFlag_7 = _S466;
+        }
+        if(_runFlag_7)
+        {
+            float3  dx_1 = points_3[int(1)] - points_3[int(0)];
+            float3  _S490 = - (points_3[int(3)] - points_3[int(2)]);
+            float3  _S491 = s_primal_ctx_cross_0(dx_1, _S490);
+            bool _S492 = (s_primal_ctx_dot_0(_S491, _S491)) != 0.0f;
+            if(_S492)
+            {
+                float _S493 = length_0(_S491);
+                float3  _S494 = make_float3 (_S493);
+                _S474 = make_float3 (_S493 * _S493);
+                _S475 = _S494;
+            }
+            else
+            {
+                _S474 = _S465;
+                _S475 = _S465;
+            }
+            float3  _S495 = _S475;
+            _S468 = _S492;
+            _S475 = _S491;
+            _S476 = _S495;
+            _S477 = dx_1;
+            _S478 = _S490;
+        }
+        else
+        {
+            _S468 = false;
+            _S474 = _S465;
+            _S475 = _S465;
+            _S476 = _S465;
+            _S477 = _S465;
+            _S478 = _S465;
+        }
+        bool _S496 = _runFlag_4;
+        bool _S497 = _runFlag_5;
+        bool _S498 = _runFlag_6;
+        float3  _S499 = _S470;
+        float3  _S500 = _S471;
+        bool _S501 = _S467;
+        float3  _S502 = _S472;
+        float3  _S503 = _S473;
+        _runFlag_4 = _runFlag_7;
+        _runFlag_5 = _S468;
+        _S470 = _S474;
+        _S471 = _S475;
+        _S472 = _S476;
+        _S473 = _S477;
+        _S474 = _S478;
+        _runFlag_6 = _S479;
+        _S467 = _S496;
+        _runFlag_7 = _S497;
+        _S468 = _S498;
+        _S475 = _S499;
+        _S476 = _S500;
+        _S469 = _S501;
+        _S477 = _S502;
+        _S478 = _S503;
+    }
+    else
+    {
+        _runFlag_4 = false;
+        _runFlag_5 = false;
+        _S470 = _S465;
+        _S471 = _S465;
+        _S472 = _S465;
+        _S473 = _S465;
+        _S474 = _S465;
+        _runFlag_6 = false;
+        _S467 = false;
+        _runFlag_7 = false;
+        _S468 = false;
+        _S475 = _S465;
+        _S476 = _S465;
+        _S469 = false;
+        _S477 = _S465;
+        _S478 = _S465;
+    }
+    float4  _S504 = make_float4 (0.0f);
+    float4  _S505;
+    if(_S466)
+    {
+        if(_runFlag_4)
+        {
+            if(_runFlag_5)
+            {
+                float3  _S506 = v_normal_1 / _S470;
+                float3  _S507 = _S471 * - _S506;
+                float3  _S508 = _S472 * _S506;
+                float _S509 = _S507.x + _S507.y + _S507.z;
+                DiffPair_vectorx3Cfloatx2C3x3E_0 _S510;
+                (&_S510)->primal_0 = _S471;
+                (&_S510)->differential_0 = _S465;
+                s_bwd_length_impl_0(&_S510, _S509);
+                _S470 = _S508 + _S510.differential_0;
+            }
+            else
+            {
+                _S470 = v_normal_1;
+            }
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S511;
+            (&_S511)->primal_0 = _S471;
+            (&_S511)->differential_0 = _S465;
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S512;
+            (&_S512)->primal_0 = _S471;
+            (&_S512)->differential_0 = _S465;
+            s_bwd_prop_dot_0(&_S511, &_S512, 0.0f);
+            float3  _S513 = _S512.differential_0 + _S511.differential_0 + _S470;
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S514;
+            (&_S514)->primal_0 = _S473;
+            (&_S514)->differential_0 = _S465;
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S515;
+            (&_S515)->primal_0 = _S474;
+            (&_S515)->differential_0 = _S465;
+            s_bwd_prop_cross_0(&_S514, &_S515, _S513);
+            float3  s_diff_dy_T_1 = - _S515.differential_0;
+            float3  _S516 = - s_diff_dy_T_1;
+            float3  _S517 = - _S514.differential_0;
+            FixedArray<float3 , 4>  _S518;
+            _S518[int(0)] = _S465;
+            _S518[int(1)] = _S465;
+            _S518[int(2)] = _S465;
+            _S518[int(3)] = _S465;
+            _S518[int(2)] = _S516;
+            _S518[int(3)] = s_diff_dy_T_1;
+            _S518[int(0)] = _S517;
+            _S518[int(1)] = _S514.differential_0;
+            points_3[int(0)] = _S518[int(0)];
+            points_3[int(1)] = _S518[int(1)];
+            points_3[int(2)] = _S518[int(2)];
+            points_3[int(3)] = _S518[int(3)];
+        }
+        else
+        {
+            points_3[int(0)] = _S465;
+            points_3[int(1)] = _S465;
+            points_3[int(2)] = _S465;
+            points_3[int(3)] = _S465;
         }
         if(_runFlag_6)
         {
-            float3  dx_1 = points_3[int(1)] - points_3[int(0)];
-            float3  _S480 = - (points_3[int(3)] - points_3[int(2)]);
-            float3  _S481 = s_primal_ctx_cross_0(dx_1, _S480);
-            bool _S482 = (s_primal_ctx_dot_0(_S481, _S481)) != 0.0f;
-            if(_S482)
+            if(_S467)
             {
-                float _S483 = length_0(_S481);
-                float3  _S484 = make_float3 (_S483);
-                _S464 = make_float3 (_S483 * _S483);
-                _S465 = _S484;
-            }
-            else
-            {
-                _S464 = _S455;
-                _S465 = _S455;
-            }
-            float3  _S485 = _S465;
-            _S458 = _S482;
-            _S465 = _S481;
-            _S466 = _S485;
-            _S467 = dx_1;
-            _S468 = _S480;
-        }
-        else
-        {
-            _S458 = false;
-            _S464 = _S455;
-            _S465 = _S455;
-            _S466 = _S455;
-            _S467 = _S455;
-            _S468 = _S455;
-        }
-        bool _S486 = _runFlag_3;
-        bool _S487 = _runFlag_4;
-        bool _S488 = _runFlag_5;
-        float3  _S489 = _S460;
-        float3  _S490 = _S461;
-        bool _S491 = _S457;
-        float3  _S492 = _S462;
-        float3  _S493 = _S463;
-        _runFlag_3 = _runFlag_6;
-        _runFlag_4 = _S458;
-        _S460 = _S464;
-        _S461 = _S465;
-        _S462 = _S466;
-        _S463 = _S467;
-        _S464 = _S468;
-        _runFlag_5 = _S469;
-        _S457 = _S486;
-        _runFlag_6 = _S487;
-        _S458 = _S488;
-        _S465 = _S489;
-        _S466 = _S490;
-        _S459 = _S491;
-        _S467 = _S492;
-        _S468 = _S493;
-    }
-    else
-    {
-        _runFlag_3 = false;
-        _runFlag_4 = false;
-        _S460 = _S455;
-        _S461 = _S455;
-        _S462 = _S455;
-        _S463 = _S455;
-        _S464 = _S455;
-        _runFlag_5 = false;
-        _S457 = false;
-        _runFlag_6 = false;
-        _S458 = false;
-        _S465 = _S455;
-        _S466 = _S455;
-        _S459 = false;
-        _S467 = _S455;
-        _S468 = _S455;
-    }
-    float4  _S494 = make_float4 (0.0f);
-    float4  _S495;
-    if(_S456)
-    {
-        if(_runFlag_3)
-        {
-            if(_runFlag_4)
-            {
-                float3  _S496 = v_normal_1 / _S460;
-                float3  _S497 = _S461 * - _S496;
-                float3  _S498 = _S462 * _S496;
-                float _S499 = _S497.x + _S497.y + _S497.z;
-                DiffPair_vectorx3Cfloatx2C3x3E_0 _S500;
-                (&_S500)->primal_0 = _S461;
-                (&_S500)->differential_0 = _S455;
-                s_bwd_length_impl_0(&_S500, _S499);
-                _S460 = _S498 + _S500.differential_0;
-            }
-            else
-            {
-                _S460 = v_normal_1;
-            }
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S501;
-            (&_S501)->primal_0 = _S461;
-            (&_S501)->differential_0 = _S455;
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S502;
-            (&_S502)->primal_0 = _S461;
-            (&_S502)->differential_0 = _S455;
-            s_bwd_prop_dot_0(&_S501, &_S502, 0.0f);
-            float3  _S503 = _S502.differential_0 + _S501.differential_0 + _S460;
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S504;
-            (&_S504)->primal_0 = _S463;
-            (&_S504)->differential_0 = _S455;
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S505;
-            (&_S505)->primal_0 = _S464;
-            (&_S505)->differential_0 = _S455;
-            s_bwd_prop_cross_0(&_S504, &_S505, _S503);
-            float3  s_diff_dy_T_1 = - _S505.differential_0;
-            float3  _S506 = - s_diff_dy_T_1;
-            float3  _S507 = - _S504.differential_0;
-            FixedArray<float3 , 4>  _S508;
-            _S508[int(0)] = _S455;
-            _S508[int(1)] = _S455;
-            _S508[int(2)] = _S455;
-            _S508[int(3)] = _S455;
-            _S508[int(2)] = _S506;
-            _S508[int(3)] = s_diff_dy_T_1;
-            _S508[int(0)] = _S507;
-            _S508[int(1)] = _S504.differential_0;
-            points_3[int(0)] = _S508[int(0)];
-            points_3[int(1)] = _S508[int(1)];
-            points_3[int(2)] = _S508[int(2)];
-            points_3[int(3)] = _S508[int(3)];
-        }
-        else
-        {
-            points_3[int(0)] = _S455;
-            points_3[int(1)] = _S455;
-            points_3[int(2)] = _S455;
-            points_3[int(3)] = _S455;
-        }
-        if(_runFlag_5)
-        {
-            if(_S457)
-            {
-                if(_runFlag_6)
+                if(_runFlag_7)
                 {
-                    FixedArray<float3 , 4>  _S509 = points_3;
-                    FixedArray<float3 , 4>  _S510 = points_3;
-                    FixedArray<float3 , 4>  _S511 = points_3;
-                    FixedArray<float3 , 4>  _S512 = points_3;
-                    if(_S458)
+                    FixedArray<float3 , 4>  _S519 = points_3;
+                    FixedArray<float3 , 4>  _S520 = points_3;
+                    FixedArray<float3 , 4>  _S521 = points_3;
+                    FixedArray<float3 , 4>  _S522 = points_3;
+                    if(_S468)
                     {
-                        float3  _S513 = _S465 * _S512[int(3)];
-                        float _S514 = _S513.x + _S513.y + _S513.z;
-                        float4  _S515 = _S494;
-                        *&((&_S515)->w) = _S514;
-                        points_3[int(0)] = _S509[int(0)];
-                        points_3[int(1)] = _S510[int(1)];
-                        points_3[int(2)] = _S511[int(2)];
-                        points_3[int(3)] = _S455;
-                        _S495 = _S515;
+                        float3  _S523 = _S475 * _S522[int(3)];
+                        float _S524 = _S523.x + _S523.y + _S523.z;
+                        float4  _S525 = _S504;
+                        *&((&_S525)->w) = _S524;
+                        points_3[int(0)] = _S519[int(0)];
+                        points_3[int(1)] = _S520[int(1)];
+                        points_3[int(2)] = _S521[int(2)];
+                        points_3[int(3)] = _S465;
+                        _S505 = _S525;
                     }
                     else
                     {
-                        points_3[int(0)] = _S509[int(0)];
-                        points_3[int(1)] = _S510[int(1)];
-                        points_3[int(2)] = _S511[int(2)];
-                        points_3[int(3)] = _S512[int(3)];
-                        _S495 = _S494;
+                        points_3[int(0)] = _S519[int(0)];
+                        points_3[int(1)] = _S520[int(1)];
+                        points_3[int(2)] = _S521[int(2)];
+                        points_3[int(3)] = _S522[int(3)];
+                        _S505 = _S504;
                     }
-                    float3  _S516 = _S466 * points_3[int(2)];
-                    float _S517 = _S516.x + _S516.y + _S516.z;
-                    FixedArray<float3 , 4>  _S518 = points_3;
-                    FixedArray<float3 , 4>  _S519 = points_3;
-                    float4  _S520 = _S494;
-                    *&((&_S520)->z) = _S517;
-                    float4  _S521 = _S495 + _S520;
+                    float3  _S526 = _S476 * points_3[int(2)];
+                    float _S527 = _S526.x + _S526.y + _S526.z;
+                    FixedArray<float3 , 4>  _S528 = points_3;
+                    FixedArray<float3 , 4>  _S529 = points_3;
+                    float4  _S530 = _S504;
+                    *&((&_S530)->z) = _S527;
+                    float4  _S531 = _S505 + _S530;
                     points_3[int(0)] = points_3[int(0)];
-                    points_3[int(1)] = _S518[int(1)];
-                    points_3[int(2)] = _S455;
-                    points_3[int(3)] = _S519[int(3)];
-                    _S495 = _S521;
+                    points_3[int(1)] = _S528[int(1)];
+                    points_3[int(2)] = _S465;
+                    points_3[int(3)] = _S529[int(3)];
+                    _S505 = _S531;
                 }
                 else
                 {
-                    FixedArray<float3 , 4>  _S522 = points_3;
-                    FixedArray<float3 , 4>  _S523 = points_3;
-                    FixedArray<float3 , 4>  _S524 = points_3;
+                    FixedArray<float3 , 4>  _S532 = points_3;
+                    FixedArray<float3 , 4>  _S533 = points_3;
+                    FixedArray<float3 , 4>  _S534 = points_3;
                     points_3[int(0)] = points_3[int(0)];
-                    points_3[int(1)] = _S522[int(1)];
-                    points_3[int(2)] = _S523[int(2)];
-                    points_3[int(3)] = _S524[int(3)];
-                    _S495 = _S494;
+                    points_3[int(1)] = _S532[int(1)];
+                    points_3[int(2)] = _S533[int(2)];
+                    points_3[int(3)] = _S534[int(3)];
+                    _S505 = _S504;
                 }
             }
             else
             {
-                FixedArray<float3 , 4>  _S525 = points_3;
-                FixedArray<float3 , 4>  _S526 = points_3;
-                FixedArray<float3 , 4>  _S527 = points_3;
+                FixedArray<float3 , 4>  _S535 = points_3;
+                FixedArray<float3 , 4>  _S536 = points_3;
+                FixedArray<float3 , 4>  _S537 = points_3;
                 points_3[int(0)] = points_3[int(0)];
-                points_3[int(1)] = _S525[int(1)];
-                points_3[int(2)] = _S526[int(2)];
-                points_3[int(3)] = _S527[int(3)];
-                _S495 = _S494;
+                points_3[int(1)] = _S535[int(1)];
+                points_3[int(2)] = _S536[int(2)];
+                points_3[int(3)] = _S537[int(3)];
+                _S505 = _S504;
             }
-            if(_S459)
+            if(_S469)
             {
-                FixedArray<float3 , 4>  _S528 = points_3;
-                float3  _S529 = _S467 * points_3[int(1)];
-                float _S530 = _S529.x + _S529.y + _S529.z;
-                float4  _S531 = _S494;
-                *&((&_S531)->y) = _S530;
-                float4  _S532 = _S495 + _S531;
-                points_3[int(0)] = _S455;
-                points_3[int(1)] = _S455;
-                points_3[int(2)] = _S455;
-                points_3[int(3)] = _S455;
-                _S460 = _S528[int(0)];
-                _S495 = _S532;
+                FixedArray<float3 , 4>  _S538 = points_3;
+                float3  _S539 = _S477 * points_3[int(1)];
+                float _S540 = _S539.x + _S539.y + _S539.z;
+                float4  _S541 = _S504;
+                *&((&_S541)->y) = _S540;
+                float4  _S542 = _S505 + _S541;
+                points_3[int(0)] = _S465;
+                points_3[int(1)] = _S465;
+                points_3[int(2)] = _S465;
+                points_3[int(3)] = _S465;
+                _S470 = _S538[int(0)];
+                _S505 = _S542;
             }
             else
             {
-                FixedArray<float3 , 4>  _S533 = points_3;
-                FixedArray<float3 , 4>  _S534 = points_3;
-                FixedArray<float3 , 4>  _S535 = points_3;
+                FixedArray<float3 , 4>  _S543 = points_3;
+                FixedArray<float3 , 4>  _S544 = points_3;
+                FixedArray<float3 , 4>  _S545 = points_3;
                 points_3[int(0)] = points_3[int(0)];
-                points_3[int(1)] = _S533[int(1)];
-                points_3[int(2)] = _S534[int(2)];
-                points_3[int(3)] = _S535[int(3)];
-                _S460 = _S455;
+                points_3[int(1)] = _S543[int(1)];
+                points_3[int(2)] = _S544[int(2)];
+                points_3[int(3)] = _S545[int(3)];
+                _S470 = _S465;
             }
-            float3  _S536 = _S468 * (points_3[int(0)] + _S460);
-            float _S537 = _S536.x + _S536.y + _S536.z;
-            float4  _S538 = _S494;
-            *&((&_S538)->x) = _S537;
-            _S495 = _S495 + _S538;
+            float3  _S546 = _S478 * (points_3[int(0)] + _S470);
+            float _S547 = _S546.x + _S546.y + _S546.z;
+            float4  _S548 = _S504;
+            *&((&_S548)->x) = _S547;
+            _S505 = _S505 + _S548;
         }
         else
         {
-            _S495 = _S494;
+            _S505 = _S504;
         }
     }
     else
     {
-        _S495 = _S494;
+        _S505 = _S504;
     }
-    *v_depths_0 = _S495;
+    *v_depths_0 = _S505;
     return;
 }
 
 inline __device__ float ray_depth_to_linear_depth_factor_none(float2  pix_center_2, float4  intrins_5, FixedArray<float, 1>  dist_coeffs_8, int camera_model_7)
 {
-    float _S539;
+    float _S549;
     for(;;)
     {
         float2  uv_17 = (pix_center_2 - float2 {intrins_5.z, intrins_5.w}) / float2 {intrins_5.x, intrins_5.y};
-        FixedArray<float, 1>  _S540 = dist_coeffs_8;
+        FixedArray<float, 1>  _S550 = dist_coeffs_8;
         float2  uv_u_6;
-        bool _S541 = undistort_point_0(uv_17, &_S540, int(12), &uv_u_6);
-        if(!_S541)
+        bool _S551 = undistort_point_0(uv_17, &_S550, int(12), &uv_u_6);
+        if(!_S551)
         {
-            _S539 = 0.0f;
+            _S549 = 0.0f;
             break;
         }
         float3  raydir_2 = unproject_raydir_0(uv_u_6, camera_model_7, false);
-        _S539 = float((F32_sign((raydir_2.z)))) / length_0(raydir_2);
+        _S549 = float((F32_sign((raydir_2.z)))) / length_0(raydir_2);
         break;
     }
-    return _S539;
+    return _S549;
 }
 
 inline __device__ float depth_normal_loss_none(float2  pix_center_3, float4  intrins_6, FixedArray<float, 1>  dist_coeffs_9, int camera_model_8, bool is_ray_depth_7, float4  depths_2, float3  gt_normal_0)
 {
-    float _S542;
+    float _S552;
     for(;;)
     {
-        float3  _S543;
-        float3  * _S544;
-        float3  * _S545;
-        float3  * _S546;
-        float3  * _S547;
-        int _S548;
+        float3  _S553;
+        float3  * _S554;
+        float3  * _S555;
+        float3  * _S556;
+        float3  * _S557;
+        int _S558;
         FixedArray<float3 , 5>  points_4;
         for(;;)
         {
-            float2  _S549 = float2 {intrins_6.z, intrins_6.w};
-            float2  _S550 = float2 {intrins_6.x, intrins_6.y};
-            float2  uv_18 = (pix_center_3 + make_float2 (-1.0f, -0.0f) - _S549) / _S550;
-            FixedArray<float, 1>  _S551 = dist_coeffs_9;
+            float2  _S559 = float2 {intrins_6.z, intrins_6.w};
+            float2  _S560 = float2 {intrins_6.x, intrins_6.y};
+            float2  uv_18 = (pix_center_3 + make_float2 (-1.0f, -0.0f) - _S559) / _S560;
+            FixedArray<float, 1>  _S561 = dist_coeffs_9;
             float2  uv_u_7;
-            bool _S552 = undistort_point_0(uv_18, &_S551, int(12), &uv_u_7);
-            float3  _S553 = make_float3 (0.0f);
-            if(!_S552)
+            bool _S562 = undistort_point_0(uv_18, &_S561, int(12), &uv_u_7);
+            float3  _S563 = make_float3 (0.0f);
+            if(!_S562)
             {
-                _S548 = int(0);
-                _S547 = nullptr;
-                _S546 = nullptr;
-                _S545 = nullptr;
-                _S544 = nullptr;
-                _S543 = _S553;
+                _S558 = int(0);
+                _S557 = nullptr;
+                _S556 = nullptr;
+                _S555 = nullptr;
+                _S554 = nullptr;
+                _S553 = _S563;
                 break;
             }
             float3  raydir_3 = unproject_raydir_0(uv_u_7, camera_model_8, is_ray_depth_7);
             points_4[int(0)] = make_float3 (depths_2.x) * raydir_3;
-            float2  uv_19 = (pix_center_3 + make_float2 (1.0f, -0.0f) - _S549) / _S550;
-            FixedArray<float, 1>  _S554 = dist_coeffs_9;
+            float2  uv_19 = (pix_center_3 + make_float2 (1.0f, -0.0f) - _S559) / _S560;
+            FixedArray<float, 1>  _S564 = dist_coeffs_9;
             float2  uv_u_8;
-            bool _S555 = undistort_point_0(uv_19, &_S554, int(12), &uv_u_8);
-            if(!_S555)
+            bool _S565 = undistort_point_0(uv_19, &_S564, int(12), &uv_u_8);
+            if(!_S565)
             {
-                _S548 = int(0);
-                _S547 = nullptr;
-                _S546 = &points_4[int(0)];
-                _S545 = nullptr;
-                _S544 = nullptr;
-                _S543 = _S553;
+                _S558 = int(0);
+                _S557 = nullptr;
+                _S556 = &points_4[int(0)];
+                _S555 = nullptr;
+                _S554 = nullptr;
+                _S553 = _S563;
                 break;
             }
             float3  raydir_4 = unproject_raydir_0(uv_u_8, camera_model_8, is_ray_depth_7);
             points_4[int(1)] = make_float3 (depths_2.y) * raydir_4;
-            float2  uv_20 = (pix_center_3 + make_float2 (0.0f, -1.0f) - _S549) / _S550;
-            FixedArray<float, 1>  _S556 = dist_coeffs_9;
+            float2  uv_20 = (pix_center_3 + make_float2 (0.0f, -1.0f) - _S559) / _S560;
+            FixedArray<float, 1>  _S566 = dist_coeffs_9;
             float2  uv_u_9;
-            bool _S557 = undistort_point_0(uv_20, &_S556, int(12), &uv_u_9);
-            if(!_S557)
+            bool _S567 = undistort_point_0(uv_20, &_S566, int(12), &uv_u_9);
+            if(!_S567)
             {
-                _S548 = int(0);
-                _S547 = &points_4[int(1)];
-                _S546 = &points_4[int(0)];
-                _S545 = nullptr;
-                _S544 = nullptr;
-                _S543 = _S553;
+                _S558 = int(0);
+                _S557 = &points_4[int(1)];
+                _S556 = &points_4[int(0)];
+                _S555 = nullptr;
+                _S554 = nullptr;
+                _S553 = _S563;
                 break;
             }
             float3  raydir_5 = unproject_raydir_0(uv_u_9, camera_model_8, is_ray_depth_7);
             points_4[int(2)] = make_float3 (depths_2.z) * raydir_5;
-            float2  uv_21 = (pix_center_3 + make_float2 (0.0f, 1.0f) - _S549) / _S550;
-            FixedArray<float, 1>  _S558 = dist_coeffs_9;
+            float2  uv_21 = (pix_center_3 + make_float2 (0.0f, 1.0f) - _S559) / _S560;
+            FixedArray<float, 1>  _S568 = dist_coeffs_9;
             float2  uv_u_10;
-            bool _S559 = undistort_point_0(uv_21, &_S558, int(12), &uv_u_10);
-            if(!_S559)
+            bool _S569 = undistort_point_0(uv_21, &_S568, int(12), &uv_u_10);
+            if(!_S569)
             {
-                _S548 = int(0);
-                _S547 = &points_4[int(1)];
-                _S546 = &points_4[int(0)];
-                _S545 = nullptr;
-                _S544 = &points_4[int(2)];
-                _S543 = _S553;
+                _S558 = int(0);
+                _S557 = &points_4[int(1)];
+                _S556 = &points_4[int(0)];
+                _S555 = nullptr;
+                _S554 = &points_4[int(2)];
+                _S553 = _S563;
                 break;
             }
             float3  raydir_6 = unproject_raydir_0(uv_u_10, camera_model_8, is_ray_depth_7);
             points_4[int(3)] = make_float3 (depths_2.w) * raydir_6;
-            float2  uv_22 = (pix_center_3 + make_float2 (0.0f) * make_float2 (0.0f, 3.0f) - _S549) / _S550;
-            FixedArray<float, 1>  _S560 = dist_coeffs_9;
+            float2  uv_22 = (pix_center_3 + make_float2 (0.0f) * make_float2 (0.0f, 3.0f) - _S559) / _S560;
+            FixedArray<float, 1>  _S570 = dist_coeffs_9;
             float2  uv_u_11;
-            bool _S561 = undistort_point_0(uv_22, &_S560, int(12), &uv_u_11);
-            if(!_S561)
+            bool _S571 = undistort_point_0(uv_22, &_S570, int(12), &uv_u_11);
+            if(!_S571)
             {
-                _S548 = int(0);
-                _S547 = &points_4[int(1)];
-                _S546 = &points_4[int(0)];
-                _S545 = &points_4[int(3)];
-                _S544 = &points_4[int(2)];
-                _S543 = _S553;
+                _S558 = int(0);
+                _S557 = &points_4[int(1)];
+                _S556 = &points_4[int(0)];
+                _S555 = &points_4[int(3)];
+                _S554 = &points_4[int(2)];
+                _S553 = _S563;
                 break;
             }
             float3  raydir_7 = unproject_raydir_0(uv_u_11, camera_model_8, is_ray_depth_7);
-            _S548 = int(1);
-            _S547 = &points_4[int(1)];
-            _S546 = &points_4[int(0)];
-            _S545 = &points_4[int(3)];
-            _S544 = &points_4[int(2)];
-            _S543 = raydir_7;
+            _S558 = int(1);
+            _S557 = &points_4[int(1)];
+            _S556 = &points_4[int(0)];
+            _S555 = &points_4[int(3)];
+            _S554 = &points_4[int(2)];
+            _S553 = raydir_7;
             break;
         }
-        if(_S548 != int(1))
+        if(_S558 != int(1))
         {
-            _S542 = 0.0f;
+            _S552 = 0.0f;
             break;
         }
-        float3  normal_4 = cross_0(*_S547 - *_S546, - (*_S545 - *_S544));
+        float3  normal_4 = cross_0(*_S557 - *_S556, - (*_S555 - *_S554));
         float3  normal_5;
         if((dot_0(normal_4, normal_4)) != 0.0f)
         {
@@ -3029,650 +3096,698 @@ inline __device__ float depth_normal_loss_none(float2  pix_center_3, float4  int
         {
             normal_5 = normal_4;
         }
-        float3  _S562;
+        float3  _S572;
         if((dot_0(gt_normal_0, gt_normal_0)) != 0.0f)
         {
-            _S562 = normalize_0(gt_normal_0);
+            _S572 = normalize_0(gt_normal_0);
         }
         else
         {
-            _S562 = gt_normal_0;
+            _S572 = gt_normal_0;
         }
-        _S542 = (1.0f - dot_0(normal_5, _S562) + 0.00100000004749745f) / ((F32_max((dot_0(normal_5, - normalize_0(_S543))), (0.0f))) + 0.00100000004749745f);
+        _S552 = (1.0f - dot_0(normal_5, _S572) + 0.00100000004749745f) / ((F32_max((dot_0(normal_5, - normalize_0(_S553))), (0.0f))) + 0.00100000004749745f);
         break;
     }
-    return _S542;
+    return _S552;
 }
 
 struct s_bwd_prop_depth_normal_loss_Intermediates_0
 {
-    float2  _S563;
-    bool _S564;
-    float2  _S565;
-    bool _S566;
-    float2  _S567;
-    bool _S568;
-    float2  _S569;
-    bool _S570;
-    float2  _S571;
-    bool _S572;
+    float2  _S573;
+    bool _S574;
+    float2  _S575;
+    bool _S576;
+    float2  _S577;
+    bool _S578;
+    float2  _S579;
+    bool _S580;
+    float2  _S581;
+    bool _S582;
 };
 
 inline __device__ void s_bwd_prop_normalize_impl_0(DiffPair_vectorx3Cfloatx2C3x3E_0 * dpx_14, float3  _s_dOut_9)
 {
-    float _S573 = length_0((*dpx_14).primal_0);
-    float3  _S574 = (*dpx_14).primal_0 * _s_dOut_9;
-    float3  _S575 = make_float3 (1.0f / _S573) * _s_dOut_9;
-    float _S576 = - ((_S574.x + _S574.y + _S574.z) / (_S573 * _S573));
-    float3  _S577 = make_float3 (0.0f);
-    DiffPair_vectorx3Cfloatx2C3x3E_0 _S578;
-    (&_S578)->primal_0 = (*dpx_14).primal_0;
-    (&_S578)->differential_0 = _S577;
-    s_bwd_length_impl_0(&_S578, _S576);
-    float3  _S579 = _S575 + _S578.differential_0;
+    float _S583 = length_0((*dpx_14).primal_0);
+    float3  _S584 = (*dpx_14).primal_0 * _s_dOut_9;
+    float3  _S585 = make_float3 (1.0f / _S583) * _s_dOut_9;
+    float _S586 = - ((_S584.x + _S584.y + _S584.z) / (_S583 * _S583));
+    float3  _S587 = make_float3 (0.0f);
+    DiffPair_vectorx3Cfloatx2C3x3E_0 _S588;
+    (&_S588)->primal_0 = (*dpx_14).primal_0;
+    (&_S588)->differential_0 = _S587;
+    s_bwd_length_impl_0(&_S588, _S586);
+    float3  _S589 = _S585 + _S588.differential_0;
     dpx_14->primal_0 = (*dpx_14).primal_0;
-    dpx_14->differential_0 = _S579;
+    dpx_14->differential_0 = _S589;
     return;
 }
 
-inline __device__ void s_bwd_normalize_impl_0(DiffPair_vectorx3Cfloatx2C3x3E_0 * _S580, float3  _S581)
+inline __device__ void s_bwd_normalize_impl_0(DiffPair_vectorx3Cfloatx2C3x3E_0 * _S590, float3  _S591)
 {
-    s_bwd_prop_normalize_impl_0(_S580, _S581);
+    s_bwd_prop_normalize_impl_0(_S590, _S591);
     return;
 }
 
 inline __device__ void depth_normal_loss_vjp_none(float2  pix_center_4, float4  intrins_7, FixedArray<float, 1>  dist_coeffs_10, int camera_model_9, bool is_ray_depth_8, float4  depths_3, float3  gt_normal_1, float v_loss_0, float4  * v_depths_1, float3  * v_gt_normal_0)
 {
-    float2  _S582 = make_float2 (0.0f);
-    s_bwd_prop_depth_normal_loss_Intermediates_0 _S583;
-    (&_S583)->_S563 = _S582;
-    (&_S583)->_S564 = false;
-    (&_S583)->_S565 = _S582;
-    (&_S583)->_S566 = false;
-    (&_S583)->_S567 = _S582;
-    (&_S583)->_S568 = false;
-    (&_S583)->_S569 = _S582;
-    (&_S583)->_S570 = false;
-    (&_S583)->_S571 = _S582;
-    (&_S583)->_S572 = false;
-    (&_S583)->_S565 = _S582;
-    (&_S583)->_S566 = false;
-    (&_S583)->_S567 = _S582;
-    (&_S583)->_S568 = false;
-    (&_S583)->_S569 = _S582;
-    (&_S583)->_S570 = false;
-    (&_S583)->_S571 = _S582;
-    (&_S583)->_S572 = false;
-    float2  _S584 = float2 {intrins_7.z, intrins_7.w};
-    float2  _S585 = float2 {intrins_7.x, intrins_7.y};
-    float2  uv_23 = (pix_center_4 + make_float2 (-1.0f, -0.0f) - _S584) / _S585;
-    float2  _S586 = _S582;
-    FixedArray<float, 1>  _S587 = dist_coeffs_10;
-    bool _S588 = undistort_point_0(uv_23, &_S587, int(12), &_S586);
-    (&_S583)->_S563 = _S586;
-    (&_S583)->_S564 = _S588;
-    bool _S589 = !!_S588;
-    bool _runFlag_7;
-    if(_S589)
-    {
-        float2  uv_24 = (pix_center_4 + make_float2 (1.0f, -0.0f) - _S584) / _S585;
-        float2  _S590 = _S582;
-        FixedArray<float, 1>  _S591 = dist_coeffs_10;
-        bool _S592 = undistort_point_0(uv_24, &_S591, int(12), &_S590);
-        (&_S583)->_S565 = _S590;
-        (&_S583)->_S566 = _S592;
-        if(!_S592)
-        {
-            _runFlag_7 = false;
-        }
-        else
-        {
-            _runFlag_7 = _S589;
-        }
-        if(_runFlag_7)
-        {
-            float2  uv_25 = (pix_center_4 + make_float2 (0.0f, -1.0f) - _S584) / _S585;
-            float2  _S593 = _S582;
-            FixedArray<float, 1>  _S594 = dist_coeffs_10;
-            bool _S595 = undistort_point_0(uv_25, &_S594, int(12), &_S593);
-            (&_S583)->_S567 = _S593;
-            (&_S583)->_S568 = _S595;
-            if(!_S595)
-            {
-                _runFlag_7 = false;
-            }
-            if(_runFlag_7)
-            {
-                float2  uv_26 = (pix_center_4 + make_float2 (0.0f, 1.0f) - _S584) / _S585;
-                float2  _S596 = _S582;
-                FixedArray<float, 1>  _S597 = dist_coeffs_10;
-                bool _S598 = undistort_point_0(uv_26, &_S597, int(12), &_S596);
-                (&_S583)->_S569 = _S596;
-                (&_S583)->_S570 = _S598;
-                if(!_S598)
-                {
-                    _runFlag_7 = false;
-                }
-                if(_runFlag_7)
-                {
-                    float2  uv_27 = (pix_center_4 - _S584) / _S585;
-                    float2  _S599 = _S582;
-                    FixedArray<float, 1>  _S600 = dist_coeffs_10;
-                    bool _S601 = undistort_point_0(uv_27, &_S600, int(12), &_S599);
-                    (&_S583)->_S571 = _S599;
-                    (&_S583)->_S572 = _S601;
-                }
-            }
-        }
-    }
-    s_bwd_prop_depth_normal_loss_Intermediates_0 _S602 = _S583;
-    float3  _S603 = make_float3 (0.0f);
-    bool _S604 = !!_S583._S564;
+    float2  _S592 = make_float2 (0.0f);
+    s_bwd_prop_depth_normal_loss_Intermediates_0 _S593;
+    (&_S593)->_S573 = _S592;
+    (&_S593)->_S574 = false;
+    (&_S593)->_S575 = _S592;
+    (&_S593)->_S576 = false;
+    (&_S593)->_S577 = _S592;
+    (&_S593)->_S578 = false;
+    (&_S593)->_S579 = _S592;
+    (&_S593)->_S580 = false;
+    (&_S593)->_S581 = _S592;
+    (&_S593)->_S582 = false;
+    (&_S593)->_S575 = _S592;
+    (&_S593)->_S576 = false;
+    (&_S593)->_S577 = _S592;
+    (&_S593)->_S578 = false;
+    (&_S593)->_S579 = _S592;
+    (&_S593)->_S580 = false;
+    (&_S593)->_S581 = _S592;
+    (&_S593)->_S582 = false;
+    float2  _S594 = float2 {intrins_7.z, intrins_7.w};
+    float2  _S595 = float2 {intrins_7.x, intrins_7.y};
+    float2  uv_23 = (pix_center_4 + make_float2 (-1.0f, -0.0f) - _S594) / _S595;
+    float2  _S596 = _S592;
+    FixedArray<float, 1>  _S597 = dist_coeffs_10;
+    bool _S598 = undistort_point_0(uv_23, &_S597, int(12), &_S596);
+    (&_S593)->_S573 = _S596;
+    (&_S593)->_S574 = _S598;
+    bool _S599 = !!_S598;
     bool _runFlag_8;
-    bool _runFlag_9;
-    bool _runFlag_10;
-    int _S605;
-    float3  raydir_8;
-    float3  _S606;
-    float3  _S607;
-    float3  _S608;
-    float3  _S609;
-    FixedArray<float3 , 5>  points_5;
-    if(_S604)
+    if(_S599)
     {
-        float3  _S610 = s_primal_ctx_unproject_raydir_0(_S602._S563, camera_model_9, is_ray_depth_8);
-        float3  _S611 = make_float3 (depths_3.x) * _S610;
-        if(!_S602._S566)
+        float2  uv_24 = (pix_center_4 + make_float2 (1.0f, -0.0f) - _S594) / _S595;
+        float2  _S600 = _S592;
+        FixedArray<float, 1>  _S601 = dist_coeffs_10;
+        bool _S602 = undistort_point_0(uv_24, &_S601, int(12), &_S600);
+        (&_S593)->_S575 = _S600;
+        (&_S593)->_S576 = _S602;
+        if(!_S602)
         {
-            _runFlag_7 = false;
+            _runFlag_8 = false;
         }
         else
         {
-            _runFlag_7 = _S604;
+            _runFlag_8 = _S599;
         }
-        if(_runFlag_7)
+        if(_runFlag_8)
         {
-            float3  _S612 = s_primal_ctx_unproject_raydir_0(_S602._S565, camera_model_9, is_ray_depth_8);
-            float3  _S613 = make_float3 (depths_3.y) * _S612;
-            if(!_S602._S568)
+            float2  uv_25 = (pix_center_4 + make_float2 (0.0f, -1.0f) - _S594) / _S595;
+            float2  _S603 = _S592;
+            FixedArray<float, 1>  _S604 = dist_coeffs_10;
+            bool _S605 = undistort_point_0(uv_25, &_S604, int(12), &_S603);
+            (&_S593)->_S577 = _S603;
+            (&_S593)->_S578 = _S605;
+            if(!_S605)
             {
                 _runFlag_8 = false;
             }
-            else
-            {
-                _runFlag_8 = _runFlag_7;
-            }
             if(_runFlag_8)
             {
-                float3  _S614 = s_primal_ctx_unproject_raydir_0(_S602._S567, camera_model_9, is_ray_depth_8);
-                float3  _S615 = make_float3 (depths_3.z) * _S614;
-                if(!_S602._S570)
+                float2  uv_26 = (pix_center_4 + make_float2 (0.0f, 1.0f) - _S594) / _S595;
+                float2  _S606 = _S592;
+                FixedArray<float, 1>  _S607 = dist_coeffs_10;
+                bool _S608 = undistort_point_0(uv_26, &_S607, int(12), &_S606);
+                (&_S593)->_S579 = _S606;
+                (&_S593)->_S580 = _S608;
+                if(!_S608)
                 {
-                    _runFlag_9 = false;
+                    _runFlag_8 = false;
                 }
-                else
+                if(_runFlag_8)
                 {
-                    _runFlag_9 = _runFlag_8;
+                    float2  uv_27 = (pix_center_4 - _S594) / _S595;
+                    float2  _S609 = _S592;
+                    FixedArray<float, 1>  _S610 = dist_coeffs_10;
+                    bool _S611 = undistort_point_0(uv_27, &_S610, int(12), &_S609);
+                    (&_S593)->_S581 = _S609;
+                    (&_S593)->_S582 = _S611;
                 }
-                if(_runFlag_9)
-                {
-                    float3  _S616 = s_primal_ctx_unproject_raydir_0(_S602._S569, camera_model_9, is_ray_depth_8);
-                    float3  _S617 = make_float3 (depths_3.w) * _S616;
-                    if(!_S602._S572)
-                    {
-                        _runFlag_10 = false;
-                    }
-                    else
-                    {
-                        _runFlag_10 = _runFlag_9;
-                    }
-                    if(_runFlag_10)
-                    {
-                        float3  _S618 = s_primal_ctx_unproject_raydir_0(_S602._S571, camera_model_9, is_ray_depth_8);
-                        _S605 = int(1);
-                        raydir_8 = _S618;
-                    }
-                    else
-                    {
-                        _S605 = int(0);
-                        raydir_8 = _S616;
-                    }
-                    points_5[int(0)] = _S611;
-                    points_5[int(1)] = _S613;
-                    points_5[int(2)] = _S615;
-                    points_5[int(3)] = _S617;
-                    points_5[int(4)] = _S603;
-                    _S606 = _S616;
-                }
-                else
-                {
-                    _S605 = int(0);
-                    raydir_8 = _S614;
-                    points_5[int(0)] = _S611;
-                    points_5[int(1)] = _S613;
-                    points_5[int(2)] = _S615;
-                    points_5[int(3)] = _S603;
-                    points_5[int(4)] = _S603;
-                    _S606 = _S603;
-                }
-                _S607 = _S614;
             }
-            else
-            {
-                _S605 = int(0);
-                raydir_8 = _S612;
-                points_5[int(0)] = _S611;
-                points_5[int(1)] = _S613;
-                points_5[int(2)] = _S603;
-                points_5[int(3)] = _S603;
-                points_5[int(4)] = _S603;
-                _runFlag_9 = false;
-                _S606 = _S603;
-                _S607 = _S603;
-            }
-            _S608 = _S612;
+        }
+    }
+    s_bwd_prop_depth_normal_loss_Intermediates_0 _S612 = _S593;
+    float3  _S613 = make_float3 (0.0f);
+    bool _S614 = !!_S593._S574;
+    bool _runFlag_9;
+    bool _runFlag_10;
+    bool _runFlag_11;
+    int _S615;
+    float3  raydir_8;
+    float3  _S616;
+    float3  _S617;
+    float3  _S618;
+    float3  _S619;
+    FixedArray<float3 , 5>  points_5;
+    if(_S614)
+    {
+        float3  _S620 = s_primal_ctx_unproject_raydir_0(_S612._S573, camera_model_9, is_ray_depth_8);
+        float3  _S621 = make_float3 (depths_3.x) * _S620;
+        if(!_S612._S576)
+        {
+            _runFlag_8 = false;
         }
         else
         {
-            _S605 = int(0);
-            raydir_8 = _S610;
-            points_5[int(0)] = _S611;
-            points_5[int(1)] = _S603;
-            points_5[int(2)] = _S603;
-            points_5[int(3)] = _S603;
-            points_5[int(4)] = _S603;
-            _runFlag_8 = false;
-            _runFlag_9 = false;
-            _S606 = _S603;
-            _S607 = _S603;
-            _S608 = _S603;
+            _runFlag_8 = _S614;
         }
-        _S609 = _S610;
+        if(_runFlag_8)
+        {
+            float3  _S622 = s_primal_ctx_unproject_raydir_0(_S612._S575, camera_model_9, is_ray_depth_8);
+            float3  _S623 = make_float3 (depths_3.y) * _S622;
+            if(!_S612._S578)
+            {
+                _runFlag_9 = false;
+            }
+            else
+            {
+                _runFlag_9 = _runFlag_8;
+            }
+            if(_runFlag_9)
+            {
+                float3  _S624 = s_primal_ctx_unproject_raydir_0(_S612._S577, camera_model_9, is_ray_depth_8);
+                float3  _S625 = make_float3 (depths_3.z) * _S624;
+                if(!_S612._S580)
+                {
+                    _runFlag_10 = false;
+                }
+                else
+                {
+                    _runFlag_10 = _runFlag_9;
+                }
+                if(_runFlag_10)
+                {
+                    float3  _S626 = s_primal_ctx_unproject_raydir_0(_S612._S579, camera_model_9, is_ray_depth_8);
+                    float3  _S627 = make_float3 (depths_3.w) * _S626;
+                    if(!_S612._S582)
+                    {
+                        _runFlag_11 = false;
+                    }
+                    else
+                    {
+                        _runFlag_11 = _runFlag_10;
+                    }
+                    if(_runFlag_11)
+                    {
+                        float3  _S628 = s_primal_ctx_unproject_raydir_0(_S612._S581, camera_model_9, is_ray_depth_8);
+                        _S615 = int(1);
+                        raydir_8 = _S628;
+                    }
+                    else
+                    {
+                        _S615 = int(0);
+                        raydir_8 = _S626;
+                    }
+                    points_5[int(0)] = _S621;
+                    points_5[int(1)] = _S623;
+                    points_5[int(2)] = _S625;
+                    points_5[int(3)] = _S627;
+                    points_5[int(4)] = _S613;
+                    _S616 = _S626;
+                }
+                else
+                {
+                    _S615 = int(0);
+                    raydir_8 = _S624;
+                    points_5[int(0)] = _S621;
+                    points_5[int(1)] = _S623;
+                    points_5[int(2)] = _S625;
+                    points_5[int(3)] = _S613;
+                    points_5[int(4)] = _S613;
+                    _S616 = _S613;
+                }
+                _S617 = _S624;
+            }
+            else
+            {
+                _S615 = int(0);
+                raydir_8 = _S622;
+                points_5[int(0)] = _S621;
+                points_5[int(1)] = _S623;
+                points_5[int(2)] = _S613;
+                points_5[int(3)] = _S613;
+                points_5[int(4)] = _S613;
+                _runFlag_10 = false;
+                _S616 = _S613;
+                _S617 = _S613;
+            }
+            _S618 = _S622;
+        }
+        else
+        {
+            _S615 = int(0);
+            raydir_8 = _S620;
+            points_5[int(0)] = _S621;
+            points_5[int(1)] = _S613;
+            points_5[int(2)] = _S613;
+            points_5[int(3)] = _S613;
+            points_5[int(4)] = _S613;
+            _runFlag_9 = false;
+            _runFlag_10 = false;
+            _S616 = _S613;
+            _S617 = _S613;
+            _S618 = _S613;
+        }
+        _S619 = _S620;
     }
     else
     {
-        _S605 = int(0);
-        points_5[int(0)] = _S603;
-        points_5[int(1)] = _S603;
-        points_5[int(2)] = _S603;
-        points_5[int(3)] = _S603;
-        points_5[int(4)] = _S603;
-        _runFlag_7 = false;
+        _S615 = int(0);
+        points_5[int(0)] = _S613;
+        points_5[int(1)] = _S613;
+        points_5[int(2)] = _S613;
+        points_5[int(3)] = _S613;
+        points_5[int(4)] = _S613;
         _runFlag_8 = false;
         _runFlag_9 = false;
-        _S606 = _S603;
-        _S607 = _S603;
-        _S608 = _S603;
-        _S609 = _S603;
+        _runFlag_10 = false;
+        _S616 = _S613;
+        _S617 = _S613;
+        _S618 = _S613;
+        _S619 = _S613;
     }
-    bool _S619 = !(_S605 != int(1));
-    bool _S620;
+    bool _S629 = !(_S615 != int(1));
+    bool _S630;
     float3  normal_6;
-    float3  _S621;
-    float3  _S622;
-    float3  _S623;
-    float3  _S624;
-    float _S625;
-    float _S626;
-    float _S627;
-    float _S628;
-    if(_S619)
+    float3  _S631;
+    float3  _S632;
+    float3  _S633;
+    float3  _S634;
+    float _S635;
+    float _S636;
+    float _S637;
+    float _S638;
+    if(_S629)
     {
         float3  dx_2 = points_5[int(1)] - points_5[int(0)];
-        float3  _S629 = - (points_5[int(3)] - points_5[int(2)]);
-        float3  _S630 = s_primal_ctx_cross_0(dx_2, _S629);
-        bool _S631 = (s_primal_ctx_dot_0(_S630, _S630)) != 0.0f;
-        if(_S631)
+        float3  _S639 = - (points_5[int(3)] - points_5[int(2)]);
+        float3  _S640 = s_primal_ctx_cross_0(dx_2, _S639);
+        bool _S641 = (s_primal_ctx_dot_0(_S640, _S640)) != 0.0f;
+        if(_S641)
         {
-            normal_6 = normalize_0(_S630);
+            normal_6 = normalize_0(_S640);
         }
         else
         {
-            normal_6 = _S630;
+            normal_6 = _S640;
         }
-        bool _S632 = (s_primal_ctx_dot_0(gt_normal_1, gt_normal_1)) != 0.0f;
-        if(_S632)
+        bool _S642 = (s_primal_ctx_dot_0(gt_normal_1, gt_normal_1)) != 0.0f;
+        if(_S642)
         {
-            _S621 = normalize_0(gt_normal_1);
+            _S631 = normalize_0(gt_normal_1);
         }
         else
         {
-            _S621 = gt_normal_1;
+            _S631 = gt_normal_1;
         }
-        float3  _S633 = - normalize_0(raydir_8);
-        float _S634 = s_primal_ctx_dot_0(normal_6, _S633);
-        float _S635 = 1.0f - s_primal_ctx_dot_0(normal_6, _S621) + 0.00100000004749745f;
-        float _S636 = (F32_max((_S634), (0.0f))) + 0.00100000004749745f;
-        _S625 = _S636 * _S636;
-        _S626 = _S635;
-        _S627 = _S636;
-        _S628 = _S634;
+        float3  _S643 = - normalize_0(raydir_8);
+        float _S644 = s_primal_ctx_dot_0(normal_6, _S643);
+        float _S645 = 1.0f - s_primal_ctx_dot_0(normal_6, _S631) + 0.00100000004749745f;
+        float _S646 = (F32_max((_S644), (0.0f))) + 0.00100000004749745f;
+        _S635 = _S646 * _S646;
+        _S636 = _S645;
+        _S637 = _S646;
+        _S638 = _S644;
         raydir_8 = normal_6;
-        normal_6 = _S633;
-        _runFlag_10 = _S632;
-        _S620 = _S631;
-        _S622 = _S630;
-        _S623 = dx_2;
-        _S624 = _S629;
+        normal_6 = _S643;
+        _runFlag_11 = _S642;
+        _S630 = _S641;
+        _S632 = _S640;
+        _S633 = dx_2;
+        _S634 = _S639;
     }
     else
     {
-        _S625 = 0.0f;
-        _S626 = 0.0f;
-        _S627 = 0.0f;
-        _S628 = 0.0f;
-        raydir_8 = _S603;
-        normal_6 = _S603;
-        _S621 = _S603;
-        _runFlag_10 = false;
-        _S620 = false;
-        _S622 = _S603;
-        _S623 = _S603;
-        _S624 = _S603;
+        _S635 = 0.0f;
+        _S636 = 0.0f;
+        _S637 = 0.0f;
+        _S638 = 0.0f;
+        raydir_8 = _S613;
+        normal_6 = _S613;
+        _S631 = _S613;
+        _runFlag_11 = false;
+        _S630 = false;
+        _S632 = _S613;
+        _S633 = _S613;
+        _S634 = _S613;
     }
-    float4  _S637 = make_float4 (0.0f);
-    if(_S619)
+    float4  _S647 = make_float4 (0.0f);
+    if(_S629)
     {
-        float _S638 = v_loss_0 / _S625;
-        float _S639 = _S626 * - _S638;
-        float s_diff_num_T_0 = _S627 * _S638;
-        DiffPair_float_0 _S640;
-        (&_S640)->primal_0 = _S628;
-        (&_S640)->differential_0 = 0.0f;
-        DiffPair_float_0 _S641;
-        (&_S641)->primal_0 = 0.0f;
-        (&_S641)->differential_0 = 0.0f;
-        _d_max_0(&_S640, &_S641, _S639);
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S642;
-        (&_S642)->primal_0 = raydir_8;
-        (&_S642)->differential_0 = _S603;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S643;
-        (&_S643)->primal_0 = normal_6;
-        (&_S643)->differential_0 = _S603;
-        s_bwd_prop_dot_0(&_S642, &_S643, _S640.differential_0);
-        float _S644 = - s_diff_num_T_0;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S645;
-        (&_S645)->primal_0 = raydir_8;
-        (&_S645)->differential_0 = _S603;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S646;
-        (&_S646)->primal_0 = _S621;
-        (&_S646)->differential_0 = _S603;
-        s_bwd_prop_dot_0(&_S645, &_S646, _S644);
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S647 = _S646;
-        float3  _S648 = _S642.differential_0 + _S645.differential_0;
-        if(_runFlag_10)
-        {
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S649;
-            (&_S649)->primal_0 = gt_normal_1;
-            (&_S649)->differential_0 = _S603;
-            s_bwd_normalize_impl_0(&_S649, _S647.differential_0);
-            raydir_8 = _S649.differential_0;
-        }
-        else
-        {
-            raydir_8 = _S647.differential_0;
-        }
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S650;
-        (&_S650)->primal_0 = gt_normal_1;
-        (&_S650)->differential_0 = _S603;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S651;
-        (&_S651)->primal_0 = gt_normal_1;
-        (&_S651)->differential_0 = _S603;
-        s_bwd_prop_dot_0(&_S650, &_S651, 0.0f);
-        float3  _S652 = _S651.differential_0 + _S650.differential_0 + raydir_8;
-        if(_S620)
-        {
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S653;
-            (&_S653)->primal_0 = _S622;
-            (&_S653)->differential_0 = _S603;
-            s_bwd_normalize_impl_0(&_S653, _S648);
-            raydir_8 = _S653.differential_0;
-        }
-        else
-        {
-            raydir_8 = _S648;
-        }
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S654;
-        (&_S654)->primal_0 = _S622;
-        (&_S654)->differential_0 = _S603;
+        float _S648 = v_loss_0 / _S635;
+        float _S649 = _S636 * - _S648;
+        float s_diff_num_T_0 = _S637 * _S648;
+        DiffPair_float_0 _S650;
+        (&_S650)->primal_0 = _S638;
+        (&_S650)->differential_0 = 0.0f;
+        DiffPair_float_0 _S651;
+        (&_S651)->primal_0 = 0.0f;
+        (&_S651)->differential_0 = 0.0f;
+        _d_max_0(&_S650, &_S651, _S649);
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S652;
+        (&_S652)->primal_0 = raydir_8;
+        (&_S652)->differential_0 = _S613;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S653;
+        (&_S653)->primal_0 = normal_6;
+        (&_S653)->differential_0 = _S613;
+        s_bwd_prop_dot_0(&_S652, &_S653, _S650.differential_0);
+        float _S654 = - s_diff_num_T_0;
         DiffPair_vectorx3Cfloatx2C3x3E_0 _S655;
-        (&_S655)->primal_0 = _S622;
-        (&_S655)->differential_0 = _S603;
-        s_bwd_prop_dot_0(&_S654, &_S655, 0.0f);
-        float3  _S656 = _S655.differential_0 + _S654.differential_0 + raydir_8;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S657;
-        (&_S657)->primal_0 = _S623;
-        (&_S657)->differential_0 = _S603;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S658;
-        (&_S658)->primal_0 = _S624;
-        (&_S658)->differential_0 = _S603;
-        s_bwd_prop_cross_0(&_S657, &_S658, _S656);
-        float3  s_diff_dy_T_2 = - _S658.differential_0;
-        float3  _S659 = - s_diff_dy_T_2;
-        float3  _S660 = - _S657.differential_0;
-        FixedArray<float3 , 5>  _S661;
-        _S661[int(0)] = _S603;
-        _S661[int(1)] = _S603;
-        _S661[int(2)] = _S603;
-        _S661[int(3)] = _S603;
-        _S661[int(4)] = _S603;
-        _S661[int(2)] = _S659;
-        _S661[int(3)] = s_diff_dy_T_2;
-        _S661[int(0)] = _S660;
-        _S661[int(1)] = _S657.differential_0;
-        points_5[int(0)] = _S661[int(0)];
-        points_5[int(1)] = _S661[int(1)];
-        points_5[int(2)] = _S661[int(2)];
-        points_5[int(3)] = _S661[int(3)];
-        points_5[int(4)] = _S661[int(4)];
-        raydir_8 = _S652;
+        (&_S655)->primal_0 = raydir_8;
+        (&_S655)->differential_0 = _S613;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S656;
+        (&_S656)->primal_0 = _S631;
+        (&_S656)->differential_0 = _S613;
+        s_bwd_prop_dot_0(&_S655, &_S656, _S654);
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S657 = _S656;
+        float3  _S658 = _S652.differential_0 + _S655.differential_0;
+        if(_runFlag_11)
+        {
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S659;
+            (&_S659)->primal_0 = gt_normal_1;
+            (&_S659)->differential_0 = _S613;
+            s_bwd_normalize_impl_0(&_S659, _S657.differential_0);
+            raydir_8 = _S659.differential_0;
+        }
+        else
+        {
+            raydir_8 = _S657.differential_0;
+        }
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S660;
+        (&_S660)->primal_0 = gt_normal_1;
+        (&_S660)->differential_0 = _S613;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S661;
+        (&_S661)->primal_0 = gt_normal_1;
+        (&_S661)->differential_0 = _S613;
+        s_bwd_prop_dot_0(&_S660, &_S661, 0.0f);
+        float3  _S662 = _S661.differential_0 + _S660.differential_0 + raydir_8;
+        if(_S630)
+        {
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S663;
+            (&_S663)->primal_0 = _S632;
+            (&_S663)->differential_0 = _S613;
+            s_bwd_normalize_impl_0(&_S663, _S658);
+            raydir_8 = _S663.differential_0;
+        }
+        else
+        {
+            raydir_8 = _S658;
+        }
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S664;
+        (&_S664)->primal_0 = _S632;
+        (&_S664)->differential_0 = _S613;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S665;
+        (&_S665)->primal_0 = _S632;
+        (&_S665)->differential_0 = _S613;
+        s_bwd_prop_dot_0(&_S664, &_S665, 0.0f);
+        float3  _S666 = _S665.differential_0 + _S664.differential_0 + raydir_8;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S667;
+        (&_S667)->primal_0 = _S633;
+        (&_S667)->differential_0 = _S613;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S668;
+        (&_S668)->primal_0 = _S634;
+        (&_S668)->differential_0 = _S613;
+        s_bwd_prop_cross_0(&_S667, &_S668, _S666);
+        float3  s_diff_dy_T_2 = - _S668.differential_0;
+        float3  _S669 = - s_diff_dy_T_2;
+        float3  _S670 = - _S667.differential_0;
+        FixedArray<float3 , 5>  _S671;
+        _S671[int(0)] = _S613;
+        _S671[int(1)] = _S613;
+        _S671[int(2)] = _S613;
+        _S671[int(3)] = _S613;
+        _S671[int(4)] = _S613;
+        _S671[int(2)] = _S669;
+        _S671[int(3)] = s_diff_dy_T_2;
+        _S671[int(0)] = _S670;
+        _S671[int(1)] = _S667.differential_0;
+        points_5[int(0)] = _S671[int(0)];
+        points_5[int(1)] = _S671[int(1)];
+        points_5[int(2)] = _S671[int(2)];
+        points_5[int(3)] = _S671[int(3)];
+        points_5[int(4)] = _S671[int(4)];
+        raydir_8 = _S662;
     }
     else
     {
-        points_5[int(0)] = _S603;
-        points_5[int(1)] = _S603;
-        points_5[int(2)] = _S603;
-        points_5[int(3)] = _S603;
-        points_5[int(4)] = _S603;
-        raydir_8 = _S603;
+        points_5[int(0)] = _S613;
+        points_5[int(1)] = _S613;
+        points_5[int(2)] = _S613;
+        points_5[int(3)] = _S613;
+        points_5[int(4)] = _S613;
+        raydir_8 = _S613;
     }
-    float4  _S662;
-    if(_S604)
+    float4  _S672;
+    if(_S614)
     {
-        if(_runFlag_7)
+        if(_runFlag_8)
         {
-            if(_runFlag_8)
+            if(_runFlag_9)
             {
-                if(_runFlag_9)
+                if(_runFlag_10)
                 {
-                    FixedArray<float3 , 5>  _S663 = points_5;
-                    FixedArray<float3 , 5>  _S664 = points_5;
-                    FixedArray<float3 , 5>  _S665 = points_5;
-                    float3  _S666 = _S606 * points_5[int(3)];
-                    float _S667 = _S666.x + _S666.y + _S666.z;
-                    float4  _S668 = _S637;
-                    *&((&_S668)->w) = _S667;
-                    points_5[int(0)] = _S603;
-                    points_5[int(1)] = _S603;
-                    points_5[int(2)] = _S603;
-                    points_5[int(3)] = _S603;
-                    points_5[int(4)] = _S603;
-                    _S606 = _S665[int(2)];
-                    normal_6 = _S663[int(0)];
-                    _S621 = _S664[int(1)];
-                    _S662 = _S668;
+                    FixedArray<float3 , 5>  _S673 = points_5;
+                    FixedArray<float3 , 5>  _S674 = points_5;
+                    FixedArray<float3 , 5>  _S675 = points_5;
+                    float3  _S676 = _S616 * points_5[int(3)];
+                    float _S677 = _S676.x + _S676.y + _S676.z;
+                    float4  _S678 = _S647;
+                    *&((&_S678)->w) = _S677;
+                    points_5[int(0)] = _S613;
+                    points_5[int(1)] = _S613;
+                    points_5[int(2)] = _S613;
+                    points_5[int(3)] = _S613;
+                    points_5[int(4)] = _S613;
+                    _S616 = _S675[int(2)];
+                    normal_6 = _S673[int(0)];
+                    _S631 = _S674[int(1)];
+                    _S672 = _S678;
                 }
                 else
                 {
-                    FixedArray<float3 , 5>  _S669 = points_5;
-                    FixedArray<float3 , 5>  _S670 = points_5;
-                    FixedArray<float3 , 5>  _S671 = points_5;
-                    FixedArray<float3 , 5>  _S672 = points_5;
+                    FixedArray<float3 , 5>  _S679 = points_5;
+                    FixedArray<float3 , 5>  _S680 = points_5;
+                    FixedArray<float3 , 5>  _S681 = points_5;
+                    FixedArray<float3 , 5>  _S682 = points_5;
                     points_5[int(0)] = points_5[int(0)];
-                    points_5[int(1)] = _S669[int(1)];
-                    points_5[int(2)] = _S670[int(2)];
-                    points_5[int(3)] = _S671[int(3)];
-                    points_5[int(4)] = _S672[int(4)];
-                    _S606 = _S603;
-                    normal_6 = _S603;
-                    _S621 = _S603;
-                    _S662 = _S637;
+                    points_5[int(1)] = _S679[int(1)];
+                    points_5[int(2)] = _S680[int(2)];
+                    points_5[int(3)] = _S681[int(3)];
+                    points_5[int(4)] = _S682[int(4)];
+                    _S616 = _S613;
+                    normal_6 = _S613;
+                    _S631 = _S613;
+                    _S672 = _S647;
                 }
-                float3  _S673 = _S607 * (points_5[int(2)] + _S606);
-                float _S674 = _S673.x + _S673.y + _S673.z;
-                float3  _S675 = points_5[int(0)] + normal_6;
-                float3  _S676 = points_5[int(1)] + _S621;
-                float4  _S677 = _S637;
-                *&((&_S677)->z) = _S674;
-                float4  _S678 = _S662 + _S677;
-                points_5[int(0)] = _S603;
-                points_5[int(1)] = _S603;
-                points_5[int(2)] = _S603;
-                points_5[int(3)] = _S603;
-                points_5[int(4)] = _S603;
-                _S606 = _S676;
-                _S607 = _S675;
-                _S662 = _S678;
+                float3  _S683 = _S617 * (points_5[int(2)] + _S616);
+                float _S684 = _S683.x + _S683.y + _S683.z;
+                float3  _S685 = points_5[int(0)] + normal_6;
+                float3  _S686 = points_5[int(1)] + _S631;
+                float4  _S687 = _S647;
+                *&((&_S687)->z) = _S684;
+                float4  _S688 = _S672 + _S687;
+                points_5[int(0)] = _S613;
+                points_5[int(1)] = _S613;
+                points_5[int(2)] = _S613;
+                points_5[int(3)] = _S613;
+                points_5[int(4)] = _S613;
+                _S616 = _S686;
+                _S617 = _S685;
+                _S672 = _S688;
             }
             else
             {
-                FixedArray<float3 , 5>  _S679 = points_5;
-                FixedArray<float3 , 5>  _S680 = points_5;
-                FixedArray<float3 , 5>  _S681 = points_5;
-                FixedArray<float3 , 5>  _S682 = points_5;
+                FixedArray<float3 , 5>  _S689 = points_5;
+                FixedArray<float3 , 5>  _S690 = points_5;
+                FixedArray<float3 , 5>  _S691 = points_5;
+                FixedArray<float3 , 5>  _S692 = points_5;
                 points_5[int(0)] = points_5[int(0)];
-                points_5[int(1)] = _S679[int(1)];
-                points_5[int(2)] = _S680[int(2)];
-                points_5[int(3)] = _S681[int(3)];
-                points_5[int(4)] = _S682[int(4)];
-                _S606 = _S603;
-                _S607 = _S603;
-                _S662 = _S637;
+                points_5[int(1)] = _S689[int(1)];
+                points_5[int(2)] = _S690[int(2)];
+                points_5[int(3)] = _S691[int(3)];
+                points_5[int(4)] = _S692[int(4)];
+                _S616 = _S613;
+                _S617 = _S613;
+                _S672 = _S647;
             }
-            float3  _S683 = _S608 * (points_5[int(1)] + _S606);
-            float _S684 = _S683.x + _S683.y + _S683.z;
-            float3  _S685 = points_5[int(0)] + _S607;
-            float4  _S686 = _S637;
-            *&((&_S686)->y) = _S684;
-            float4  _S687 = _S662 + _S686;
-            points_5[int(0)] = _S603;
-            points_5[int(1)] = _S603;
-            points_5[int(2)] = _S603;
-            points_5[int(3)] = _S603;
-            points_5[int(4)] = _S603;
-            _S606 = _S685;
-            _S662 = _S687;
+            float3  _S693 = _S618 * (points_5[int(1)] + _S616);
+            float _S694 = _S693.x + _S693.y + _S693.z;
+            float3  _S695 = points_5[int(0)] + _S617;
+            float4  _S696 = _S647;
+            *&((&_S696)->y) = _S694;
+            float4  _S697 = _S672 + _S696;
+            points_5[int(0)] = _S613;
+            points_5[int(1)] = _S613;
+            points_5[int(2)] = _S613;
+            points_5[int(3)] = _S613;
+            points_5[int(4)] = _S613;
+            _S616 = _S695;
+            _S672 = _S697;
         }
         else
         {
-            FixedArray<float3 , 5>  _S688 = points_5;
-            FixedArray<float3 , 5>  _S689 = points_5;
-            FixedArray<float3 , 5>  _S690 = points_5;
-            FixedArray<float3 , 5>  _S691 = points_5;
+            FixedArray<float3 , 5>  _S698 = points_5;
+            FixedArray<float3 , 5>  _S699 = points_5;
+            FixedArray<float3 , 5>  _S700 = points_5;
+            FixedArray<float3 , 5>  _S701 = points_5;
             points_5[int(0)] = points_5[int(0)];
-            points_5[int(1)] = _S688[int(1)];
-            points_5[int(2)] = _S689[int(2)];
-            points_5[int(3)] = _S690[int(3)];
-            points_5[int(4)] = _S691[int(4)];
-            _S606 = _S603;
-            _S662 = _S637;
+            points_5[int(1)] = _S698[int(1)];
+            points_5[int(2)] = _S699[int(2)];
+            points_5[int(3)] = _S700[int(3)];
+            points_5[int(4)] = _S701[int(4)];
+            _S616 = _S613;
+            _S672 = _S647;
         }
-        float3  _S692 = _S609 * (points_5[int(0)] + _S606);
-        float _S693 = _S692.x + _S692.y + _S692.z;
-        float4  _S694 = _S637;
-        *&((&_S694)->x) = _S693;
-        _S662 = _S662 + _S694;
+        float3  _S702 = _S619 * (points_5[int(0)] + _S616);
+        float _S703 = _S702.x + _S702.y + _S702.z;
+        float4  _S704 = _S647;
+        *&((&_S704)->x) = _S703;
+        _S672 = _S672 + _S704;
     }
     else
     {
-        _S662 = _S637;
+        _S672 = _S647;
     }
-    *v_depths_1 = _S662;
+    *v_depths_1 = _S672;
     *v_gt_normal_0 = raydir_8;
     return;
 }
 
 inline __device__ float3  generate_ray_d2n_opencv(float2  pix_pos_3, float4  intrins_8, FixedArray<float, 4>  dist_coeffs_11, int camera_model_10, bool is_ray_depth_9)
 {
-    float3  _S695;
+    float3  _S705;
     for(;;)
     {
         float2  uv_28 = (pix_pos_3 - float2 {intrins_8.z, intrins_8.w}) / float2 {intrins_8.x, intrins_8.y};
-        FixedArray<float, 4>  _S696 = dist_coeffs_11;
+        FixedArray<float, 4>  _S706 = dist_coeffs_11;
         float2  uv_u_12;
-        bool _S697 = undistort_point_1(uv_28, &_S696, int(12), &uv_u_12);
-        if(!_S697)
+        bool _S707 = undistort_point_1(uv_28, &_S706, int(12), &uv_u_12);
+        if(!_S707)
         {
-            int3  _S698 = make_int3 (int(0));
-            float3  _S699 = make_float3 ((float)_S698.x, (float)_S698.y, (float)_S698.z);
-            _S695 = _S699;
+            int3  _S708 = make_int3 (int(0));
+            float3  _S709 = make_float3 ((float)_S708.x, (float)_S708.y, (float)_S708.z);
+            _S705 = _S709;
             break;
         }
-        _S695 = unproject_raydir_0(uv_u_12, camera_model_10, is_ray_depth_9);
+        _S705 = unproject_raydir_0(uv_u_12, camera_model_10, is_ray_depth_9);
         break;
     }
-    return _S695;
+    return _S705;
 }
 
 inline __device__ float3  depth_to_point_opencv(float2  pix_pos_4, float4  intrins_9, FixedArray<float, 4>  dist_coeffs_12, int camera_model_11, bool is_ray_depth_10, float depth_4)
 {
-    float3  _S700;
+    float3  _S710;
     for(;;)
     {
         float2  uv_29 = (pix_pos_4 - float2 {intrins_9.z, intrins_9.w}) / float2 {intrins_9.x, intrins_9.y};
-        FixedArray<float, 4>  _S701 = dist_coeffs_12;
+        FixedArray<float, 4>  _S711 = dist_coeffs_12;
         float2  uv_u_13;
-        bool _S702 = undistort_point_1(uv_29, &_S701, int(12), &uv_u_13);
-        if(!_S702)
+        bool _S712 = undistort_point_1(uv_29, &_S711, int(12), &uv_u_13);
+        if(!_S712)
         {
-            _S700 = make_float3 (0.0f);
+            _S710 = make_float3 (0.0f);
             break;
         }
-        _S700 = make_float3 (depth_4) * unproject_raydir_0(uv_u_13, camera_model_11, is_ray_depth_10);
+        if(camera_model_11 == int(4))
+        {
+            _S710 = make_float3 (uv_29.x, uv_29.y, depth_4);
+            break;
+        }
+        _S710 = make_float3 (depth_4) * unproject_raydir_0(uv_u_13, camera_model_11, is_ray_depth_10);
         break;
     }
-    return _S700;
+    return _S710;
 }
 
 struct s_bwd_prop_depth_to_point_Intermediates_1
 {
-    float2  _S703;
-    bool _S704;
+    float2  _S713;
+    bool _S714;
 };
 
 inline __device__ float depth_to_point_vjp_opencv(float2  pix_pos_5, float4  intrins_10, FixedArray<float, 4>  dist_coeffs_13, int camera_model_12, bool is_ray_depth_11, float depth_5, float3  v_point_1)
 {
-    float2  _S705 = make_float2 (0.0f);
-    s_bwd_prop_depth_to_point_Intermediates_1 _S706;
-    (&_S706)->_S703 = _S705;
-    (&_S706)->_S704 = false;
+    float2  _S715 = make_float2 (0.0f);
+    s_bwd_prop_depth_to_point_Intermediates_1 _S716;
+    (&_S716)->_S713 = _S715;
+    (&_S716)->_S714 = false;
     float2  uv_30 = (pix_pos_5 - float2 {intrins_10.z, intrins_10.w}) / float2 {intrins_10.x, intrins_10.y};
-    float2  _S707 = _S705;
-    FixedArray<float, 4>  _S708 = dist_coeffs_13;
-    bool _S709 = undistort_point_1(uv_30, &_S708, int(12), &_S707);
-    (&_S706)->_S703 = _S707;
-    (&_S706)->_S704 = _S709;
-    s_bwd_prop_depth_to_point_Intermediates_1 _S710 = _S706;
-    float3  _S711 = make_float3 (0.0f);
-    bool _S712 = !!_S706._S704;
-    float3  _S713;
-    if(_S712)
+    float2  _S717 = _S715;
+    FixedArray<float, 4>  _S718 = dist_coeffs_13;
+    bool _S719 = undistort_point_1(uv_30, &_S718, int(12), &_S717);
+    (&_S716)->_S713 = _S717;
+    (&_S716)->_S714 = _S719;
+    s_bwd_prop_depth_to_point_Intermediates_1 _S720 = _S716;
+    float3  _S721 = make_float3 (0.0f);
+    bool _S722 = !!_S716._S714;
+    bool _runFlag_12;
+    bool _S723;
+    float3  _S724;
+    if(_S722)
     {
-        _S713 = s_primal_ctx_unproject_raydir_0(_S710._S703, camera_model_12, is_ray_depth_11);
+        bool _S725 = camera_model_12 == int(4);
+        if(_S725)
+        {
+            _runFlag_12 = false;
+        }
+        else
+        {
+            _runFlag_12 = _S722;
+        }
+        if(_runFlag_12)
+        {
+            _S724 = s_primal_ctx_unproject_raydir_0(_S720._S713, camera_model_12, is_ray_depth_11);
+        }
+        else
+        {
+            _S724 = _S721;
+        }
+        _S723 = _S725;
     }
     else
     {
-        _S713 = _S711;
+        _runFlag_12 = false;
+        _S724 = _S721;
+        _S723 = false;
     }
-    if(_S712)
+    float _S726;
+    if(_S722)
     {
-        _S713 = _S713 * v_point_1;
+        float3  _S727;
+        if(_runFlag_12)
+        {
+            float3  _S728 = _S724 * v_point_1;
+            _S724 = _S721;
+            _S727 = _S728;
+        }
+        else
+        {
+            _S724 = v_point_1;
+            _S727 = _S721;
+        }
+        if(_S723)
+        {
+            _S726 = _S724.z;
+        }
+        else
+        {
+            _S726 = 0.0f;
+        }
+        _S724 = _S727;
     }
     else
     {
-        _S713 = _S711;
+        _S724 = _S721;
+        _S726 = 0.0f;
     }
-    return _S713.x + _S713.y + _S713.z;
+    return _S724.x + _S724.y + _S724.z + _S726;
 }
 
 inline __device__ float3  depth_to_normal_opencv(float2  pix_center_5, float4  intrins_11, FixedArray<float, 4>  dist_coeffs_14, int camera_model_13, bool is_ray_depth_12, float4  depths_4)
@@ -3680,142 +3795,142 @@ inline __device__ float3  depth_to_normal_opencv(float2  pix_center_5, float4  i
     float3  normal_7;
     for(;;)
     {
-        bool _S714;
+        bool _S729;
         if((depths_4.x) == 0.0f)
         {
-            _S714 = true;
+            _S729 = true;
         }
         else
         {
-            _S714 = (depths_4.y) == 0.0f;
+            _S729 = (depths_4.y) == 0.0f;
         }
-        if(_S714)
+        if(_S729)
         {
-            _S714 = true;
+            _S729 = true;
         }
         else
         {
-            _S714 = (depths_4.z) == 0.0f;
+            _S729 = (depths_4.z) == 0.0f;
         }
-        if(_S714)
+        if(_S729)
         {
-            _S714 = true;
+            _S729 = true;
         }
         else
         {
-            _S714 = (depths_4.w) == 0.0f;
+            _S729 = (depths_4.w) == 0.0f;
         }
-        if(_S714)
+        if(_S729)
         {
             normal_7 = make_float3 (0.0f);
             break;
         }
-        float3  * _S715;
-        float3  * _S716;
-        float3  * _S717;
-        float3  * _S718;
-        int _S719;
+        float3  * _S730;
+        float3  * _S731;
+        float3  * _S732;
+        float3  * _S733;
+        int _S734;
         FixedArray<float3 , 4>  points_6;
         for(;;)
         {
-            float2  _S720 = float2 {intrins_11.z, intrins_11.w};
-            float2  _S721 = float2 {intrins_11.x, intrins_11.y};
-            float2  uv_31 = (pix_center_5 + make_float2 (-1.0f, -0.0f) - _S720) / _S721;
-            FixedArray<float, 4>  _S722 = dist_coeffs_14;
+            float2  _S735 = float2 {intrins_11.z, intrins_11.w};
+            float2  _S736 = float2 {intrins_11.x, intrins_11.y};
+            float2  uv_31 = (pix_center_5 + make_float2 (-1.0f, -0.0f) - _S735) / _S736;
+            FixedArray<float, 4>  _S737 = dist_coeffs_14;
             float2  uv_u_14;
-            bool _S723 = undistort_point_1(uv_31, &_S722, int(12), &uv_u_14);
-            if(!_S723)
+            bool _S738 = undistort_point_1(uv_31, &_S737, int(12), &uv_u_14);
+            if(!_S738)
             {
-                float3  _S724 = make_float3 (0.0f);
-                _S719 = int(0);
-                _S718 = nullptr;
-                _S717 = nullptr;
-                _S716 = nullptr;
-                _S715 = nullptr;
-                normal_7 = _S724;
+                float3  _S739 = make_float3 (0.0f);
+                _S734 = int(0);
+                _S733 = nullptr;
+                _S732 = nullptr;
+                _S731 = nullptr;
+                _S730 = nullptr;
+                normal_7 = _S739;
                 break;
             }
             points_6[int(0)] = make_float3 (depths_4.x) * unproject_raydir_0(uv_u_14, camera_model_13, is_ray_depth_12);
             for(;;)
             {
-                float2  uv_32 = (pix_center_5 + make_float2 (1.0f, -0.0f) - _S720) / _S721;
-                FixedArray<float, 4>  _S725 = dist_coeffs_14;
+                float2  uv_32 = (pix_center_5 + make_float2 (1.0f, -0.0f) - _S735) / _S736;
+                FixedArray<float, 4>  _S740 = dist_coeffs_14;
                 float2  uv_u_15;
-                bool _S726 = undistort_point_1(uv_32, &_S725, int(12), &uv_u_15);
-                if(!_S726)
+                bool _S741 = undistort_point_1(uv_32, &_S740, int(12), &uv_u_15);
+                if(!_S741)
                 {
-                    float3  _S727 = make_float3 (0.0f);
-                    _S719 = int(0);
-                    _S718 = nullptr;
-                    normal_7 = _S727;
+                    float3  _S742 = make_float3 (0.0f);
+                    _S734 = int(0);
+                    _S733 = nullptr;
+                    normal_7 = _S742;
                     break;
                 }
                 points_6[int(1)] = make_float3 (depths_4.y) * unproject_raydir_0(uv_u_15, camera_model_13, is_ray_depth_12);
-                _S719 = int(2);
-                _S718 = &points_6[int(1)];
+                _S734 = int(2);
+                _S733 = &points_6[int(1)];
                 break;
             }
-            if(_S719 != int(2))
+            if(_S734 != int(2))
             {
-                _S717 = &points_6[int(0)];
-                _S716 = nullptr;
-                _S715 = nullptr;
+                _S732 = &points_6[int(0)];
+                _S731 = nullptr;
+                _S730 = nullptr;
                 break;
             }
-            float2  uv_33 = (pix_center_5 + make_float2 (0.0f, -1.0f) - _S720) / _S721;
-            FixedArray<float, 4>  _S728 = dist_coeffs_14;
+            float2  uv_33 = (pix_center_5 + make_float2 (0.0f, -1.0f) - _S735) / _S736;
+            FixedArray<float, 4>  _S743 = dist_coeffs_14;
             float2  uv_u_16;
-            bool _S729 = undistort_point_1(uv_33, &_S728, int(12), &uv_u_16);
-            if(!_S729)
+            bool _S744 = undistort_point_1(uv_33, &_S743, int(12), &uv_u_16);
+            if(!_S744)
             {
-                float3  _S730 = make_float3 (0.0f);
-                _S719 = int(0);
-                _S717 = &points_6[int(0)];
-                _S716 = nullptr;
-                _S715 = nullptr;
-                normal_7 = _S730;
+                float3  _S745 = make_float3 (0.0f);
+                _S734 = int(0);
+                _S732 = &points_6[int(0)];
+                _S731 = nullptr;
+                _S730 = nullptr;
+                normal_7 = _S745;
                 break;
             }
             points_6[int(2)] = make_float3 (depths_4.z) * unproject_raydir_0(uv_u_16, camera_model_13, is_ray_depth_12);
             for(;;)
             {
-                float2  uv_34 = (pix_center_5 + make_float2 (0.0f, 1.0f) - _S720) / _S721;
-                FixedArray<float, 4>  _S731 = dist_coeffs_14;
+                float2  uv_34 = (pix_center_5 + make_float2 (0.0f, 1.0f) - _S735) / _S736;
+                FixedArray<float, 4>  _S746 = dist_coeffs_14;
                 float2  uv_u_17;
-                bool _S732 = undistort_point_1(uv_34, &_S731, int(12), &uv_u_17);
-                if(!_S732)
+                bool _S747 = undistort_point_1(uv_34, &_S746, int(12), &uv_u_17);
+                if(!_S747)
                 {
-                    float3  _S733 = make_float3 (0.0f);
-                    _S719 = int(0);
-                    _S717 = nullptr;
-                    normal_7 = _S733;
+                    float3  _S748 = make_float3 (0.0f);
+                    _S734 = int(0);
+                    _S732 = nullptr;
+                    normal_7 = _S748;
                     break;
                 }
                 points_6[int(3)] = make_float3 (depths_4.w) * unproject_raydir_0(uv_u_17, camera_model_13, is_ray_depth_12);
-                _S719 = int(2);
-                _S717 = &points_6[int(3)];
+                _S734 = int(2);
+                _S732 = &points_6[int(3)];
                 break;
             }
-            if(_S719 != int(2))
+            if(_S734 != int(2))
             {
-                float3  * _S734 = _S717;
-                _S717 = &points_6[int(0)];
-                _S716 = _S734;
-                _S715 = &points_6[int(2)];
+                float3  * _S749 = _S732;
+                _S732 = &points_6[int(0)];
+                _S731 = _S749;
+                _S730 = &points_6[int(2)];
                 break;
             }
-            float3  * _S735 = _S717;
-            _S719 = int(1);
-            _S717 = &points_6[int(0)];
-            _S716 = _S735;
-            _S715 = &points_6[int(2)];
+            float3  * _S750 = _S732;
+            _S734 = int(1);
+            _S732 = &points_6[int(0)];
+            _S731 = _S750;
+            _S730 = &points_6[int(2)];
             break;
         }
-        if(_S719 != int(1))
+        if(_S734 != int(1))
         {
             break;
         }
-        float3  normal_8 = cross_0(*_S718 - *_S717, - (*_S716 - *_S715));
+        float3  normal_8 = cross_0(*_S733 - *_S732, - (*_S731 - *_S730));
         if((dot_0(normal_8, normal_8)) != 0.0f)
         {
             normal_7 = normal_8 / make_float3 (length_0(normal_8));
@@ -3831,673 +3946,673 @@ inline __device__ float3  depth_to_normal_opencv(float2  pix_center_5, float4  i
 
 struct s_bwd_prop_depth_to_normal_Intermediates_1
 {
-    float2  _S736;
-    bool _S737;
-    float2  _S738;
-    bool _S739;
-    float2  _S740;
-    bool _S741;
-    float2  _S742;
-    bool _S743;
+    float2  _S751;
+    bool _S752;
+    float2  _S753;
+    bool _S754;
+    float2  _S755;
+    bool _S756;
+    float2  _S757;
+    bool _S758;
 };
 
 inline __device__ void depth_to_normal_vjp_opencv(float2  pix_center_6, float4  intrins_12, FixedArray<float, 4>  dist_coeffs_15, int camera_model_14, bool is_ray_depth_13, float4  depths_5, float3  v_normal_2, float4  * v_depths_2)
 {
-    float2  _S744 = make_float2 (0.0f);
-    s_bwd_prop_depth_to_normal_Intermediates_1 _S745;
-    (&_S745)->_S736 = _S744;
-    (&_S745)->_S737 = false;
-    (&_S745)->_S738 = _S744;
-    (&_S745)->_S739 = false;
-    (&_S745)->_S740 = _S744;
-    (&_S745)->_S741 = false;
-    (&_S745)->_S742 = _S744;
-    (&_S745)->_S743 = false;
-    (&_S745)->_S736 = _S744;
-    (&_S745)->_S737 = false;
-    (&_S745)->_S738 = _S744;
-    (&_S745)->_S739 = false;
-    (&_S745)->_S740 = _S744;
-    (&_S745)->_S741 = false;
-    (&_S745)->_S742 = _S744;
-    (&_S745)->_S743 = false;
-    bool _S746 = (depths_5.x) == 0.0f;
-    bool _runFlag_11;
-    if(_S746)
-    {
-        _runFlag_11 = true;
-    }
-    else
-    {
-        _runFlag_11 = (depths_5.y) == 0.0f;
-    }
-    if(_runFlag_11)
-    {
-        _runFlag_11 = true;
-    }
-    else
-    {
-        _runFlag_11 = (depths_5.z) == 0.0f;
-    }
-    if(_runFlag_11)
-    {
-        _runFlag_11 = true;
-    }
-    else
-    {
-        _runFlag_11 = (depths_5.w) == 0.0f;
-    }
-    int _S747;
-    if(!_runFlag_11)
-    {
-        float2  _S748 = float2 {intrins_12.z, intrins_12.w};
-        float2  _S749 = float2 {intrins_12.x, intrins_12.y};
-        float2  uv_35 = (pix_center_6 + make_float2 (-1.0f, -0.0f) - _S748) / _S749;
-        float2  _S750 = _S744;
-        FixedArray<float, 4>  _S751 = dist_coeffs_15;
-        bool _S752 = undistort_point_1(uv_35, &_S751, int(12), &_S750);
-        (&_S745)->_S736 = _S750;
-        (&_S745)->_S737 = _S752;
-        bool _S753 = !!_S752;
-        if(_S753)
-        {
-            float2  uv_36 = (pix_center_6 + make_float2 (1.0f, -0.0f) - _S748) / _S749;
-            float2  _S754 = _S744;
-            FixedArray<float, 4>  _S755 = dist_coeffs_15;
-            bool _S756 = undistort_point_1(uv_36, &_S755, int(12), &_S754);
-            (&_S745)->_S738 = _S754;
-            (&_S745)->_S739 = _S756;
-            if(!!_S756)
-            {
-                _S747 = int(2);
-            }
-            else
-            {
-                _S747 = int(0);
-            }
-            if(_S747 != int(2))
-            {
-                _runFlag_11 = false;
-            }
-            else
-            {
-                _runFlag_11 = _S753;
-            }
-            if(_runFlag_11)
-            {
-                float2  uv_37 = (pix_center_6 + make_float2 (0.0f, -1.0f) - _S748) / _S749;
-                float2  _S757 = _S744;
-                FixedArray<float, 4>  _S758 = dist_coeffs_15;
-                bool _S759 = undistort_point_1(uv_37, &_S758, int(12), &_S757);
-                (&_S745)->_S740 = _S757;
-                (&_S745)->_S741 = _S759;
-                if(!_S759)
-                {
-                    _runFlag_11 = false;
-                }
-                if(_runFlag_11)
-                {
-                    float2  uv_38 = (pix_center_6 + make_float2 (0.0f, 1.0f) - _S748) / _S749;
-                    float2  _S760 = _S744;
-                    FixedArray<float, 4>  _S761 = dist_coeffs_15;
-                    bool _S762 = undistort_point_1(uv_38, &_S761, int(12), &_S760);
-                    (&_S745)->_S742 = _S760;
-                    (&_S745)->_S743 = _S762;
-                }
-            }
-        }
-    }
-    s_bwd_prop_depth_to_normal_Intermediates_1 _S763 = _S745;
-    float3  _S764 = make_float3 (0.0f);
-    if(_S746)
-    {
-        _runFlag_11 = true;
-    }
-    else
-    {
-        _runFlag_11 = (depths_5.y) == 0.0f;
-    }
-    if(_runFlag_11)
-    {
-        _runFlag_11 = true;
-    }
-    else
-    {
-        _runFlag_11 = (depths_5.z) == 0.0f;
-    }
-    if(_runFlag_11)
-    {
-        _runFlag_11 = true;
-    }
-    else
-    {
-        _runFlag_11 = (depths_5.w) == 0.0f;
-    }
-    bool _S765 = !_runFlag_11;
-    bool _runFlag_12;
+    float2  _S759 = make_float2 (0.0f);
+    s_bwd_prop_depth_to_normal_Intermediates_1 _S760;
+    (&_S760)->_S751 = _S759;
+    (&_S760)->_S752 = false;
+    (&_S760)->_S753 = _S759;
+    (&_S760)->_S754 = false;
+    (&_S760)->_S755 = _S759;
+    (&_S760)->_S756 = false;
+    (&_S760)->_S757 = _S759;
+    (&_S760)->_S758 = false;
+    (&_S760)->_S751 = _S759;
+    (&_S760)->_S752 = false;
+    (&_S760)->_S753 = _S759;
+    (&_S760)->_S754 = false;
+    (&_S760)->_S755 = _S759;
+    (&_S760)->_S756 = false;
+    (&_S760)->_S757 = _S759;
+    (&_S760)->_S758 = false;
+    bool _S761 = (depths_5.x) == 0.0f;
     bool _runFlag_13;
-    bool _S766;
-    bool _runFlag_14;
-    bool _S767;
-    bool _S768;
-    FixedArray<float3 , 4>  points_7;
-    float3  _S769;
-    float3  _S770;
-    float3  _S771;
-    float3  _S772;
-    float3  _S773;
-    float3  _S774;
-    float3  _S775;
-    float3  _S776;
-    float3  _S777;
-    if(_S765)
+    if(_S761)
     {
-        bool _S778 = !!_S763._S737;
-        if(_S778)
+        _runFlag_13 = true;
+    }
+    else
+    {
+        _runFlag_13 = (depths_5.y) == 0.0f;
+    }
+    if(_runFlag_13)
+    {
+        _runFlag_13 = true;
+    }
+    else
+    {
+        _runFlag_13 = (depths_5.z) == 0.0f;
+    }
+    if(_runFlag_13)
+    {
+        _runFlag_13 = true;
+    }
+    else
+    {
+        _runFlag_13 = (depths_5.w) == 0.0f;
+    }
+    int _S762;
+    if(!_runFlag_13)
+    {
+        float2  _S763 = float2 {intrins_12.z, intrins_12.w};
+        float2  _S764 = float2 {intrins_12.x, intrins_12.y};
+        float2  uv_35 = (pix_center_6 + make_float2 (-1.0f, -0.0f) - _S763) / _S764;
+        float2  _S765 = _S759;
+        FixedArray<float, 4>  _S766 = dist_coeffs_15;
+        bool _S767 = undistort_point_1(uv_35, &_S766, int(12), &_S765);
+        (&_S760)->_S751 = _S765;
+        (&_S760)->_S752 = _S767;
+        bool _S768 = !!_S767;
+        if(_S768)
         {
-            float3  _S779 = s_primal_ctx_unproject_raydir_0(_S763._S736, camera_model_14, is_ray_depth_13);
-            float3  _S780 = make_float3 (depths_5.x) * _S779;
-            bool _S781 = !!_S763._S739;
-            if(_S781)
+            float2  uv_36 = (pix_center_6 + make_float2 (1.0f, -0.0f) - _S763) / _S764;
+            float2  _S769 = _S759;
+            FixedArray<float, 4>  _S770 = dist_coeffs_15;
+            bool _S771 = undistort_point_1(uv_36, &_S770, int(12), &_S769);
+            (&_S760)->_S753 = _S769;
+            (&_S760)->_S754 = _S771;
+            if(!!_S771)
             {
-                float3  _S782 = s_primal_ctx_unproject_raydir_0(_S763._S738, camera_model_14, is_ray_depth_13);
-                float3  _S783 = make_float3 (depths_5.y) * _S782;
-                _S747 = int(2);
-                points_7[int(0)] = _S780;
-                points_7[int(1)] = _S783;
-                points_7[int(2)] = _S764;
-                points_7[int(3)] = _S764;
-                _S769 = _S782;
+                _S762 = int(2);
             }
             else
             {
-                _S747 = int(0);
-                points_7[int(0)] = _S780;
-                points_7[int(1)] = _S764;
-                points_7[int(2)] = _S764;
-                points_7[int(3)] = _S764;
-                _S769 = _S764;
+                _S762 = int(0);
             }
-            if(_S747 != int(2))
+            if(_S762 != int(2))
             {
-                _runFlag_11 = false;
+                _runFlag_13 = false;
             }
             else
             {
-                _runFlag_11 = _S778;
-                _S747 = int(0);
+                _runFlag_13 = _S768;
             }
-            if(_runFlag_11)
+            if(_runFlag_13)
             {
-                if(!_S763._S741)
-                {
-                    _runFlag_12 = false;
-                    _S747 = int(0);
-                }
-                else
-                {
-                    _runFlag_12 = _runFlag_11;
-                }
-                if(_runFlag_12)
-                {
-                    float3  _S784 = s_primal_ctx_unproject_raydir_0(_S763._S740, camera_model_14, is_ray_depth_13);
-                    points_7[int(2)] = make_float3 (depths_5.z) * _S784;
-                    bool _S785 = !!_S763._S743;
-                    int _S786;
-                    if(_S785)
-                    {
-                        float3  _S787 = s_primal_ctx_unproject_raydir_0(_S763._S742, camera_model_14, is_ray_depth_13);
-                        points_7[int(3)] = make_float3 (depths_5.w) * _S787;
-                        _S786 = int(2);
-                        _S770 = _S787;
-                    }
-                    else
-                    {
-                        _S786 = int(0);
-                        _S770 = _S764;
-                    }
-                    if(_S786 != int(2))
-                    {
-                        _runFlag_13 = false;
-                        _S747 = _S786;
-                    }
-                    else
-                    {
-                        _runFlag_13 = _runFlag_12;
-                    }
-                    if(_runFlag_13)
-                    {
-                        _S747 = int(1);
-                    }
-                    _runFlag_13 = _S785;
-                    _S771 = _S784;
-                }
-                else
+                float2  uv_37 = (pix_center_6 + make_float2 (0.0f, -1.0f) - _S763) / _S764;
+                float2  _S772 = _S759;
+                FixedArray<float, 4>  _S773 = dist_coeffs_15;
+                bool _S774 = undistort_point_1(uv_37, &_S773, int(12), &_S772);
+                (&_S760)->_S755 = _S772;
+                (&_S760)->_S756 = _S774;
+                if(!_S774)
                 {
                     _runFlag_13 = false;
-                    _S770 = _S764;
-                    _S771 = _S764;
+                }
+                if(_runFlag_13)
+                {
+                    float2  uv_38 = (pix_center_6 + make_float2 (0.0f, 1.0f) - _S763) / _S764;
+                    float2  _S775 = _S759;
+                    FixedArray<float, 4>  _S776 = dist_coeffs_15;
+                    bool _S777 = undistort_point_1(uv_38, &_S776, int(12), &_S775);
+                    (&_S760)->_S757 = _S775;
+                    (&_S760)->_S758 = _S777;
                 }
             }
-            else
-            {
-                _runFlag_12 = false;
-                _runFlag_13 = false;
-                _S770 = _S764;
-                _S771 = _S764;
-            }
-            float3  _S788 = _S769;
-            _S769 = _S770;
-            _S770 = _S771;
-            _S766 = _S781;
-            _S771 = _S788;
-            _S772 = _S779;
         }
-        else
-        {
-            _S747 = int(0);
-            points_7[int(0)] = _S764;
-            points_7[int(1)] = _S764;
-            points_7[int(2)] = _S764;
-            points_7[int(3)] = _S764;
-            _runFlag_11 = false;
-            _runFlag_12 = false;
-            _runFlag_13 = false;
-            _S769 = _S764;
-            _S770 = _S764;
-            _S766 = false;
-            _S771 = _S764;
-            _S772 = _S764;
-        }
-        if(_S747 != int(1))
-        {
-            _runFlag_14 = false;
-        }
-        else
-        {
-            _runFlag_14 = _S765;
-        }
-        if(_runFlag_14)
-        {
-            float3  dx_3 = points_7[int(1)] - points_7[int(0)];
-            float3  _S789 = - (points_7[int(3)] - points_7[int(2)]);
-            float3  _S790 = s_primal_ctx_cross_0(dx_3, _S789);
-            bool _S791 = (s_primal_ctx_dot_0(_S790, _S790)) != 0.0f;
-            if(_S791)
-            {
-                float _S792 = length_0(_S790);
-                float3  _S793 = make_float3 (_S792);
-                _S773 = make_float3 (_S792 * _S792);
-                _S774 = _S793;
-            }
-            else
-            {
-                _S773 = _S764;
-                _S774 = _S764;
-            }
-            float3  _S794 = _S774;
-            _S767 = _S791;
-            _S774 = _S790;
-            _S775 = _S794;
-            _S776 = dx_3;
-            _S777 = _S789;
-        }
-        else
-        {
-            _S767 = false;
-            _S773 = _S764;
-            _S774 = _S764;
-            _S775 = _S764;
-            _S776 = _S764;
-            _S777 = _S764;
-        }
-        bool _S795 = _runFlag_11;
-        bool _S796 = _runFlag_12;
-        bool _S797 = _runFlag_13;
-        float3  _S798 = _S769;
-        float3  _S799 = _S770;
-        bool _S800 = _S766;
-        float3  _S801 = _S771;
-        float3  _S802 = _S772;
-        _runFlag_11 = _runFlag_14;
-        _runFlag_12 = _S767;
-        _S769 = _S773;
-        _S770 = _S774;
-        _S771 = _S775;
-        _S772 = _S776;
-        _S773 = _S777;
-        _runFlag_13 = _S778;
-        _S766 = _S795;
-        _runFlag_14 = _S796;
-        _S767 = _S797;
-        _S774 = _S798;
-        _S775 = _S799;
-        _S768 = _S800;
-        _S776 = _S801;
-        _S777 = _S802;
+    }
+    s_bwd_prop_depth_to_normal_Intermediates_1 _S778 = _S760;
+    float3  _S779 = make_float3 (0.0f);
+    if(_S761)
+    {
+        _runFlag_13 = true;
     }
     else
     {
-        _runFlag_11 = false;
-        _runFlag_12 = false;
-        _S769 = _S764;
-        _S770 = _S764;
-        _S771 = _S764;
-        _S772 = _S764;
-        _S773 = _S764;
-        _runFlag_13 = false;
-        _S766 = false;
-        _runFlag_14 = false;
-        _S767 = false;
-        _S774 = _S764;
-        _S775 = _S764;
-        _S768 = false;
-        _S776 = _S764;
-        _S777 = _S764;
+        _runFlag_13 = (depths_5.y) == 0.0f;
     }
-    float4  _S803 = make_float4 (0.0f);
-    float4  _S804;
-    if(_S765)
+    if(_runFlag_13)
     {
-        if(_runFlag_11)
+        _runFlag_13 = true;
+    }
+    else
+    {
+        _runFlag_13 = (depths_5.z) == 0.0f;
+    }
+    if(_runFlag_13)
+    {
+        _runFlag_13 = true;
+    }
+    else
+    {
+        _runFlag_13 = (depths_5.w) == 0.0f;
+    }
+    bool _S780 = !_runFlag_13;
+    bool _runFlag_14;
+    bool _runFlag_15;
+    bool _S781;
+    bool _runFlag_16;
+    bool _S782;
+    bool _S783;
+    FixedArray<float3 , 4>  points_7;
+    float3  _S784;
+    float3  _S785;
+    float3  _S786;
+    float3  _S787;
+    float3  _S788;
+    float3  _S789;
+    float3  _S790;
+    float3  _S791;
+    float3  _S792;
+    if(_S780)
+    {
+        bool _S793 = !!_S778._S752;
+        if(_S793)
         {
-            if(_runFlag_12)
+            float3  _S794 = s_primal_ctx_unproject_raydir_0(_S778._S751, camera_model_14, is_ray_depth_13);
+            float3  _S795 = make_float3 (depths_5.x) * _S794;
+            bool _S796 = !!_S778._S754;
+            if(_S796)
             {
-                float3  _S805 = v_normal_2 / _S769;
-                float3  _S806 = _S770 * - _S805;
-                float3  _S807 = _S771 * _S805;
-                float _S808 = _S806.x + _S806.y + _S806.z;
-                DiffPair_vectorx3Cfloatx2C3x3E_0 _S809;
-                (&_S809)->primal_0 = _S770;
-                (&_S809)->differential_0 = _S764;
-                s_bwd_length_impl_0(&_S809, _S808);
-                _S769 = _S807 + _S809.differential_0;
+                float3  _S797 = s_primal_ctx_unproject_raydir_0(_S778._S753, camera_model_14, is_ray_depth_13);
+                float3  _S798 = make_float3 (depths_5.y) * _S797;
+                _S762 = int(2);
+                points_7[int(0)] = _S795;
+                points_7[int(1)] = _S798;
+                points_7[int(2)] = _S779;
+                points_7[int(3)] = _S779;
+                _S784 = _S797;
             }
             else
             {
-                _S769 = v_normal_2;
+                _S762 = int(0);
+                points_7[int(0)] = _S795;
+                points_7[int(1)] = _S779;
+                points_7[int(2)] = _S779;
+                points_7[int(3)] = _S779;
+                _S784 = _S779;
             }
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S810;
-            (&_S810)->primal_0 = _S770;
-            (&_S810)->differential_0 = _S764;
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S811;
-            (&_S811)->primal_0 = _S770;
-            (&_S811)->differential_0 = _S764;
-            s_bwd_prop_dot_0(&_S810, &_S811, 0.0f);
-            float3  _S812 = _S811.differential_0 + _S810.differential_0 + _S769;
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S813;
-            (&_S813)->primal_0 = _S772;
-            (&_S813)->differential_0 = _S764;
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S814;
-            (&_S814)->primal_0 = _S773;
-            (&_S814)->differential_0 = _S764;
-            s_bwd_prop_cross_0(&_S813, &_S814, _S812);
-            float3  s_diff_dy_T_3 = - _S814.differential_0;
-            float3  _S815 = - s_diff_dy_T_3;
-            float3  _S816 = - _S813.differential_0;
-            FixedArray<float3 , 4>  _S817;
-            _S817[int(0)] = _S764;
-            _S817[int(1)] = _S764;
-            _S817[int(2)] = _S764;
-            _S817[int(3)] = _S764;
-            _S817[int(2)] = _S815;
-            _S817[int(3)] = s_diff_dy_T_3;
-            _S817[int(0)] = _S816;
-            _S817[int(1)] = _S813.differential_0;
-            points_7[int(0)] = _S817[int(0)];
-            points_7[int(1)] = _S817[int(1)];
-            points_7[int(2)] = _S817[int(2)];
-            points_7[int(3)] = _S817[int(3)];
-        }
-        else
-        {
-            points_7[int(0)] = _S764;
-            points_7[int(1)] = _S764;
-            points_7[int(2)] = _S764;
-            points_7[int(3)] = _S764;
-        }
-        if(_runFlag_13)
-        {
-            if(_S766)
+            if(_S762 != int(2))
             {
-                if(_runFlag_14)
+                _runFlag_13 = false;
+            }
+            else
+            {
+                _runFlag_13 = _S793;
+                _S762 = int(0);
+            }
+            if(_runFlag_13)
+            {
+                if(!_S778._S756)
                 {
-                    FixedArray<float3 , 4>  _S818 = points_7;
-                    FixedArray<float3 , 4>  _S819 = points_7;
-                    FixedArray<float3 , 4>  _S820 = points_7;
-                    FixedArray<float3 , 4>  _S821 = points_7;
-                    if(_S767)
-                    {
-                        float3  _S822 = _S774 * _S821[int(3)];
-                        float _S823 = _S822.x + _S822.y + _S822.z;
-                        float4  _S824 = _S803;
-                        *&((&_S824)->w) = _S823;
-                        points_7[int(0)] = _S818[int(0)];
-                        points_7[int(1)] = _S819[int(1)];
-                        points_7[int(2)] = _S820[int(2)];
-                        points_7[int(3)] = _S764;
-                        _S804 = _S824;
-                    }
-                    else
-                    {
-                        points_7[int(0)] = _S818[int(0)];
-                        points_7[int(1)] = _S819[int(1)];
-                        points_7[int(2)] = _S820[int(2)];
-                        points_7[int(3)] = _S821[int(3)];
-                        _S804 = _S803;
-                    }
-                    float3  _S825 = _S775 * points_7[int(2)];
-                    float _S826 = _S825.x + _S825.y + _S825.z;
-                    FixedArray<float3 , 4>  _S827 = points_7;
-                    FixedArray<float3 , 4>  _S828 = points_7;
-                    float4  _S829 = _S803;
-                    *&((&_S829)->z) = _S826;
-                    float4  _S830 = _S804 + _S829;
-                    points_7[int(0)] = points_7[int(0)];
-                    points_7[int(1)] = _S827[int(1)];
-                    points_7[int(2)] = _S764;
-                    points_7[int(3)] = _S828[int(3)];
-                    _S804 = _S830;
+                    _runFlag_14 = false;
+                    _S762 = int(0);
                 }
                 else
                 {
-                    FixedArray<float3 , 4>  _S831 = points_7;
-                    FixedArray<float3 , 4>  _S832 = points_7;
-                    FixedArray<float3 , 4>  _S833 = points_7;
-                    points_7[int(0)] = points_7[int(0)];
-                    points_7[int(1)] = _S831[int(1)];
-                    points_7[int(2)] = _S832[int(2)];
-                    points_7[int(3)] = _S833[int(3)];
-                    _S804 = _S803;
+                    _runFlag_14 = _runFlag_13;
+                }
+                if(_runFlag_14)
+                {
+                    float3  _S799 = s_primal_ctx_unproject_raydir_0(_S778._S755, camera_model_14, is_ray_depth_13);
+                    points_7[int(2)] = make_float3 (depths_5.z) * _S799;
+                    bool _S800 = !!_S778._S758;
+                    int _S801;
+                    if(_S800)
+                    {
+                        float3  _S802 = s_primal_ctx_unproject_raydir_0(_S778._S757, camera_model_14, is_ray_depth_13);
+                        points_7[int(3)] = make_float3 (depths_5.w) * _S802;
+                        _S801 = int(2);
+                        _S785 = _S802;
+                    }
+                    else
+                    {
+                        _S801 = int(0);
+                        _S785 = _S779;
+                    }
+                    if(_S801 != int(2))
+                    {
+                        _runFlag_15 = false;
+                        _S762 = _S801;
+                    }
+                    else
+                    {
+                        _runFlag_15 = _runFlag_14;
+                    }
+                    if(_runFlag_15)
+                    {
+                        _S762 = int(1);
+                    }
+                    _runFlag_15 = _S800;
+                    _S786 = _S799;
+                }
+                else
+                {
+                    _runFlag_15 = false;
+                    _S785 = _S779;
+                    _S786 = _S779;
                 }
             }
             else
             {
-                FixedArray<float3 , 4>  _S834 = points_7;
-                FixedArray<float3 , 4>  _S835 = points_7;
-                FixedArray<float3 , 4>  _S836 = points_7;
-                points_7[int(0)] = points_7[int(0)];
-                points_7[int(1)] = _S834[int(1)];
-                points_7[int(2)] = _S835[int(2)];
-                points_7[int(3)] = _S836[int(3)];
-                _S804 = _S803;
+                _runFlag_14 = false;
+                _runFlag_15 = false;
+                _S785 = _S779;
+                _S786 = _S779;
             }
-            if(_S768)
-            {
-                FixedArray<float3 , 4>  _S837 = points_7;
-                float3  _S838 = _S776 * points_7[int(1)];
-                float _S839 = _S838.x + _S838.y + _S838.z;
-                float4  _S840 = _S803;
-                *&((&_S840)->y) = _S839;
-                float4  _S841 = _S804 + _S840;
-                points_7[int(0)] = _S764;
-                points_7[int(1)] = _S764;
-                points_7[int(2)] = _S764;
-                points_7[int(3)] = _S764;
-                _S769 = _S837[int(0)];
-                _S804 = _S841;
-            }
-            else
-            {
-                FixedArray<float3 , 4>  _S842 = points_7;
-                FixedArray<float3 , 4>  _S843 = points_7;
-                FixedArray<float3 , 4>  _S844 = points_7;
-                points_7[int(0)] = points_7[int(0)];
-                points_7[int(1)] = _S842[int(1)];
-                points_7[int(2)] = _S843[int(2)];
-                points_7[int(3)] = _S844[int(3)];
-                _S769 = _S764;
-            }
-            float3  _S845 = _S777 * (points_7[int(0)] + _S769);
-            float _S846 = _S845.x + _S845.y + _S845.z;
-            float4  _S847 = _S803;
-            *&((&_S847)->x) = _S846;
-            _S804 = _S804 + _S847;
+            float3  _S803 = _S784;
+            _S784 = _S785;
+            _S785 = _S786;
+            _S781 = _S796;
+            _S786 = _S803;
+            _S787 = _S794;
         }
         else
         {
-            _S804 = _S803;
+            _S762 = int(0);
+            points_7[int(0)] = _S779;
+            points_7[int(1)] = _S779;
+            points_7[int(2)] = _S779;
+            points_7[int(3)] = _S779;
+            _runFlag_13 = false;
+            _runFlag_14 = false;
+            _runFlag_15 = false;
+            _S784 = _S779;
+            _S785 = _S779;
+            _S781 = false;
+            _S786 = _S779;
+            _S787 = _S779;
+        }
+        if(_S762 != int(1))
+        {
+            _runFlag_16 = false;
+        }
+        else
+        {
+            _runFlag_16 = _S780;
+        }
+        if(_runFlag_16)
+        {
+            float3  dx_3 = points_7[int(1)] - points_7[int(0)];
+            float3  _S804 = - (points_7[int(3)] - points_7[int(2)]);
+            float3  _S805 = s_primal_ctx_cross_0(dx_3, _S804);
+            bool _S806 = (s_primal_ctx_dot_0(_S805, _S805)) != 0.0f;
+            if(_S806)
+            {
+                float _S807 = length_0(_S805);
+                float3  _S808 = make_float3 (_S807);
+                _S788 = make_float3 (_S807 * _S807);
+                _S789 = _S808;
+            }
+            else
+            {
+                _S788 = _S779;
+                _S789 = _S779;
+            }
+            float3  _S809 = _S789;
+            _S782 = _S806;
+            _S789 = _S805;
+            _S790 = _S809;
+            _S791 = dx_3;
+            _S792 = _S804;
+        }
+        else
+        {
+            _S782 = false;
+            _S788 = _S779;
+            _S789 = _S779;
+            _S790 = _S779;
+            _S791 = _S779;
+            _S792 = _S779;
+        }
+        bool _S810 = _runFlag_13;
+        bool _S811 = _runFlag_14;
+        bool _S812 = _runFlag_15;
+        float3  _S813 = _S784;
+        float3  _S814 = _S785;
+        bool _S815 = _S781;
+        float3  _S816 = _S786;
+        float3  _S817 = _S787;
+        _runFlag_13 = _runFlag_16;
+        _runFlag_14 = _S782;
+        _S784 = _S788;
+        _S785 = _S789;
+        _S786 = _S790;
+        _S787 = _S791;
+        _S788 = _S792;
+        _runFlag_15 = _S793;
+        _S781 = _S810;
+        _runFlag_16 = _S811;
+        _S782 = _S812;
+        _S789 = _S813;
+        _S790 = _S814;
+        _S783 = _S815;
+        _S791 = _S816;
+        _S792 = _S817;
+    }
+    else
+    {
+        _runFlag_13 = false;
+        _runFlag_14 = false;
+        _S784 = _S779;
+        _S785 = _S779;
+        _S786 = _S779;
+        _S787 = _S779;
+        _S788 = _S779;
+        _runFlag_15 = false;
+        _S781 = false;
+        _runFlag_16 = false;
+        _S782 = false;
+        _S789 = _S779;
+        _S790 = _S779;
+        _S783 = false;
+        _S791 = _S779;
+        _S792 = _S779;
+    }
+    float4  _S818 = make_float4 (0.0f);
+    float4  _S819;
+    if(_S780)
+    {
+        if(_runFlag_13)
+        {
+            if(_runFlag_14)
+            {
+                float3  _S820 = v_normal_2 / _S784;
+                float3  _S821 = _S785 * - _S820;
+                float3  _S822 = _S786 * _S820;
+                float _S823 = _S821.x + _S821.y + _S821.z;
+                DiffPair_vectorx3Cfloatx2C3x3E_0 _S824;
+                (&_S824)->primal_0 = _S785;
+                (&_S824)->differential_0 = _S779;
+                s_bwd_length_impl_0(&_S824, _S823);
+                _S784 = _S822 + _S824.differential_0;
+            }
+            else
+            {
+                _S784 = v_normal_2;
+            }
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S825;
+            (&_S825)->primal_0 = _S785;
+            (&_S825)->differential_0 = _S779;
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S826;
+            (&_S826)->primal_0 = _S785;
+            (&_S826)->differential_0 = _S779;
+            s_bwd_prop_dot_0(&_S825, &_S826, 0.0f);
+            float3  _S827 = _S826.differential_0 + _S825.differential_0 + _S784;
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S828;
+            (&_S828)->primal_0 = _S787;
+            (&_S828)->differential_0 = _S779;
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S829;
+            (&_S829)->primal_0 = _S788;
+            (&_S829)->differential_0 = _S779;
+            s_bwd_prop_cross_0(&_S828, &_S829, _S827);
+            float3  s_diff_dy_T_3 = - _S829.differential_0;
+            float3  _S830 = - s_diff_dy_T_3;
+            float3  _S831 = - _S828.differential_0;
+            FixedArray<float3 , 4>  _S832;
+            _S832[int(0)] = _S779;
+            _S832[int(1)] = _S779;
+            _S832[int(2)] = _S779;
+            _S832[int(3)] = _S779;
+            _S832[int(2)] = _S830;
+            _S832[int(3)] = s_diff_dy_T_3;
+            _S832[int(0)] = _S831;
+            _S832[int(1)] = _S828.differential_0;
+            points_7[int(0)] = _S832[int(0)];
+            points_7[int(1)] = _S832[int(1)];
+            points_7[int(2)] = _S832[int(2)];
+            points_7[int(3)] = _S832[int(3)];
+        }
+        else
+        {
+            points_7[int(0)] = _S779;
+            points_7[int(1)] = _S779;
+            points_7[int(2)] = _S779;
+            points_7[int(3)] = _S779;
+        }
+        if(_runFlag_15)
+        {
+            if(_S781)
+            {
+                if(_runFlag_16)
+                {
+                    FixedArray<float3 , 4>  _S833 = points_7;
+                    FixedArray<float3 , 4>  _S834 = points_7;
+                    FixedArray<float3 , 4>  _S835 = points_7;
+                    FixedArray<float3 , 4>  _S836 = points_7;
+                    if(_S782)
+                    {
+                        float3  _S837 = _S789 * _S836[int(3)];
+                        float _S838 = _S837.x + _S837.y + _S837.z;
+                        float4  _S839 = _S818;
+                        *&((&_S839)->w) = _S838;
+                        points_7[int(0)] = _S833[int(0)];
+                        points_7[int(1)] = _S834[int(1)];
+                        points_7[int(2)] = _S835[int(2)];
+                        points_7[int(3)] = _S779;
+                        _S819 = _S839;
+                    }
+                    else
+                    {
+                        points_7[int(0)] = _S833[int(0)];
+                        points_7[int(1)] = _S834[int(1)];
+                        points_7[int(2)] = _S835[int(2)];
+                        points_7[int(3)] = _S836[int(3)];
+                        _S819 = _S818;
+                    }
+                    float3  _S840 = _S790 * points_7[int(2)];
+                    float _S841 = _S840.x + _S840.y + _S840.z;
+                    FixedArray<float3 , 4>  _S842 = points_7;
+                    FixedArray<float3 , 4>  _S843 = points_7;
+                    float4  _S844 = _S818;
+                    *&((&_S844)->z) = _S841;
+                    float4  _S845 = _S819 + _S844;
+                    points_7[int(0)] = points_7[int(0)];
+                    points_7[int(1)] = _S842[int(1)];
+                    points_7[int(2)] = _S779;
+                    points_7[int(3)] = _S843[int(3)];
+                    _S819 = _S845;
+                }
+                else
+                {
+                    FixedArray<float3 , 4>  _S846 = points_7;
+                    FixedArray<float3 , 4>  _S847 = points_7;
+                    FixedArray<float3 , 4>  _S848 = points_7;
+                    points_7[int(0)] = points_7[int(0)];
+                    points_7[int(1)] = _S846[int(1)];
+                    points_7[int(2)] = _S847[int(2)];
+                    points_7[int(3)] = _S848[int(3)];
+                    _S819 = _S818;
+                }
+            }
+            else
+            {
+                FixedArray<float3 , 4>  _S849 = points_7;
+                FixedArray<float3 , 4>  _S850 = points_7;
+                FixedArray<float3 , 4>  _S851 = points_7;
+                points_7[int(0)] = points_7[int(0)];
+                points_7[int(1)] = _S849[int(1)];
+                points_7[int(2)] = _S850[int(2)];
+                points_7[int(3)] = _S851[int(3)];
+                _S819 = _S818;
+            }
+            if(_S783)
+            {
+                FixedArray<float3 , 4>  _S852 = points_7;
+                float3  _S853 = _S791 * points_7[int(1)];
+                float _S854 = _S853.x + _S853.y + _S853.z;
+                float4  _S855 = _S818;
+                *&((&_S855)->y) = _S854;
+                float4  _S856 = _S819 + _S855;
+                points_7[int(0)] = _S779;
+                points_7[int(1)] = _S779;
+                points_7[int(2)] = _S779;
+                points_7[int(3)] = _S779;
+                _S784 = _S852[int(0)];
+                _S819 = _S856;
+            }
+            else
+            {
+                FixedArray<float3 , 4>  _S857 = points_7;
+                FixedArray<float3 , 4>  _S858 = points_7;
+                FixedArray<float3 , 4>  _S859 = points_7;
+                points_7[int(0)] = points_7[int(0)];
+                points_7[int(1)] = _S857[int(1)];
+                points_7[int(2)] = _S858[int(2)];
+                points_7[int(3)] = _S859[int(3)];
+                _S784 = _S779;
+            }
+            float3  _S860 = _S792 * (points_7[int(0)] + _S784);
+            float _S861 = _S860.x + _S860.y + _S860.z;
+            float4  _S862 = _S818;
+            *&((&_S862)->x) = _S861;
+            _S819 = _S819 + _S862;
+        }
+        else
+        {
+            _S819 = _S818;
         }
     }
     else
     {
-        _S804 = _S803;
+        _S819 = _S818;
     }
-    *v_depths_2 = _S804;
+    *v_depths_2 = _S819;
     return;
 }
 
 inline __device__ float ray_depth_to_linear_depth_factor_opencv(float2  pix_center_7, float4  intrins_13, FixedArray<float, 4>  dist_coeffs_16, int camera_model_15)
 {
-    float _S848;
+    float _S863;
     for(;;)
     {
         float2  uv_39 = (pix_center_7 - float2 {intrins_13.z, intrins_13.w}) / float2 {intrins_13.x, intrins_13.y};
-        FixedArray<float, 4>  _S849 = dist_coeffs_16;
+        FixedArray<float, 4>  _S864 = dist_coeffs_16;
         float2  uv_u_18;
-        bool _S850 = undistort_point_1(uv_39, &_S849, int(12), &uv_u_18);
-        if(!_S850)
+        bool _S865 = undistort_point_1(uv_39, &_S864, int(12), &uv_u_18);
+        if(!_S865)
         {
-            _S848 = 0.0f;
+            _S863 = 0.0f;
             break;
         }
         float3  raydir_9 = unproject_raydir_0(uv_u_18, camera_model_15, false);
-        _S848 = float((F32_sign((raydir_9.z)))) / length_0(raydir_9);
+        _S863 = float((F32_sign((raydir_9.z)))) / length_0(raydir_9);
         break;
     }
-    return _S848;
+    return _S863;
 }
 
 inline __device__ float depth_normal_loss_opencv(float2  pix_center_8, float4  intrins_14, FixedArray<float, 4>  dist_coeffs_17, int camera_model_16, bool is_ray_depth_14, float4  depths_6, float3  gt_normal_2)
 {
-    float _S851;
+    float _S866;
     for(;;)
     {
-        float3  _S852;
-        float3  * _S853;
-        float3  * _S854;
-        float3  * _S855;
-        float3  * _S856;
-        int _S857;
+        float3  _S867;
+        float3  * _S868;
+        float3  * _S869;
+        float3  * _S870;
+        float3  * _S871;
+        int _S872;
         FixedArray<float3 , 5>  points_8;
         for(;;)
         {
-            float2  _S858 = float2 {intrins_14.z, intrins_14.w};
-            float2  _S859 = float2 {intrins_14.x, intrins_14.y};
-            float2  uv_40 = (pix_center_8 + make_float2 (-1.0f, -0.0f) - _S858) / _S859;
-            FixedArray<float, 4>  _S860 = dist_coeffs_17;
+            float2  _S873 = float2 {intrins_14.z, intrins_14.w};
+            float2  _S874 = float2 {intrins_14.x, intrins_14.y};
+            float2  uv_40 = (pix_center_8 + make_float2 (-1.0f, -0.0f) - _S873) / _S874;
+            FixedArray<float, 4>  _S875 = dist_coeffs_17;
             float2  uv_u_19;
-            bool _S861 = undistort_point_1(uv_40, &_S860, int(12), &uv_u_19);
-            float3  _S862 = make_float3 (0.0f);
-            if(!_S861)
+            bool _S876 = undistort_point_1(uv_40, &_S875, int(12), &uv_u_19);
+            float3  _S877 = make_float3 (0.0f);
+            if(!_S876)
             {
-                _S857 = int(0);
-                _S856 = nullptr;
-                _S855 = nullptr;
-                _S854 = nullptr;
-                _S853 = nullptr;
-                _S852 = _S862;
+                _S872 = int(0);
+                _S871 = nullptr;
+                _S870 = nullptr;
+                _S869 = nullptr;
+                _S868 = nullptr;
+                _S867 = _S877;
                 break;
             }
             float3  raydir_10 = unproject_raydir_0(uv_u_19, camera_model_16, is_ray_depth_14);
             points_8[int(0)] = make_float3 (depths_6.x) * raydir_10;
-            float2  uv_41 = (pix_center_8 + make_float2 (1.0f, -0.0f) - _S858) / _S859;
-            FixedArray<float, 4>  _S863 = dist_coeffs_17;
+            float2  uv_41 = (pix_center_8 + make_float2 (1.0f, -0.0f) - _S873) / _S874;
+            FixedArray<float, 4>  _S878 = dist_coeffs_17;
             float2  uv_u_20;
-            bool _S864 = undistort_point_1(uv_41, &_S863, int(12), &uv_u_20);
-            if(!_S864)
+            bool _S879 = undistort_point_1(uv_41, &_S878, int(12), &uv_u_20);
+            if(!_S879)
             {
-                _S857 = int(0);
-                _S856 = nullptr;
-                _S855 = &points_8[int(0)];
-                _S854 = nullptr;
-                _S853 = nullptr;
-                _S852 = _S862;
+                _S872 = int(0);
+                _S871 = nullptr;
+                _S870 = &points_8[int(0)];
+                _S869 = nullptr;
+                _S868 = nullptr;
+                _S867 = _S877;
                 break;
             }
             float3  raydir_11 = unproject_raydir_0(uv_u_20, camera_model_16, is_ray_depth_14);
             points_8[int(1)] = make_float3 (depths_6.y) * raydir_11;
-            float2  uv_42 = (pix_center_8 + make_float2 (0.0f, -1.0f) - _S858) / _S859;
-            FixedArray<float, 4>  _S865 = dist_coeffs_17;
+            float2  uv_42 = (pix_center_8 + make_float2 (0.0f, -1.0f) - _S873) / _S874;
+            FixedArray<float, 4>  _S880 = dist_coeffs_17;
             float2  uv_u_21;
-            bool _S866 = undistort_point_1(uv_42, &_S865, int(12), &uv_u_21);
-            if(!_S866)
+            bool _S881 = undistort_point_1(uv_42, &_S880, int(12), &uv_u_21);
+            if(!_S881)
             {
-                _S857 = int(0);
-                _S856 = &points_8[int(1)];
-                _S855 = &points_8[int(0)];
-                _S854 = nullptr;
-                _S853 = nullptr;
-                _S852 = _S862;
+                _S872 = int(0);
+                _S871 = &points_8[int(1)];
+                _S870 = &points_8[int(0)];
+                _S869 = nullptr;
+                _S868 = nullptr;
+                _S867 = _S877;
                 break;
             }
             float3  raydir_12 = unproject_raydir_0(uv_u_21, camera_model_16, is_ray_depth_14);
             points_8[int(2)] = make_float3 (depths_6.z) * raydir_12;
-            float2  uv_43 = (pix_center_8 + make_float2 (0.0f, 1.0f) - _S858) / _S859;
-            FixedArray<float, 4>  _S867 = dist_coeffs_17;
+            float2  uv_43 = (pix_center_8 + make_float2 (0.0f, 1.0f) - _S873) / _S874;
+            FixedArray<float, 4>  _S882 = dist_coeffs_17;
             float2  uv_u_22;
-            bool _S868 = undistort_point_1(uv_43, &_S867, int(12), &uv_u_22);
-            if(!_S868)
+            bool _S883 = undistort_point_1(uv_43, &_S882, int(12), &uv_u_22);
+            if(!_S883)
             {
-                _S857 = int(0);
-                _S856 = &points_8[int(1)];
-                _S855 = &points_8[int(0)];
-                _S854 = nullptr;
-                _S853 = &points_8[int(2)];
-                _S852 = _S862;
+                _S872 = int(0);
+                _S871 = &points_8[int(1)];
+                _S870 = &points_8[int(0)];
+                _S869 = nullptr;
+                _S868 = &points_8[int(2)];
+                _S867 = _S877;
                 break;
             }
             float3  raydir_13 = unproject_raydir_0(uv_u_22, camera_model_16, is_ray_depth_14);
             points_8[int(3)] = make_float3 (depths_6.w) * raydir_13;
-            float2  uv_44 = (pix_center_8 + make_float2 (0.0f) * make_float2 (0.0f, 3.0f) - _S858) / _S859;
-            FixedArray<float, 4>  _S869 = dist_coeffs_17;
+            float2  uv_44 = (pix_center_8 + make_float2 (0.0f) * make_float2 (0.0f, 3.0f) - _S873) / _S874;
+            FixedArray<float, 4>  _S884 = dist_coeffs_17;
             float2  uv_u_23;
-            bool _S870 = undistort_point_1(uv_44, &_S869, int(12), &uv_u_23);
-            if(!_S870)
+            bool _S885 = undistort_point_1(uv_44, &_S884, int(12), &uv_u_23);
+            if(!_S885)
             {
-                _S857 = int(0);
-                _S856 = &points_8[int(1)];
-                _S855 = &points_8[int(0)];
-                _S854 = &points_8[int(3)];
-                _S853 = &points_8[int(2)];
-                _S852 = _S862;
+                _S872 = int(0);
+                _S871 = &points_8[int(1)];
+                _S870 = &points_8[int(0)];
+                _S869 = &points_8[int(3)];
+                _S868 = &points_8[int(2)];
+                _S867 = _S877;
                 break;
             }
             float3  raydir_14 = unproject_raydir_0(uv_u_23, camera_model_16, is_ray_depth_14);
-            _S857 = int(1);
-            _S856 = &points_8[int(1)];
-            _S855 = &points_8[int(0)];
-            _S854 = &points_8[int(3)];
-            _S853 = &points_8[int(2)];
-            _S852 = raydir_14;
+            _S872 = int(1);
+            _S871 = &points_8[int(1)];
+            _S870 = &points_8[int(0)];
+            _S869 = &points_8[int(3)];
+            _S868 = &points_8[int(2)];
+            _S867 = raydir_14;
             break;
         }
-        if(_S857 != int(1))
+        if(_S872 != int(1))
         {
-            _S851 = 0.0f;
+            _S866 = 0.0f;
             break;
         }
-        float3  normal_9 = cross_0(*_S856 - *_S855, - (*_S854 - *_S853));
+        float3  normal_9 = cross_0(*_S871 - *_S870, - (*_S869 - *_S868));
         float3  normal_10;
         if((dot_0(normal_9, normal_9)) != 0.0f)
         {
@@ -4507,627 +4622,675 @@ inline __device__ float depth_normal_loss_opencv(float2  pix_center_8, float4  i
         {
             normal_10 = normal_9;
         }
-        float3  _S871;
+        float3  _S886;
         if((dot_0(gt_normal_2, gt_normal_2)) != 0.0f)
         {
-            _S871 = normalize_0(gt_normal_2);
+            _S886 = normalize_0(gt_normal_2);
         }
         else
         {
-            _S871 = gt_normal_2;
+            _S886 = gt_normal_2;
         }
-        _S851 = (1.0f - dot_0(normal_10, _S871) + 0.00100000004749745f) / ((F32_max((dot_0(normal_10, - normalize_0(_S852))), (0.0f))) + 0.00100000004749745f);
+        _S866 = (1.0f - dot_0(normal_10, _S886) + 0.00100000004749745f) / ((F32_max((dot_0(normal_10, - normalize_0(_S867))), (0.0f))) + 0.00100000004749745f);
         break;
     }
-    return _S851;
+    return _S866;
 }
 
 struct s_bwd_prop_depth_normal_loss_Intermediates_1
 {
-    float2  _S872;
-    bool _S873;
-    float2  _S874;
-    bool _S875;
-    float2  _S876;
-    bool _S877;
-    float2  _S878;
-    bool _S879;
-    float2  _S880;
-    bool _S881;
+    float2  _S887;
+    bool _S888;
+    float2  _S889;
+    bool _S890;
+    float2  _S891;
+    bool _S892;
+    float2  _S893;
+    bool _S894;
+    float2  _S895;
+    bool _S896;
 };
 
 inline __device__ void depth_normal_loss_vjp_opencv(float2  pix_center_9, float4  intrins_15, FixedArray<float, 4>  dist_coeffs_18, int camera_model_17, bool is_ray_depth_15, float4  depths_7, float3  gt_normal_3, float v_loss_1, float4  * v_depths_3, float3  * v_gt_normal_1)
 {
-    float2  _S882 = make_float2 (0.0f);
-    s_bwd_prop_depth_normal_loss_Intermediates_1 _S883;
-    (&_S883)->_S872 = _S882;
-    (&_S883)->_S873 = false;
-    (&_S883)->_S874 = _S882;
-    (&_S883)->_S875 = false;
-    (&_S883)->_S876 = _S882;
-    (&_S883)->_S877 = false;
-    (&_S883)->_S878 = _S882;
-    (&_S883)->_S879 = false;
-    (&_S883)->_S880 = _S882;
-    (&_S883)->_S881 = false;
-    (&_S883)->_S874 = _S882;
-    (&_S883)->_S875 = false;
-    (&_S883)->_S876 = _S882;
-    (&_S883)->_S877 = false;
-    (&_S883)->_S878 = _S882;
-    (&_S883)->_S879 = false;
-    (&_S883)->_S880 = _S882;
-    (&_S883)->_S881 = false;
-    float2  _S884 = float2 {intrins_15.z, intrins_15.w};
-    float2  _S885 = float2 {intrins_15.x, intrins_15.y};
-    float2  uv_45 = (pix_center_9 + make_float2 (-1.0f, -0.0f) - _S884) / _S885;
-    float2  _S886 = _S882;
-    FixedArray<float, 4>  _S887 = dist_coeffs_18;
-    bool _S888 = undistort_point_1(uv_45, &_S887, int(12), &_S886);
-    (&_S883)->_S872 = _S886;
-    (&_S883)->_S873 = _S888;
-    bool _S889 = !!_S888;
-    bool _runFlag_15;
-    if(_S889)
-    {
-        float2  uv_46 = (pix_center_9 + make_float2 (1.0f, -0.0f) - _S884) / _S885;
-        float2  _S890 = _S882;
-        FixedArray<float, 4>  _S891 = dist_coeffs_18;
-        bool _S892 = undistort_point_1(uv_46, &_S891, int(12), &_S890);
-        (&_S883)->_S874 = _S890;
-        (&_S883)->_S875 = _S892;
-        if(!_S892)
-        {
-            _runFlag_15 = false;
-        }
-        else
-        {
-            _runFlag_15 = _S889;
-        }
-        if(_runFlag_15)
-        {
-            float2  uv_47 = (pix_center_9 + make_float2 (0.0f, -1.0f) - _S884) / _S885;
-            float2  _S893 = _S882;
-            FixedArray<float, 4>  _S894 = dist_coeffs_18;
-            bool _S895 = undistort_point_1(uv_47, &_S894, int(12), &_S893);
-            (&_S883)->_S876 = _S893;
-            (&_S883)->_S877 = _S895;
-            if(!_S895)
-            {
-                _runFlag_15 = false;
-            }
-            if(_runFlag_15)
-            {
-                float2  uv_48 = (pix_center_9 + make_float2 (0.0f, 1.0f) - _S884) / _S885;
-                float2  _S896 = _S882;
-                FixedArray<float, 4>  _S897 = dist_coeffs_18;
-                bool _S898 = undistort_point_1(uv_48, &_S897, int(12), &_S896);
-                (&_S883)->_S878 = _S896;
-                (&_S883)->_S879 = _S898;
-                if(!_S898)
-                {
-                    _runFlag_15 = false;
-                }
-                if(_runFlag_15)
-                {
-                    float2  uv_49 = (pix_center_9 - _S884) / _S885;
-                    float2  _S899 = _S882;
-                    FixedArray<float, 4>  _S900 = dist_coeffs_18;
-                    bool _S901 = undistort_point_1(uv_49, &_S900, int(12), &_S899);
-                    (&_S883)->_S880 = _S899;
-                    (&_S883)->_S881 = _S901;
-                }
-            }
-        }
-    }
-    s_bwd_prop_depth_normal_loss_Intermediates_1 _S902 = _S883;
-    float3  _S903 = make_float3 (0.0f);
-    bool _S904 = !!_S883._S873;
-    bool _runFlag_16;
+    float2  _S897 = make_float2 (0.0f);
+    s_bwd_prop_depth_normal_loss_Intermediates_1 _S898;
+    (&_S898)->_S887 = _S897;
+    (&_S898)->_S888 = false;
+    (&_S898)->_S889 = _S897;
+    (&_S898)->_S890 = false;
+    (&_S898)->_S891 = _S897;
+    (&_S898)->_S892 = false;
+    (&_S898)->_S893 = _S897;
+    (&_S898)->_S894 = false;
+    (&_S898)->_S895 = _S897;
+    (&_S898)->_S896 = false;
+    (&_S898)->_S889 = _S897;
+    (&_S898)->_S890 = false;
+    (&_S898)->_S891 = _S897;
+    (&_S898)->_S892 = false;
+    (&_S898)->_S893 = _S897;
+    (&_S898)->_S894 = false;
+    (&_S898)->_S895 = _S897;
+    (&_S898)->_S896 = false;
+    float2  _S899 = float2 {intrins_15.z, intrins_15.w};
+    float2  _S900 = float2 {intrins_15.x, intrins_15.y};
+    float2  uv_45 = (pix_center_9 + make_float2 (-1.0f, -0.0f) - _S899) / _S900;
+    float2  _S901 = _S897;
+    FixedArray<float, 4>  _S902 = dist_coeffs_18;
+    bool _S903 = undistort_point_1(uv_45, &_S902, int(12), &_S901);
+    (&_S898)->_S887 = _S901;
+    (&_S898)->_S888 = _S903;
+    bool _S904 = !!_S903;
     bool _runFlag_17;
-    bool _runFlag_18;
-    int _S905;
-    float3  raydir_15;
-    float3  _S906;
-    float3  _S907;
-    float3  _S908;
-    float3  _S909;
-    FixedArray<float3 , 5>  points_9;
     if(_S904)
     {
-        float3  _S910 = s_primal_ctx_unproject_raydir_0(_S902._S872, camera_model_17, is_ray_depth_15);
-        float3  _S911 = make_float3 (depths_7.x) * _S910;
-        if(!_S902._S875)
+        float2  uv_46 = (pix_center_9 + make_float2 (1.0f, -0.0f) - _S899) / _S900;
+        float2  _S905 = _S897;
+        FixedArray<float, 4>  _S906 = dist_coeffs_18;
+        bool _S907 = undistort_point_1(uv_46, &_S906, int(12), &_S905);
+        (&_S898)->_S889 = _S905;
+        (&_S898)->_S890 = _S907;
+        if(!_S907)
         {
-            _runFlag_15 = false;
+            _runFlag_17 = false;
         }
         else
         {
-            _runFlag_15 = _S904;
+            _runFlag_17 = _S904;
         }
-        if(_runFlag_15)
+        if(_runFlag_17)
         {
-            float3  _S912 = s_primal_ctx_unproject_raydir_0(_S902._S874, camera_model_17, is_ray_depth_15);
-            float3  _S913 = make_float3 (depths_7.y) * _S912;
-            if(!_S902._S877)
+            float2  uv_47 = (pix_center_9 + make_float2 (0.0f, -1.0f) - _S899) / _S900;
+            float2  _S908 = _S897;
+            FixedArray<float, 4>  _S909 = dist_coeffs_18;
+            bool _S910 = undistort_point_1(uv_47, &_S909, int(12), &_S908);
+            (&_S898)->_S891 = _S908;
+            (&_S898)->_S892 = _S910;
+            if(!_S910)
             {
-                _runFlag_16 = false;
+                _runFlag_17 = false;
             }
-            else
+            if(_runFlag_17)
             {
-                _runFlag_16 = _runFlag_15;
-            }
-            if(_runFlag_16)
-            {
-                float3  _S914 = s_primal_ctx_unproject_raydir_0(_S902._S876, camera_model_17, is_ray_depth_15);
-                float3  _S915 = make_float3 (depths_7.z) * _S914;
-                if(!_S902._S879)
+                float2  uv_48 = (pix_center_9 + make_float2 (0.0f, 1.0f) - _S899) / _S900;
+                float2  _S911 = _S897;
+                FixedArray<float, 4>  _S912 = dist_coeffs_18;
+                bool _S913 = undistort_point_1(uv_48, &_S912, int(12), &_S911);
+                (&_S898)->_S893 = _S911;
+                (&_S898)->_S894 = _S913;
+                if(!_S913)
                 {
                     _runFlag_17 = false;
                 }
-                else
-                {
-                    _runFlag_17 = _runFlag_16;
-                }
                 if(_runFlag_17)
                 {
-                    float3  _S916 = s_primal_ctx_unproject_raydir_0(_S902._S878, camera_model_17, is_ray_depth_15);
-                    float3  _S917 = make_float3 (depths_7.w) * _S916;
-                    if(!_S902._S881)
-                    {
-                        _runFlag_18 = false;
-                    }
-                    else
-                    {
-                        _runFlag_18 = _runFlag_17;
-                    }
-                    if(_runFlag_18)
-                    {
-                        float3  _S918 = s_primal_ctx_unproject_raydir_0(_S902._S880, camera_model_17, is_ray_depth_15);
-                        _S905 = int(1);
-                        raydir_15 = _S918;
-                    }
-                    else
-                    {
-                        _S905 = int(0);
-                        raydir_15 = _S916;
-                    }
-                    points_9[int(0)] = _S911;
-                    points_9[int(1)] = _S913;
-                    points_9[int(2)] = _S915;
-                    points_9[int(3)] = _S917;
-                    points_9[int(4)] = _S903;
-                    _S906 = _S916;
+                    float2  uv_49 = (pix_center_9 - _S899) / _S900;
+                    float2  _S914 = _S897;
+                    FixedArray<float, 4>  _S915 = dist_coeffs_18;
+                    bool _S916 = undistort_point_1(uv_49, &_S915, int(12), &_S914);
+                    (&_S898)->_S895 = _S914;
+                    (&_S898)->_S896 = _S916;
                 }
-                else
-                {
-                    _S905 = int(0);
-                    raydir_15 = _S914;
-                    points_9[int(0)] = _S911;
-                    points_9[int(1)] = _S913;
-                    points_9[int(2)] = _S915;
-                    points_9[int(3)] = _S903;
-                    points_9[int(4)] = _S903;
-                    _S906 = _S903;
-                }
-                _S907 = _S914;
             }
-            else
-            {
-                _S905 = int(0);
-                raydir_15 = _S912;
-                points_9[int(0)] = _S911;
-                points_9[int(1)] = _S913;
-                points_9[int(2)] = _S903;
-                points_9[int(3)] = _S903;
-                points_9[int(4)] = _S903;
-                _runFlag_17 = false;
-                _S906 = _S903;
-                _S907 = _S903;
-            }
-            _S908 = _S912;
         }
-        else
-        {
-            _S905 = int(0);
-            raydir_15 = _S910;
-            points_9[int(0)] = _S911;
-            points_9[int(1)] = _S903;
-            points_9[int(2)] = _S903;
-            points_9[int(3)] = _S903;
-            points_9[int(4)] = _S903;
-            _runFlag_16 = false;
-            _runFlag_17 = false;
-            _S906 = _S903;
-            _S907 = _S903;
-            _S908 = _S903;
-        }
-        _S909 = _S910;
     }
-    else
-    {
-        _S905 = int(0);
-        points_9[int(0)] = _S903;
-        points_9[int(1)] = _S903;
-        points_9[int(2)] = _S903;
-        points_9[int(3)] = _S903;
-        points_9[int(4)] = _S903;
-        _runFlag_15 = false;
-        _runFlag_16 = false;
-        _runFlag_17 = false;
-        _S906 = _S903;
-        _S907 = _S903;
-        _S908 = _S903;
-        _S909 = _S903;
-    }
-    bool _S919 = !(_S905 != int(1));
-    bool _S920;
-    float3  normal_11;
+    s_bwd_prop_depth_normal_loss_Intermediates_1 _S917 = _S898;
+    float3  _S918 = make_float3 (0.0f);
+    bool _S919 = !!_S898._S888;
+    bool _runFlag_18;
+    bool _runFlag_19;
+    bool _runFlag_20;
+    int _S920;
+    float3  raydir_15;
     float3  _S921;
     float3  _S922;
     float3  _S923;
     float3  _S924;
-    float _S925;
-    float _S926;
-    float _S927;
-    float _S928;
+    FixedArray<float3 , 5>  points_9;
     if(_S919)
     {
-        float3  dx_4 = points_9[int(1)] - points_9[int(0)];
-        float3  _S929 = - (points_9[int(3)] - points_9[int(2)]);
-        float3  _S930 = s_primal_ctx_cross_0(dx_4, _S929);
-        bool _S931 = (s_primal_ctx_dot_0(_S930, _S930)) != 0.0f;
-        if(_S931)
+        float3  _S925 = s_primal_ctx_unproject_raydir_0(_S917._S887, camera_model_17, is_ray_depth_15);
+        float3  _S926 = make_float3 (depths_7.x) * _S925;
+        if(!_S917._S890)
         {
-            normal_11 = normalize_0(_S930);
+            _runFlag_17 = false;
         }
         else
         {
-            normal_11 = _S930;
+            _runFlag_17 = _S919;
         }
-        bool _S932 = (s_primal_ctx_dot_0(gt_normal_3, gt_normal_3)) != 0.0f;
-        if(_S932)
+        if(_runFlag_17)
         {
-            _S921 = normalize_0(gt_normal_3);
-        }
-        else
-        {
-            _S921 = gt_normal_3;
-        }
-        float3  _S933 = - normalize_0(raydir_15);
-        float _S934 = s_primal_ctx_dot_0(normal_11, _S933);
-        float _S935 = 1.0f - s_primal_ctx_dot_0(normal_11, _S921) + 0.00100000004749745f;
-        float _S936 = (F32_max((_S934), (0.0f))) + 0.00100000004749745f;
-        _S925 = _S936 * _S936;
-        _S926 = _S935;
-        _S927 = _S936;
-        _S928 = _S934;
-        raydir_15 = normal_11;
-        normal_11 = _S933;
-        _runFlag_18 = _S932;
-        _S920 = _S931;
-        _S922 = _S930;
-        _S923 = dx_4;
-        _S924 = _S929;
-    }
-    else
-    {
-        _S925 = 0.0f;
-        _S926 = 0.0f;
-        _S927 = 0.0f;
-        _S928 = 0.0f;
-        raydir_15 = _S903;
-        normal_11 = _S903;
-        _S921 = _S903;
-        _runFlag_18 = false;
-        _S920 = false;
-        _S922 = _S903;
-        _S923 = _S903;
-        _S924 = _S903;
-    }
-    float4  _S937 = make_float4 (0.0f);
-    if(_S919)
-    {
-        float _S938 = v_loss_1 / _S925;
-        float _S939 = _S926 * - _S938;
-        float s_diff_num_T_1 = _S927 * _S938;
-        DiffPair_float_0 _S940;
-        (&_S940)->primal_0 = _S928;
-        (&_S940)->differential_0 = 0.0f;
-        DiffPair_float_0 _S941;
-        (&_S941)->primal_0 = 0.0f;
-        (&_S941)->differential_0 = 0.0f;
-        _d_max_0(&_S940, &_S941, _S939);
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S942;
-        (&_S942)->primal_0 = raydir_15;
-        (&_S942)->differential_0 = _S903;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S943;
-        (&_S943)->primal_0 = normal_11;
-        (&_S943)->differential_0 = _S903;
-        s_bwd_prop_dot_0(&_S942, &_S943, _S940.differential_0);
-        float _S944 = - s_diff_num_T_1;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S945;
-        (&_S945)->primal_0 = raydir_15;
-        (&_S945)->differential_0 = _S903;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S946;
-        (&_S946)->primal_0 = _S921;
-        (&_S946)->differential_0 = _S903;
-        s_bwd_prop_dot_0(&_S945, &_S946, _S944);
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S947 = _S946;
-        float3  _S948 = _S942.differential_0 + _S945.differential_0;
-        if(_runFlag_18)
-        {
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S949;
-            (&_S949)->primal_0 = gt_normal_3;
-            (&_S949)->differential_0 = _S903;
-            s_bwd_normalize_impl_0(&_S949, _S947.differential_0);
-            raydir_15 = _S949.differential_0;
-        }
-        else
-        {
-            raydir_15 = _S947.differential_0;
-        }
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S950;
-        (&_S950)->primal_0 = gt_normal_3;
-        (&_S950)->differential_0 = _S903;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S951;
-        (&_S951)->primal_0 = gt_normal_3;
-        (&_S951)->differential_0 = _S903;
-        s_bwd_prop_dot_0(&_S950, &_S951, 0.0f);
-        float3  _S952 = _S951.differential_0 + _S950.differential_0 + raydir_15;
-        if(_S920)
-        {
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S953;
-            (&_S953)->primal_0 = _S922;
-            (&_S953)->differential_0 = _S903;
-            s_bwd_normalize_impl_0(&_S953, _S948);
-            raydir_15 = _S953.differential_0;
-        }
-        else
-        {
-            raydir_15 = _S948;
-        }
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S954;
-        (&_S954)->primal_0 = _S922;
-        (&_S954)->differential_0 = _S903;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S955;
-        (&_S955)->primal_0 = _S922;
-        (&_S955)->differential_0 = _S903;
-        s_bwd_prop_dot_0(&_S954, &_S955, 0.0f);
-        float3  _S956 = _S955.differential_0 + _S954.differential_0 + raydir_15;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S957;
-        (&_S957)->primal_0 = _S923;
-        (&_S957)->differential_0 = _S903;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S958;
-        (&_S958)->primal_0 = _S924;
-        (&_S958)->differential_0 = _S903;
-        s_bwd_prop_cross_0(&_S957, &_S958, _S956);
-        float3  s_diff_dy_T_4 = - _S958.differential_0;
-        float3  _S959 = - s_diff_dy_T_4;
-        float3  _S960 = - _S957.differential_0;
-        FixedArray<float3 , 5>  _S961;
-        _S961[int(0)] = _S903;
-        _S961[int(1)] = _S903;
-        _S961[int(2)] = _S903;
-        _S961[int(3)] = _S903;
-        _S961[int(4)] = _S903;
-        _S961[int(2)] = _S959;
-        _S961[int(3)] = s_diff_dy_T_4;
-        _S961[int(0)] = _S960;
-        _S961[int(1)] = _S957.differential_0;
-        points_9[int(0)] = _S961[int(0)];
-        points_9[int(1)] = _S961[int(1)];
-        points_9[int(2)] = _S961[int(2)];
-        points_9[int(3)] = _S961[int(3)];
-        points_9[int(4)] = _S961[int(4)];
-        raydir_15 = _S952;
-    }
-    else
-    {
-        points_9[int(0)] = _S903;
-        points_9[int(1)] = _S903;
-        points_9[int(2)] = _S903;
-        points_9[int(3)] = _S903;
-        points_9[int(4)] = _S903;
-        raydir_15 = _S903;
-    }
-    float4  _S962;
-    if(_S904)
-    {
-        if(_runFlag_15)
-        {
-            if(_runFlag_16)
+            float3  _S927 = s_primal_ctx_unproject_raydir_0(_S917._S889, camera_model_17, is_ray_depth_15);
+            float3  _S928 = make_float3 (depths_7.y) * _S927;
+            if(!_S917._S892)
             {
-                if(_runFlag_17)
-                {
-                    FixedArray<float3 , 5>  _S963 = points_9;
-                    FixedArray<float3 , 5>  _S964 = points_9;
-                    FixedArray<float3 , 5>  _S965 = points_9;
-                    float3  _S966 = _S906 * points_9[int(3)];
-                    float _S967 = _S966.x + _S966.y + _S966.z;
-                    float4  _S968 = _S937;
-                    *&((&_S968)->w) = _S967;
-                    points_9[int(0)] = _S903;
-                    points_9[int(1)] = _S903;
-                    points_9[int(2)] = _S903;
-                    points_9[int(3)] = _S903;
-                    points_9[int(4)] = _S903;
-                    _S906 = _S965[int(2)];
-                    normal_11 = _S963[int(0)];
-                    _S921 = _S964[int(1)];
-                    _S962 = _S968;
-                }
-                else
-                {
-                    FixedArray<float3 , 5>  _S969 = points_9;
-                    FixedArray<float3 , 5>  _S970 = points_9;
-                    FixedArray<float3 , 5>  _S971 = points_9;
-                    FixedArray<float3 , 5>  _S972 = points_9;
-                    points_9[int(0)] = points_9[int(0)];
-                    points_9[int(1)] = _S969[int(1)];
-                    points_9[int(2)] = _S970[int(2)];
-                    points_9[int(3)] = _S971[int(3)];
-                    points_9[int(4)] = _S972[int(4)];
-                    _S906 = _S903;
-                    normal_11 = _S903;
-                    _S921 = _S903;
-                    _S962 = _S937;
-                }
-                float3  _S973 = _S907 * (points_9[int(2)] + _S906);
-                float _S974 = _S973.x + _S973.y + _S973.z;
-                float3  _S975 = points_9[int(0)] + normal_11;
-                float3  _S976 = points_9[int(1)] + _S921;
-                float4  _S977 = _S937;
-                *&((&_S977)->z) = _S974;
-                float4  _S978 = _S962 + _S977;
-                points_9[int(0)] = _S903;
-                points_9[int(1)] = _S903;
-                points_9[int(2)] = _S903;
-                points_9[int(3)] = _S903;
-                points_9[int(4)] = _S903;
-                _S906 = _S976;
-                _S907 = _S975;
-                _S962 = _S978;
+                _runFlag_18 = false;
             }
             else
             {
-                FixedArray<float3 , 5>  _S979 = points_9;
-                FixedArray<float3 , 5>  _S980 = points_9;
-                FixedArray<float3 , 5>  _S981 = points_9;
-                FixedArray<float3 , 5>  _S982 = points_9;
-                points_9[int(0)] = points_9[int(0)];
-                points_9[int(1)] = _S979[int(1)];
-                points_9[int(2)] = _S980[int(2)];
-                points_9[int(3)] = _S981[int(3)];
-                points_9[int(4)] = _S982[int(4)];
-                _S906 = _S903;
-                _S907 = _S903;
-                _S962 = _S937;
+                _runFlag_18 = _runFlag_17;
             }
-            float3  _S983 = _S908 * (points_9[int(1)] + _S906);
-            float _S984 = _S983.x + _S983.y + _S983.z;
-            float3  _S985 = points_9[int(0)] + _S907;
-            float4  _S986 = _S937;
-            *&((&_S986)->y) = _S984;
-            float4  _S987 = _S962 + _S986;
-            points_9[int(0)] = _S903;
-            points_9[int(1)] = _S903;
-            points_9[int(2)] = _S903;
-            points_9[int(3)] = _S903;
-            points_9[int(4)] = _S903;
-            _S906 = _S985;
-            _S962 = _S987;
+            if(_runFlag_18)
+            {
+                float3  _S929 = s_primal_ctx_unproject_raydir_0(_S917._S891, camera_model_17, is_ray_depth_15);
+                float3  _S930 = make_float3 (depths_7.z) * _S929;
+                if(!_S917._S894)
+                {
+                    _runFlag_19 = false;
+                }
+                else
+                {
+                    _runFlag_19 = _runFlag_18;
+                }
+                if(_runFlag_19)
+                {
+                    float3  _S931 = s_primal_ctx_unproject_raydir_0(_S917._S893, camera_model_17, is_ray_depth_15);
+                    float3  _S932 = make_float3 (depths_7.w) * _S931;
+                    if(!_S917._S896)
+                    {
+                        _runFlag_20 = false;
+                    }
+                    else
+                    {
+                        _runFlag_20 = _runFlag_19;
+                    }
+                    if(_runFlag_20)
+                    {
+                        float3  _S933 = s_primal_ctx_unproject_raydir_0(_S917._S895, camera_model_17, is_ray_depth_15);
+                        _S920 = int(1);
+                        raydir_15 = _S933;
+                    }
+                    else
+                    {
+                        _S920 = int(0);
+                        raydir_15 = _S931;
+                    }
+                    points_9[int(0)] = _S926;
+                    points_9[int(1)] = _S928;
+                    points_9[int(2)] = _S930;
+                    points_9[int(3)] = _S932;
+                    points_9[int(4)] = _S918;
+                    _S921 = _S931;
+                }
+                else
+                {
+                    _S920 = int(0);
+                    raydir_15 = _S929;
+                    points_9[int(0)] = _S926;
+                    points_9[int(1)] = _S928;
+                    points_9[int(2)] = _S930;
+                    points_9[int(3)] = _S918;
+                    points_9[int(4)] = _S918;
+                    _S921 = _S918;
+                }
+                _S922 = _S929;
+            }
+            else
+            {
+                _S920 = int(0);
+                raydir_15 = _S927;
+                points_9[int(0)] = _S926;
+                points_9[int(1)] = _S928;
+                points_9[int(2)] = _S918;
+                points_9[int(3)] = _S918;
+                points_9[int(4)] = _S918;
+                _runFlag_19 = false;
+                _S921 = _S918;
+                _S922 = _S918;
+            }
+            _S923 = _S927;
         }
         else
         {
-            FixedArray<float3 , 5>  _S988 = points_9;
-            FixedArray<float3 , 5>  _S989 = points_9;
-            FixedArray<float3 , 5>  _S990 = points_9;
-            FixedArray<float3 , 5>  _S991 = points_9;
-            points_9[int(0)] = points_9[int(0)];
-            points_9[int(1)] = _S988[int(1)];
-            points_9[int(2)] = _S989[int(2)];
-            points_9[int(3)] = _S990[int(3)];
-            points_9[int(4)] = _S991[int(4)];
-            _S906 = _S903;
-            _S962 = _S937;
+            _S920 = int(0);
+            raydir_15 = _S925;
+            points_9[int(0)] = _S926;
+            points_9[int(1)] = _S918;
+            points_9[int(2)] = _S918;
+            points_9[int(3)] = _S918;
+            points_9[int(4)] = _S918;
+            _runFlag_18 = false;
+            _runFlag_19 = false;
+            _S921 = _S918;
+            _S922 = _S918;
+            _S923 = _S918;
         }
-        float3  _S992 = _S909 * (points_9[int(0)] + _S906);
-        float _S993 = _S992.x + _S992.y + _S992.z;
-        float4  _S994 = _S937;
-        *&((&_S994)->x) = _S993;
-        _S962 = _S962 + _S994;
+        _S924 = _S925;
     }
     else
     {
-        _S962 = _S937;
+        _S920 = int(0);
+        points_9[int(0)] = _S918;
+        points_9[int(1)] = _S918;
+        points_9[int(2)] = _S918;
+        points_9[int(3)] = _S918;
+        points_9[int(4)] = _S918;
+        _runFlag_17 = false;
+        _runFlag_18 = false;
+        _runFlag_19 = false;
+        _S921 = _S918;
+        _S922 = _S918;
+        _S923 = _S918;
+        _S924 = _S918;
     }
-    *v_depths_3 = _S962;
+    bool _S934 = !(_S920 != int(1));
+    bool _S935;
+    float3  normal_11;
+    float3  _S936;
+    float3  _S937;
+    float3  _S938;
+    float3  _S939;
+    float _S940;
+    float _S941;
+    float _S942;
+    float _S943;
+    if(_S934)
+    {
+        float3  dx_4 = points_9[int(1)] - points_9[int(0)];
+        float3  _S944 = - (points_9[int(3)] - points_9[int(2)]);
+        float3  _S945 = s_primal_ctx_cross_0(dx_4, _S944);
+        bool _S946 = (s_primal_ctx_dot_0(_S945, _S945)) != 0.0f;
+        if(_S946)
+        {
+            normal_11 = normalize_0(_S945);
+        }
+        else
+        {
+            normal_11 = _S945;
+        }
+        bool _S947 = (s_primal_ctx_dot_0(gt_normal_3, gt_normal_3)) != 0.0f;
+        if(_S947)
+        {
+            _S936 = normalize_0(gt_normal_3);
+        }
+        else
+        {
+            _S936 = gt_normal_3;
+        }
+        float3  _S948 = - normalize_0(raydir_15);
+        float _S949 = s_primal_ctx_dot_0(normal_11, _S948);
+        float _S950 = 1.0f - s_primal_ctx_dot_0(normal_11, _S936) + 0.00100000004749745f;
+        float _S951 = (F32_max((_S949), (0.0f))) + 0.00100000004749745f;
+        _S940 = _S951 * _S951;
+        _S941 = _S950;
+        _S942 = _S951;
+        _S943 = _S949;
+        raydir_15 = normal_11;
+        normal_11 = _S948;
+        _runFlag_20 = _S947;
+        _S935 = _S946;
+        _S937 = _S945;
+        _S938 = dx_4;
+        _S939 = _S944;
+    }
+    else
+    {
+        _S940 = 0.0f;
+        _S941 = 0.0f;
+        _S942 = 0.0f;
+        _S943 = 0.0f;
+        raydir_15 = _S918;
+        normal_11 = _S918;
+        _S936 = _S918;
+        _runFlag_20 = false;
+        _S935 = false;
+        _S937 = _S918;
+        _S938 = _S918;
+        _S939 = _S918;
+    }
+    float4  _S952 = make_float4 (0.0f);
+    if(_S934)
+    {
+        float _S953 = v_loss_1 / _S940;
+        float _S954 = _S941 * - _S953;
+        float s_diff_num_T_1 = _S942 * _S953;
+        DiffPair_float_0 _S955;
+        (&_S955)->primal_0 = _S943;
+        (&_S955)->differential_0 = 0.0f;
+        DiffPair_float_0 _S956;
+        (&_S956)->primal_0 = 0.0f;
+        (&_S956)->differential_0 = 0.0f;
+        _d_max_0(&_S955, &_S956, _S954);
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S957;
+        (&_S957)->primal_0 = raydir_15;
+        (&_S957)->differential_0 = _S918;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S958;
+        (&_S958)->primal_0 = normal_11;
+        (&_S958)->differential_0 = _S918;
+        s_bwd_prop_dot_0(&_S957, &_S958, _S955.differential_0);
+        float _S959 = - s_diff_num_T_1;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S960;
+        (&_S960)->primal_0 = raydir_15;
+        (&_S960)->differential_0 = _S918;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S961;
+        (&_S961)->primal_0 = _S936;
+        (&_S961)->differential_0 = _S918;
+        s_bwd_prop_dot_0(&_S960, &_S961, _S959);
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S962 = _S961;
+        float3  _S963 = _S957.differential_0 + _S960.differential_0;
+        if(_runFlag_20)
+        {
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S964;
+            (&_S964)->primal_0 = gt_normal_3;
+            (&_S964)->differential_0 = _S918;
+            s_bwd_normalize_impl_0(&_S964, _S962.differential_0);
+            raydir_15 = _S964.differential_0;
+        }
+        else
+        {
+            raydir_15 = _S962.differential_0;
+        }
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S965;
+        (&_S965)->primal_0 = gt_normal_3;
+        (&_S965)->differential_0 = _S918;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S966;
+        (&_S966)->primal_0 = gt_normal_3;
+        (&_S966)->differential_0 = _S918;
+        s_bwd_prop_dot_0(&_S965, &_S966, 0.0f);
+        float3  _S967 = _S966.differential_0 + _S965.differential_0 + raydir_15;
+        if(_S935)
+        {
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S968;
+            (&_S968)->primal_0 = _S937;
+            (&_S968)->differential_0 = _S918;
+            s_bwd_normalize_impl_0(&_S968, _S963);
+            raydir_15 = _S968.differential_0;
+        }
+        else
+        {
+            raydir_15 = _S963;
+        }
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S969;
+        (&_S969)->primal_0 = _S937;
+        (&_S969)->differential_0 = _S918;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S970;
+        (&_S970)->primal_0 = _S937;
+        (&_S970)->differential_0 = _S918;
+        s_bwd_prop_dot_0(&_S969, &_S970, 0.0f);
+        float3  _S971 = _S970.differential_0 + _S969.differential_0 + raydir_15;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S972;
+        (&_S972)->primal_0 = _S938;
+        (&_S972)->differential_0 = _S918;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S973;
+        (&_S973)->primal_0 = _S939;
+        (&_S973)->differential_0 = _S918;
+        s_bwd_prop_cross_0(&_S972, &_S973, _S971);
+        float3  s_diff_dy_T_4 = - _S973.differential_0;
+        float3  _S974 = - s_diff_dy_T_4;
+        float3  _S975 = - _S972.differential_0;
+        FixedArray<float3 , 5>  _S976;
+        _S976[int(0)] = _S918;
+        _S976[int(1)] = _S918;
+        _S976[int(2)] = _S918;
+        _S976[int(3)] = _S918;
+        _S976[int(4)] = _S918;
+        _S976[int(2)] = _S974;
+        _S976[int(3)] = s_diff_dy_T_4;
+        _S976[int(0)] = _S975;
+        _S976[int(1)] = _S972.differential_0;
+        points_9[int(0)] = _S976[int(0)];
+        points_9[int(1)] = _S976[int(1)];
+        points_9[int(2)] = _S976[int(2)];
+        points_9[int(3)] = _S976[int(3)];
+        points_9[int(4)] = _S976[int(4)];
+        raydir_15 = _S967;
+    }
+    else
+    {
+        points_9[int(0)] = _S918;
+        points_9[int(1)] = _S918;
+        points_9[int(2)] = _S918;
+        points_9[int(3)] = _S918;
+        points_9[int(4)] = _S918;
+        raydir_15 = _S918;
+    }
+    float4  _S977;
+    if(_S919)
+    {
+        if(_runFlag_17)
+        {
+            if(_runFlag_18)
+            {
+                if(_runFlag_19)
+                {
+                    FixedArray<float3 , 5>  _S978 = points_9;
+                    FixedArray<float3 , 5>  _S979 = points_9;
+                    FixedArray<float3 , 5>  _S980 = points_9;
+                    float3  _S981 = _S921 * points_9[int(3)];
+                    float _S982 = _S981.x + _S981.y + _S981.z;
+                    float4  _S983 = _S952;
+                    *&((&_S983)->w) = _S982;
+                    points_9[int(0)] = _S918;
+                    points_9[int(1)] = _S918;
+                    points_9[int(2)] = _S918;
+                    points_9[int(3)] = _S918;
+                    points_9[int(4)] = _S918;
+                    _S921 = _S980[int(2)];
+                    normal_11 = _S978[int(0)];
+                    _S936 = _S979[int(1)];
+                    _S977 = _S983;
+                }
+                else
+                {
+                    FixedArray<float3 , 5>  _S984 = points_9;
+                    FixedArray<float3 , 5>  _S985 = points_9;
+                    FixedArray<float3 , 5>  _S986 = points_9;
+                    FixedArray<float3 , 5>  _S987 = points_9;
+                    points_9[int(0)] = points_9[int(0)];
+                    points_9[int(1)] = _S984[int(1)];
+                    points_9[int(2)] = _S985[int(2)];
+                    points_9[int(3)] = _S986[int(3)];
+                    points_9[int(4)] = _S987[int(4)];
+                    _S921 = _S918;
+                    normal_11 = _S918;
+                    _S936 = _S918;
+                    _S977 = _S952;
+                }
+                float3  _S988 = _S922 * (points_9[int(2)] + _S921);
+                float _S989 = _S988.x + _S988.y + _S988.z;
+                float3  _S990 = points_9[int(0)] + normal_11;
+                float3  _S991 = points_9[int(1)] + _S936;
+                float4  _S992 = _S952;
+                *&((&_S992)->z) = _S989;
+                float4  _S993 = _S977 + _S992;
+                points_9[int(0)] = _S918;
+                points_9[int(1)] = _S918;
+                points_9[int(2)] = _S918;
+                points_9[int(3)] = _S918;
+                points_9[int(4)] = _S918;
+                _S921 = _S991;
+                _S922 = _S990;
+                _S977 = _S993;
+            }
+            else
+            {
+                FixedArray<float3 , 5>  _S994 = points_9;
+                FixedArray<float3 , 5>  _S995 = points_9;
+                FixedArray<float3 , 5>  _S996 = points_9;
+                FixedArray<float3 , 5>  _S997 = points_9;
+                points_9[int(0)] = points_9[int(0)];
+                points_9[int(1)] = _S994[int(1)];
+                points_9[int(2)] = _S995[int(2)];
+                points_9[int(3)] = _S996[int(3)];
+                points_9[int(4)] = _S997[int(4)];
+                _S921 = _S918;
+                _S922 = _S918;
+                _S977 = _S952;
+            }
+            float3  _S998 = _S923 * (points_9[int(1)] + _S921);
+            float _S999 = _S998.x + _S998.y + _S998.z;
+            float3  _S1000 = points_9[int(0)] + _S922;
+            float4  _S1001 = _S952;
+            *&((&_S1001)->y) = _S999;
+            float4  _S1002 = _S977 + _S1001;
+            points_9[int(0)] = _S918;
+            points_9[int(1)] = _S918;
+            points_9[int(2)] = _S918;
+            points_9[int(3)] = _S918;
+            points_9[int(4)] = _S918;
+            _S921 = _S1000;
+            _S977 = _S1002;
+        }
+        else
+        {
+            FixedArray<float3 , 5>  _S1003 = points_9;
+            FixedArray<float3 , 5>  _S1004 = points_9;
+            FixedArray<float3 , 5>  _S1005 = points_9;
+            FixedArray<float3 , 5>  _S1006 = points_9;
+            points_9[int(0)] = points_9[int(0)];
+            points_9[int(1)] = _S1003[int(1)];
+            points_9[int(2)] = _S1004[int(2)];
+            points_9[int(3)] = _S1005[int(3)];
+            points_9[int(4)] = _S1006[int(4)];
+            _S921 = _S918;
+            _S977 = _S952;
+        }
+        float3  _S1007 = _S924 * (points_9[int(0)] + _S921);
+        float _S1008 = _S1007.x + _S1007.y + _S1007.z;
+        float4  _S1009 = _S952;
+        *&((&_S1009)->x) = _S1008;
+        _S977 = _S977 + _S1009;
+    }
+    else
+    {
+        _S977 = _S952;
+    }
+    *v_depths_3 = _S977;
     *v_gt_normal_1 = raydir_15;
     return;
 }
 
 inline __device__ float3  generate_ray_d2n_prism(float2  pix_pos_6, float4  intrins_16, FixedArray<float, 8>  dist_coeffs_19, int camera_model_18, bool is_ray_depth_16)
 {
-    float3  _S995;
+    float3  _S1010;
     for(;;)
     {
         float2  uv_50 = (pix_pos_6 - float2 {intrins_16.z, intrins_16.w}) / float2 {intrins_16.x, intrins_16.y};
-        FixedArray<float, 8>  _S996 = dist_coeffs_19;
+        FixedArray<float, 8>  _S1011 = dist_coeffs_19;
         float2  uv_u_24;
-        bool _S997 = undistort_point_2(uv_50, &_S996, int(12), &uv_u_24);
-        if(!_S997)
+        bool _S1012 = undistort_point_2(uv_50, &_S1011, int(12), &uv_u_24);
+        if(!_S1012)
         {
-            int3  _S998 = make_int3 (int(0));
-            float3  _S999 = make_float3 ((float)_S998.x, (float)_S998.y, (float)_S998.z);
-            _S995 = _S999;
+            int3  _S1013 = make_int3 (int(0));
+            float3  _S1014 = make_float3 ((float)_S1013.x, (float)_S1013.y, (float)_S1013.z);
+            _S1010 = _S1014;
             break;
         }
-        _S995 = unproject_raydir_0(uv_u_24, camera_model_18, is_ray_depth_16);
+        _S1010 = unproject_raydir_0(uv_u_24, camera_model_18, is_ray_depth_16);
         break;
     }
-    return _S995;
+    return _S1010;
 }
 
 inline __device__ float3  depth_to_point_prism(float2  pix_pos_7, float4  intrins_17, FixedArray<float, 8>  dist_coeffs_20, int camera_model_19, bool is_ray_depth_17, float depth_6)
 {
-    float3  _S1000;
+    float3  _S1015;
     for(;;)
     {
         float2  uv_51 = (pix_pos_7 - float2 {intrins_17.z, intrins_17.w}) / float2 {intrins_17.x, intrins_17.y};
-        FixedArray<float, 8>  _S1001 = dist_coeffs_20;
+        FixedArray<float, 8>  _S1016 = dist_coeffs_20;
         float2  uv_u_25;
-        bool _S1002 = undistort_point_2(uv_51, &_S1001, int(12), &uv_u_25);
-        if(!_S1002)
+        bool _S1017 = undistort_point_2(uv_51, &_S1016, int(12), &uv_u_25);
+        if(!_S1017)
         {
-            _S1000 = make_float3 (0.0f);
+            _S1015 = make_float3 (0.0f);
             break;
         }
-        _S1000 = make_float3 (depth_6) * unproject_raydir_0(uv_u_25, camera_model_19, is_ray_depth_17);
+        if(camera_model_19 == int(4))
+        {
+            _S1015 = make_float3 (uv_51.x, uv_51.y, depth_6);
+            break;
+        }
+        _S1015 = make_float3 (depth_6) * unproject_raydir_0(uv_u_25, camera_model_19, is_ray_depth_17);
         break;
     }
-    return _S1000;
+    return _S1015;
 }
 
 struct s_bwd_prop_depth_to_point_Intermediates_2
 {
-    float2  _S1003;
-    bool _S1004;
+    float2  _S1018;
+    bool _S1019;
 };
 
 inline __device__ float depth_to_point_vjp_prism(float2  pix_pos_8, float4  intrins_18, FixedArray<float, 8>  dist_coeffs_21, int camera_model_20, bool is_ray_depth_18, float depth_7, float3  v_point_2)
 {
-    float2  _S1005 = make_float2 (0.0f);
-    s_bwd_prop_depth_to_point_Intermediates_2 _S1006;
-    (&_S1006)->_S1003 = _S1005;
-    (&_S1006)->_S1004 = false;
+    float2  _S1020 = make_float2 (0.0f);
+    s_bwd_prop_depth_to_point_Intermediates_2 _S1021;
+    (&_S1021)->_S1018 = _S1020;
+    (&_S1021)->_S1019 = false;
     float2  uv_52 = (pix_pos_8 - float2 {intrins_18.z, intrins_18.w}) / float2 {intrins_18.x, intrins_18.y};
-    float2  _S1007 = _S1005;
-    FixedArray<float, 8>  _S1008 = dist_coeffs_21;
-    bool _S1009 = undistort_point_2(uv_52, &_S1008, int(12), &_S1007);
-    (&_S1006)->_S1003 = _S1007;
-    (&_S1006)->_S1004 = _S1009;
-    s_bwd_prop_depth_to_point_Intermediates_2 _S1010 = _S1006;
-    float3  _S1011 = make_float3 (0.0f);
-    bool _S1012 = !!_S1006._S1004;
-    float3  _S1013;
-    if(_S1012)
+    float2  _S1022 = _S1020;
+    FixedArray<float, 8>  _S1023 = dist_coeffs_21;
+    bool _S1024 = undistort_point_2(uv_52, &_S1023, int(12), &_S1022);
+    (&_S1021)->_S1018 = _S1022;
+    (&_S1021)->_S1019 = _S1024;
+    s_bwd_prop_depth_to_point_Intermediates_2 _S1025 = _S1021;
+    float3  _S1026 = make_float3 (0.0f);
+    bool _S1027 = !!_S1021._S1019;
+    bool _runFlag_21;
+    bool _S1028;
+    float3  _S1029;
+    if(_S1027)
     {
-        _S1013 = s_primal_ctx_unproject_raydir_0(_S1010._S1003, camera_model_20, is_ray_depth_18);
+        bool _S1030 = camera_model_20 == int(4);
+        if(_S1030)
+        {
+            _runFlag_21 = false;
+        }
+        else
+        {
+            _runFlag_21 = _S1027;
+        }
+        if(_runFlag_21)
+        {
+            _S1029 = s_primal_ctx_unproject_raydir_0(_S1025._S1018, camera_model_20, is_ray_depth_18);
+        }
+        else
+        {
+            _S1029 = _S1026;
+        }
+        _S1028 = _S1030;
     }
     else
     {
-        _S1013 = _S1011;
+        _runFlag_21 = false;
+        _S1029 = _S1026;
+        _S1028 = false;
     }
-    if(_S1012)
+    float _S1031;
+    if(_S1027)
     {
-        _S1013 = _S1013 * v_point_2;
+        float3  _S1032;
+        if(_runFlag_21)
+        {
+            float3  _S1033 = _S1029 * v_point_2;
+            _S1029 = _S1026;
+            _S1032 = _S1033;
+        }
+        else
+        {
+            _S1029 = v_point_2;
+            _S1032 = _S1026;
+        }
+        if(_S1028)
+        {
+            _S1031 = _S1029.z;
+        }
+        else
+        {
+            _S1031 = 0.0f;
+        }
+        _S1029 = _S1032;
     }
     else
     {
-        _S1013 = _S1011;
+        _S1029 = _S1026;
+        _S1031 = 0.0f;
     }
-    return _S1013.x + _S1013.y + _S1013.z;
+    return _S1029.x + _S1029.y + _S1029.z + _S1031;
 }
 
 inline __device__ float3  depth_to_normal_prism(float2  pix_center_10, float4  intrins_19, FixedArray<float, 8>  dist_coeffs_22, int camera_model_21, bool is_ray_depth_19, float4  depths_8)
@@ -5135,142 +5298,142 @@ inline __device__ float3  depth_to_normal_prism(float2  pix_center_10, float4  i
     float3  normal_12;
     for(;;)
     {
-        bool _S1014;
+        bool _S1034;
         if((depths_8.x) == 0.0f)
         {
-            _S1014 = true;
+            _S1034 = true;
         }
         else
         {
-            _S1014 = (depths_8.y) == 0.0f;
+            _S1034 = (depths_8.y) == 0.0f;
         }
-        if(_S1014)
+        if(_S1034)
         {
-            _S1014 = true;
+            _S1034 = true;
         }
         else
         {
-            _S1014 = (depths_8.z) == 0.0f;
+            _S1034 = (depths_8.z) == 0.0f;
         }
-        if(_S1014)
+        if(_S1034)
         {
-            _S1014 = true;
+            _S1034 = true;
         }
         else
         {
-            _S1014 = (depths_8.w) == 0.0f;
+            _S1034 = (depths_8.w) == 0.0f;
         }
-        if(_S1014)
+        if(_S1034)
         {
             normal_12 = make_float3 (0.0f);
             break;
         }
-        float3  * _S1015;
-        float3  * _S1016;
-        float3  * _S1017;
-        float3  * _S1018;
-        int _S1019;
+        float3  * _S1035;
+        float3  * _S1036;
+        float3  * _S1037;
+        float3  * _S1038;
+        int _S1039;
         FixedArray<float3 , 4>  points_10;
         for(;;)
         {
-            float2  _S1020 = float2 {intrins_19.z, intrins_19.w};
-            float2  _S1021 = float2 {intrins_19.x, intrins_19.y};
-            float2  uv_53 = (pix_center_10 + make_float2 (-1.0f, -0.0f) - _S1020) / _S1021;
-            FixedArray<float, 8>  _S1022 = dist_coeffs_22;
+            float2  _S1040 = float2 {intrins_19.z, intrins_19.w};
+            float2  _S1041 = float2 {intrins_19.x, intrins_19.y};
+            float2  uv_53 = (pix_center_10 + make_float2 (-1.0f, -0.0f) - _S1040) / _S1041;
+            FixedArray<float, 8>  _S1042 = dist_coeffs_22;
             float2  uv_u_26;
-            bool _S1023 = undistort_point_2(uv_53, &_S1022, int(12), &uv_u_26);
-            if(!_S1023)
+            bool _S1043 = undistort_point_2(uv_53, &_S1042, int(12), &uv_u_26);
+            if(!_S1043)
             {
-                float3  _S1024 = make_float3 (0.0f);
-                _S1019 = int(0);
-                _S1018 = nullptr;
-                _S1017 = nullptr;
-                _S1016 = nullptr;
-                _S1015 = nullptr;
-                normal_12 = _S1024;
+                float3  _S1044 = make_float3 (0.0f);
+                _S1039 = int(0);
+                _S1038 = nullptr;
+                _S1037 = nullptr;
+                _S1036 = nullptr;
+                _S1035 = nullptr;
+                normal_12 = _S1044;
                 break;
             }
             points_10[int(0)] = make_float3 (depths_8.x) * unproject_raydir_0(uv_u_26, camera_model_21, is_ray_depth_19);
             for(;;)
             {
-                float2  uv_54 = (pix_center_10 + make_float2 (1.0f, -0.0f) - _S1020) / _S1021;
-                FixedArray<float, 8>  _S1025 = dist_coeffs_22;
+                float2  uv_54 = (pix_center_10 + make_float2 (1.0f, -0.0f) - _S1040) / _S1041;
+                FixedArray<float, 8>  _S1045 = dist_coeffs_22;
                 float2  uv_u_27;
-                bool _S1026 = undistort_point_2(uv_54, &_S1025, int(12), &uv_u_27);
-                if(!_S1026)
+                bool _S1046 = undistort_point_2(uv_54, &_S1045, int(12), &uv_u_27);
+                if(!_S1046)
                 {
-                    float3  _S1027 = make_float3 (0.0f);
-                    _S1019 = int(0);
-                    _S1018 = nullptr;
-                    normal_12 = _S1027;
+                    float3  _S1047 = make_float3 (0.0f);
+                    _S1039 = int(0);
+                    _S1038 = nullptr;
+                    normal_12 = _S1047;
                     break;
                 }
                 points_10[int(1)] = make_float3 (depths_8.y) * unproject_raydir_0(uv_u_27, camera_model_21, is_ray_depth_19);
-                _S1019 = int(2);
-                _S1018 = &points_10[int(1)];
+                _S1039 = int(2);
+                _S1038 = &points_10[int(1)];
                 break;
             }
-            if(_S1019 != int(2))
+            if(_S1039 != int(2))
             {
-                _S1017 = &points_10[int(0)];
-                _S1016 = nullptr;
-                _S1015 = nullptr;
+                _S1037 = &points_10[int(0)];
+                _S1036 = nullptr;
+                _S1035 = nullptr;
                 break;
             }
-            float2  uv_55 = (pix_center_10 + make_float2 (0.0f, -1.0f) - _S1020) / _S1021;
-            FixedArray<float, 8>  _S1028 = dist_coeffs_22;
+            float2  uv_55 = (pix_center_10 + make_float2 (0.0f, -1.0f) - _S1040) / _S1041;
+            FixedArray<float, 8>  _S1048 = dist_coeffs_22;
             float2  uv_u_28;
-            bool _S1029 = undistort_point_2(uv_55, &_S1028, int(12), &uv_u_28);
-            if(!_S1029)
+            bool _S1049 = undistort_point_2(uv_55, &_S1048, int(12), &uv_u_28);
+            if(!_S1049)
             {
-                float3  _S1030 = make_float3 (0.0f);
-                _S1019 = int(0);
-                _S1017 = &points_10[int(0)];
-                _S1016 = nullptr;
-                _S1015 = nullptr;
-                normal_12 = _S1030;
+                float3  _S1050 = make_float3 (0.0f);
+                _S1039 = int(0);
+                _S1037 = &points_10[int(0)];
+                _S1036 = nullptr;
+                _S1035 = nullptr;
+                normal_12 = _S1050;
                 break;
             }
             points_10[int(2)] = make_float3 (depths_8.z) * unproject_raydir_0(uv_u_28, camera_model_21, is_ray_depth_19);
             for(;;)
             {
-                float2  uv_56 = (pix_center_10 + make_float2 (0.0f, 1.0f) - _S1020) / _S1021;
-                FixedArray<float, 8>  _S1031 = dist_coeffs_22;
+                float2  uv_56 = (pix_center_10 + make_float2 (0.0f, 1.0f) - _S1040) / _S1041;
+                FixedArray<float, 8>  _S1051 = dist_coeffs_22;
                 float2  uv_u_29;
-                bool _S1032 = undistort_point_2(uv_56, &_S1031, int(12), &uv_u_29);
-                if(!_S1032)
+                bool _S1052 = undistort_point_2(uv_56, &_S1051, int(12), &uv_u_29);
+                if(!_S1052)
                 {
-                    float3  _S1033 = make_float3 (0.0f);
-                    _S1019 = int(0);
-                    _S1017 = nullptr;
-                    normal_12 = _S1033;
+                    float3  _S1053 = make_float3 (0.0f);
+                    _S1039 = int(0);
+                    _S1037 = nullptr;
+                    normal_12 = _S1053;
                     break;
                 }
                 points_10[int(3)] = make_float3 (depths_8.w) * unproject_raydir_0(uv_u_29, camera_model_21, is_ray_depth_19);
-                _S1019 = int(2);
-                _S1017 = &points_10[int(3)];
+                _S1039 = int(2);
+                _S1037 = &points_10[int(3)];
                 break;
             }
-            if(_S1019 != int(2))
+            if(_S1039 != int(2))
             {
-                float3  * _S1034 = _S1017;
-                _S1017 = &points_10[int(0)];
-                _S1016 = _S1034;
-                _S1015 = &points_10[int(2)];
+                float3  * _S1054 = _S1037;
+                _S1037 = &points_10[int(0)];
+                _S1036 = _S1054;
+                _S1035 = &points_10[int(2)];
                 break;
             }
-            float3  * _S1035 = _S1017;
-            _S1019 = int(1);
-            _S1017 = &points_10[int(0)];
-            _S1016 = _S1035;
-            _S1015 = &points_10[int(2)];
+            float3  * _S1055 = _S1037;
+            _S1039 = int(1);
+            _S1037 = &points_10[int(0)];
+            _S1036 = _S1055;
+            _S1035 = &points_10[int(2)];
             break;
         }
-        if(_S1019 != int(1))
+        if(_S1039 != int(1))
         {
             break;
         }
-        float3  normal_13 = cross_0(*_S1018 - *_S1017, - (*_S1016 - *_S1015));
+        float3  normal_13 = cross_0(*_S1038 - *_S1037, - (*_S1036 - *_S1035));
         if((dot_0(normal_13, normal_13)) != 0.0f)
         {
             normal_12 = normal_13 / make_float3 (length_0(normal_13));
@@ -5286,673 +5449,673 @@ inline __device__ float3  depth_to_normal_prism(float2  pix_center_10, float4  i
 
 struct s_bwd_prop_depth_to_normal_Intermediates_2
 {
-    float2  _S1036;
-    bool _S1037;
-    float2  _S1038;
-    bool _S1039;
-    float2  _S1040;
-    bool _S1041;
-    float2  _S1042;
-    bool _S1043;
+    float2  _S1056;
+    bool _S1057;
+    float2  _S1058;
+    bool _S1059;
+    float2  _S1060;
+    bool _S1061;
+    float2  _S1062;
+    bool _S1063;
 };
 
 inline __device__ void depth_to_normal_vjp_prism(float2  pix_center_11, float4  intrins_20, FixedArray<float, 8>  dist_coeffs_23, int camera_model_22, bool is_ray_depth_20, float4  depths_9, float3  v_normal_3, float4  * v_depths_4)
 {
-    float2  _S1044 = make_float2 (0.0f);
-    s_bwd_prop_depth_to_normal_Intermediates_2 _S1045;
-    (&_S1045)->_S1036 = _S1044;
-    (&_S1045)->_S1037 = false;
-    (&_S1045)->_S1038 = _S1044;
-    (&_S1045)->_S1039 = false;
-    (&_S1045)->_S1040 = _S1044;
-    (&_S1045)->_S1041 = false;
-    (&_S1045)->_S1042 = _S1044;
-    (&_S1045)->_S1043 = false;
-    (&_S1045)->_S1036 = _S1044;
-    (&_S1045)->_S1037 = false;
-    (&_S1045)->_S1038 = _S1044;
-    (&_S1045)->_S1039 = false;
-    (&_S1045)->_S1040 = _S1044;
-    (&_S1045)->_S1041 = false;
-    (&_S1045)->_S1042 = _S1044;
-    (&_S1045)->_S1043 = false;
-    bool _S1046 = (depths_9.x) == 0.0f;
-    bool _runFlag_19;
-    if(_S1046)
-    {
-        _runFlag_19 = true;
-    }
-    else
-    {
-        _runFlag_19 = (depths_9.y) == 0.0f;
-    }
-    if(_runFlag_19)
-    {
-        _runFlag_19 = true;
-    }
-    else
-    {
-        _runFlag_19 = (depths_9.z) == 0.0f;
-    }
-    if(_runFlag_19)
-    {
-        _runFlag_19 = true;
-    }
-    else
-    {
-        _runFlag_19 = (depths_9.w) == 0.0f;
-    }
-    int _S1047;
-    if(!_runFlag_19)
-    {
-        float2  _S1048 = float2 {intrins_20.z, intrins_20.w};
-        float2  _S1049 = float2 {intrins_20.x, intrins_20.y};
-        float2  uv_57 = (pix_center_11 + make_float2 (-1.0f, -0.0f) - _S1048) / _S1049;
-        float2  _S1050 = _S1044;
-        FixedArray<float, 8>  _S1051 = dist_coeffs_23;
-        bool _S1052 = undistort_point_2(uv_57, &_S1051, int(12), &_S1050);
-        (&_S1045)->_S1036 = _S1050;
-        (&_S1045)->_S1037 = _S1052;
-        bool _S1053 = !!_S1052;
-        if(_S1053)
-        {
-            float2  uv_58 = (pix_center_11 + make_float2 (1.0f, -0.0f) - _S1048) / _S1049;
-            float2  _S1054 = _S1044;
-            FixedArray<float, 8>  _S1055 = dist_coeffs_23;
-            bool _S1056 = undistort_point_2(uv_58, &_S1055, int(12), &_S1054);
-            (&_S1045)->_S1038 = _S1054;
-            (&_S1045)->_S1039 = _S1056;
-            if(!!_S1056)
-            {
-                _S1047 = int(2);
-            }
-            else
-            {
-                _S1047 = int(0);
-            }
-            if(_S1047 != int(2))
-            {
-                _runFlag_19 = false;
-            }
-            else
-            {
-                _runFlag_19 = _S1053;
-            }
-            if(_runFlag_19)
-            {
-                float2  uv_59 = (pix_center_11 + make_float2 (0.0f, -1.0f) - _S1048) / _S1049;
-                float2  _S1057 = _S1044;
-                FixedArray<float, 8>  _S1058 = dist_coeffs_23;
-                bool _S1059 = undistort_point_2(uv_59, &_S1058, int(12), &_S1057);
-                (&_S1045)->_S1040 = _S1057;
-                (&_S1045)->_S1041 = _S1059;
-                if(!_S1059)
-                {
-                    _runFlag_19 = false;
-                }
-                if(_runFlag_19)
-                {
-                    float2  uv_60 = (pix_center_11 + make_float2 (0.0f, 1.0f) - _S1048) / _S1049;
-                    float2  _S1060 = _S1044;
-                    FixedArray<float, 8>  _S1061 = dist_coeffs_23;
-                    bool _S1062 = undistort_point_2(uv_60, &_S1061, int(12), &_S1060);
-                    (&_S1045)->_S1042 = _S1060;
-                    (&_S1045)->_S1043 = _S1062;
-                }
-            }
-        }
-    }
-    s_bwd_prop_depth_to_normal_Intermediates_2 _S1063 = _S1045;
-    float3  _S1064 = make_float3 (0.0f);
-    if(_S1046)
-    {
-        _runFlag_19 = true;
-    }
-    else
-    {
-        _runFlag_19 = (depths_9.y) == 0.0f;
-    }
-    if(_runFlag_19)
-    {
-        _runFlag_19 = true;
-    }
-    else
-    {
-        _runFlag_19 = (depths_9.z) == 0.0f;
-    }
-    if(_runFlag_19)
-    {
-        _runFlag_19 = true;
-    }
-    else
-    {
-        _runFlag_19 = (depths_9.w) == 0.0f;
-    }
-    bool _S1065 = !_runFlag_19;
-    bool _runFlag_20;
-    bool _runFlag_21;
-    bool _S1066;
+    float2  _S1064 = make_float2 (0.0f);
+    s_bwd_prop_depth_to_normal_Intermediates_2 _S1065;
+    (&_S1065)->_S1056 = _S1064;
+    (&_S1065)->_S1057 = false;
+    (&_S1065)->_S1058 = _S1064;
+    (&_S1065)->_S1059 = false;
+    (&_S1065)->_S1060 = _S1064;
+    (&_S1065)->_S1061 = false;
+    (&_S1065)->_S1062 = _S1064;
+    (&_S1065)->_S1063 = false;
+    (&_S1065)->_S1056 = _S1064;
+    (&_S1065)->_S1057 = false;
+    (&_S1065)->_S1058 = _S1064;
+    (&_S1065)->_S1059 = false;
+    (&_S1065)->_S1060 = _S1064;
+    (&_S1065)->_S1061 = false;
+    (&_S1065)->_S1062 = _S1064;
+    (&_S1065)->_S1063 = false;
+    bool _S1066 = (depths_9.x) == 0.0f;
     bool _runFlag_22;
-    bool _S1067;
-    bool _S1068;
-    FixedArray<float3 , 4>  points_11;
-    float3  _S1069;
-    float3  _S1070;
-    float3  _S1071;
-    float3  _S1072;
-    float3  _S1073;
-    float3  _S1074;
-    float3  _S1075;
-    float3  _S1076;
-    float3  _S1077;
-    if(_S1065)
+    if(_S1066)
     {
-        bool _S1078 = !!_S1063._S1037;
-        if(_S1078)
-        {
-            float3  _S1079 = s_primal_ctx_unproject_raydir_0(_S1063._S1036, camera_model_22, is_ray_depth_20);
-            float3  _S1080 = make_float3 (depths_9.x) * _S1079;
-            bool _S1081 = !!_S1063._S1039;
-            if(_S1081)
-            {
-                float3  _S1082 = s_primal_ctx_unproject_raydir_0(_S1063._S1038, camera_model_22, is_ray_depth_20);
-                float3  _S1083 = make_float3 (depths_9.y) * _S1082;
-                _S1047 = int(2);
-                points_11[int(0)] = _S1080;
-                points_11[int(1)] = _S1083;
-                points_11[int(2)] = _S1064;
-                points_11[int(3)] = _S1064;
-                _S1069 = _S1082;
-            }
-            else
-            {
-                _S1047 = int(0);
-                points_11[int(0)] = _S1080;
-                points_11[int(1)] = _S1064;
-                points_11[int(2)] = _S1064;
-                points_11[int(3)] = _S1064;
-                _S1069 = _S1064;
-            }
-            if(_S1047 != int(2))
-            {
-                _runFlag_19 = false;
-            }
-            else
-            {
-                _runFlag_19 = _S1078;
-                _S1047 = int(0);
-            }
-            if(_runFlag_19)
-            {
-                if(!_S1063._S1041)
-                {
-                    _runFlag_20 = false;
-                    _S1047 = int(0);
-                }
-                else
-                {
-                    _runFlag_20 = _runFlag_19;
-                }
-                if(_runFlag_20)
-                {
-                    float3  _S1084 = s_primal_ctx_unproject_raydir_0(_S1063._S1040, camera_model_22, is_ray_depth_20);
-                    points_11[int(2)] = make_float3 (depths_9.z) * _S1084;
-                    bool _S1085 = !!_S1063._S1043;
-                    int _S1086;
-                    if(_S1085)
-                    {
-                        float3  _S1087 = s_primal_ctx_unproject_raydir_0(_S1063._S1042, camera_model_22, is_ray_depth_20);
-                        points_11[int(3)] = make_float3 (depths_9.w) * _S1087;
-                        _S1086 = int(2);
-                        _S1070 = _S1087;
-                    }
-                    else
-                    {
-                        _S1086 = int(0);
-                        _S1070 = _S1064;
-                    }
-                    if(_S1086 != int(2))
-                    {
-                        _runFlag_21 = false;
-                        _S1047 = _S1086;
-                    }
-                    else
-                    {
-                        _runFlag_21 = _runFlag_20;
-                    }
-                    if(_runFlag_21)
-                    {
-                        _S1047 = int(1);
-                    }
-                    _runFlag_21 = _S1085;
-                    _S1071 = _S1084;
-                }
-                else
-                {
-                    _runFlag_21 = false;
-                    _S1070 = _S1064;
-                    _S1071 = _S1064;
-                }
-            }
-            else
-            {
-                _runFlag_20 = false;
-                _runFlag_21 = false;
-                _S1070 = _S1064;
-                _S1071 = _S1064;
-            }
-            float3  _S1088 = _S1069;
-            _S1069 = _S1070;
-            _S1070 = _S1071;
-            _S1066 = _S1081;
-            _S1071 = _S1088;
-            _S1072 = _S1079;
-        }
-        else
-        {
-            _S1047 = int(0);
-            points_11[int(0)] = _S1064;
-            points_11[int(1)] = _S1064;
-            points_11[int(2)] = _S1064;
-            points_11[int(3)] = _S1064;
-            _runFlag_19 = false;
-            _runFlag_20 = false;
-            _runFlag_21 = false;
-            _S1069 = _S1064;
-            _S1070 = _S1064;
-            _S1066 = false;
-            _S1071 = _S1064;
-            _S1072 = _S1064;
-        }
-        if(_S1047 != int(1))
-        {
-            _runFlag_22 = false;
-        }
-        else
-        {
-            _runFlag_22 = _S1065;
-        }
-        if(_runFlag_22)
-        {
-            float3  dx_5 = points_11[int(1)] - points_11[int(0)];
-            float3  _S1089 = - (points_11[int(3)] - points_11[int(2)]);
-            float3  _S1090 = s_primal_ctx_cross_0(dx_5, _S1089);
-            bool _S1091 = (s_primal_ctx_dot_0(_S1090, _S1090)) != 0.0f;
-            if(_S1091)
-            {
-                float _S1092 = length_0(_S1090);
-                float3  _S1093 = make_float3 (_S1092);
-                _S1073 = make_float3 (_S1092 * _S1092);
-                _S1074 = _S1093;
-            }
-            else
-            {
-                _S1073 = _S1064;
-                _S1074 = _S1064;
-            }
-            float3  _S1094 = _S1074;
-            _S1067 = _S1091;
-            _S1074 = _S1090;
-            _S1075 = _S1094;
-            _S1076 = dx_5;
-            _S1077 = _S1089;
-        }
-        else
-        {
-            _S1067 = false;
-            _S1073 = _S1064;
-            _S1074 = _S1064;
-            _S1075 = _S1064;
-            _S1076 = _S1064;
-            _S1077 = _S1064;
-        }
-        bool _S1095 = _runFlag_19;
-        bool _S1096 = _runFlag_20;
-        bool _S1097 = _runFlag_21;
-        float3  _S1098 = _S1069;
-        float3  _S1099 = _S1070;
-        bool _S1100 = _S1066;
-        float3  _S1101 = _S1071;
-        float3  _S1102 = _S1072;
-        _runFlag_19 = _runFlag_22;
-        _runFlag_20 = _S1067;
-        _S1069 = _S1073;
-        _S1070 = _S1074;
-        _S1071 = _S1075;
-        _S1072 = _S1076;
-        _S1073 = _S1077;
-        _runFlag_21 = _S1078;
-        _S1066 = _S1095;
-        _runFlag_22 = _S1096;
-        _S1067 = _S1097;
-        _S1074 = _S1098;
-        _S1075 = _S1099;
-        _S1068 = _S1100;
-        _S1076 = _S1101;
-        _S1077 = _S1102;
+        _runFlag_22 = true;
     }
     else
     {
-        _runFlag_19 = false;
-        _runFlag_20 = false;
-        _S1069 = _S1064;
-        _S1070 = _S1064;
-        _S1071 = _S1064;
-        _S1072 = _S1064;
-        _S1073 = _S1064;
-        _runFlag_21 = false;
-        _S1066 = false;
-        _runFlag_22 = false;
-        _S1067 = false;
-        _S1074 = _S1064;
-        _S1075 = _S1064;
-        _S1068 = false;
-        _S1076 = _S1064;
-        _S1077 = _S1064;
+        _runFlag_22 = (depths_9.y) == 0.0f;
     }
-    float4  _S1103 = make_float4 (0.0f);
-    float4  _S1104;
-    if(_S1065)
+    if(_runFlag_22)
     {
-        if(_runFlag_19)
+        _runFlag_22 = true;
+    }
+    else
+    {
+        _runFlag_22 = (depths_9.z) == 0.0f;
+    }
+    if(_runFlag_22)
+    {
+        _runFlag_22 = true;
+    }
+    else
+    {
+        _runFlag_22 = (depths_9.w) == 0.0f;
+    }
+    int _S1067;
+    if(!_runFlag_22)
+    {
+        float2  _S1068 = float2 {intrins_20.z, intrins_20.w};
+        float2  _S1069 = float2 {intrins_20.x, intrins_20.y};
+        float2  uv_57 = (pix_center_11 + make_float2 (-1.0f, -0.0f) - _S1068) / _S1069;
+        float2  _S1070 = _S1064;
+        FixedArray<float, 8>  _S1071 = dist_coeffs_23;
+        bool _S1072 = undistort_point_2(uv_57, &_S1071, int(12), &_S1070);
+        (&_S1065)->_S1056 = _S1070;
+        (&_S1065)->_S1057 = _S1072;
+        bool _S1073 = !!_S1072;
+        if(_S1073)
         {
-            if(_runFlag_20)
+            float2  uv_58 = (pix_center_11 + make_float2 (1.0f, -0.0f) - _S1068) / _S1069;
+            float2  _S1074 = _S1064;
+            FixedArray<float, 8>  _S1075 = dist_coeffs_23;
+            bool _S1076 = undistort_point_2(uv_58, &_S1075, int(12), &_S1074);
+            (&_S1065)->_S1058 = _S1074;
+            (&_S1065)->_S1059 = _S1076;
+            if(!!_S1076)
             {
-                float3  _S1105 = v_normal_3 / _S1069;
-                float3  _S1106 = _S1070 * - _S1105;
-                float3  _S1107 = _S1071 * _S1105;
-                float _S1108 = _S1106.x + _S1106.y + _S1106.z;
-                DiffPair_vectorx3Cfloatx2C3x3E_0 _S1109;
-                (&_S1109)->primal_0 = _S1070;
-                (&_S1109)->differential_0 = _S1064;
-                s_bwd_length_impl_0(&_S1109, _S1108);
-                _S1069 = _S1107 + _S1109.differential_0;
+                _S1067 = int(2);
             }
             else
             {
-                _S1069 = v_normal_3;
+                _S1067 = int(0);
             }
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S1110;
-            (&_S1110)->primal_0 = _S1070;
-            (&_S1110)->differential_0 = _S1064;
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S1111;
-            (&_S1111)->primal_0 = _S1070;
-            (&_S1111)->differential_0 = _S1064;
-            s_bwd_prop_dot_0(&_S1110, &_S1111, 0.0f);
-            float3  _S1112 = _S1111.differential_0 + _S1110.differential_0 + _S1069;
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S1113;
-            (&_S1113)->primal_0 = _S1072;
-            (&_S1113)->differential_0 = _S1064;
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S1114;
-            (&_S1114)->primal_0 = _S1073;
-            (&_S1114)->differential_0 = _S1064;
-            s_bwd_prop_cross_0(&_S1113, &_S1114, _S1112);
-            float3  s_diff_dy_T_5 = - _S1114.differential_0;
-            float3  _S1115 = - s_diff_dy_T_5;
-            float3  _S1116 = - _S1113.differential_0;
-            FixedArray<float3 , 4>  _S1117;
-            _S1117[int(0)] = _S1064;
-            _S1117[int(1)] = _S1064;
-            _S1117[int(2)] = _S1064;
-            _S1117[int(3)] = _S1064;
-            _S1117[int(2)] = _S1115;
-            _S1117[int(3)] = s_diff_dy_T_5;
-            _S1117[int(0)] = _S1116;
-            _S1117[int(1)] = _S1113.differential_0;
-            points_11[int(0)] = _S1117[int(0)];
-            points_11[int(1)] = _S1117[int(1)];
-            points_11[int(2)] = _S1117[int(2)];
-            points_11[int(3)] = _S1117[int(3)];
-        }
-        else
-        {
-            points_11[int(0)] = _S1064;
-            points_11[int(1)] = _S1064;
-            points_11[int(2)] = _S1064;
-            points_11[int(3)] = _S1064;
-        }
-        if(_runFlag_21)
-        {
-            if(_S1066)
+            if(_S1067 != int(2))
             {
+                _runFlag_22 = false;
+            }
+            else
+            {
+                _runFlag_22 = _S1073;
+            }
+            if(_runFlag_22)
+            {
+                float2  uv_59 = (pix_center_11 + make_float2 (0.0f, -1.0f) - _S1068) / _S1069;
+                float2  _S1077 = _S1064;
+                FixedArray<float, 8>  _S1078 = dist_coeffs_23;
+                bool _S1079 = undistort_point_2(uv_59, &_S1078, int(12), &_S1077);
+                (&_S1065)->_S1060 = _S1077;
+                (&_S1065)->_S1061 = _S1079;
+                if(!_S1079)
+                {
+                    _runFlag_22 = false;
+                }
                 if(_runFlag_22)
                 {
-                    FixedArray<float3 , 4>  _S1118 = points_11;
-                    FixedArray<float3 , 4>  _S1119 = points_11;
-                    FixedArray<float3 , 4>  _S1120 = points_11;
-                    FixedArray<float3 , 4>  _S1121 = points_11;
-                    if(_S1067)
-                    {
-                        float3  _S1122 = _S1074 * _S1121[int(3)];
-                        float _S1123 = _S1122.x + _S1122.y + _S1122.z;
-                        float4  _S1124 = _S1103;
-                        *&((&_S1124)->w) = _S1123;
-                        points_11[int(0)] = _S1118[int(0)];
-                        points_11[int(1)] = _S1119[int(1)];
-                        points_11[int(2)] = _S1120[int(2)];
-                        points_11[int(3)] = _S1064;
-                        _S1104 = _S1124;
-                    }
-                    else
-                    {
-                        points_11[int(0)] = _S1118[int(0)];
-                        points_11[int(1)] = _S1119[int(1)];
-                        points_11[int(2)] = _S1120[int(2)];
-                        points_11[int(3)] = _S1121[int(3)];
-                        _S1104 = _S1103;
-                    }
-                    float3  _S1125 = _S1075 * points_11[int(2)];
-                    float _S1126 = _S1125.x + _S1125.y + _S1125.z;
-                    FixedArray<float3 , 4>  _S1127 = points_11;
-                    FixedArray<float3 , 4>  _S1128 = points_11;
-                    float4  _S1129 = _S1103;
-                    *&((&_S1129)->z) = _S1126;
-                    float4  _S1130 = _S1104 + _S1129;
-                    points_11[int(0)] = points_11[int(0)];
-                    points_11[int(1)] = _S1127[int(1)];
-                    points_11[int(2)] = _S1064;
-                    points_11[int(3)] = _S1128[int(3)];
-                    _S1104 = _S1130;
+                    float2  uv_60 = (pix_center_11 + make_float2 (0.0f, 1.0f) - _S1068) / _S1069;
+                    float2  _S1080 = _S1064;
+                    FixedArray<float, 8>  _S1081 = dist_coeffs_23;
+                    bool _S1082 = undistort_point_2(uv_60, &_S1081, int(12), &_S1080);
+                    (&_S1065)->_S1062 = _S1080;
+                    (&_S1065)->_S1063 = _S1082;
+                }
+            }
+        }
+    }
+    s_bwd_prop_depth_to_normal_Intermediates_2 _S1083 = _S1065;
+    float3  _S1084 = make_float3 (0.0f);
+    if(_S1066)
+    {
+        _runFlag_22 = true;
+    }
+    else
+    {
+        _runFlag_22 = (depths_9.y) == 0.0f;
+    }
+    if(_runFlag_22)
+    {
+        _runFlag_22 = true;
+    }
+    else
+    {
+        _runFlag_22 = (depths_9.z) == 0.0f;
+    }
+    if(_runFlag_22)
+    {
+        _runFlag_22 = true;
+    }
+    else
+    {
+        _runFlag_22 = (depths_9.w) == 0.0f;
+    }
+    bool _S1085 = !_runFlag_22;
+    bool _runFlag_23;
+    bool _runFlag_24;
+    bool _S1086;
+    bool _runFlag_25;
+    bool _S1087;
+    bool _S1088;
+    FixedArray<float3 , 4>  points_11;
+    float3  _S1089;
+    float3  _S1090;
+    float3  _S1091;
+    float3  _S1092;
+    float3  _S1093;
+    float3  _S1094;
+    float3  _S1095;
+    float3  _S1096;
+    float3  _S1097;
+    if(_S1085)
+    {
+        bool _S1098 = !!_S1083._S1057;
+        if(_S1098)
+        {
+            float3  _S1099 = s_primal_ctx_unproject_raydir_0(_S1083._S1056, camera_model_22, is_ray_depth_20);
+            float3  _S1100 = make_float3 (depths_9.x) * _S1099;
+            bool _S1101 = !!_S1083._S1059;
+            if(_S1101)
+            {
+                float3  _S1102 = s_primal_ctx_unproject_raydir_0(_S1083._S1058, camera_model_22, is_ray_depth_20);
+                float3  _S1103 = make_float3 (depths_9.y) * _S1102;
+                _S1067 = int(2);
+                points_11[int(0)] = _S1100;
+                points_11[int(1)] = _S1103;
+                points_11[int(2)] = _S1084;
+                points_11[int(3)] = _S1084;
+                _S1089 = _S1102;
+            }
+            else
+            {
+                _S1067 = int(0);
+                points_11[int(0)] = _S1100;
+                points_11[int(1)] = _S1084;
+                points_11[int(2)] = _S1084;
+                points_11[int(3)] = _S1084;
+                _S1089 = _S1084;
+            }
+            if(_S1067 != int(2))
+            {
+                _runFlag_22 = false;
+            }
+            else
+            {
+                _runFlag_22 = _S1098;
+                _S1067 = int(0);
+            }
+            if(_runFlag_22)
+            {
+                if(!_S1083._S1061)
+                {
+                    _runFlag_23 = false;
+                    _S1067 = int(0);
                 }
                 else
                 {
-                    FixedArray<float3 , 4>  _S1131 = points_11;
-                    FixedArray<float3 , 4>  _S1132 = points_11;
-                    FixedArray<float3 , 4>  _S1133 = points_11;
-                    points_11[int(0)] = points_11[int(0)];
-                    points_11[int(1)] = _S1131[int(1)];
-                    points_11[int(2)] = _S1132[int(2)];
-                    points_11[int(3)] = _S1133[int(3)];
-                    _S1104 = _S1103;
+                    _runFlag_23 = _runFlag_22;
+                }
+                if(_runFlag_23)
+                {
+                    float3  _S1104 = s_primal_ctx_unproject_raydir_0(_S1083._S1060, camera_model_22, is_ray_depth_20);
+                    points_11[int(2)] = make_float3 (depths_9.z) * _S1104;
+                    bool _S1105 = !!_S1083._S1063;
+                    int _S1106;
+                    if(_S1105)
+                    {
+                        float3  _S1107 = s_primal_ctx_unproject_raydir_0(_S1083._S1062, camera_model_22, is_ray_depth_20);
+                        points_11[int(3)] = make_float3 (depths_9.w) * _S1107;
+                        _S1106 = int(2);
+                        _S1090 = _S1107;
+                    }
+                    else
+                    {
+                        _S1106 = int(0);
+                        _S1090 = _S1084;
+                    }
+                    if(_S1106 != int(2))
+                    {
+                        _runFlag_24 = false;
+                        _S1067 = _S1106;
+                    }
+                    else
+                    {
+                        _runFlag_24 = _runFlag_23;
+                    }
+                    if(_runFlag_24)
+                    {
+                        _S1067 = int(1);
+                    }
+                    _runFlag_24 = _S1105;
+                    _S1091 = _S1104;
+                }
+                else
+                {
+                    _runFlag_24 = false;
+                    _S1090 = _S1084;
+                    _S1091 = _S1084;
                 }
             }
             else
             {
-                FixedArray<float3 , 4>  _S1134 = points_11;
-                FixedArray<float3 , 4>  _S1135 = points_11;
-                FixedArray<float3 , 4>  _S1136 = points_11;
-                points_11[int(0)] = points_11[int(0)];
-                points_11[int(1)] = _S1134[int(1)];
-                points_11[int(2)] = _S1135[int(2)];
-                points_11[int(3)] = _S1136[int(3)];
-                _S1104 = _S1103;
+                _runFlag_23 = false;
+                _runFlag_24 = false;
+                _S1090 = _S1084;
+                _S1091 = _S1084;
             }
-            if(_S1068)
-            {
-                FixedArray<float3 , 4>  _S1137 = points_11;
-                float3  _S1138 = _S1076 * points_11[int(1)];
-                float _S1139 = _S1138.x + _S1138.y + _S1138.z;
-                float4  _S1140 = _S1103;
-                *&((&_S1140)->y) = _S1139;
-                float4  _S1141 = _S1104 + _S1140;
-                points_11[int(0)] = _S1064;
-                points_11[int(1)] = _S1064;
-                points_11[int(2)] = _S1064;
-                points_11[int(3)] = _S1064;
-                _S1069 = _S1137[int(0)];
-                _S1104 = _S1141;
-            }
-            else
-            {
-                FixedArray<float3 , 4>  _S1142 = points_11;
-                FixedArray<float3 , 4>  _S1143 = points_11;
-                FixedArray<float3 , 4>  _S1144 = points_11;
-                points_11[int(0)] = points_11[int(0)];
-                points_11[int(1)] = _S1142[int(1)];
-                points_11[int(2)] = _S1143[int(2)];
-                points_11[int(3)] = _S1144[int(3)];
-                _S1069 = _S1064;
-            }
-            float3  _S1145 = _S1077 * (points_11[int(0)] + _S1069);
-            float _S1146 = _S1145.x + _S1145.y + _S1145.z;
-            float4  _S1147 = _S1103;
-            *&((&_S1147)->x) = _S1146;
-            _S1104 = _S1104 + _S1147;
+            float3  _S1108 = _S1089;
+            _S1089 = _S1090;
+            _S1090 = _S1091;
+            _S1086 = _S1101;
+            _S1091 = _S1108;
+            _S1092 = _S1099;
         }
         else
         {
-            _S1104 = _S1103;
+            _S1067 = int(0);
+            points_11[int(0)] = _S1084;
+            points_11[int(1)] = _S1084;
+            points_11[int(2)] = _S1084;
+            points_11[int(3)] = _S1084;
+            _runFlag_22 = false;
+            _runFlag_23 = false;
+            _runFlag_24 = false;
+            _S1089 = _S1084;
+            _S1090 = _S1084;
+            _S1086 = false;
+            _S1091 = _S1084;
+            _S1092 = _S1084;
+        }
+        if(_S1067 != int(1))
+        {
+            _runFlag_25 = false;
+        }
+        else
+        {
+            _runFlag_25 = _S1085;
+        }
+        if(_runFlag_25)
+        {
+            float3  dx_5 = points_11[int(1)] - points_11[int(0)];
+            float3  _S1109 = - (points_11[int(3)] - points_11[int(2)]);
+            float3  _S1110 = s_primal_ctx_cross_0(dx_5, _S1109);
+            bool _S1111 = (s_primal_ctx_dot_0(_S1110, _S1110)) != 0.0f;
+            if(_S1111)
+            {
+                float _S1112 = length_0(_S1110);
+                float3  _S1113 = make_float3 (_S1112);
+                _S1093 = make_float3 (_S1112 * _S1112);
+                _S1094 = _S1113;
+            }
+            else
+            {
+                _S1093 = _S1084;
+                _S1094 = _S1084;
+            }
+            float3  _S1114 = _S1094;
+            _S1087 = _S1111;
+            _S1094 = _S1110;
+            _S1095 = _S1114;
+            _S1096 = dx_5;
+            _S1097 = _S1109;
+        }
+        else
+        {
+            _S1087 = false;
+            _S1093 = _S1084;
+            _S1094 = _S1084;
+            _S1095 = _S1084;
+            _S1096 = _S1084;
+            _S1097 = _S1084;
+        }
+        bool _S1115 = _runFlag_22;
+        bool _S1116 = _runFlag_23;
+        bool _S1117 = _runFlag_24;
+        float3  _S1118 = _S1089;
+        float3  _S1119 = _S1090;
+        bool _S1120 = _S1086;
+        float3  _S1121 = _S1091;
+        float3  _S1122 = _S1092;
+        _runFlag_22 = _runFlag_25;
+        _runFlag_23 = _S1087;
+        _S1089 = _S1093;
+        _S1090 = _S1094;
+        _S1091 = _S1095;
+        _S1092 = _S1096;
+        _S1093 = _S1097;
+        _runFlag_24 = _S1098;
+        _S1086 = _S1115;
+        _runFlag_25 = _S1116;
+        _S1087 = _S1117;
+        _S1094 = _S1118;
+        _S1095 = _S1119;
+        _S1088 = _S1120;
+        _S1096 = _S1121;
+        _S1097 = _S1122;
+    }
+    else
+    {
+        _runFlag_22 = false;
+        _runFlag_23 = false;
+        _S1089 = _S1084;
+        _S1090 = _S1084;
+        _S1091 = _S1084;
+        _S1092 = _S1084;
+        _S1093 = _S1084;
+        _runFlag_24 = false;
+        _S1086 = false;
+        _runFlag_25 = false;
+        _S1087 = false;
+        _S1094 = _S1084;
+        _S1095 = _S1084;
+        _S1088 = false;
+        _S1096 = _S1084;
+        _S1097 = _S1084;
+    }
+    float4  _S1123 = make_float4 (0.0f);
+    float4  _S1124;
+    if(_S1085)
+    {
+        if(_runFlag_22)
+        {
+            if(_runFlag_23)
+            {
+                float3  _S1125 = v_normal_3 / _S1089;
+                float3  _S1126 = _S1090 * - _S1125;
+                float3  _S1127 = _S1091 * _S1125;
+                float _S1128 = _S1126.x + _S1126.y + _S1126.z;
+                DiffPair_vectorx3Cfloatx2C3x3E_0 _S1129;
+                (&_S1129)->primal_0 = _S1090;
+                (&_S1129)->differential_0 = _S1084;
+                s_bwd_length_impl_0(&_S1129, _S1128);
+                _S1089 = _S1127 + _S1129.differential_0;
+            }
+            else
+            {
+                _S1089 = v_normal_3;
+            }
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S1130;
+            (&_S1130)->primal_0 = _S1090;
+            (&_S1130)->differential_0 = _S1084;
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S1131;
+            (&_S1131)->primal_0 = _S1090;
+            (&_S1131)->differential_0 = _S1084;
+            s_bwd_prop_dot_0(&_S1130, &_S1131, 0.0f);
+            float3  _S1132 = _S1131.differential_0 + _S1130.differential_0 + _S1089;
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S1133;
+            (&_S1133)->primal_0 = _S1092;
+            (&_S1133)->differential_0 = _S1084;
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S1134;
+            (&_S1134)->primal_0 = _S1093;
+            (&_S1134)->differential_0 = _S1084;
+            s_bwd_prop_cross_0(&_S1133, &_S1134, _S1132);
+            float3  s_diff_dy_T_5 = - _S1134.differential_0;
+            float3  _S1135 = - s_diff_dy_T_5;
+            float3  _S1136 = - _S1133.differential_0;
+            FixedArray<float3 , 4>  _S1137;
+            _S1137[int(0)] = _S1084;
+            _S1137[int(1)] = _S1084;
+            _S1137[int(2)] = _S1084;
+            _S1137[int(3)] = _S1084;
+            _S1137[int(2)] = _S1135;
+            _S1137[int(3)] = s_diff_dy_T_5;
+            _S1137[int(0)] = _S1136;
+            _S1137[int(1)] = _S1133.differential_0;
+            points_11[int(0)] = _S1137[int(0)];
+            points_11[int(1)] = _S1137[int(1)];
+            points_11[int(2)] = _S1137[int(2)];
+            points_11[int(3)] = _S1137[int(3)];
+        }
+        else
+        {
+            points_11[int(0)] = _S1084;
+            points_11[int(1)] = _S1084;
+            points_11[int(2)] = _S1084;
+            points_11[int(3)] = _S1084;
+        }
+        if(_runFlag_24)
+        {
+            if(_S1086)
+            {
+                if(_runFlag_25)
+                {
+                    FixedArray<float3 , 4>  _S1138 = points_11;
+                    FixedArray<float3 , 4>  _S1139 = points_11;
+                    FixedArray<float3 , 4>  _S1140 = points_11;
+                    FixedArray<float3 , 4>  _S1141 = points_11;
+                    if(_S1087)
+                    {
+                        float3  _S1142 = _S1094 * _S1141[int(3)];
+                        float _S1143 = _S1142.x + _S1142.y + _S1142.z;
+                        float4  _S1144 = _S1123;
+                        *&((&_S1144)->w) = _S1143;
+                        points_11[int(0)] = _S1138[int(0)];
+                        points_11[int(1)] = _S1139[int(1)];
+                        points_11[int(2)] = _S1140[int(2)];
+                        points_11[int(3)] = _S1084;
+                        _S1124 = _S1144;
+                    }
+                    else
+                    {
+                        points_11[int(0)] = _S1138[int(0)];
+                        points_11[int(1)] = _S1139[int(1)];
+                        points_11[int(2)] = _S1140[int(2)];
+                        points_11[int(3)] = _S1141[int(3)];
+                        _S1124 = _S1123;
+                    }
+                    float3  _S1145 = _S1095 * points_11[int(2)];
+                    float _S1146 = _S1145.x + _S1145.y + _S1145.z;
+                    FixedArray<float3 , 4>  _S1147 = points_11;
+                    FixedArray<float3 , 4>  _S1148 = points_11;
+                    float4  _S1149 = _S1123;
+                    *&((&_S1149)->z) = _S1146;
+                    float4  _S1150 = _S1124 + _S1149;
+                    points_11[int(0)] = points_11[int(0)];
+                    points_11[int(1)] = _S1147[int(1)];
+                    points_11[int(2)] = _S1084;
+                    points_11[int(3)] = _S1148[int(3)];
+                    _S1124 = _S1150;
+                }
+                else
+                {
+                    FixedArray<float3 , 4>  _S1151 = points_11;
+                    FixedArray<float3 , 4>  _S1152 = points_11;
+                    FixedArray<float3 , 4>  _S1153 = points_11;
+                    points_11[int(0)] = points_11[int(0)];
+                    points_11[int(1)] = _S1151[int(1)];
+                    points_11[int(2)] = _S1152[int(2)];
+                    points_11[int(3)] = _S1153[int(3)];
+                    _S1124 = _S1123;
+                }
+            }
+            else
+            {
+                FixedArray<float3 , 4>  _S1154 = points_11;
+                FixedArray<float3 , 4>  _S1155 = points_11;
+                FixedArray<float3 , 4>  _S1156 = points_11;
+                points_11[int(0)] = points_11[int(0)];
+                points_11[int(1)] = _S1154[int(1)];
+                points_11[int(2)] = _S1155[int(2)];
+                points_11[int(3)] = _S1156[int(3)];
+                _S1124 = _S1123;
+            }
+            if(_S1088)
+            {
+                FixedArray<float3 , 4>  _S1157 = points_11;
+                float3  _S1158 = _S1096 * points_11[int(1)];
+                float _S1159 = _S1158.x + _S1158.y + _S1158.z;
+                float4  _S1160 = _S1123;
+                *&((&_S1160)->y) = _S1159;
+                float4  _S1161 = _S1124 + _S1160;
+                points_11[int(0)] = _S1084;
+                points_11[int(1)] = _S1084;
+                points_11[int(2)] = _S1084;
+                points_11[int(3)] = _S1084;
+                _S1089 = _S1157[int(0)];
+                _S1124 = _S1161;
+            }
+            else
+            {
+                FixedArray<float3 , 4>  _S1162 = points_11;
+                FixedArray<float3 , 4>  _S1163 = points_11;
+                FixedArray<float3 , 4>  _S1164 = points_11;
+                points_11[int(0)] = points_11[int(0)];
+                points_11[int(1)] = _S1162[int(1)];
+                points_11[int(2)] = _S1163[int(2)];
+                points_11[int(3)] = _S1164[int(3)];
+                _S1089 = _S1084;
+            }
+            float3  _S1165 = _S1097 * (points_11[int(0)] + _S1089);
+            float _S1166 = _S1165.x + _S1165.y + _S1165.z;
+            float4  _S1167 = _S1123;
+            *&((&_S1167)->x) = _S1166;
+            _S1124 = _S1124 + _S1167;
+        }
+        else
+        {
+            _S1124 = _S1123;
         }
     }
     else
     {
-        _S1104 = _S1103;
+        _S1124 = _S1123;
     }
-    *v_depths_4 = _S1104;
+    *v_depths_4 = _S1124;
     return;
 }
 
 inline __device__ float ray_depth_to_linear_depth_factor_prism(float2  pix_center_12, float4  intrins_21, FixedArray<float, 8>  dist_coeffs_24, int camera_model_23)
 {
-    float _S1148;
+    float _S1168;
     for(;;)
     {
         float2  uv_61 = (pix_center_12 - float2 {intrins_21.z, intrins_21.w}) / float2 {intrins_21.x, intrins_21.y};
-        FixedArray<float, 8>  _S1149 = dist_coeffs_24;
+        FixedArray<float, 8>  _S1169 = dist_coeffs_24;
         float2  uv_u_30;
-        bool _S1150 = undistort_point_2(uv_61, &_S1149, int(12), &uv_u_30);
-        if(!_S1150)
+        bool _S1170 = undistort_point_2(uv_61, &_S1169, int(12), &uv_u_30);
+        if(!_S1170)
         {
-            _S1148 = 0.0f;
+            _S1168 = 0.0f;
             break;
         }
         float3  raydir_16 = unproject_raydir_0(uv_u_30, camera_model_23, false);
-        _S1148 = float((F32_sign((raydir_16.z)))) / length_0(raydir_16);
+        _S1168 = float((F32_sign((raydir_16.z)))) / length_0(raydir_16);
         break;
     }
-    return _S1148;
+    return _S1168;
 }
 
 inline __device__ float depth_normal_loss_prism(float2  pix_center_13, float4  intrins_22, FixedArray<float, 8>  dist_coeffs_25, int camera_model_24, bool is_ray_depth_21, float4  depths_10, float3  gt_normal_4)
 {
-    float _S1151;
+    float _S1171;
     for(;;)
     {
-        float3  _S1152;
-        float3  * _S1153;
-        float3  * _S1154;
-        float3  * _S1155;
-        float3  * _S1156;
-        int _S1157;
+        float3  _S1172;
+        float3  * _S1173;
+        float3  * _S1174;
+        float3  * _S1175;
+        float3  * _S1176;
+        int _S1177;
         FixedArray<float3 , 5>  points_12;
         for(;;)
         {
-            float2  _S1158 = float2 {intrins_22.z, intrins_22.w};
-            float2  _S1159 = float2 {intrins_22.x, intrins_22.y};
-            float2  uv_62 = (pix_center_13 + make_float2 (-1.0f, -0.0f) - _S1158) / _S1159;
-            FixedArray<float, 8>  _S1160 = dist_coeffs_25;
+            float2  _S1178 = float2 {intrins_22.z, intrins_22.w};
+            float2  _S1179 = float2 {intrins_22.x, intrins_22.y};
+            float2  uv_62 = (pix_center_13 + make_float2 (-1.0f, -0.0f) - _S1178) / _S1179;
+            FixedArray<float, 8>  _S1180 = dist_coeffs_25;
             float2  uv_u_31;
-            bool _S1161 = undistort_point_2(uv_62, &_S1160, int(12), &uv_u_31);
-            float3  _S1162 = make_float3 (0.0f);
-            if(!_S1161)
+            bool _S1181 = undistort_point_2(uv_62, &_S1180, int(12), &uv_u_31);
+            float3  _S1182 = make_float3 (0.0f);
+            if(!_S1181)
             {
-                _S1157 = int(0);
-                _S1156 = nullptr;
-                _S1155 = nullptr;
-                _S1154 = nullptr;
-                _S1153 = nullptr;
-                _S1152 = _S1162;
+                _S1177 = int(0);
+                _S1176 = nullptr;
+                _S1175 = nullptr;
+                _S1174 = nullptr;
+                _S1173 = nullptr;
+                _S1172 = _S1182;
                 break;
             }
             float3  raydir_17 = unproject_raydir_0(uv_u_31, camera_model_24, is_ray_depth_21);
             points_12[int(0)] = make_float3 (depths_10.x) * raydir_17;
-            float2  uv_63 = (pix_center_13 + make_float2 (1.0f, -0.0f) - _S1158) / _S1159;
-            FixedArray<float, 8>  _S1163 = dist_coeffs_25;
+            float2  uv_63 = (pix_center_13 + make_float2 (1.0f, -0.0f) - _S1178) / _S1179;
+            FixedArray<float, 8>  _S1183 = dist_coeffs_25;
             float2  uv_u_32;
-            bool _S1164 = undistort_point_2(uv_63, &_S1163, int(12), &uv_u_32);
-            if(!_S1164)
+            bool _S1184 = undistort_point_2(uv_63, &_S1183, int(12), &uv_u_32);
+            if(!_S1184)
             {
-                _S1157 = int(0);
-                _S1156 = nullptr;
-                _S1155 = &points_12[int(0)];
-                _S1154 = nullptr;
-                _S1153 = nullptr;
-                _S1152 = _S1162;
+                _S1177 = int(0);
+                _S1176 = nullptr;
+                _S1175 = &points_12[int(0)];
+                _S1174 = nullptr;
+                _S1173 = nullptr;
+                _S1172 = _S1182;
                 break;
             }
             float3  raydir_18 = unproject_raydir_0(uv_u_32, camera_model_24, is_ray_depth_21);
             points_12[int(1)] = make_float3 (depths_10.y) * raydir_18;
-            float2  uv_64 = (pix_center_13 + make_float2 (0.0f, -1.0f) - _S1158) / _S1159;
-            FixedArray<float, 8>  _S1165 = dist_coeffs_25;
+            float2  uv_64 = (pix_center_13 + make_float2 (0.0f, -1.0f) - _S1178) / _S1179;
+            FixedArray<float, 8>  _S1185 = dist_coeffs_25;
             float2  uv_u_33;
-            bool _S1166 = undistort_point_2(uv_64, &_S1165, int(12), &uv_u_33);
-            if(!_S1166)
+            bool _S1186 = undistort_point_2(uv_64, &_S1185, int(12), &uv_u_33);
+            if(!_S1186)
             {
-                _S1157 = int(0);
-                _S1156 = &points_12[int(1)];
-                _S1155 = &points_12[int(0)];
-                _S1154 = nullptr;
-                _S1153 = nullptr;
-                _S1152 = _S1162;
+                _S1177 = int(0);
+                _S1176 = &points_12[int(1)];
+                _S1175 = &points_12[int(0)];
+                _S1174 = nullptr;
+                _S1173 = nullptr;
+                _S1172 = _S1182;
                 break;
             }
             float3  raydir_19 = unproject_raydir_0(uv_u_33, camera_model_24, is_ray_depth_21);
             points_12[int(2)] = make_float3 (depths_10.z) * raydir_19;
-            float2  uv_65 = (pix_center_13 + make_float2 (0.0f, 1.0f) - _S1158) / _S1159;
-            FixedArray<float, 8>  _S1167 = dist_coeffs_25;
+            float2  uv_65 = (pix_center_13 + make_float2 (0.0f, 1.0f) - _S1178) / _S1179;
+            FixedArray<float, 8>  _S1187 = dist_coeffs_25;
             float2  uv_u_34;
-            bool _S1168 = undistort_point_2(uv_65, &_S1167, int(12), &uv_u_34);
-            if(!_S1168)
+            bool _S1188 = undistort_point_2(uv_65, &_S1187, int(12), &uv_u_34);
+            if(!_S1188)
             {
-                _S1157 = int(0);
-                _S1156 = &points_12[int(1)];
-                _S1155 = &points_12[int(0)];
-                _S1154 = nullptr;
-                _S1153 = &points_12[int(2)];
-                _S1152 = _S1162;
+                _S1177 = int(0);
+                _S1176 = &points_12[int(1)];
+                _S1175 = &points_12[int(0)];
+                _S1174 = nullptr;
+                _S1173 = &points_12[int(2)];
+                _S1172 = _S1182;
                 break;
             }
             float3  raydir_20 = unproject_raydir_0(uv_u_34, camera_model_24, is_ray_depth_21);
             points_12[int(3)] = make_float3 (depths_10.w) * raydir_20;
-            float2  uv_66 = (pix_center_13 + make_float2 (0.0f) * make_float2 (0.0f, 3.0f) - _S1158) / _S1159;
-            FixedArray<float, 8>  _S1169 = dist_coeffs_25;
+            float2  uv_66 = (pix_center_13 + make_float2 (0.0f) * make_float2 (0.0f, 3.0f) - _S1178) / _S1179;
+            FixedArray<float, 8>  _S1189 = dist_coeffs_25;
             float2  uv_u_35;
-            bool _S1170 = undistort_point_2(uv_66, &_S1169, int(12), &uv_u_35);
-            if(!_S1170)
+            bool _S1190 = undistort_point_2(uv_66, &_S1189, int(12), &uv_u_35);
+            if(!_S1190)
             {
-                _S1157 = int(0);
-                _S1156 = &points_12[int(1)];
-                _S1155 = &points_12[int(0)];
-                _S1154 = &points_12[int(3)];
-                _S1153 = &points_12[int(2)];
-                _S1152 = _S1162;
+                _S1177 = int(0);
+                _S1176 = &points_12[int(1)];
+                _S1175 = &points_12[int(0)];
+                _S1174 = &points_12[int(3)];
+                _S1173 = &points_12[int(2)];
+                _S1172 = _S1182;
                 break;
             }
             float3  raydir_21 = unproject_raydir_0(uv_u_35, camera_model_24, is_ray_depth_21);
-            _S1157 = int(1);
-            _S1156 = &points_12[int(1)];
-            _S1155 = &points_12[int(0)];
-            _S1154 = &points_12[int(3)];
-            _S1153 = &points_12[int(2)];
-            _S1152 = raydir_21;
+            _S1177 = int(1);
+            _S1176 = &points_12[int(1)];
+            _S1175 = &points_12[int(0)];
+            _S1174 = &points_12[int(3)];
+            _S1173 = &points_12[int(2)];
+            _S1172 = raydir_21;
             break;
         }
-        if(_S1157 != int(1))
+        if(_S1177 != int(1))
         {
-            _S1151 = 0.0f;
+            _S1171 = 0.0f;
             break;
         }
-        float3  normal_14 = cross_0(*_S1156 - *_S1155, - (*_S1154 - *_S1153));
+        float3  normal_14 = cross_0(*_S1176 - *_S1175, - (*_S1174 - *_S1173));
         float3  normal_15;
         if((dot_0(normal_14, normal_14)) != 0.0f)
         {
@@ -5962,542 +6125,542 @@ inline __device__ float depth_normal_loss_prism(float2  pix_center_13, float4  i
         {
             normal_15 = normal_14;
         }
-        float3  _S1171;
+        float3  _S1191;
         if((dot_0(gt_normal_4, gt_normal_4)) != 0.0f)
         {
-            _S1171 = normalize_0(gt_normal_4);
+            _S1191 = normalize_0(gt_normal_4);
         }
         else
         {
-            _S1171 = gt_normal_4;
+            _S1191 = gt_normal_4;
         }
-        _S1151 = (1.0f - dot_0(normal_15, _S1171) + 0.00100000004749745f) / ((F32_max((dot_0(normal_15, - normalize_0(_S1152))), (0.0f))) + 0.00100000004749745f);
+        _S1171 = (1.0f - dot_0(normal_15, _S1191) + 0.00100000004749745f) / ((F32_max((dot_0(normal_15, - normalize_0(_S1172))), (0.0f))) + 0.00100000004749745f);
         break;
     }
-    return _S1151;
+    return _S1171;
 }
 
 struct s_bwd_prop_depth_normal_loss_Intermediates_2
 {
-    float2  _S1172;
-    bool _S1173;
-    float2  _S1174;
-    bool _S1175;
-    float2  _S1176;
-    bool _S1177;
-    float2  _S1178;
-    bool _S1179;
-    float2  _S1180;
-    bool _S1181;
+    float2  _S1192;
+    bool _S1193;
+    float2  _S1194;
+    bool _S1195;
+    float2  _S1196;
+    bool _S1197;
+    float2  _S1198;
+    bool _S1199;
+    float2  _S1200;
+    bool _S1201;
 };
 
 inline __device__ void depth_normal_loss_vjp_prism(float2  pix_center_14, float4  intrins_23, FixedArray<float, 8>  dist_coeffs_26, int camera_model_25, bool is_ray_depth_22, float4  depths_11, float3  gt_normal_5, float v_loss_2, float4  * v_depths_5, float3  * v_gt_normal_2)
 {
-    float2  _S1182 = make_float2 (0.0f);
-    s_bwd_prop_depth_normal_loss_Intermediates_2 _S1183;
-    (&_S1183)->_S1172 = _S1182;
-    (&_S1183)->_S1173 = false;
-    (&_S1183)->_S1174 = _S1182;
-    (&_S1183)->_S1175 = false;
-    (&_S1183)->_S1176 = _S1182;
-    (&_S1183)->_S1177 = false;
-    (&_S1183)->_S1178 = _S1182;
-    (&_S1183)->_S1179 = false;
-    (&_S1183)->_S1180 = _S1182;
-    (&_S1183)->_S1181 = false;
-    (&_S1183)->_S1174 = _S1182;
-    (&_S1183)->_S1175 = false;
-    (&_S1183)->_S1176 = _S1182;
-    (&_S1183)->_S1177 = false;
-    (&_S1183)->_S1178 = _S1182;
-    (&_S1183)->_S1179 = false;
-    (&_S1183)->_S1180 = _S1182;
-    (&_S1183)->_S1181 = false;
-    float2  _S1184 = float2 {intrins_23.z, intrins_23.w};
-    float2  _S1185 = float2 {intrins_23.x, intrins_23.y};
-    float2  uv_67 = (pix_center_14 + make_float2 (-1.0f, -0.0f) - _S1184) / _S1185;
-    float2  _S1186 = _S1182;
-    FixedArray<float, 8>  _S1187 = dist_coeffs_26;
-    bool _S1188 = undistort_point_2(uv_67, &_S1187, int(12), &_S1186);
-    (&_S1183)->_S1172 = _S1186;
-    (&_S1183)->_S1173 = _S1188;
-    bool _S1189 = !!_S1188;
-    bool _runFlag_23;
-    if(_S1189)
-    {
-        float2  uv_68 = (pix_center_14 + make_float2 (1.0f, -0.0f) - _S1184) / _S1185;
-        float2  _S1190 = _S1182;
-        FixedArray<float, 8>  _S1191 = dist_coeffs_26;
-        bool _S1192 = undistort_point_2(uv_68, &_S1191, int(12), &_S1190);
-        (&_S1183)->_S1174 = _S1190;
-        (&_S1183)->_S1175 = _S1192;
-        if(!_S1192)
-        {
-            _runFlag_23 = false;
-        }
-        else
-        {
-            _runFlag_23 = _S1189;
-        }
-        if(_runFlag_23)
-        {
-            float2  uv_69 = (pix_center_14 + make_float2 (0.0f, -1.0f) - _S1184) / _S1185;
-            float2  _S1193 = _S1182;
-            FixedArray<float, 8>  _S1194 = dist_coeffs_26;
-            bool _S1195 = undistort_point_2(uv_69, &_S1194, int(12), &_S1193);
-            (&_S1183)->_S1176 = _S1193;
-            (&_S1183)->_S1177 = _S1195;
-            if(!_S1195)
-            {
-                _runFlag_23 = false;
-            }
-            if(_runFlag_23)
-            {
-                float2  uv_70 = (pix_center_14 + make_float2 (0.0f, 1.0f) - _S1184) / _S1185;
-                float2  _S1196 = _S1182;
-                FixedArray<float, 8>  _S1197 = dist_coeffs_26;
-                bool _S1198 = undistort_point_2(uv_70, &_S1197, int(12), &_S1196);
-                (&_S1183)->_S1178 = _S1196;
-                (&_S1183)->_S1179 = _S1198;
-                if(!_S1198)
-                {
-                    _runFlag_23 = false;
-                }
-                if(_runFlag_23)
-                {
-                    float2  uv_71 = (pix_center_14 - _S1184) / _S1185;
-                    float2  _S1199 = _S1182;
-                    FixedArray<float, 8>  _S1200 = dist_coeffs_26;
-                    bool _S1201 = undistort_point_2(uv_71, &_S1200, int(12), &_S1199);
-                    (&_S1183)->_S1180 = _S1199;
-                    (&_S1183)->_S1181 = _S1201;
-                }
-            }
-        }
-    }
-    s_bwd_prop_depth_normal_loss_Intermediates_2 _S1202 = _S1183;
-    float3  _S1203 = make_float3 (0.0f);
-    bool _S1204 = !!_S1183._S1173;
-    bool _runFlag_24;
-    bool _runFlag_25;
+    float2  _S1202 = make_float2 (0.0f);
+    s_bwd_prop_depth_normal_loss_Intermediates_2 _S1203;
+    (&_S1203)->_S1192 = _S1202;
+    (&_S1203)->_S1193 = false;
+    (&_S1203)->_S1194 = _S1202;
+    (&_S1203)->_S1195 = false;
+    (&_S1203)->_S1196 = _S1202;
+    (&_S1203)->_S1197 = false;
+    (&_S1203)->_S1198 = _S1202;
+    (&_S1203)->_S1199 = false;
+    (&_S1203)->_S1200 = _S1202;
+    (&_S1203)->_S1201 = false;
+    (&_S1203)->_S1194 = _S1202;
+    (&_S1203)->_S1195 = false;
+    (&_S1203)->_S1196 = _S1202;
+    (&_S1203)->_S1197 = false;
+    (&_S1203)->_S1198 = _S1202;
+    (&_S1203)->_S1199 = false;
+    (&_S1203)->_S1200 = _S1202;
+    (&_S1203)->_S1201 = false;
+    float2  _S1204 = float2 {intrins_23.z, intrins_23.w};
+    float2  _S1205 = float2 {intrins_23.x, intrins_23.y};
+    float2  uv_67 = (pix_center_14 + make_float2 (-1.0f, -0.0f) - _S1204) / _S1205;
+    float2  _S1206 = _S1202;
+    FixedArray<float, 8>  _S1207 = dist_coeffs_26;
+    bool _S1208 = undistort_point_2(uv_67, &_S1207, int(12), &_S1206);
+    (&_S1203)->_S1192 = _S1206;
+    (&_S1203)->_S1193 = _S1208;
+    bool _S1209 = !!_S1208;
     bool _runFlag_26;
-    int _S1205;
-    float3  raydir_22;
-    float3  _S1206;
-    float3  _S1207;
-    float3  _S1208;
-    float3  _S1209;
-    FixedArray<float3 , 5>  points_13;
-    if(_S1204)
+    if(_S1209)
     {
-        float3  _S1210 = s_primal_ctx_unproject_raydir_0(_S1202._S1172, camera_model_25, is_ray_depth_22);
-        float3  _S1211 = make_float3 (depths_11.x) * _S1210;
-        if(!_S1202._S1175)
+        float2  uv_68 = (pix_center_14 + make_float2 (1.0f, -0.0f) - _S1204) / _S1205;
+        float2  _S1210 = _S1202;
+        FixedArray<float, 8>  _S1211 = dist_coeffs_26;
+        bool _S1212 = undistort_point_2(uv_68, &_S1211, int(12), &_S1210);
+        (&_S1203)->_S1194 = _S1210;
+        (&_S1203)->_S1195 = _S1212;
+        if(!_S1212)
         {
-            _runFlag_23 = false;
+            _runFlag_26 = false;
         }
         else
         {
-            _runFlag_23 = _S1204;
+            _runFlag_26 = _S1209;
         }
-        if(_runFlag_23)
-        {
-            float3  _S1212 = s_primal_ctx_unproject_raydir_0(_S1202._S1174, camera_model_25, is_ray_depth_22);
-            float3  _S1213 = make_float3 (depths_11.y) * _S1212;
-            if(!_S1202._S1177)
-            {
-                _runFlag_24 = false;
-            }
-            else
-            {
-                _runFlag_24 = _runFlag_23;
-            }
-            if(_runFlag_24)
-            {
-                float3  _S1214 = s_primal_ctx_unproject_raydir_0(_S1202._S1176, camera_model_25, is_ray_depth_22);
-                float3  _S1215 = make_float3 (depths_11.z) * _S1214;
-                if(!_S1202._S1179)
-                {
-                    _runFlag_25 = false;
-                }
-                else
-                {
-                    _runFlag_25 = _runFlag_24;
-                }
-                if(_runFlag_25)
-                {
-                    float3  _S1216 = s_primal_ctx_unproject_raydir_0(_S1202._S1178, camera_model_25, is_ray_depth_22);
-                    float3  _S1217 = make_float3 (depths_11.w) * _S1216;
-                    if(!_S1202._S1181)
-                    {
-                        _runFlag_26 = false;
-                    }
-                    else
-                    {
-                        _runFlag_26 = _runFlag_25;
-                    }
-                    if(_runFlag_26)
-                    {
-                        float3  _S1218 = s_primal_ctx_unproject_raydir_0(_S1202._S1180, camera_model_25, is_ray_depth_22);
-                        _S1205 = int(1);
-                        raydir_22 = _S1218;
-                    }
-                    else
-                    {
-                        _S1205 = int(0);
-                        raydir_22 = _S1216;
-                    }
-                    points_13[int(0)] = _S1211;
-                    points_13[int(1)] = _S1213;
-                    points_13[int(2)] = _S1215;
-                    points_13[int(3)] = _S1217;
-                    points_13[int(4)] = _S1203;
-                    _S1206 = _S1216;
-                }
-                else
-                {
-                    _S1205 = int(0);
-                    raydir_22 = _S1214;
-                    points_13[int(0)] = _S1211;
-                    points_13[int(1)] = _S1213;
-                    points_13[int(2)] = _S1215;
-                    points_13[int(3)] = _S1203;
-                    points_13[int(4)] = _S1203;
-                    _S1206 = _S1203;
-                }
-                _S1207 = _S1214;
-            }
-            else
-            {
-                _S1205 = int(0);
-                raydir_22 = _S1212;
-                points_13[int(0)] = _S1211;
-                points_13[int(1)] = _S1213;
-                points_13[int(2)] = _S1203;
-                points_13[int(3)] = _S1203;
-                points_13[int(4)] = _S1203;
-                _runFlag_25 = false;
-                _S1206 = _S1203;
-                _S1207 = _S1203;
-            }
-            _S1208 = _S1212;
-        }
-        else
-        {
-            _S1205 = int(0);
-            raydir_22 = _S1210;
-            points_13[int(0)] = _S1211;
-            points_13[int(1)] = _S1203;
-            points_13[int(2)] = _S1203;
-            points_13[int(3)] = _S1203;
-            points_13[int(4)] = _S1203;
-            _runFlag_24 = false;
-            _runFlag_25 = false;
-            _S1206 = _S1203;
-            _S1207 = _S1203;
-            _S1208 = _S1203;
-        }
-        _S1209 = _S1210;
-    }
-    else
-    {
-        _S1205 = int(0);
-        points_13[int(0)] = _S1203;
-        points_13[int(1)] = _S1203;
-        points_13[int(2)] = _S1203;
-        points_13[int(3)] = _S1203;
-        points_13[int(4)] = _S1203;
-        _runFlag_23 = false;
-        _runFlag_24 = false;
-        _runFlag_25 = false;
-        _S1206 = _S1203;
-        _S1207 = _S1203;
-        _S1208 = _S1203;
-        _S1209 = _S1203;
-    }
-    bool _S1219 = !(_S1205 != int(1));
-    bool _S1220;
-    float3  normal_16;
-    float3  _S1221;
-    float3  _S1222;
-    float3  _S1223;
-    float3  _S1224;
-    float _S1225;
-    float _S1226;
-    float _S1227;
-    float _S1228;
-    if(_S1219)
-    {
-        float3  dx_6 = points_13[int(1)] - points_13[int(0)];
-        float3  _S1229 = - (points_13[int(3)] - points_13[int(2)]);
-        float3  _S1230 = s_primal_ctx_cross_0(dx_6, _S1229);
-        bool _S1231 = (s_primal_ctx_dot_0(_S1230, _S1230)) != 0.0f;
-        if(_S1231)
-        {
-            normal_16 = normalize_0(_S1230);
-        }
-        else
-        {
-            normal_16 = _S1230;
-        }
-        bool _S1232 = (s_primal_ctx_dot_0(gt_normal_5, gt_normal_5)) != 0.0f;
-        if(_S1232)
-        {
-            _S1221 = normalize_0(gt_normal_5);
-        }
-        else
-        {
-            _S1221 = gt_normal_5;
-        }
-        float3  _S1233 = - normalize_0(raydir_22);
-        float _S1234 = s_primal_ctx_dot_0(normal_16, _S1233);
-        float _S1235 = 1.0f - s_primal_ctx_dot_0(normal_16, _S1221) + 0.00100000004749745f;
-        float _S1236 = (F32_max((_S1234), (0.0f))) + 0.00100000004749745f;
-        _S1225 = _S1236 * _S1236;
-        _S1226 = _S1235;
-        _S1227 = _S1236;
-        _S1228 = _S1234;
-        raydir_22 = normal_16;
-        normal_16 = _S1233;
-        _runFlag_26 = _S1232;
-        _S1220 = _S1231;
-        _S1222 = _S1230;
-        _S1223 = dx_6;
-        _S1224 = _S1229;
-    }
-    else
-    {
-        _S1225 = 0.0f;
-        _S1226 = 0.0f;
-        _S1227 = 0.0f;
-        _S1228 = 0.0f;
-        raydir_22 = _S1203;
-        normal_16 = _S1203;
-        _S1221 = _S1203;
-        _runFlag_26 = false;
-        _S1220 = false;
-        _S1222 = _S1203;
-        _S1223 = _S1203;
-        _S1224 = _S1203;
-    }
-    float4  _S1237 = make_float4 (0.0f);
-    if(_S1219)
-    {
-        float _S1238 = v_loss_2 / _S1225;
-        float _S1239 = _S1226 * - _S1238;
-        float s_diff_num_T_2 = _S1227 * _S1238;
-        DiffPair_float_0 _S1240;
-        (&_S1240)->primal_0 = _S1228;
-        (&_S1240)->differential_0 = 0.0f;
-        DiffPair_float_0 _S1241;
-        (&_S1241)->primal_0 = 0.0f;
-        (&_S1241)->differential_0 = 0.0f;
-        _d_max_0(&_S1240, &_S1241, _S1239);
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1242;
-        (&_S1242)->primal_0 = raydir_22;
-        (&_S1242)->differential_0 = _S1203;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1243;
-        (&_S1243)->primal_0 = normal_16;
-        (&_S1243)->differential_0 = _S1203;
-        s_bwd_prop_dot_0(&_S1242, &_S1243, _S1240.differential_0);
-        float _S1244 = - s_diff_num_T_2;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1245;
-        (&_S1245)->primal_0 = raydir_22;
-        (&_S1245)->differential_0 = _S1203;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1246;
-        (&_S1246)->primal_0 = _S1221;
-        (&_S1246)->differential_0 = _S1203;
-        s_bwd_prop_dot_0(&_S1245, &_S1246, _S1244);
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1247 = _S1246;
-        float3  _S1248 = _S1242.differential_0 + _S1245.differential_0;
         if(_runFlag_26)
         {
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S1249;
-            (&_S1249)->primal_0 = gt_normal_5;
-            (&_S1249)->differential_0 = _S1203;
-            s_bwd_normalize_impl_0(&_S1249, _S1247.differential_0);
-            raydir_22 = _S1249.differential_0;
-        }
-        else
-        {
-            raydir_22 = _S1247.differential_0;
-        }
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1250;
-        (&_S1250)->primal_0 = gt_normal_5;
-        (&_S1250)->differential_0 = _S1203;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1251;
-        (&_S1251)->primal_0 = gt_normal_5;
-        (&_S1251)->differential_0 = _S1203;
-        s_bwd_prop_dot_0(&_S1250, &_S1251, 0.0f);
-        float3  _S1252 = _S1251.differential_0 + _S1250.differential_0 + raydir_22;
-        if(_S1220)
-        {
-            DiffPair_vectorx3Cfloatx2C3x3E_0 _S1253;
-            (&_S1253)->primal_0 = _S1222;
-            (&_S1253)->differential_0 = _S1203;
-            s_bwd_normalize_impl_0(&_S1253, _S1248);
-            raydir_22 = _S1253.differential_0;
-        }
-        else
-        {
-            raydir_22 = _S1248;
-        }
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1254;
-        (&_S1254)->primal_0 = _S1222;
-        (&_S1254)->differential_0 = _S1203;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1255;
-        (&_S1255)->primal_0 = _S1222;
-        (&_S1255)->differential_0 = _S1203;
-        s_bwd_prop_dot_0(&_S1254, &_S1255, 0.0f);
-        float3  _S1256 = _S1255.differential_0 + _S1254.differential_0 + raydir_22;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1257;
-        (&_S1257)->primal_0 = _S1223;
-        (&_S1257)->differential_0 = _S1203;
-        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1258;
-        (&_S1258)->primal_0 = _S1224;
-        (&_S1258)->differential_0 = _S1203;
-        s_bwd_prop_cross_0(&_S1257, &_S1258, _S1256);
-        float3  s_diff_dy_T_6 = - _S1258.differential_0;
-        float3  _S1259 = - s_diff_dy_T_6;
-        float3  _S1260 = - _S1257.differential_0;
-        FixedArray<float3 , 5>  _S1261;
-        _S1261[int(0)] = _S1203;
-        _S1261[int(1)] = _S1203;
-        _S1261[int(2)] = _S1203;
-        _S1261[int(3)] = _S1203;
-        _S1261[int(4)] = _S1203;
-        _S1261[int(2)] = _S1259;
-        _S1261[int(3)] = s_diff_dy_T_6;
-        _S1261[int(0)] = _S1260;
-        _S1261[int(1)] = _S1257.differential_0;
-        points_13[int(0)] = _S1261[int(0)];
-        points_13[int(1)] = _S1261[int(1)];
-        points_13[int(2)] = _S1261[int(2)];
-        points_13[int(3)] = _S1261[int(3)];
-        points_13[int(4)] = _S1261[int(4)];
-        raydir_22 = _S1252;
-    }
-    else
-    {
-        points_13[int(0)] = _S1203;
-        points_13[int(1)] = _S1203;
-        points_13[int(2)] = _S1203;
-        points_13[int(3)] = _S1203;
-        points_13[int(4)] = _S1203;
-        raydir_22 = _S1203;
-    }
-    float4  _S1262;
-    if(_S1204)
-    {
-        if(_runFlag_23)
-        {
-            if(_runFlag_24)
+            float2  uv_69 = (pix_center_14 + make_float2 (0.0f, -1.0f) - _S1204) / _S1205;
+            float2  _S1213 = _S1202;
+            FixedArray<float, 8>  _S1214 = dist_coeffs_26;
+            bool _S1215 = undistort_point_2(uv_69, &_S1214, int(12), &_S1213);
+            (&_S1203)->_S1196 = _S1213;
+            (&_S1203)->_S1197 = _S1215;
+            if(!_S1215)
             {
-                if(_runFlag_25)
+                _runFlag_26 = false;
+            }
+            if(_runFlag_26)
+            {
+                float2  uv_70 = (pix_center_14 + make_float2 (0.0f, 1.0f) - _S1204) / _S1205;
+                float2  _S1216 = _S1202;
+                FixedArray<float, 8>  _S1217 = dist_coeffs_26;
+                bool _S1218 = undistort_point_2(uv_70, &_S1217, int(12), &_S1216);
+                (&_S1203)->_S1198 = _S1216;
+                (&_S1203)->_S1199 = _S1218;
+                if(!_S1218)
                 {
-                    FixedArray<float3 , 5>  _S1263 = points_13;
-                    FixedArray<float3 , 5>  _S1264 = points_13;
-                    FixedArray<float3 , 5>  _S1265 = points_13;
-                    float3  _S1266 = _S1206 * points_13[int(3)];
-                    float _S1267 = _S1266.x + _S1266.y + _S1266.z;
-                    float4  _S1268 = _S1237;
-                    *&((&_S1268)->w) = _S1267;
-                    points_13[int(0)] = _S1203;
-                    points_13[int(1)] = _S1203;
-                    points_13[int(2)] = _S1203;
-                    points_13[int(3)] = _S1203;
-                    points_13[int(4)] = _S1203;
-                    _S1206 = _S1265[int(2)];
-                    normal_16 = _S1263[int(0)];
-                    _S1221 = _S1264[int(1)];
-                    _S1262 = _S1268;
+                    _runFlag_26 = false;
                 }
-                else
+                if(_runFlag_26)
                 {
-                    FixedArray<float3 , 5>  _S1269 = points_13;
-                    FixedArray<float3 , 5>  _S1270 = points_13;
-                    FixedArray<float3 , 5>  _S1271 = points_13;
-                    FixedArray<float3 , 5>  _S1272 = points_13;
-                    points_13[int(0)] = points_13[int(0)];
-                    points_13[int(1)] = _S1269[int(1)];
-                    points_13[int(2)] = _S1270[int(2)];
-                    points_13[int(3)] = _S1271[int(3)];
-                    points_13[int(4)] = _S1272[int(4)];
-                    _S1206 = _S1203;
-                    normal_16 = _S1203;
-                    _S1221 = _S1203;
-                    _S1262 = _S1237;
+                    float2  uv_71 = (pix_center_14 - _S1204) / _S1205;
+                    float2  _S1219 = _S1202;
+                    FixedArray<float, 8>  _S1220 = dist_coeffs_26;
+                    bool _S1221 = undistort_point_2(uv_71, &_S1220, int(12), &_S1219);
+                    (&_S1203)->_S1200 = _S1219;
+                    (&_S1203)->_S1201 = _S1221;
                 }
-                float3  _S1273 = _S1207 * (points_13[int(2)] + _S1206);
-                float _S1274 = _S1273.x + _S1273.y + _S1273.z;
-                float3  _S1275 = points_13[int(0)] + normal_16;
-                float3  _S1276 = points_13[int(1)] + _S1221;
-                float4  _S1277 = _S1237;
-                *&((&_S1277)->z) = _S1274;
-                float4  _S1278 = _S1262 + _S1277;
-                points_13[int(0)] = _S1203;
-                points_13[int(1)] = _S1203;
-                points_13[int(2)] = _S1203;
-                points_13[int(3)] = _S1203;
-                points_13[int(4)] = _S1203;
-                _S1206 = _S1276;
-                _S1207 = _S1275;
-                _S1262 = _S1278;
+            }
+        }
+    }
+    s_bwd_prop_depth_normal_loss_Intermediates_2 _S1222 = _S1203;
+    float3  _S1223 = make_float3 (0.0f);
+    bool _S1224 = !!_S1203._S1193;
+    bool _runFlag_27;
+    bool _runFlag_28;
+    bool _runFlag_29;
+    int _S1225;
+    float3  raydir_22;
+    float3  _S1226;
+    float3  _S1227;
+    float3  _S1228;
+    float3  _S1229;
+    FixedArray<float3 , 5>  points_13;
+    if(_S1224)
+    {
+        float3  _S1230 = s_primal_ctx_unproject_raydir_0(_S1222._S1192, camera_model_25, is_ray_depth_22);
+        float3  _S1231 = make_float3 (depths_11.x) * _S1230;
+        if(!_S1222._S1195)
+        {
+            _runFlag_26 = false;
+        }
+        else
+        {
+            _runFlag_26 = _S1224;
+        }
+        if(_runFlag_26)
+        {
+            float3  _S1232 = s_primal_ctx_unproject_raydir_0(_S1222._S1194, camera_model_25, is_ray_depth_22);
+            float3  _S1233 = make_float3 (depths_11.y) * _S1232;
+            if(!_S1222._S1197)
+            {
+                _runFlag_27 = false;
             }
             else
             {
-                FixedArray<float3 , 5>  _S1279 = points_13;
-                FixedArray<float3 , 5>  _S1280 = points_13;
-                FixedArray<float3 , 5>  _S1281 = points_13;
-                FixedArray<float3 , 5>  _S1282 = points_13;
-                points_13[int(0)] = points_13[int(0)];
-                points_13[int(1)] = _S1279[int(1)];
-                points_13[int(2)] = _S1280[int(2)];
-                points_13[int(3)] = _S1281[int(3)];
-                points_13[int(4)] = _S1282[int(4)];
-                _S1206 = _S1203;
-                _S1207 = _S1203;
-                _S1262 = _S1237;
+                _runFlag_27 = _runFlag_26;
             }
-            float3  _S1283 = _S1208 * (points_13[int(1)] + _S1206);
-            float _S1284 = _S1283.x + _S1283.y + _S1283.z;
-            float3  _S1285 = points_13[int(0)] + _S1207;
-            float4  _S1286 = _S1237;
-            *&((&_S1286)->y) = _S1284;
-            float4  _S1287 = _S1262 + _S1286;
-            points_13[int(0)] = _S1203;
-            points_13[int(1)] = _S1203;
-            points_13[int(2)] = _S1203;
-            points_13[int(3)] = _S1203;
-            points_13[int(4)] = _S1203;
-            _S1206 = _S1285;
-            _S1262 = _S1287;
+            if(_runFlag_27)
+            {
+                float3  _S1234 = s_primal_ctx_unproject_raydir_0(_S1222._S1196, camera_model_25, is_ray_depth_22);
+                float3  _S1235 = make_float3 (depths_11.z) * _S1234;
+                if(!_S1222._S1199)
+                {
+                    _runFlag_28 = false;
+                }
+                else
+                {
+                    _runFlag_28 = _runFlag_27;
+                }
+                if(_runFlag_28)
+                {
+                    float3  _S1236 = s_primal_ctx_unproject_raydir_0(_S1222._S1198, camera_model_25, is_ray_depth_22);
+                    float3  _S1237 = make_float3 (depths_11.w) * _S1236;
+                    if(!_S1222._S1201)
+                    {
+                        _runFlag_29 = false;
+                    }
+                    else
+                    {
+                        _runFlag_29 = _runFlag_28;
+                    }
+                    if(_runFlag_29)
+                    {
+                        float3  _S1238 = s_primal_ctx_unproject_raydir_0(_S1222._S1200, camera_model_25, is_ray_depth_22);
+                        _S1225 = int(1);
+                        raydir_22 = _S1238;
+                    }
+                    else
+                    {
+                        _S1225 = int(0);
+                        raydir_22 = _S1236;
+                    }
+                    points_13[int(0)] = _S1231;
+                    points_13[int(1)] = _S1233;
+                    points_13[int(2)] = _S1235;
+                    points_13[int(3)] = _S1237;
+                    points_13[int(4)] = _S1223;
+                    _S1226 = _S1236;
+                }
+                else
+                {
+                    _S1225 = int(0);
+                    raydir_22 = _S1234;
+                    points_13[int(0)] = _S1231;
+                    points_13[int(1)] = _S1233;
+                    points_13[int(2)] = _S1235;
+                    points_13[int(3)] = _S1223;
+                    points_13[int(4)] = _S1223;
+                    _S1226 = _S1223;
+                }
+                _S1227 = _S1234;
+            }
+            else
+            {
+                _S1225 = int(0);
+                raydir_22 = _S1232;
+                points_13[int(0)] = _S1231;
+                points_13[int(1)] = _S1233;
+                points_13[int(2)] = _S1223;
+                points_13[int(3)] = _S1223;
+                points_13[int(4)] = _S1223;
+                _runFlag_28 = false;
+                _S1226 = _S1223;
+                _S1227 = _S1223;
+            }
+            _S1228 = _S1232;
         }
         else
         {
-            FixedArray<float3 , 5>  _S1288 = points_13;
-            FixedArray<float3 , 5>  _S1289 = points_13;
-            FixedArray<float3 , 5>  _S1290 = points_13;
-            FixedArray<float3 , 5>  _S1291 = points_13;
-            points_13[int(0)] = points_13[int(0)];
-            points_13[int(1)] = _S1288[int(1)];
-            points_13[int(2)] = _S1289[int(2)];
-            points_13[int(3)] = _S1290[int(3)];
-            points_13[int(4)] = _S1291[int(4)];
-            _S1206 = _S1203;
-            _S1262 = _S1237;
+            _S1225 = int(0);
+            raydir_22 = _S1230;
+            points_13[int(0)] = _S1231;
+            points_13[int(1)] = _S1223;
+            points_13[int(2)] = _S1223;
+            points_13[int(3)] = _S1223;
+            points_13[int(4)] = _S1223;
+            _runFlag_27 = false;
+            _runFlag_28 = false;
+            _S1226 = _S1223;
+            _S1227 = _S1223;
+            _S1228 = _S1223;
         }
-        float3  _S1292 = _S1209 * (points_13[int(0)] + _S1206);
-        float _S1293 = _S1292.x + _S1292.y + _S1292.z;
-        float4  _S1294 = _S1237;
-        *&((&_S1294)->x) = _S1293;
-        _S1262 = _S1262 + _S1294;
+        _S1229 = _S1230;
     }
     else
     {
-        _S1262 = _S1237;
+        _S1225 = int(0);
+        points_13[int(0)] = _S1223;
+        points_13[int(1)] = _S1223;
+        points_13[int(2)] = _S1223;
+        points_13[int(3)] = _S1223;
+        points_13[int(4)] = _S1223;
+        _runFlag_26 = false;
+        _runFlag_27 = false;
+        _runFlag_28 = false;
+        _S1226 = _S1223;
+        _S1227 = _S1223;
+        _S1228 = _S1223;
+        _S1229 = _S1223;
     }
-    *v_depths_5 = _S1262;
+    bool _S1239 = !(_S1225 != int(1));
+    bool _S1240;
+    float3  normal_16;
+    float3  _S1241;
+    float3  _S1242;
+    float3  _S1243;
+    float3  _S1244;
+    float _S1245;
+    float _S1246;
+    float _S1247;
+    float _S1248;
+    if(_S1239)
+    {
+        float3  dx_6 = points_13[int(1)] - points_13[int(0)];
+        float3  _S1249 = - (points_13[int(3)] - points_13[int(2)]);
+        float3  _S1250 = s_primal_ctx_cross_0(dx_6, _S1249);
+        bool _S1251 = (s_primal_ctx_dot_0(_S1250, _S1250)) != 0.0f;
+        if(_S1251)
+        {
+            normal_16 = normalize_0(_S1250);
+        }
+        else
+        {
+            normal_16 = _S1250;
+        }
+        bool _S1252 = (s_primal_ctx_dot_0(gt_normal_5, gt_normal_5)) != 0.0f;
+        if(_S1252)
+        {
+            _S1241 = normalize_0(gt_normal_5);
+        }
+        else
+        {
+            _S1241 = gt_normal_5;
+        }
+        float3  _S1253 = - normalize_0(raydir_22);
+        float _S1254 = s_primal_ctx_dot_0(normal_16, _S1253);
+        float _S1255 = 1.0f - s_primal_ctx_dot_0(normal_16, _S1241) + 0.00100000004749745f;
+        float _S1256 = (F32_max((_S1254), (0.0f))) + 0.00100000004749745f;
+        _S1245 = _S1256 * _S1256;
+        _S1246 = _S1255;
+        _S1247 = _S1256;
+        _S1248 = _S1254;
+        raydir_22 = normal_16;
+        normal_16 = _S1253;
+        _runFlag_29 = _S1252;
+        _S1240 = _S1251;
+        _S1242 = _S1250;
+        _S1243 = dx_6;
+        _S1244 = _S1249;
+    }
+    else
+    {
+        _S1245 = 0.0f;
+        _S1246 = 0.0f;
+        _S1247 = 0.0f;
+        _S1248 = 0.0f;
+        raydir_22 = _S1223;
+        normal_16 = _S1223;
+        _S1241 = _S1223;
+        _runFlag_29 = false;
+        _S1240 = false;
+        _S1242 = _S1223;
+        _S1243 = _S1223;
+        _S1244 = _S1223;
+    }
+    float4  _S1257 = make_float4 (0.0f);
+    if(_S1239)
+    {
+        float _S1258 = v_loss_2 / _S1245;
+        float _S1259 = _S1246 * - _S1258;
+        float s_diff_num_T_2 = _S1247 * _S1258;
+        DiffPair_float_0 _S1260;
+        (&_S1260)->primal_0 = _S1248;
+        (&_S1260)->differential_0 = 0.0f;
+        DiffPair_float_0 _S1261;
+        (&_S1261)->primal_0 = 0.0f;
+        (&_S1261)->differential_0 = 0.0f;
+        _d_max_0(&_S1260, &_S1261, _S1259);
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1262;
+        (&_S1262)->primal_0 = raydir_22;
+        (&_S1262)->differential_0 = _S1223;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1263;
+        (&_S1263)->primal_0 = normal_16;
+        (&_S1263)->differential_0 = _S1223;
+        s_bwd_prop_dot_0(&_S1262, &_S1263, _S1260.differential_0);
+        float _S1264 = - s_diff_num_T_2;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1265;
+        (&_S1265)->primal_0 = raydir_22;
+        (&_S1265)->differential_0 = _S1223;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1266;
+        (&_S1266)->primal_0 = _S1241;
+        (&_S1266)->differential_0 = _S1223;
+        s_bwd_prop_dot_0(&_S1265, &_S1266, _S1264);
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1267 = _S1266;
+        float3  _S1268 = _S1262.differential_0 + _S1265.differential_0;
+        if(_runFlag_29)
+        {
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S1269;
+            (&_S1269)->primal_0 = gt_normal_5;
+            (&_S1269)->differential_0 = _S1223;
+            s_bwd_normalize_impl_0(&_S1269, _S1267.differential_0);
+            raydir_22 = _S1269.differential_0;
+        }
+        else
+        {
+            raydir_22 = _S1267.differential_0;
+        }
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1270;
+        (&_S1270)->primal_0 = gt_normal_5;
+        (&_S1270)->differential_0 = _S1223;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1271;
+        (&_S1271)->primal_0 = gt_normal_5;
+        (&_S1271)->differential_0 = _S1223;
+        s_bwd_prop_dot_0(&_S1270, &_S1271, 0.0f);
+        float3  _S1272 = _S1271.differential_0 + _S1270.differential_0 + raydir_22;
+        if(_S1240)
+        {
+            DiffPair_vectorx3Cfloatx2C3x3E_0 _S1273;
+            (&_S1273)->primal_0 = _S1242;
+            (&_S1273)->differential_0 = _S1223;
+            s_bwd_normalize_impl_0(&_S1273, _S1268);
+            raydir_22 = _S1273.differential_0;
+        }
+        else
+        {
+            raydir_22 = _S1268;
+        }
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1274;
+        (&_S1274)->primal_0 = _S1242;
+        (&_S1274)->differential_0 = _S1223;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1275;
+        (&_S1275)->primal_0 = _S1242;
+        (&_S1275)->differential_0 = _S1223;
+        s_bwd_prop_dot_0(&_S1274, &_S1275, 0.0f);
+        float3  _S1276 = _S1275.differential_0 + _S1274.differential_0 + raydir_22;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1277;
+        (&_S1277)->primal_0 = _S1243;
+        (&_S1277)->differential_0 = _S1223;
+        DiffPair_vectorx3Cfloatx2C3x3E_0 _S1278;
+        (&_S1278)->primal_0 = _S1244;
+        (&_S1278)->differential_0 = _S1223;
+        s_bwd_prop_cross_0(&_S1277, &_S1278, _S1276);
+        float3  s_diff_dy_T_6 = - _S1278.differential_0;
+        float3  _S1279 = - s_diff_dy_T_6;
+        float3  _S1280 = - _S1277.differential_0;
+        FixedArray<float3 , 5>  _S1281;
+        _S1281[int(0)] = _S1223;
+        _S1281[int(1)] = _S1223;
+        _S1281[int(2)] = _S1223;
+        _S1281[int(3)] = _S1223;
+        _S1281[int(4)] = _S1223;
+        _S1281[int(2)] = _S1279;
+        _S1281[int(3)] = s_diff_dy_T_6;
+        _S1281[int(0)] = _S1280;
+        _S1281[int(1)] = _S1277.differential_0;
+        points_13[int(0)] = _S1281[int(0)];
+        points_13[int(1)] = _S1281[int(1)];
+        points_13[int(2)] = _S1281[int(2)];
+        points_13[int(3)] = _S1281[int(3)];
+        points_13[int(4)] = _S1281[int(4)];
+        raydir_22 = _S1272;
+    }
+    else
+    {
+        points_13[int(0)] = _S1223;
+        points_13[int(1)] = _S1223;
+        points_13[int(2)] = _S1223;
+        points_13[int(3)] = _S1223;
+        points_13[int(4)] = _S1223;
+        raydir_22 = _S1223;
+    }
+    float4  _S1282;
+    if(_S1224)
+    {
+        if(_runFlag_26)
+        {
+            if(_runFlag_27)
+            {
+                if(_runFlag_28)
+                {
+                    FixedArray<float3 , 5>  _S1283 = points_13;
+                    FixedArray<float3 , 5>  _S1284 = points_13;
+                    FixedArray<float3 , 5>  _S1285 = points_13;
+                    float3  _S1286 = _S1226 * points_13[int(3)];
+                    float _S1287 = _S1286.x + _S1286.y + _S1286.z;
+                    float4  _S1288 = _S1257;
+                    *&((&_S1288)->w) = _S1287;
+                    points_13[int(0)] = _S1223;
+                    points_13[int(1)] = _S1223;
+                    points_13[int(2)] = _S1223;
+                    points_13[int(3)] = _S1223;
+                    points_13[int(4)] = _S1223;
+                    _S1226 = _S1285[int(2)];
+                    normal_16 = _S1283[int(0)];
+                    _S1241 = _S1284[int(1)];
+                    _S1282 = _S1288;
+                }
+                else
+                {
+                    FixedArray<float3 , 5>  _S1289 = points_13;
+                    FixedArray<float3 , 5>  _S1290 = points_13;
+                    FixedArray<float3 , 5>  _S1291 = points_13;
+                    FixedArray<float3 , 5>  _S1292 = points_13;
+                    points_13[int(0)] = points_13[int(0)];
+                    points_13[int(1)] = _S1289[int(1)];
+                    points_13[int(2)] = _S1290[int(2)];
+                    points_13[int(3)] = _S1291[int(3)];
+                    points_13[int(4)] = _S1292[int(4)];
+                    _S1226 = _S1223;
+                    normal_16 = _S1223;
+                    _S1241 = _S1223;
+                    _S1282 = _S1257;
+                }
+                float3  _S1293 = _S1227 * (points_13[int(2)] + _S1226);
+                float _S1294 = _S1293.x + _S1293.y + _S1293.z;
+                float3  _S1295 = points_13[int(0)] + normal_16;
+                float3  _S1296 = points_13[int(1)] + _S1241;
+                float4  _S1297 = _S1257;
+                *&((&_S1297)->z) = _S1294;
+                float4  _S1298 = _S1282 + _S1297;
+                points_13[int(0)] = _S1223;
+                points_13[int(1)] = _S1223;
+                points_13[int(2)] = _S1223;
+                points_13[int(3)] = _S1223;
+                points_13[int(4)] = _S1223;
+                _S1226 = _S1296;
+                _S1227 = _S1295;
+                _S1282 = _S1298;
+            }
+            else
+            {
+                FixedArray<float3 , 5>  _S1299 = points_13;
+                FixedArray<float3 , 5>  _S1300 = points_13;
+                FixedArray<float3 , 5>  _S1301 = points_13;
+                FixedArray<float3 , 5>  _S1302 = points_13;
+                points_13[int(0)] = points_13[int(0)];
+                points_13[int(1)] = _S1299[int(1)];
+                points_13[int(2)] = _S1300[int(2)];
+                points_13[int(3)] = _S1301[int(3)];
+                points_13[int(4)] = _S1302[int(4)];
+                _S1226 = _S1223;
+                _S1227 = _S1223;
+                _S1282 = _S1257;
+            }
+            float3  _S1303 = _S1228 * (points_13[int(1)] + _S1226);
+            float _S1304 = _S1303.x + _S1303.y + _S1303.z;
+            float3  _S1305 = points_13[int(0)] + _S1227;
+            float4  _S1306 = _S1257;
+            *&((&_S1306)->y) = _S1304;
+            float4  _S1307 = _S1282 + _S1306;
+            points_13[int(0)] = _S1223;
+            points_13[int(1)] = _S1223;
+            points_13[int(2)] = _S1223;
+            points_13[int(3)] = _S1223;
+            points_13[int(4)] = _S1223;
+            _S1226 = _S1305;
+            _S1282 = _S1307;
+        }
+        else
+        {
+            FixedArray<float3 , 5>  _S1308 = points_13;
+            FixedArray<float3 , 5>  _S1309 = points_13;
+            FixedArray<float3 , 5>  _S1310 = points_13;
+            FixedArray<float3 , 5>  _S1311 = points_13;
+            points_13[int(0)] = points_13[int(0)];
+            points_13[int(1)] = _S1308[int(1)];
+            points_13[int(2)] = _S1309[int(2)];
+            points_13[int(3)] = _S1310[int(3)];
+            points_13[int(4)] = _S1311[int(4)];
+            _S1226 = _S1223;
+            _S1282 = _S1257;
+        }
+        float3  _S1312 = _S1229 * (points_13[int(0)] + _S1226);
+        float _S1313 = _S1312.x + _S1312.y + _S1312.z;
+        float4  _S1314 = _S1257;
+        *&((&_S1314)->x) = _S1313;
+        _S1282 = _S1282 + _S1314;
+    }
+    else
+    {
+        _S1282 = _S1257;
+    }
+    *v_depths_5 = _S1282;
     *v_gt_normal_2 = raydir_22;
     return;
 }

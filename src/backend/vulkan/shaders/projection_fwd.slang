@@ -166,7 +166,7 @@ void projection_fwd_3dgs(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     ProjectionFwdParams p = *pp;
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 128 + tid;
     if (idx >= p.C * p.N) return;
-    SS_DISPATCH_CAM_DIST(_pf_call)
+    SS_DISPATCH_CAM_DIST_FWD(_pf_call)
 }
 #undef _pf_call
 
@@ -275,7 +275,7 @@ void projection_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     Projection3dgutParams p = *pp;
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 128 + tid;
     if (idx >= p.C * p.N) return;
-    SS_DISPATCH_CAM_DIST(_pg_call)
+    SS_DISPATCH_CAM_DIST_FWD(_pg_call)
 }
 #undef _pg_call
 
@@ -377,9 +377,9 @@ void projection_packed_mask(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (idx < p.C * p.N) {
         bool keep = false;
         if (kEval3d != 0) {
-            SS_DISPATCH_CAM_DIST(_pm_call_3d)
+            SS_DISPATCH_CAM_DIST_FWD(_pm_call_3d)
         } else {
-            SS_DISPATCH_CAM_DIST(_pm_call_2d)
+            SS_DISPATCH_CAM_DIST_FWD(_pm_call_2d)
         }
         if (keep) InterlockedOr(g_mask_bits[tid >> 5], 1u << (tid & 31));
     }
@@ -518,9 +518,9 @@ void projection_packed_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     uint idx = blk * SS_PMASK_BLOCK + tid;
     if (kEval3d != 0) {
-        SS_DISPATCH_CAM_DIST(_pk_call_3d)
+        SS_DISPATCH_CAM_DIST_FWD(_pk_call_3d)
     } else {
-        SS_DISPATCH_CAM_DIST(_pk_call_2d)
+        SS_DISPATCH_CAM_DIST_FWD(_pk_call_2d)
     }
 }
 #undef _pk_call_3d

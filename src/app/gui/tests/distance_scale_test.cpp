@@ -1,6 +1,8 @@
 // distance_scale_test -- DistanceScaleTool Euclidean measurement and Sim3 scaling.
 
 #include "app/gui/edit/DistanceScaleTool.h"
+#include "app/gui/edit/SelectShape.h"
+#include "app/webviewer/RegionOverlay.h"
 
 #include <cmath>
 #include <cstdio>
@@ -17,6 +19,47 @@ void check(bool ok, const std::string& what) {
 
 bool close_to(double a, double b, double tol = 1e-6) {
     return std::fabs(a - b) <= tol;
+}
+
+void test_orthographic_selection() {
+    gui::ViewProjection view;
+    view.camera_model = 4;
+    view.fx = 100; view.fy = 120; view.cx = 320; view.cy = 240;
+    float x, y, depth;
+    const float near_point[3] = {0.5f, -0.25f, 1.0f};
+    const float far_point[3] = {0.5f, -0.25f, 100.0f};
+    const float behind[3] = {0.5f, -0.25f, -1.0f};
+    check(view.project(near_point, x, y, depth) && close_to(x, 370) &&
+          close_to(y, 210) && close_to(depth, 1), "orthographic projection");
+    check(view.project(far_point, x, y, depth) && close_to(x, 370) &&
+          close_to(y, 210) && close_to(depth, 100), "depth-independent projection");
+    check(!view.project(behind, x, y, depth), "orthographic behind-camera culling");
+    float origin[3], dir[3];
+    check(view.unproject(370, 210, origin, dir) && close_to(origin[0], 0.5) &&
+          close_to(origin[1], -0.25) && close_to(origin[2], 0) &&
+          close_to(dir[0], 0) && close_to(dir[1], 0) && close_to(dir[2], 1),
+          "orthographic pick ray origin and direction");
+}
+
+void test_orthographic_overlay() {
+    spirula::RegionOverlay overlay;
+    spirula::RegionOverlay::Layer layer;
+    for (int i = 0; i < 3; i++) {
+        const float x = i == 0 ? -0.5f : i == 1 ? 0.5f : 0.0f;
+        const float z = i == 0 ? -1.0f : i == 1 ? -10.0f : 1.0f;
+        layer.xyz.insert(layer.xyz.end(), {x-0.2f,-0.2f,z, x+0.2f,-0.2f,z, x,0.2f,z});
+        layer.tri.insert(layer.tri.end(), {uint32_t(3*i),uint32_t(3*i+1),uint32_t(3*i+2)});
+    }
+    overlay.layers.push_back(layer);
+    const float c2w[12] = {1,0,0,0, 0,1,0,0, 0,0,1,0};
+    std::vector<uint8_t> pixels(128*128*3, 0);
+    spirula::draw_region_overlay(overlay, pixels.data(), 128, 128, nullptr,
+                                 c2w, 64, 64, 64, 64, true);
+    int count[3] = {};
+    for (int y = 0; y < 128; y++) for (int x = 0; x < 128; x++)
+        if (pixels[(y*128+x)*3]) count[x < 50 ? 0 : x > 78 ? 1 : 2]++;
+    check(count[0] > 10 && count[0] == count[1] && count[2] == 0,
+          "orthographic ROI overlay footprint and camera-plane culling");
 }
 
 void test_initial_state() {
@@ -86,6 +129,8 @@ void test_reset() {
 }  // namespace
 
 int main() {
+    test_orthographic_selection();
+    test_orthographic_overlay();
     test_initial_state();
     test_distance_and_scale();
     test_reset();

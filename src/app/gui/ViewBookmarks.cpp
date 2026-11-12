@@ -104,7 +104,7 @@ void load(ViewBookmarkSet& s) {
         if (!(qn > 1e-9) || !std::isfinite(qn)) continue;
         for (double& c : b.rot) c /= qn;
         if (const JsonValue* m = v.find("camera_model"))
-            b.cam_model = std::clamp((int)m->as_int(0), 0, 3);
+            b.cam_model = std::clamp((int)m->as_int(0), 0, 4);
         b.fov_deg = (float)v.get_double("fov_deg", b.fov_deg);
         if (const JsonValue* o = v.find("ortho")) b.ortho = o->as_bool(false);
         b.aspect = (float)v.get_double("aspect", 0.0);
@@ -344,9 +344,7 @@ void ViewportPanel::go_to_view(int slot) {
     to.rot[3] = (float)rot[0];
     _anim = false;
     _frame_anim = false;
-    set_view_lens(b.cam_model, b.fov_deg);
-    if (b.ortho) set_ortho(true);
-    else _ortho = _ortho_auto = false;
+    set_view_lens(b.ortho ? 4 : b.cam_model, b.fov_deg);
     _glide_from = _cam;
     _glide_to = to;
     _glide_last = _cam;

@@ -169,6 +169,10 @@ int main(int argc, char** argv) {
         {"mip", "FISHEYE", 2, false, false, 2},
         {"3dgut", "PINHOLE", 2, false, false, 0},
         {"3dgs", "EQUIRECTANGULAR", 0, true, false, 0},
+        {"3dgs", "ORTHOGRAPHIC", 0, false, true, 0},
+        {"3dgs", "ORTHOGRAPHIC", 0, true, false, 0},
+        {"mip", "ORTHOGRAPHIC", 0, false, false, 0},
+        {"3dgut", "ORTHOGRAPHIC", 0, false, false, 0},
     };
     for (const Cfg& c : cfgs) {
         set_cams(c.cam, c.tier);
@@ -211,13 +215,15 @@ int main(int argc, char** argv) {
         }
     }
 
-    // --- depth -> normal (viewer buffer path) on the last render ---
-    {
+    // --- depth -> normal (viewer buffer path) ---
+    for (bool ortho : {false, true}) {
+        set_cams(ortho ? "ORTHOGRAPHIC" : "PINHOLE", ortho ? 0 : 1);
+        forward_3dgs("3dgs", 3, false, false, 0);
         auto& depth_t = std::get<1>(engine().fwd.renders);
         float* d_normals =
             (float*)backend::device_malloc((size_t)C * H * W * 3 * 4);
         depth_to_normal_forward_tv(
-            "PINHOLE", "OPENCV",
+            ortho ? "ORTHOGRAPHIC" : "PINHOLE", ortho ? "NONE" : "OPENCV",
             ttv(engine().camera.intrins.data_ptr(), {C, 4}),
             ttv(engine().camera.dist_coeffs.data_ptr(),
                 {C, kCameraDistortionParams}),
@@ -302,13 +308,13 @@ int main(int argc, char** argv) {
         float* d_Ts = engine().fwd.render_Ts.data_ptr();
         uint8_t* d_out = (uint8_t*)backend::device_malloc((size_t)H * W * 3);
 
-        for (int mode = 0; mode < 2; mode++) {
-            bool cams = mode == 0;
+        for (int mode = 0; mode < 4; mode++) {
+            bool cams = mode % 2 == 0;
             engine_blit_view(
                 "rgb", ttv(rgb_t.data_ptr(), {H, W, 3}),
                 ttv(depth_t.data_ptr(), {H, W, 1}), ttv(d_Ts, {H, W, 1}),
-                /*alpha_is_transmittance=*/true, 0,
-                "OPENCV", ttv(d_vi, {1, 4}), ttv(d_vm, {4, 4}),
+                /*alpha_is_transmittance=*/true, mode >= 2 ? 4 : 0,
+                mode >= 2 ? "NONE" : "OPENCV", ttv(d_vi, {1, 4}), ttv(d_vm, {4, 4}),
                 ttv(d_vd, {1, kCameraDistortionParams}),
                 /*show_training_cameras=*/cams, /*show_overlay=*/true,
                 /*grid_dist=*/3.0f, 0.2f, -0.1f, 0.0f,

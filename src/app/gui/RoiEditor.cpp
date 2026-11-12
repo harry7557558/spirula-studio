@@ -683,7 +683,6 @@ bool RoiEditor::view(ViewProjection& out) const {
     _view.nav_camera(out.W, out.H, out.w2c, out.fx, out.fy, out.camera_model, out.eye);
     out.cx = 0.5f * (float)out.W;
     out.cy = 0.5f * (float)out.H;
-    out.ortho_back = _view.ortho_pullback(true);
     return true;
 }
 

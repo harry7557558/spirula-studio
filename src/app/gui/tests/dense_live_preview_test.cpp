@@ -4,6 +4,7 @@
 #include "core/AtomicFile.h"
 #include "core/CameraModel.h"
 #include "dense/Artifact.h"
+#include "mesh/MeshExport.h"
 #include "external/stb_image_write.h"
 
 #define GLFW_INCLUDE_NONE
@@ -34,6 +35,52 @@ void coordinates(const gui::LiveModel& model, uint64_t i) {
     for (int k = 0; k < 3; ++k)
         require(model.ds.points.xyz[i * 3 + k] == (double)expected[k], "checkpoint coordinate conversion corrupted the cloud");
 }
+void orthographic_preview(gui::PreviewRenderer& renderer) {
+    const float view[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    const float target[3] = {0,0,-2};
+    for (bool mesh : {false, true}) {
+        if (mesh) {
+            meshing::MeshData data;
+            for (int i = 0; i < 3; i++) {
+                const float x = i == 0 ? -0.5f : i == 1 ? 0.5f : 0.0f;
+                const float z = i == 0 ? -1.0f : i == 1 ? -10.0f : 1.0f;
+                data.V.insert(data.V.end(), {{x-0.2f,-0.2f,z}, {x+0.2f,-0.2f,z},
+                                             {x+0.2f,0.2f,z}, {x-0.2f,0.2f,z}});
+                data.F.push_back({4*i,4*i+1,4*i+2});
+                data.F.push_back({4*i,4*i+2,4*i+3});
+            }
+            require(renderer.build(data, nullptr), "orthographic mesh build failed");
+            renderer.set_mesh_display(false, false, false);
+        } else {
+            gui::LiveModel model;
+            model.ds.points.xyz = {-0.5,0,-1, 0.5,0,-10, 0,0,1};
+            model.ds.points.rgb.assign(9, 255);
+            require(renderer.build(model.ds, model.post), "orthographic cloud build failed");
+        }
+        gui::PreviewStyle style;
+        style.point_shape = 3;
+        style.point_radius = 0.1f;
+        const auto tex = renderer.render(128,128,view,gui::PreviewProjection::Orthographic,
+                                         1,1,1,2,target,false,1,false,&style);
+        require(tex != 0, "orthographic preview did not render");
+        std::vector<uint8_t> pixels(128*128*4);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        int counts[2] = {};
+        for (int y = 0; y < 128; y++) for (int x = 0; x < 128; x++) {
+            if (pixels[(y*128+x)*4] < 100) continue;
+            require(x < 50 || x > 78, "orthographic preview drew behind-camera geometry");
+            counts[x >= 64]++;
+        }
+        if (counts[0] <= 10 || counts[0] != counts[1])
+            std::fprintf(stderr, "orthographic %s pixels: %d, %d\n",
+                         mesh ? "mesh" : "points", counts[0], counts[1]);
+        require(counts[0] > 10 && counts[0] == counts[1],
+                "orthographic preview footprint changed with depth");
+        renderer.destroy_gl();
+    }
+}
+
 void marker(const fs::path& dir, uint64_t count, const std::string& file, uint32_t version = 6) {
     std::ofstream out(dir / "model.bin.part", std::ios::binary);
     out.write("VKPM", 4); put(out, version);
@@ -111,6 +158,7 @@ int main(int argc, char** argv) {
         require(window != nullptr, "OpenGL test context unavailable");
         glfwMakeContextCurrent(window);
         gui::PreviewRenderer renderer;
+        orthographic_preview(renderer);
         require(renderer.build(model.ds, model.post) && renderer.num_points() == full,
                 "renderer capped the full checkpoint");
         const float view[16] = {1,0,0,0, 0,1,0,0, 0,0,1,-5, 0,0,0,1};
@@ -177,7 +225,7 @@ int main(int argc, char** argv) {
             gui::PreviewStyle style; style.transparent = true;
             const float actual_view[16] = {1,0,0,0, 0,1,0,0, 0,0,1,-2, 0,0,0,1};
             const auto actual = renderer.render(768, 768, actual_view, gui::PreviewProjection::Pinhole, 1, 1, 1, 2,
-                                                target, false, 1, false, 0, &style);
+                                                target, false, 1, false, &style);
             require(actual != 0, "dataset checkpoint did not render");
             pixels.resize(768 * 768 * 4);
             glBindTexture(GL_TEXTURE_2D, actual);
@@ -216,7 +264,7 @@ int main(int argc, char** argv) {
                 exported.points = seeded.points;
                 require(renderer.build(exported,model.post), "parsed PLY renderer unavailable");
                 const auto ply_texture = renderer.render(768,768,actual_view,gui::PreviewProjection::Pinhole,1,1,1,2,
-                                                        target,false,1,false,0,&style);
+                                                        target,false,1,false,&style);
                 require(ply_texture != 0, "parsed PLY did not render");
                 std::vector<uint8_t> ply_pixels(pixels.size());
                 glBindTexture(GL_TEXTURE_2D,ply_texture);

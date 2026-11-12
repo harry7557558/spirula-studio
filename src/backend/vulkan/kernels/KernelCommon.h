@@ -207,22 +207,20 @@ inline uint64_t or_fallback(const void* p) {
     return or_fallback((uint64_t)p);
 }
 
-// The kCameraModel / kDistortion specialization values for a launch. Pairs
-// outside the compiled set (camera_distortion_is_compiled in
-// core/CameraModel.h) are rejected here rather than dispatched: the shaders'
-// SS_DISPATCH_CAM_DIST folds them onto a neighbouring tier instead of carrying
-// a dead arm, so an unchecked pair would silently project with the wrong
-// distortion.
+// Reject unsupported pairs before shader dispatch can fall through.
 struct CamDistSpec {
     uint32_t cam, dist;
 };
 
 inline CamDistSpec cam_dist_spec(const std::string& camera_model,
-                                 const std::string& distortion) {
+                                 const std::string& distortion,
+                                 bool allow_orthographic = false) {
     const CameraModelType m = cmt(camera_model);
     const CameraDistortionType d = cdt(distortion);
     bool ok = (int)m >= 0 && (int)m <= 3 && (int)d >= 0 && (int)d <= 2;
     if (ok && m == CameraModelType::EQUIRECTANGULAR)
+        ok = d == CameraDistortionType::None;
+    if (allow_orthographic && m == CameraModelType::ORTHOGRAPHIC)
         ok = d == CameraDistortionType::None;
     if (!ok)
         throw std::runtime_error(

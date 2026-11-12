@@ -989,6 +989,8 @@ void vis_blit(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         float3 ray_o = transform_ray_o(R, t);
         float3 ray_d;
         float2 uv = float2((px - cx) / fx, (py - cy) / fy);
+        if (p.view_camera_model == 4)
+            ray_o += transform_ray_d(R, float3(uv, 0));
         bool inside = vis_ray(uv, p.view_camera_model, dist, ray_d);
         if (p.view_camera_model == 1 /*FISHEYE*/)
             inside = inside && length(uv) < 3.14159265358979323846f;

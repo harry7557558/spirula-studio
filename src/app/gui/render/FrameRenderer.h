@@ -96,13 +96,13 @@ struct SceneCore {
     double radius = 1.0;
 };
 
-// A camera's view, for quantiles of what it sees: `tx` and `ty` the tangents
-// of its half-angles, or for a lens past 90 degrees each way the half-angle
-// `cone` of what it takes in.
+// Visible bounds for transition quantiles: half-angle tangents, orthographic
+// half-extents in world units, or a wide lens's cone angle.
 struct FxView {
     double pos[3] = {0, 0, 0}, fwd[3] = {0, 0, -1}, right[3] = {1, 0, 0}, up[3] = {0, 1, 0};
     double tx = 1.0, ty = 1.0;
     double cone = 0.0;                  // radians; > 0 replaces tx and ty
+    bool orthographic = false;
 };
 
 struct FrameSpec {

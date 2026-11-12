@@ -96,6 +96,15 @@ int main(int argc, char** argv) {
     }
     for (auto& v : sh) v = uf(-0.3f, 0.3f);
 
+    for (int i = 0; i < 4; i++) {
+        means[3*i] = 0.1f;
+        means[3*i+1] = 0.2f;
+        means[3*i+2] = i < 2 ? float(i * 10) : -4.0f - float(i - 2);
+        for (int k = 0; k < 4; k++) quats[4*i+k] = k == 0 ? 1.0f : 0.0f;
+        for (int k = 0; k < 3; k++) scales[3*i+k] = -3.0f;
+        opac[i] = 2.0f;
+    }
+
     // Cameras: identity+z-offset and a mild y-rotation. Row-major [R|t].
     const float cy_ = std::cos(0.2f), sy_ = std::sin(0.2f);
     std::vector<float> vm = {
@@ -127,8 +136,8 @@ int main(int argc, char** argv) {
     };
     DeviceVector<float> radii(ttv(d_radii, {N, 1}));
 
-    const char* cams[4] = {"PINHOLE", "FISHEYE", "EQUISOLID",
-                           "EQUIRECTANGULAR"};
+    const char* cams[5] = {"PINHOLE", "FISHEYE", "EQUISOLID",
+                           "EQUIRECTANGULAR", "ORTHOGRAPHIC"};
 
     auto dist_tv = [&](int tier) {
         return ttv(d_dist + dist_fixture::row_offset(tier, C),
@@ -137,7 +146,7 @@ int main(int argc, char** argv) {
 
     std::vector<float> acc;
     for (int prim = 0; prim < 3; prim++)
-        for (int ci = 0; ci < 4; ci++)
+        for (int ci = 0; ci < 5; ci++)
             for (int shd = 0; shd <= 3; shd += 3)
                 // The tier is orthogonal to SH degree: sweep the compiled
                 // tiers at degree 3 and keep degree 0 on the NONE fast path,
@@ -164,6 +173,28 @@ int main(int argc, char** argv) {
                     auto& aabb = std::get<0>(out);
                     auto& depths = std::get<1>(out);
                     auto& screen = std::get<2>(out);
+                    if (ci == 4) {
+                        uint2 boxes[4];
+                        backend::memcpy_sync(boxes, aabb.data_ptr(), sizeof boxes,
+                                             MemcpyKind::DeviceToHost);
+                        if (boxes[0].x != boxes[1].x || boxes[0].y != boxes[1].y ||
+                            boxes[2].x || boxes[2].y || boxes[3].x || boxes[3].y) {
+                            std::fprintf(stderr, "orthographic footprint/culling failed\n");
+                            return 1;
+                        }
+                        if (prim != 2) {
+                            float rows[2 * SCR2_STRIDE];
+                            backend::memcpy_sync(rows, screen[0].data_ptr(), sizeof rows,
+                                                 MemcpyKind::DeviceToHost);
+                            if (std::abs(rows[SCR2_XY] - 460.0f) > 1e-3f ||
+                                std::abs(rows[SCR2_XY+1] - 422.0f) > 1e-3f ||
+                                std::abs(rows[SCR2_DEPTH] - 4.0f) > 1e-5f ||
+                                std::abs(rows[SCR2_STRIDE+SCR2_DEPTH] - 14.0f) > 1e-5f) {
+                                std::fprintf(stderr, "orthographic coordinates/depth failed\n");
+                                return 1;
+                            }
+                        }
+                    }
                     readback_aabb(acc, aabb.data_ptr(), (int64_t)C * N);
                     readback(acc, depths.data_ptr(), C * N);
                     readback(acc, d_radii, N);

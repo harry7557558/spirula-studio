@@ -499,7 +499,10 @@ void RenderSession::draw_preview_pane() {
             if (!key.own_lens) { key.lens = _project.lens_at(k); key.own_lens = true; }
             if (key.lens.projection != Projection::Equirect)
                 lens_set_fov(key.lens, std::clamp(lens_fov(key.lens) * std::exp(-wheel * 0.06), 5.0,
-                                                  key.lens.projection == Projection::Perspective ? 150.0 : 360.0));
+                                                  key.lens.projection == Projection::Perspective || key.lens.projection == Projection::Orthographic ? 150.0 : 360.0));
+        } else if (_project.lens_at(k).projection == Projection::Orthographic) {
+            if (!key.own_lens) { key.lens = _project.lens_at(k); key.own_lens = true; }
+            key.lens.ortho_distance = std::max(key.lens.ortho_distance * std::exp(-wheel * 0.08), 1e-12);
         } else {
             const double s = reach * 0.08 * wheel;
             for (int d = 0; d < 3; d++) key.pos[d] -= back[d] * s;

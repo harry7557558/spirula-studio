@@ -689,6 +689,8 @@ __global__ void blit_aabb_bvh_kernel(
             const float px = (float)pix_x + (i/MSAA + 0.5f) / (float)MSAA;
             const float py = (float)pix_y + (i%MSAA + 0.5f) / (float)MSAA;
             ray_o[i] = SlangProjectionUtils::transform_ray_o(R, t);
+            if (view_camera_model == (int)CameraModelType::ORTHOGRAPHIC)
+                ray_o[i] += SlangProjectionUtils::transform_ray_d(R, {(px-cx)/fx, (py-cy)/fy, 0.0f});
             inside |= SlangDistortion<distortion>::generate_ray(
                 {(px-cx)/fx, (py-cy)/fy},
                 view_camera_model, dist_coeffs,
@@ -960,6 +962,8 @@ __global__ void blit_with_bvh_kernel(
         float3 ray_o = SlangProjectionUtils::transform_ray_o(R, t);
         float3 ray_d;
         float2 uv = {(px-cx)/fx, (py-cy)/fy};
+        if (view_camera_model == (int)CameraModelType::ORTHOGRAPHIC)
+            ray_o += SlangProjectionUtils::transform_ray_d(R, {uv.x, uv.y, 0.0f});
         bool inside = SlangDistortion<distortion>::generate_ray(
             uv,
             view_camera_model, dist_coeffs,

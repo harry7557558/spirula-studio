@@ -41,6 +41,7 @@ inline CameraModelType camera_model_from_name(const std::string& name) {
         name == "RADIAL_FISHEYE" ||
         name == "OPENCV_FISHEYE" ||
         name == "THIN_PRISM_FISHEYE") return CameraModelType::FISHEYE;
+    if (name == "ORTHOGRAPHIC") return CameraModelType::ORTHOGRAPHIC;
     if (name == "EQUISOLID")          return CameraModelType::EQUISOLID;
     if (name == "EQUIRECTANGULAR")    return CameraModelType::EQUIRECTANGULAR;
     return (CameraModelType)-1;
@@ -57,6 +58,7 @@ inline const char* camera_distortion_to_string(CameraDistortionType d) {
 
 inline const char* camera_model_to_string(CameraModelType m) {
     switch (m) {
+        case CameraModelType::ORTHOGRAPHIC:    return "ORTHOGRAPHIC";
         case CameraModelType::PINHOLE:         return "PINHOLE";
         case CameraModelType::FISHEYE:         return "FISHEYE";
         case CameraModelType::EQUISOLID:       return "EQUISOLID";

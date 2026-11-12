@@ -137,7 +137,7 @@ void test_aim_and_lens() {
 
     Lens l;
     bool fov_ok = true;
-    for (Projection pr : {Projection::Perspective, Projection::Fisheye, Projection::Equisolid})
+    for (Projection pr : {Projection::Perspective, Projection::Fisheye, Projection::Equisolid, Projection::Orthographic})
         for (double fov : {30.0, 90.0, 150.0}) {
             l.projection = pr;
             lens_set_fov(l, fov);
@@ -158,6 +158,47 @@ void test_aim_and_lens() {
     z.motion.ease = false;
     const Trajectory zt(z);
     check(std::fabs(zt.at(1.0).lens.focal - 2.0) < 0.2, "halfway through a zoom is near the geometric mean");
+}
+
+void test_orthographic_lens() {
+    RenderProject p;
+    p.keys = {key(0, 0, 0, 0), key(1, 0, 0, -1), key(2, 0, 0, -2)};
+    p.motion.ease = false;
+    p.motion.curve = Curve::Linear;
+    for (int i : {0, 2}) {
+        auto& k = p.keys[(size_t)i];
+        k.own_lens = true;
+        k.lens.projection = Projection::Orthographic;
+        lens_set_fov(k.lens, 90);
+        k.lens.ortho_distance = i == 0 ? 2.0 : 8.0;
+    }
+    const Lens middle = p.lens_at(1);
+    const CameraState frame = Trajectory(p).at(1.0);
+    float intr[4], scaled[4];
+    lens_intrinsics(frame.lens, 800, 600, intr);
+    lens_intrinsics(frame.lens, 800, 600, scaled, 3.0);
+    check(middle.projection == Projection::Orthographic && std::abs(middle.ortho_distance - 4) < 1e-9 &&
+          std::abs(frame.lens.ortho_distance - 4) < 1e-9 && std::abs(intr[0] - 100) < 1e-5 &&
+          intr[0] == intr[1] && intr[2] == 400 && intr[3] == 300 && scaled[0] == 300,
+          "orthographic zoom interpolates and converts world units to renderer units");
+    const auto saved = project_from_json(project_to_json(p));
+    check(saved.keys[0].lens == p.keys[0].lens && saved.keys[2].lens == p.keys[2].lens,
+          "orthographic projection and framing survive a project round trip");
+    spirula::Sim3 move;
+    move.s = 3.0;
+    transform_project(p, move);
+    lens_intrinsics(Trajectory(p).at(1).lens, 800, 600, scaled);
+    check(std::abs(scaled[0] * move.s - intr[0]) < 1e-5,
+          "scaling a project preserves its orthographic framing");
+    p.keys[2].lens.projection = Projection::Perspective;
+    check(Trajectory(p).at(1.5).lens.projection == Projection::Orthographic &&
+          Trajectory(p).at(2).lens.projection == Projection::Perspective,
+          "orthographic projection changes at the keyframe");
+    Lens distorted = middle;
+    distorted.tier = 2;
+    distorted.dist[0] = -10;
+    check(!lens_needs_ut(distorted, 800, 600) && resolve_primitive("", "3dgs", distorted, 800, 600) == "3dgs",
+          "orthographic export uses the native 3DGS forward path");
 }
 
 void test_json_and_moves() {
@@ -1025,6 +1066,7 @@ int main() {
     test_keys_are_hit();
     test_constant_speed();
     test_aim_and_lens();
+    test_orthographic_lens();
     test_json_and_moves();
     test_dataset_lenses();
     test_spline_is_c2();

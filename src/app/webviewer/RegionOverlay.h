@@ -34,12 +34,14 @@ struct RegionOverlay {
 
 // Outline segments [S,2,3] of a layer seen from `eye`: edges between a face
 // turned toward it and one turned away, and edges with one face.
-void region_outline(const RegionOverlay::Layer& l, const float eye[3], std::vector<float>& out);
+void region_outline(const RegionOverlay::Layer& l, const float eye[3], std::vector<float>& out,
+                    const float* to_eye = nullptr);
 
 // Over an [H,W,3] image: `ray_depth` is the distance along each pixel's ray
 // to the scene, <= 0 or infinite for none; `c2w` is row-major 3x4 in the
-// OpenGL basis; a pinhole camera.
+// OpenGL basis; orthographic depth is axial.
 void draw_region_overlay(const RegionOverlay& ov, uint8_t* rgb, int W, int H, const float* ray_depth,
-                         const float c2w[12], float fx, float fy, float cx, float cy);
+                         const float c2w[12], float fx, float fy, float cx, float cy,
+                         bool orthographic = false);
 
 }  // namespace spirula

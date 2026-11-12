@@ -14,6 +14,7 @@ enum CameraModelType {
     FISHEYE = 1,
     EQUISOLID = 2,
     EQUIRECTANGULAR = 3,
+    ORTHOGRAPHIC = 4,
 };
 
 // https://www.shadertoy.com/view/4djSRW
@@ -675,6 +676,11 @@ bool unproject_point<D : ICameraDistortion>(
     out float3 raydir
 ) {
     CameraModelType model = (CameraModelType)camera_model;
+    if (model == CameraModelType::ORTHOGRAPHIC) {
+        raydir = float3(0, 0, 1);
+        return true;
+    }
+
 
     raydir = float3(0);
 
@@ -717,6 +723,11 @@ bool generate_ray<D : ICameraDistortion>(
     out float3 raydir
 ) {
     CameraModelType model = (CameraModelType)camera_model;
+    if (model == CameraModelType::ORTHOGRAPHIC) {
+        raydir = float3(0, 0, 1);
+        return true;
+    }
+
 
     // Equirectangular: uv holds (lon, lat). Reject pixels outside the valid
     // angular range so black borders (partial-vertical-FOV panoramas) don't
@@ -987,7 +998,7 @@ float3x3 outerProduct(float3 u) {
 // continuous near boundary to support >180deg fisheye
 [ForceInline]
 float get_sorting_depth(CameraModelType camera_model, float3 p_view) {
-    if (camera_model == CameraModelType::PINHOLE)
+    if (camera_model == CameraModelType::PINHOLE || camera_model == CameraModelType::ORTHOGRAPHIC)
         return p_view.z;
     // Equirectangular sees the full sphere, so sort strictly by distance
     // (squared, monotonic) rather than the forward-biased fisheye heuristic.

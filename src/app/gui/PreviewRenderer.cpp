@@ -23,30 +23,7 @@ namespace gui {
 
 namespace {
 
-// One shader for all draws. Vertices are (pos, aux); for the point cloud
-// and the grid aux is the RGB color (u_scale = 0), for camera frusta aux is
-// the offset from the camera center, scaled by the live frustum-size
-// uniform (u_color.a > 0 selects the flat line color).
-// Projection happens in the shader so the preview supports the same camera
-// models as the engine viewer: u_model selects pinhole(0) / fisheye-
-// equidistant(1) / equisolid(2) / equirectangular(3); u_s is the engine
-// intrinsics normalized to NDC (fx/(W/2), fy/(H/2)). Depth is the linear
-// view-space distance mapped over u_zrange (fine for points/lines and valid
-// for the >180-degree projections where a perspective z is meaningless).
-//
-// The projection function is shared with the fragment shader: a line
-// segment crossing a projection discontinuity (equirectangular +-180-degree
-// seam, fisheye backward point, pinhole behind-camera) rasterizes as the
-// chord between the wrapped endpoints; re-projecting the interpolated
-// view-space position exposes such fragments as a huge reprojection error
-// (same fix as the web viewer's LINE_FS, viewer/js/shaders.js).
-// The reprojection check alone still keeps ~5%-of-viewport stubs at both
-// ends of a wrapped segment (the error shrinks to zero at the endpoints),
-// which stack into ladder artifacts at the equirect image edges. Line
-// vertices therefore also carry a_delta = this-endpoint minus
-// other-endpoint (pre-scale), and the vertex shader kills the WHOLE
-// segment (v_kill) when its chord crosses the equirect seam -- the
-// half-plane x = 0, z > 0 in view space (azimuth +-180 degrees).
+// Projection is shared by vertices and fragments to reject nonlinear seams.
 const char* kProj = R"(
 uniform int u_model;
 uniform vec2 u_s;
@@ -84,9 +61,12 @@ bool lens_valid(vec2 gl) {
     return jd > 0.25 && jd < 4.0 && dot(gl, f) >= 0.0;
 }
 vec2 project_ndc(vec3 v, out bool clipped) {
-    float dist = max(length(v), 1e-9);
+    float dist = u_model == 4 ? -v.z : max(length(v), 1e-9);
     clipped = false;
-    if (u_model == 0) {                     // pinhole
+    if (u_model == 4) {
+        clipped = v.z >= 0.0;
+        return u_s * v.xy;
+    } else if (u_model == 0) {                     // pinhole
         if (v.z > -1e-6) clipped = true;
         vec2 q = v.xy / -v.z;
         if (!lens_valid(q)) clipped = true;
@@ -157,18 +137,18 @@ void main() {
         v_fxr = fract(r1 * 7.31 + r2);
     }
     vec3 v = (u_view * vec4(p, 1.0)).xyz;
-    float dist = max(length(v), 1e-9);
+    float dist = u_model == 4 ? -v.z : max(length(v), 1e-9);
     bool clipped;
     vec2 ndc = project_ndc(v, clipped);
     float z = (dist - u_zrange.x) / (u_zrange.y - u_zrange.x) * 2.0 - 1.0;
-    if (clipped) z = 3.0;
+    if (clipped && u_model != 4) z = 3.0;
     v_col = (u_color.a > 0.0) ? u_color : vec4(a_aux, 1.0);
     v_view = v;
     v_world = p;
     // A soft point's half-maximum spans the size asked for, as wide as a
     // hard one looks: exp(-4 r^2) halves at r = 0.42 of the sprite's radius.
     gl_PointSize = u_pradius > 0.0
-        ? clamp(u_pradius * u_s.x * u_vp.x / dist, 1.0, 256.0)
+        ? clamp(u_pradius * u_s.x * u_vp.x / (u_model == 4 ? 1.0 : dist), 1.0, 256.0)
         : u_points == 3 ? min(u_psize * 2.4, 256.0) : u_psize;
     gl_PointSize = clamp(gl_PointSize * fxs, 1.0, 256.0);
     // Whole-segment equirect seam kill (see the comment above kProj). Both
@@ -272,14 +252,16 @@ void main() {
         pos += dd;
     }
     vec3 v = (u_view * vec4(pos, 1.0)).xyz;
-    float dist = max(length(v), 1e-9);
+    float dist = u_model == 4 ? -v.z : max(length(v), 1e-9);
     float z = (dist - u_zrange.x) / (u_zrange.y - u_zrange.x) * 2.0 - 1.0;
     v_nrm = mat3(u_view) * a_nrm;
     v_col = a_col;
     v_uv = a_uv;
     v_view = v;
     v_world = a_pos;
-    if (u_model == 0 && u_tier == 0) {
+    if (u_model == 4) {
+        gl_Position = vec4(u_s * v.xy, z, 1.0);
+    } else if (u_model == 0 && u_tier == 0) {
         // PINHOLE: emit a REAL clip-space position (w = -z_view) so the
         // hardware clips triangles at the near plane. Writing NDC with w = 1
         // (which is what the point/line program does, and what this used to
@@ -1094,7 +1076,7 @@ unsigned PreviewRenderer::render(int W, int H, const float view[16],
                                  float scene_radius, float view_dist,
                                  const float view_target[3], bool show_cams,
                                  float frustum_scale, bool show_grid,
-                                 float ortho_back, const PreviewStyle* style) {
+                                 const PreviewStyle* style) {
     if (!_built || !_gl_ok || W < 1 || H < 1) return 0;
     if (!ensure_fbo(W, H)) return 0;
     static const PreviewStyle kViewport;
@@ -1105,10 +1087,6 @@ unsigned PreviewRenderer::render(int W, int H, const float view[16],
     // what it must do is hold a camera that a placement moved a long way off.
     float zn = std::max(1e-7f, 0.002f * std::min(scene_radius, view_dist));
     float zf = std::max({10.0f * zn, 500.0f * scene_radius, 20.0f * view_dist});
-    if (ortho_back > 0.0f) {
-        zn = std::max(zn, ortho_back - zf);
-        zf = ortho_back + zf;
-    }
 
     glx::BindFramebuffer(GL_FRAMEBUFFER, (GLuint)_fbo);
     glViewport(0, 0, W, H);
@@ -1232,7 +1210,7 @@ unsigned PreviewRenderer::render(int W, int H, const float view[16],
         }
     }
 
-    if (_ov_visible && _ov) draw_overlay(view);
+    if (_ov_visible && _ov) draw_overlay(view, proj == PreviewProjection::Orthographic);
 
     glx::BindVertexArray(0);
     glx::UseProgram(0);
@@ -1357,7 +1335,7 @@ void PreviewRenderer::upload_overlay() {
 
 // A translucent fill that writes no depth, then the silhouette dashed; the
 // outline follows the eye, so it is rebuilt every frame.
-void PreviewRenderer::draw_overlay(const float view[16]) {
+void PreviewRenderer::draw_overlay(const float view[16], bool orthographic) {
     if (_ov != _ov_uploaded) upload_overlay();
     if (!_ov_local || !_vao_ov) return;
     float eye[3];
@@ -1381,7 +1359,7 @@ void PreviewRenderer::draw_overlay(const float view[16]) {
     std::vector<float> seg;
     for (const spirula::RegionOverlay::Layer& l : layers) {
         first.push_back((int64_t)lines.size());
-        spirula::region_outline(l, eye, seg);
+        spirula::region_outline(l, eye, seg, orthographic ? view + 8 : nullptr);
         for (size_t i = 0; i + 6 <= seg.size(); i += 6) {
             const float* a = &seg[i];
             const float* b = &seg[i + 3];

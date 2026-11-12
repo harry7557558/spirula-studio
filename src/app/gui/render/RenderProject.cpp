@@ -24,7 +24,7 @@ constexpr const char* kFormat = "spirula-render";
 constexpr int kVersion = 1;
 
 const char* const kProjectionNames[kNumProjections] = {
-    "perspective", "fisheye", "equisolid", "equirectangular"};
+    "perspective", "fisheye", "equisolid", "equirectangular", "orthographic"};
 const char* const kTransitionNames[kNumTransitions] = {
     "cut", "crossfade", "dip", "wipe", "iris", "zoom", "sweep", "grow", "dust",
     "spiral", "scatter", "rain", "dissolve", "ripple"};
@@ -119,6 +119,7 @@ void write_lens(JsonWriter& w, const Lens& l) {
     w.object();
     w.field("projection", kProjectionNames[(int)l.projection]);
     w.key("focal").raw(json_number_exact(l.focal));
+    w.key("ortho_distance").raw(json_number_exact(l.ortho_distance));
     w.field("distortion", l.tier);
     write_vecf(w, "coefficients", l.dist, kLensCoeffs);
     w.end();
@@ -127,8 +128,13 @@ Lens read_lens(const JsonValue& o) {
     Lens l;
     l.projection = (Projection)name_index(kProjectionNames, get_str(o, "projection"), 0);
     l.focal = std::max(get_num(o, "focal", l.focal), 1e-4);
+    l.ortho_distance = std::max(get_num(o, "ortho_distance", 1.0), 1e-12);
     l.tier = std::clamp((int)get_num(o, "distortion", 0), 0, 2);
     read_vecf(o, "coefficients", l.dist, kLensCoeffs);
+    if (l.projection == Projection::Orthographic) {
+        l.tier = 0;
+        for (float& d : l.dist) d = 0.0f;
+    }
     return l;
 }
 
@@ -168,7 +174,7 @@ SourceStyle read_style(const JsonValue& o) {
 // ===========================================================================
 
 bool Lens::operator==(const Lens& o) const {
-    if (projection != o.projection || focal != o.focal || tier != o.tier)
+    if (projection != o.projection || focal != o.focal || ortho_distance != o.ortho_distance || tier != o.tier)
         return false;
     for (int i = 0; i < kLensCoeffs; i++)
         if (dist[i] != o.dist[i]) return false;
@@ -198,12 +204,14 @@ void lens_set_fov(Lens& l, double degrees) {
     }
 }
 
-void lens_intrinsics(const Lens& l, int w, int h, float out[4]) {
+void lens_intrinsics(const Lens& l, int w, int h, float out[4], double model_to_world_scale) {
     if (l.projection == Projection::Equirect) {
         out[0] = (float)(w / (2.0 * kPi));
         out[1] = (float)(h / kPi);
     } else {
         out[0] = out[1] = (float)(l.focal * w);
+        if (l.projection == Projection::Orthographic)
+            out[0] = out[1] = (float)(l.focal * w * model_to_world_scale / std::max(l.ortho_distance, 1e-12));
     }
     out[2] = 0.5f * (float)w;
     out[3] = 0.5f * (float)h;
@@ -211,6 +219,7 @@ void lens_intrinsics(const Lens& l, int w, int h, float out[4]) {
 
 
 bool lens_needs_ut(const Lens& l, int w, int h) {
+    if (l.projection == Projection::Orthographic) return false;
     if (l.projection == Projection::Equirect) return true;
     const int tier = std::clamp(l.tier, 0, 2);
     if (tier == 0 || !camhost::has_distortion(tier, l.dist)) return false;
@@ -276,6 +285,9 @@ Lens RenderProject::lens_at(int i) const {
     Lens l = la;
     const double fa = std::log(std::max(la.focal, 1e-6)), fb = std::log(std::max(lb.focal, 1e-6));
     l.focal = std::exp(fa + (fb - fa) * w);
+    const double da = std::log(std::max(la.ortho_distance, 1e-12));
+    const double db = std::log(std::max(lb.ortho_distance, 1e-12));
+    l.ortho_distance = std::exp(da + (db - da) * w);
     if (la.tier == lb.tier)
         for (int d = 0; d < kLensCoeffs; d++)
             l.dist[d] = (float)(la.dist[d] + (lb.dist[d] - la.dist[d]) * w);
@@ -493,6 +505,7 @@ void transform_project(RenderProject& p, const spirula::Sim3& s) {
     double rq[4];
     rot.quat(rq);
     for (Keyframe& k : p.keys) {
+        if (k.lens.projection == Projection::Orthographic) k.lens.ortho_distance *= s.s;
         double q[3];
         s.apply(k.pos, q);
         for (int i = 0; i < 3; i++) k.pos[i] = q[i];

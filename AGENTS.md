@@ -859,11 +859,10 @@ GUI rendering and other languages use their original localized strings.
   own, and the saved coordinates the grid, the pivot and the alignment helpers
   live in. docs/notes/scene-transform.md has the algebra; get a composition
   order wrong and the model moves the right amount about the wrong point.
-- **The viewport's orthographic view is a pinhole 256x further off with a lens
-  256x longer** (`ViewportPanel`, `kOrthoPull`), because then every renderer,
-  primitive and selection test works unchanged. Anything that takes a
-  RELATIVE depth tolerance has to subtract the pull-back first
-  (`ViewProjection::ortho_back`).
+- **Orthographic uses camera model 4**, with focal pixels per world unit and
+  axial depth. The GUI scales its FOV by orbit distance; model placements must
+  scale the focal values too. Pixel rays have distinct origins and parallel
+  directions. See docs/notes/scene-transform.md.
 - **A progress bar is time, not a count, and never goes back.** Every bar is a
   `ProgressClock` (`app/gui/ProgressClock.h`) fed the job's own 0..1 of work;
   a job whose total can grow counts an upper bound first, so the bar jumps
