@@ -884,6 +884,8 @@ struct VisBlitParams {  // 16 ptrs + 11 scalars: via params ring
     int32_t has_tri;   // see backend README on speculated loads)
     int32_t alpha_stride;  // per-pixel element stride of render_alphas (=
                            // its channel count); channel 0 read for opacity
+    int32_t alpha_is_T;    // render_alphas holds transmittance: opacity = 1 - it
+    int32_t _pad0;
 };
 
 static const float kGrayThreshold = 0.1657f;
@@ -957,6 +959,7 @@ void vis_blit(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     float depth = p.render_depths[pix_y * p.width + pix_x];
     float opac = p.render_alphas[(pix_y * p.width + pix_x) * p.alpha_stride];
+    if (p.alpha_is_T != 0) opac = 1.0f - opac;
     depth /= min(max(opac, 1e-6f) / 0.5f, 1.0f);
     if (depth == 0.0f) depth = 1e10f;
 

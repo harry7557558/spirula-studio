@@ -306,7 +306,8 @@ int main(int argc, char** argv) {
             bool cams = mode == 0;
             engine_blit_view(
                 "rgb", ttv(rgb_t.data_ptr(), {H, W, 3}),
-                ttv(depth_t.data_ptr(), {H, W, 1}), ttv(d_Ts, {H, W, 1}), 0,
+                ttv(depth_t.data_ptr(), {H, W, 1}), ttv(d_Ts, {H, W, 1}),
+                /*alpha_is_transmittance=*/true, 0,
                 "OPENCV", ttv(d_vi, {1, 4}), ttv(d_vm, {4, 4}),
                 ttv(d_vd, {1, kCameraDistortionParams}),
                 /*show_training_cameras=*/cams, /*show_overlay=*/true,

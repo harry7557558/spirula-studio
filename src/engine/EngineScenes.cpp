@@ -2,6 +2,7 @@
 // See the "Viewer scenes" section of Engine.h.
 
 #include "engine/Engine.h"
+#include "backend/api/BackendRuntime.h"
 #include "engine/EngineCommon.h"
 #include "engine/EngineInternal.h"
 #include "engine/EngineState.h"
@@ -30,6 +31,7 @@ struct Scene {
     int bg_transfer = 0;
     bool bg_is_linear = false;
     DeviceVector<float3> bg_sh_coeffs;
+    int64_t rows_missing = 0;  // engine_scene_upload_3dgs rows still owed
 };
 
 std::array<Scene, kMaxEngineScenes>& scenes() {
@@ -69,20 +71,127 @@ DeviceVector<T> upload_dv(const std::string& name, const TorchTensorView& src) {
     return dv;
 }
 
+// Rows [first, first + rows of src) of a slot buffer; `width` elements a row.
 template<typename T>
-DeviceTensor2D<T> upload_dt2d(const std::string& name, const TorchTensorView& src) {
-    DeviceTensor2D<T> dt;
-    if (std::get<0>(src) == 0) return dt;
-    const auto& shape = std::get<2>(src);
-    const int64_t n0 = shape[0], n1 = shape[1];
-    dt.resize_dynamic(VramCategory::Splat, name, n0, n1);
-    backend::memcpy_sync(dt.data_ptr(), (void*)std::get<0>(src),
-                         (size_t)(n0 * n1) * sizeof(T),
-                         backend::MemcpyKind::HostToDevice);
-    return dt;
+void upload_rows(T* dst, int64_t first, const TorchTensorView& src, int64_t width = 1) {
+    if (!dst || std::get<0>(src) == 0) return;
+    const int64_t n = std::get<2>(src)[0];
+    backend::memcpy_sync(dst + first * width, (void*)std::get<0>(src),
+                         (size_t)(n * width) * sizeof(T), backend::MemcpyKind::HostToDevice);
+}
+
+// A slot keeps its SH in the AoS packed layout, 256 cells per bound.
+template<int BITS>
+void alloc_sh_quant(QuantizedTensor<BITS, 256>& q, int slot, int64_t n, int num_sh) {
+    q.n_cells = n * 3 * num_sh;
+    q.n_bounds = (q.n_cells + 255) / 256;
+    q.packed.resize_dynamic(VramCategory::Splat, buffer_name(slot, "features_sh.q"),
+                            q.n_cells * QuantizedTensor<BITS, 256>::kBytesPerCell);
+    q.bounds.resize_dynamic(VramCategory::Splat, buffer_name(slot, "features_sh.qb"),
+                            q.n_bounds);
+}
+
+// What one render adds per splat in view: projection outputs, tile keys and
+// their sort. 99 B with all of 10M and 55M small SH2 splats in a 1080p view,
+// 105 B for a 30M and a 50M trained SH3 model at 1600x800, 16 px bins.
+constexpr uint64_t kRenderBytesPerSplat = 110;
+
+// 16 bits is what training keeps SH at (quantization_level 1), so a slot
+// loses nothing; 8 where 16 would not leave room to render plus an eighth
+// spare (closer views add tile pairs, bigger viewports images).
+int auto_sh_value_bits(int64_t n, int num_sh) {
+    const backend::MemoryUsage m = backend::memory_usage();
+    if (!m.has_total || !m.has_used) return 16;
+    uint64_t avail = m.total_bytes > m.used_bytes ? m.total_bytes - m.used_bytes : 0;
+    if (m.has_commit) avail = std::min(avail, m.commit_free_bytes);
+    const uint64_t cells = (uint64_t)n * 3 * (uint64_t)num_sh;
+    const uint64_t need = (uint64_t)n * kRenderBytesPerSplat + cells * 2 +
+                          (cells / 256 + 1) * sizeof(float2);
+    return need <= avail - avail / 8 ? 16 : 8;
 }
 
 }  // namespace
+
+
+void engine_scene_begin_3dgs(int slot, int64_t num_splats, int num_sh, int sb_lobes,
+                             int sh_value_bits) {
+    Scene& s = at(slot);
+    if (num_splats < 0 || num_sh < 0)
+        throw std::runtime_error("engine_scene_begin_3dgs: negative size");
+    if (sb_lobes < 0 || 2 * sb_lobes > num_sh)
+        throw std::runtime_error("engine_scene_begin_3dgs: a features_sh row of " +
+                                 std::to_string(num_sh) + " coefficients cannot hold " +
+                                 std::to_string(sb_lobes) + " lobes");
+    if (sh_value_bits != 0 && sh_value_bits != 8 && sh_value_bits != 16 &&
+        sh_value_bits != 32)
+        throw std::runtime_error("engine_scene_begin_3dgs: sh_value_bits must be "
+                                 "0, 8, 16 or 32; got " + std::to_string(sh_value_bits));
+
+    engine_scene_free(slot);
+    auto alloc = [&](auto& dv, const char* field) {
+        dv.resize_dynamic(VramCategory::Splat, buffer_name(slot, field), num_splats);
+    };
+    alloc(s.world.means, "means");
+    alloc(s.world.quats, "quats");
+    alloc(s.world.scales, "scales");
+    alloc(s.world.opacities, "opacities");
+    alloc(s.world.features_dc, "features_dc");
+
+    // After those: `used` counts them, and Vulkan has no `used` until a device exists.
+    if (num_sh == 0) sh_value_bits = 32;
+    else if (sh_value_bits == 0) sh_value_bits = auto_sh_value_bits(num_splats, num_sh);
+    if (sh_value_bits == 32) {
+        s.world.features_sh.resize_dynamic(VramCategory::Splat,
+                                           buffer_name(slot, "features_sh"), num_splats, num_sh);
+    } else {
+        s.world.features_sh.set_shape_no_alloc(num_splats, num_sh);
+        if (sh_value_bits == 8) alloc_sh_quant(s.world.features_sh_quant8, slot, num_splats, num_sh);
+        else alloc_sh_quant(s.world.features_sh_quant16, slot, num_splats, num_sh);
+    }
+    s.world.sh_value_bits = sh_value_bits;
+    s.world.initialized = true;
+    s.num_sh = num_sh;
+    s.sb_lobes = sb_lobes;
+    s.cur_num_splats = num_splats;
+    s.max_num_splats = num_splats;
+    s.rows_missing = num_splats;
+    s.loaded = num_splats == 0;
+}
+
+
+void engine_scene_upload_3dgs(int slot, int64_t first, TorchTensorView means,
+                              TorchTensorView quats, TorchTensorView scales,
+                              TorchTensorView opacities, TorchTensorView features_dc,
+                              TorchTensorView features_sh) {
+    Scene& s = at(slot);
+    const int64_t n = std::get<2>(means)[0];
+    const auto& sh_shape = std::get<2>(features_sh);
+    if (std::get<2>(quats)[0] != n || std::get<2>(scales)[0] != n ||
+        std::get<2>(opacities)[0] != n || std::get<2>(features_dc)[0] != n ||
+        (s.num_sh > 0 && (sh_shape.size() < 2 || sh_shape[0] != n || sh_shape[1] != s.num_sh)))
+        throw std::runtime_error("engine_scene_upload_3dgs: row counts or SH width "
+                                 "disagree with each other or the slot");
+    if (first < 0 || first + n > s.max_num_splats)
+        throw std::runtime_error("engine_scene_upload_3dgs: rows past the slot's end");
+    upload_rows(s.world.means.data_ptr(), first, means);
+    upload_rows(s.world.quats.data_ptr(), first, quats);
+    upload_rows(s.world.scales.data_ptr(), first, scales);
+    upload_rows(s.world.opacities.data_ptr(), first, opacities);
+    upload_rows(s.world.features_dc.data_ptr(), first, features_dc);
+    const float* sh_rows = (const float*)std::get<0>(features_sh);
+    if (s.num_sh > 0 && sh_rows) {
+        if (s.world.sh_value_bits == 32)
+            upload_rows(s.world.features_sh.data_ptr(), first, features_sh, s.num_sh);
+        else if (s.world.sh_value_bits == 8)
+            encode_sh_rows(s.world.features_sh_quant8, sh_rows, s.max_num_splats, s.num_sh,
+                           false, first, n);
+        else
+            encode_sh_rows(s.world.features_sh_quant16, sh_rows, s.max_num_splats, s.num_sh,
+                           false, first, n);
+    }
+    s.rows_missing -= n;
+    if (s.rows_missing <= 0) s.loaded = true;
+}
 
 
 void engine_scene_set_data_3dgs(
@@ -94,9 +203,9 @@ void engine_scene_set_data_3dgs(
     TorchTensorView opacities,
     TorchTensorView features_dc,
     TorchTensorView features_sh,
-    int sb_lobes
+    int sb_lobes,
+    int sh_value_bits
 ) {
-    Scene& s = at(slot);
     const int64_t max_num_splats = std::get<2>(means)[0];
     if (std::get<2>(quats)[0] != max_num_splats ||
         std::get<2>(scales)[0] != max_num_splats ||
@@ -106,28 +215,13 @@ void engine_scene_set_data_3dgs(
         throw std::runtime_error("engine_scene_set_data_3dgs: max_num_splats mismatch across splat tensors");
     if (max_num_splats < num_splats)
         throw std::runtime_error("engine_scene_set_data_3dgs: tensor size smaller than num_splats");
-
-    engine_scene_free(slot);
-
-    s.world.means       = upload_dv<float3>(buffer_name(slot, "means"), means);
-    s.world.quats       = upload_dv<float4>(buffer_name(slot, "quats"), quats);
-    s.world.scales      = upload_dv<float3>(buffer_name(slot, "scales"), scales);
-    s.world.opacities   = upload_dv<float>(buffer_name(slot, "opacities"), opacities);
-    s.world.features_dc = upload_dv<float3>(buffer_name(slot, "features_dc"), features_dc);
-    s.world.features_sh = upload_dt2d<float3>(buffer_name(slot, "features_sh"), features_sh);
-    s.world.initialized = true;
-    s.world.sh_value_bits = 32;
-
     const auto& sh_shape = std::get<2>(features_sh);
-    s.num_sh = (sh_shape.size() >= 2) ? (int)sh_shape[1] : 0;
-    if (sb_lobes < 0 || 2 * sb_lobes > s.num_sh)
-        throw std::runtime_error("engine_scene_set_data_3dgs: a features_sh row of " +
-                                 std::to_string(s.num_sh) + " coefficients cannot hold " +
-                                 std::to_string(sb_lobes) + " lobes");
-    s.sb_lobes = sb_lobes;
-    s.cur_num_splats = num_splats;
-    s.max_num_splats = max_num_splats;
-    s.loaded = true;
+    const int num_sh = (sh_shape.size() >= 2) ? (int)sh_shape[1] : 0;
+    engine_scene_begin_3dgs(slot, max_num_splats, num_sh, sb_lobes,
+                            std::get<0>(features_sh) ? sh_value_bits : 32);
+    engine_scene_upload_3dgs(slot, 0, means, quats, scales, opacities, features_dc,
+                             features_sh);
+    at(slot).cur_num_splats = num_splats;
 }
 
 
@@ -191,6 +285,18 @@ void engine_scene_update(int slot, const std::string& field,
     Scene& s = at(slot);
     if (!s.loaded)
         throw std::runtime_error("engine_scene_update: slot holds no model");
+    if (field == "features_sh" && s.world.sh_value_bits != 32) {
+        if (std::get<0>(data) == 0) return;
+        if (std::get<2>(data)[0] != s.max_num_splats)
+            throw std::runtime_error("engine_scene_update: features_sh row count "
+                                     "does not match the slot");
+        const float* rows = (const float*)std::get<0>(data);
+        if (s.world.sh_value_bits == 8)
+            encode_sh_rows(s.world.features_sh_quant8, rows, s.max_num_splats, s.num_sh, false);
+        else
+            encode_sh_rows(s.world.features_sh_quant16, rows, s.max_num_splats, s.num_sh, false);
+        return;
+    }
     size_t elem_bytes = 0;
     int64_t count = 0;
     void* dst = scene_field(s, field, elem_bytes, count);

@@ -4,8 +4,10 @@
 #include "backend/api/Optimizer.h"
 #include "shaders/screen_layout.h"
 #include "engine/EngineCommon.h"
+#include "engine/EngineInternal.h"
 #include "engine/EngineState.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <variant>
 #include <vector>
@@ -17,40 +19,72 @@
 static constexpr int64_t kFpboBlock = 256;
 
 
-// Hands the seeded fp32 rows to the value codec, whose zeroed init only
-// stands for all-zero rows. Host-side through core/Tensor.h's codec, as
-// checkpoint/Adapt.cpp re-encodes; once per run.
+// Host-side through core/Tensor.h's codec, as checkpoint/Adapt.cpp
+// re-encodes. Both layouts keep a bound's cells contiguous and inside 256
+// splats, so a bound is the unit of work and a run of them is one upload.
 template <int BITS>
-static void _encode_seeded_sh(QuantizedTensor<BITS, 256>& q,
-                              const std::vector<float>& rows, int64_t N,
-                              int K, bool fpbo) {
+static void encode_sh_rows_impl(QuantizedTensor<BITS, 256>& q,
+                                const float* rows, int64_t N, int K,
+                                bool fpbo, int64_t first, int64_t count) {
+    using Q = QuantizedTensor<BITS, 256>;
+    const int64_t end = first + count;
+    if (first < 0 || count < 0 || end > N || first % 256 != 0 ||
+        (end < N && end % 256 != 0))
+        throw std::runtime_error("encode_sh_rows: a run must start on a 256-splat "
+                                 "boundary and end on one or at the store's end");
     const ShQuantAddr a = sh_quant_addr((uint32_t)K, fpbo ? 0 : 256);
     const int64_t R = 3 * (int64_t)K;
-    std::vector<float2> mm((size_t)q.n_bounds, float2{1e30f, -1e30f});
-    auto each = [&](auto&& fn) {
-        for (int64_t i = 0; i < N; i++) {
-            const int64_t base = a.base(i);
-            for (int c = 0; c < R; c++) {
-                const int64_t cell = a.cell(base, c);
-                fn(cell, cell / a.bounds_stride, rows[(size_t)(i * R + c)]);
-            }
+    const int64_t span = a.bounds_stride;
+    const int64_t span_bytes = span * Q::kBytesPerCell;
+    const int64_t chunk = std::max<int64_t>(1, (int64_t(64) << 20) / span_bytes);
+    const int64_t b_first = fpbo ? first / 256 : first * R / 256;
+    const int64_t b_end = end == N ? q.n_bounds
+                                   : (fpbo ? end / 256 : end * R / 256);
+    std::vector<uint8_t> packed;
+    std::vector<float2> mm;
+    for (int64_t b0 = b_first; b0 < b_end; b0 += chunk) {
+        const int64_t nb = std::min(chunk, b_end - b0);
+        packed.assign((size_t)(nb * span_bytes), 0);
+        mm.assign((size_t)nb, float2{0.0f, 0.0f});
+#pragma omp parallel for schedule(static)
+        for (int64_t j = 0; j < nb; j++) {
+            const int64_t b = b0 + j;
+            auto each = [&](auto&& fn) {
+                if (fpbo) {
+                    for (int64_t i = b * 256; i < std::min(end, b * 256 + 256); i++)
+                        for (int c = 0; c < R; c++)
+                            fn(a.cell(a.base(i), c) - b * span, rows[(i - first) * R + c]);
+                } else {
+                    for (int64_t c = b * 256; c < std::min(end * R, b * 256 + 256); c++)
+                        fn(c - b * 256, rows[c - first * R]);
+                }
+            };
+            float2 m{1e30f, -1e30f};
+            each([&](int64_t, float v) {
+                m.x = std::min(m.x, v);
+                m.y = std::max(m.y, v);
+            });
+            if (m.x > m.y) m = float2{0.0f, 0.0f};
+            mm[(size_t)j] = m;
+            uint8_t* dst = packed.data() + j * span_bytes;
+            each([&](int64_t cell, float v) { Q::encode_v(dst, cell, v, m); });
         }
-    };
-    each([&](int64_t, int64_t b, float v) {
-        mm[(size_t)b].x = std::min(mm[(size_t)b].x, v);
-        mm[(size_t)b].y = std::max(mm[(size_t)b].y, v);
-    });
-    for (auto& m : mm)
-        if (m.x > m.y) m = float2{0.0f, 0.0f};
-    std::vector<uint8_t> packed((size_t)q.packed_bytes(), 0);
-    each([&](int64_t cell, int64_t b, float v) {
-        QuantizedTensor<BITS, 256>::encode_v(packed.data(), cell, v,
-                                             mm[(size_t)b]);
-    });
-    backend::memcpy_sync(q.packed_ptr(), packed.data(), packed.size(),
-                         backend::MemcpyKind::HostToDevice);
-    backend::memcpy_sync(q.bounds_ptr(), mm.data(), mm.size() * sizeof(float2),
-                         backend::MemcpyKind::HostToDevice);
+        const int64_t off = b0 * span_bytes;
+        backend::memcpy_sync(q.packed_ptr() + off, packed.data(),
+                             (size_t)std::min<int64_t>(nb * span_bytes, q.packed_bytes() - off),
+                             backend::MemcpyKind::HostToDevice);
+        backend::memcpy_sync(q.bounds_ptr() + b0, mm.data(), (size_t)nb * sizeof(float2),
+                             backend::MemcpyKind::HostToDevice);
+    }
+}
+
+void encode_sh_rows(QuantizedTensor<8, 256>& q, const float* rows, int64_t N,
+                    int K, bool fpbo, int64_t first, int64_t count) {
+    encode_sh_rows_impl(q, rows, N, K, fpbo, first, count < 0 ? N - first : count);
+}
+void encode_sh_rows(QuantizedTensor<16, 256>& q, const float* rows, int64_t N,
+                    int K, bool fpbo, int64_t first, int64_t count) {
+    encode_sh_rows_impl(q, rows, N, K, fpbo, first, count < 0 ? N - first : count);
 }
 
 static void _ensure_optim_state(int sh_optim_bits, int sh_value_bits,
@@ -307,10 +341,10 @@ static void _ensure_optim_state(int sh_optim_bits, int sh_value_bits,
     if (engine().world.features_sh_quant16_fpbo.initialized()) engine().world.features_sh_quant16_fpbo.zero();
     if (!seeded_sh.empty()) {
         auto& w = engine().world;
-        if (w.features_sh_quant8.initialized())       _encode_seeded_sh(w.features_sh_quant8, seeded_sh, N, (int)K, false);
-        if (w.features_sh_quant16.initialized())      _encode_seeded_sh(w.features_sh_quant16, seeded_sh, N, (int)K, false);
-        if (w.features_sh_quant8_fpbo.initialized())  _encode_seeded_sh(w.features_sh_quant8_fpbo, seeded_sh, N, (int)K, true);
-        if (w.features_sh_quant16_fpbo.initialized()) _encode_seeded_sh(w.features_sh_quant16_fpbo, seeded_sh, N, (int)K, true);
+        if (w.features_sh_quant8.initialized())       encode_sh_rows(w.features_sh_quant8, seeded_sh.data(), N, (int)K, false);
+        if (w.features_sh_quant16.initialized())      encode_sh_rows(w.features_sh_quant16, seeded_sh.data(), N, (int)K, false);
+        if (w.features_sh_quant8_fpbo.initialized())  encode_sh_rows(w.features_sh_quant8_fpbo, seeded_sh.data(), N, (int)K, true);
+        if (w.features_sh_quant16_fpbo.initialized()) encode_sh_rows(w.features_sh_quant16_fpbo, seeded_sh.data(), N, (int)K, true);
         w.features_sh_seeded = false;
     }
     engine().optim.accum_buffer.zero();

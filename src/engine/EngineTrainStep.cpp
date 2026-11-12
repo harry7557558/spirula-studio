@@ -152,6 +152,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     // this returns are read back from the device, so the call already ends on
     // a sync and the wall time here is the step's device time.
     const auto step_t0 = std::chrono::steady_clock::now();
+    engine_bin_tile_claim();
     engine().optim.use_fused_proj_bwd_optim = cfg.optim.use_fused_proj_bwd_optim;
     // Block-wise quantized gradient accumulation: only on the non-FPBO path
     // (FPBO already avoids fp32 grad buffers) and only when quantization is on.

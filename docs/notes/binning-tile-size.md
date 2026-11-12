@@ -78,6 +78,32 @@ Vulkan backend now also splits a rasterization past the submit budget
 (docs/notes/gpu-submit-budget.md), so a trial that still slips through costs
 time, not the device.
 
+### Sizes no training step searches
+
+The search is fed by the training step, so it owns only the image sizes a
+training step renders at: `_engine_step_fwd_bwd_only` claims its size
+(`engine_bin_tile_claim`) before the forward, which is what keeps the 64 px
+start for training. Any other size -- the viewer's viewport, its
+half-resolution frames while the camera moves, a preview -- is forward only
+and is never measured, so it bins at **16 px** (`kMacroLog2Render`,
+`EngineForward.cpp`) rather than at a start nothing would move it from. The
+forward walks the macro tile's list once per micro tile just as the backward
+does, so 64 px costs a forward-only frame the same 4x scan.
+
+A 30M-splat SH3 model (a 10M-splat trained scene duplicated three
+times), 1600x800 viewport, RTX 5070, Vulkan, ms per viewer frame:
+
+| view | 8 px | 16 px | 32 px | 64 px |
+|---|---:|---:|---:|---:|
+| whole model in view | 79 | 84 | 121 | 456 |
+| 4x closer | 64 | **59** | 63 | 109 |
+| 16x closer | 49 | **42** | 44 | 55 |
+
+16 px is within 6% of the best in every row. 8 px wins whole-model views by
+6-8%, at 1600x800 and at the 800x400 of a moving camera alike, and loses 8-14%
+closer in. Searching per view could gain that, but would spend probe frames
+doing it.
+
 The intersect additionally coarsens *within* a step, re-running the count pass
 (~0.3% of a step, and flat in tile size), whenever the exact pair total would
 overflow int32 — a forced size is a starting point, not a hard failure. That

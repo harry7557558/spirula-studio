@@ -33,6 +33,18 @@ void engine_pca_reg_step(int step, const PcaRegConfig& cfg,
 // within a step (EngineDensify.cpp).
 void engine_max_weight_begin_step(int step, int max_steps, const DensifyConfig& cfg);
 
+// Hands the current image size's binning to the search (engine_bin_tile_observe);
+// a training step calls it before its forward, so the search starts coarse.
+void engine_bin_tile_claim();
+
+// Encodes fp32 colour rows [count, K, 3] as splats [first, first + count) of
+// a packed SH store sized for N, AoS or FPBO (docs/notes/sh-quant-layout.md).
+// A run starts on a 256-splat boundary and ends on one or at N; count < 0 = to N.
+void encode_sh_rows(QuantizedTensor<8, 256>& q, const float* rows, int64_t N, int K,
+                    bool fpbo, int64_t first = 0, int64_t count = -1);
+void encode_sh_rows(QuantizedTensor<16, 256>& q, const float* rows, int64_t N, int K,
+                    bool fpbo, int64_t first = 0, int64_t count = -1);
+
 // --- Raw-pointer image conversion helpers (ImageConvert.cu). ---
 void uint8_image_to_float_raw (const uint8_t*  d_in, float* d_out,
                                int B, int H, int W, int C);

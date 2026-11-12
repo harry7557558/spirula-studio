@@ -859,6 +859,7 @@ __global__ void blit_with_bvh_kernel(
     const TensorView<float, 3> render_rgbs,  // [H, W, 3]
     const TensorView<float, 3> render_depths,  // [H, W, 1]
     const TensorView<float, 3> render_alphas,  // [H, W, 1]
+    const bool alpha_is_T,  // render_alphas holds transmittance
     const int view_camera_model,
     const int image_width,
     const int image_height,
@@ -932,6 +933,7 @@ __global__ void blit_with_bvh_kernel(
 
     float depth = render_depths.load1(pix_y, pix_x);
     float opac = render_alphas.load1(pix_y, pix_x);
+    if (alpha_is_T) opac = 1.0f - opac;
     depth /= fminf(fmaxf(opac, 1e-6f) / 0.5f, 1.0f);
     if (depth == 0.0f)
         depth = 1e10f;
@@ -1631,6 +1633,7 @@ void engine_blit_view(
     TorchTensorView render_buffer,
     TorchTensorView render_depth,
     TorchTensorView render_alpha,
+    bool            alpha_is_transmittance,
     int             view_camera_model,
     std::string     distortion,
     TorchTensorView view_intrins,
@@ -1735,6 +1738,7 @@ void engine_blit_view(
             tv_to_view<float, 3>(render_buffer), \
             tv_to_view<float, 3>(render_depth), \
             tv_to_view<float, 3>(render_alpha), \
+            alpha_is_transmittance, \
             view_camera_model, (int)w, (int)h, \
             (float4*)std::get<0>(view_intrins), \
             (float*)std::get<0>(view_viewmat), \
@@ -1802,7 +1806,7 @@ void blit_train_cameras_tensor(
             blit_with_bvh_kernel<D><<<_LAUNCH_ARGS_2D(w, h, 8, 4)>>>( \
                 tv_to_view<float, 3>(render_rgbs), \
                 tv_to_view<float, 3>(render_depths), \
-                tv_to_view<float, 3>(render_alphas), \
+                tv_to_view<float, 3>(render_alphas), false, \
                 view_camera_model, w, h, \
                 (float4*)std::get<0>(view_intrins), \
                 (float*)std::get<0>(view_viewmat), \
@@ -1871,7 +1875,7 @@ void blit_train_cameras_tensor(
         blit_with_bvh_kernel<D><<<_LAUNCH_ARGS_2D(w, h, 8, 4)>>>( \
             tv_to_view<float, 3>(render_rgbs), \
             tv_to_view<float, 3>(render_depths), \
-            tv_to_view<float, 3>(render_alphas), \
+            tv_to_view<float, 3>(render_alphas), false, \
             view_camera_model, w, h, \
             (float4*)std::get<0>(view_intrins), \
             (float*)std::get<0>(view_viewmat), \

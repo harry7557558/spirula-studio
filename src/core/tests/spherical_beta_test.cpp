@@ -8,6 +8,7 @@
 #include "checkpoint/SplatTransform.h"
 #include "core/SphericalBeta.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -144,6 +145,29 @@ int main() {
     check(back.basis() == c.basis() && back.features_sh == c.features_sh &&
               back.means == c.means && back.opacities == c.opacities,
           "write then read gives the same cloud");
+    {
+        int64_t seen = 0;
+        bool runs_ok = true;
+        auto same = [&](const std::vector<float>& run, const std::vector<float>& all,
+                        int64_t first, int64_t width) {
+            return run.size() % (size_t)std::max<int64_t>(width, 1) == 0 &&
+                   std::equal(run.begin(), run.end(), all.begin() + first * width);
+        };
+        spirula::read_splat_ply_chunks((dir / "out.ply").string(), 2,
+            [&](const spirula::SplatCloud& r, int64_t first, int64_t total) {
+                const int64_t K = back.coeffs();
+                runs_ok = runs_ok && first == seen && total == back.num &&
+                          r.basis() == back.basis() && r.num <= 2 &&
+                          same(r.means, back.means, first, 3) &&
+                          same(r.quats, back.quats, first, 4) &&
+                          same(r.scales, back.scales, first, 3) &&
+                          same(r.opacities, back.opacities, first, 1) &&
+                          same(r.features_dc, back.features_dc, first, 3) &&
+                          same(r.features_sh, back.features_sh, first, K * 3);
+                seen += r.num;
+            });
+        check(runs_ok && seen == back.num, "a chunked read gives the same rows");
+    }
 
     // ---- SplatRenderMode tag for mip ----
     const std::string hdr_mip = spirula::splat_ply_header(10, c.basis(), "mip");

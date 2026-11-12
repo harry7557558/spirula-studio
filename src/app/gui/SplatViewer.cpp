@@ -28,7 +28,7 @@ namespace gui {
 
 namespace {
 
-TorchTensorView tv(std::vector<float>& v, std::vector<int64_t> shape) {
+TorchTensorView tv(const std::vector<float>& v, std::vector<int64_t> shape) {
     return {(uint64_t)(uintptr_t)v.data(), (uint32_t)sizeof(float), std::move(shape)};
 }
 
@@ -326,8 +326,47 @@ void SplatViewer::run(std::string path) {
         }
         _kind = Kind::Splats;
         log(format(msg::viewer_reading, {ply}));
-        spirula::SplatCloud c = spirula::read_splat_ply(ply);
-        if (c.num <= 0) return fail(msg::viewer_no_splats.get());
+#ifndef SS_BACKEND_VULKAN
+        // CUDA current-device state is per thread; bind before the upload.
+        if (!backend::device_bind())
+            throw std::runtime_error(
+                "could not make the selected GPU current on the viewer "
+                "thread; restart the application or choose another GPU");
+#endif
+        // Streamed straight into the slot: a 60M-splat SH3 file is 14 GB as
+        // floats. Of the means, only what scene_extent samples is kept.
+        int64_t num = 0, step = 1;
+        int sh_degree = 0, sb_lobes = 0;
+        std::string file_primitive;
+        std::vector<float> sampled;
+        spirula::read_splat_ply_chunks(ply, int64_t(1) << 18,
+            [&](const spirula::SplatCloud& c, int64_t first, int64_t total) {
+                std::lock_guard<std::mutex> lk(*_engine_mutex);
+                if (first == 0) {
+                    num = total;
+                    sh_degree = c.sh_degree;
+                    sb_lobes = c.sb_lobes;
+                    file_primitive = c.primitive;
+                    step = std::max<int64_t>(1, total / (1 << 20));
+                    sampled.reserve((size_t)(total / step + 1) * 3);
+                    // Claimed before the upload, not after: an upload that
+                    // throws part way still leaves buffers for close() to free.
+                    _scene_slot = _pending_slot;
+                    engine_scene_begin_3dgs(_pending_slot, total, (int)c.coeffs(),
+                                            c.sb_lobes);
+                }
+                for (int64_t i = (step - first % step) % step; i < c.num; i += step)
+                    sampled.insert(sampled.end(), c.means.begin() + i * 3,
+                                   c.means.begin() + i * 3 + 3);
+                engine_scene_upload_3dgs(_pending_slot, first,
+                                         tv(c.means, {c.num, 3}),
+                                         tv(c.quats, {c.num, 4}),
+                                         tv(c.scales, {c.num, 3}),
+                                         tv(c.opacities, {c.num, 1}),
+                                         tv(c.features_dc, {c.num, 3}),
+                                         tv(c.features_sh, {c.num, c.coeffs(), 3}));
+            });
+        if (num <= 0) return fail(msg::viewer_no_splats.get());
 
         // PLY omits the primitive and rasterization settings stored in config.json.
         TrainConfig cfg;
@@ -357,13 +396,14 @@ void SplatViewer::run(std::string path) {
             _linear = color.splat_linear;
         }
 
+        // The stride scene_extent itself samples at, so the same frame.
         float center[3], radius;
-        scene_extent(c.means, c.num, center, radius);
+        scene_extent(sampled, (int64_t)sampled.size() / 3, center, radius);
         const float unit = view_distance_for(radius);
         set_frame(center, unit);
 
         ViewerRenderConfig vc;
-        vc.primitive = !cfg.primitive.empty() ? cfg.primitive : c.primitive;
+        vc.primitive = !cfg.primitive.empty() ? cfg.primitive : file_primitive;
         vc.packed = cfg.packed;
         vc.sh_degree_warmup_every = 1;
         // Median and distortion buffers are training diagnostics computed from
@@ -386,31 +426,12 @@ void SplatViewer::run(std::string path) {
             const double A[12] = {inv, 0, 0, -inv * center[0],
                                   0, inv, 0, -inv * center[1],
                                   0, 0, inv, -inv * center[2]};
-            vc.centers = dsparse::scene_centers(nullptr, 0, c.means.data(),
-                                                c.num, 3, A);
+            vc.centers = dsparse::scene_centers(nullptr, 0, sampled.data(),
+                                                (int64_t)sampled.size() / 3, 3, A);
         }
 
         {
-#ifndef SS_BACKEND_VULKAN
-            // CUDA current-device state is per thread; bind before the upload.
-            if (!backend::device_bind())
-                throw std::runtime_error(
-                    "could not make the selected GPU current on the viewer "
-                    "thread; restart the application or choose another GPU");
-#endif
             std::lock_guard<std::mutex> lk(*_engine_mutex);
-            const int64_t K = c.coeffs();
-            // Claimed before the upload, not after: an upload that throws part
-            // way still leaves buffers for close() to free.
-            _scene_slot = _pending_slot;
-            engine_scene_set_data_3dgs(
-                          _pending_slot, c.num,
-                          tv(c.means,       {c.num, 3}),
-                          tv(c.quats,       {c.num, 4}),
-                          tv(c.scales,      {c.num, 3}),
-                          tv(c.opacities,   {c.num, 1}),
-                          tv(c.features_dc, {c.num, 3}),
-                          tv(c.features_sh, {c.num, K, 3}), c.sb_lobes);
             const bool cs_on = color.splat_on();
             auto vec = [](const spirula::Mat3f& m) {
                 return std::vector<float>(m.begin(), m.end());
@@ -429,19 +450,18 @@ void SplatViewer::run(std::string path) {
             }
         }
 
-        _num_splats = c.num;
-        _sh_degree = c.sh_degree;
-        _sb_lobes = c.sb_lobes;
+        _num_splats = num;
+        _sh_degree = sh_degree;
+        _sb_lobes = sb_lobes;
         {
             std::lock_guard<std::mutex> lk(_mu);
             _cfg = vc;
         }
-        if (c.sb_lobes > 0)
-            log(format(msg::viewer_loaded_sb, {(long long)c.num,
-                                               (long long)c.sh_degree,
-                                               (long long)c.sb_lobes}));
+        if (sb_lobes > 0)
+            log(format(msg::viewer_loaded_sb, {(long long)num, (long long)sh_degree,
+                                               (long long)sb_lobes}));
         else
-            log(format(msg::viewer_loaded, {(long long)c.num, (long long)c.sh_degree}));
+            log(format(msg::viewer_loaded, {(long long)num, (long long)sh_degree}));
         _state = State::Ready;
     } catch (const std::exception& e) {
         fail(e.what());

@@ -230,104 +230,148 @@ bool is_splat_ply(const std::string& path) {
 }
 
 
-SplatCloud read_splat_ply(const std::string& path, bool want_sh) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) throw std::runtime_error("cannot open " + path);
-    PlyHeader h = read_header(f);
-    if (!h.ok) throw std::runtime_error(path + ": not a readable PLY");
+namespace {
 
-    auto col = [&](const std::string& name) {
-        int i = find_prop(h, name);
-        if (i < 0) throw std::runtime_error(path + ": missing property " + name +
-                                            " (is this a 3D Gaussian Splatting PLY?)");
-        return i;
-    };
-    const int cx = col("x"), cy = col("y"), cz = col("z");
-    const int cq[4] = {col("rot_0"), col("rot_1"), col("rot_2"), col("rot_3")};
-    const int cs[3] = {col("scale_0"), col("scale_1"), col("scale_2")};
-    const int co = col("opacity");
-    const int cd[3] = {col("f_dc_0"), col("f_dc_1"), col("f_dc_2")};
+// The vertex rows of a splat PLY, read front to back in runs: the one parser
+// behind read_splat_ply and read_splat_ply_chunks.
+class SplatRowReader {
+public:
+    SplatRowReader(const std::string& path, bool want_sh)
+        : _path(path), _f(path, std::ios::binary) {
+        if (!_f) throw std::runtime_error("cannot open " + path);
+        _h = read_header(_f);
+        if (!_h.ok) throw std::runtime_error(path + ": not a readable PLY");
+        auto col = [&](const std::string& name) {
+            int i = find_prop(_h, name);
+            if (i < 0) throw std::runtime_error(path + ": missing property " + name +
+                                                " (is this a 3D Gaussian Splatting PLY?)");
+            return i;
+        };
+        _cx = col("x"); _cy = col("y"); _cz = col("z");
+        for (int k = 0; k < 4; k++) _cq[k] = col("rot_" + std::to_string(k));
+        for (int k = 0; k < 3; k++) _cs[k] = col("scale_" + std::to_string(k));
+        _co = col("opacity");
+        for (int k = 0; k < 3; k++) _cd[k] = col("f_dc_" + std::to_string(k));
 
-    // f_rest_<i>: red 0..K-1, then green, then blue (channel-major);
-    // sb_params_<f * L + l>: field f of lobe l.
-    std::vector<int> crest, csb;
-    if (want_sh) {
-        for (int i = 0;; i++) {
-            int c = find_prop(h, "f_rest_" + std::to_string(i));
-            if (c < 0) break;
-            crest.push_back(c);
+        // f_rest_<i>: red 0..K-1, then green, then blue (channel-major);
+        // sb_params_<f * L + l>: field f of lobe l.
+        if (want_sh) {
+            for (int i = 0;; i++) {
+                int c = find_prop(_h, "f_rest_" + std::to_string(i));
+                if (c < 0) break;
+                _crest.push_back(c);
+            }
+            for (int i = 0;; i++) {
+                int c = find_prop(_h, "sb_params_" + std::to_string(i));
+                if (c < 0) break;
+                _csb.push_back(c);
+            }
         }
-        for (int i = 0;; i++) {
-            int c = find_prop(h, "sb_params_" + std::to_string(i));
-            if (c < 0) break;
-            csb.push_back(c);
+        _shape.primitive = _h.primitive;
+        _shape.sh_degree = sh_degree_from_rest((int)_crest.size(), path);
+        _shape.sb_lobes = sb_lobes_from_params((int)_csb.size(), path);
+        _shape.num = _h.num_vertex;
+        _K_sh = _shape.dim_sh() - 1;        // SH coefficients past the DC
+        _K = _shape.coeffs();
+        _K_file = (int64_t)_crest.size() / 3;
+        _vals.resize(_h.props.size());
+        _f.clear();
+        _f.seekg(_h.data_start);
+    }
+
+    // The file's count, basis and primitive; no rows.
+    const SplatCloud& shape() const { return _shape; }
+
+    // Sizes dst's arrays for n rows of this file's basis.
+    void size(SplatCloud& dst, int64_t n) const {
+        dst.means.resize((size_t)n * 3);
+        dst.quats.resize((size_t)n * 4);
+        dst.scales.resize((size_t)n * 3);
+        dst.opacities.resize((size_t)n);
+        dst.features_dc.resize((size_t)n * 3);
+        dst.features_sh.resize(_K > 0 ? (size_t)(n * _K * 3) : 0);
+    }
+
+    // The next nr rows of the file into dst's rows [at, at + nr).
+    void read(SplatCloud& dst, int64_t at, int64_t nr) {
+        if (_h.ascii) {
+            for (int64_t i = 0; i < nr; i++) {
+                for (size_t k = 0; k < _h.props.size(); k++)
+                    if (!(_f >> _vals[k]))
+                        throw std::runtime_error(_path + ": truncated vertex data");
+                take(dst, at + i, _vals.data());
+            }
+            return;
+        }
+        // Row-blocked: one read() per vertex is most of a large model's load time.
+        const int64_t kRows = 1 << 14;
+        _raw.resize((size_t)_h.row_bytes * kRows);
+        for (int64_t done = 0; done < nr; done += kRows) {
+            const int64_t m = std::min(kRows, nr - done);
+            _f.read((char*)_raw.data(), (std::streamsize)(m * (int64_t)_h.row_bytes));
+            if (!_f) throw std::runtime_error(_path + ": truncated vertex data");
+            for (int64_t i = 0; i < m; i++) {
+                const uint8_t* r = _raw.data() + (size_t)i * _h.row_bytes;
+                for (size_t k = 0; k < _h.props.size(); k++)
+                    _vals[k] = read_scalar(r, _h.props[k]);
+                take(dst, at + done + i, _vals.data());
+            }
         }
     }
-    SplatCloud out;
-    out.primitive = h.primitive;
-    out.sh_degree = sh_degree_from_rest((int)crest.size(), path);
-    out.sb_lobes = sb_lobes_from_params((int)csb.size(), path);
-    const int64_t K_sh = out.dim_sh() - 1;        // SH coefficients past the DC
-    const int64_t K = out.coeffs();
-    const int64_t K_file = (int64_t)crest.size() / 3;
-    const int L = out.sb_lobes;
-    const int64_t n = h.num_vertex;
-    out.num = n;
-    out.means.resize((size_t)n * 3);
-    out.quats.resize((size_t)n * 4);
-    out.scales.resize((size_t)n * 3);
-    out.opacities.resize((size_t)n);
-    out.features_dc.resize((size_t)n * 3);
-    if (K > 0) out.features_sh.assign((size_t)n * K * 3, 0.0f);
 
-    auto take = [&](int64_t i, const float* v) {
-        out.means[i*3+0] = v[cx]; out.means[i*3+1] = v[cy]; out.means[i*3+2] = v[cz];
-        for (int k = 0; k < 4; k++) out.quats[i*4+k] = v[cq[k]];
-        for (int k = 0; k < 3; k++) out.scales[i*3+k] = v[cs[k]];
-        out.opacities[i] = v[co];
-        for (int k = 0; k < 3; k++) out.features_dc[i*3+k] = v[cd[k]];
+private:
+    void take(SplatCloud& out, int64_t i, const float* v) const {
+        const int64_t K = _K, K_sh = _K_sh;
+        const int L = _shape.sb_lobes;
+        out.means[i*3+0] = v[_cx]; out.means[i*3+1] = v[_cy]; out.means[i*3+2] = v[_cz];
+        for (int k = 0; k < 4; k++) out.quats[i*4+k] = v[_cq[k]];
+        for (int k = 0; k < 3; k++) out.scales[i*3+k] = v[_cs[k]];
+        out.opacities[i] = v[_co];
+        for (int k = 0; k < 3; k++) out.features_dc[i*3+k] = v[_cd[k]];
         // Channel-major in the file, coefficient-major in the engine.
         for (int ch = 0; ch < 3 && K_sh > 0; ch++)
             for (int64_t j = 0; j < K_sh; j++)
-                out.features_sh[(i * K + j) * 3 + ch] = v[crest[(size_t)(ch * K_file + j)]];
+                out.features_sh[(i * K + j) * 3 + ch] = v[_crest[(size_t)(ch * _K_file + j)]];
         float* lobes = L > 0 ? &out.features_sh[(size_t)((i * K + K_sh) * 3)] : nullptr;
         for (int f = 0; f < sb::kLobeFloats && L > 0; f++)
             for (int l = 0; l < L; l++)
-                lobes[l * sb::kLobeFloats + f] = v[csb[(size_t)(f * L + l)]];
-    };
-
-    if (h.ascii) {
-        f.clear();
-        f.seekg(h.data_start);
-        std::vector<float> vals(h.props.size());
-        for (int64_t i = 0; i < n; i++) {
-            for (size_t k = 0; k < h.props.size(); k++)
-                if (!(f >> vals[k]))
-                    throw std::runtime_error(path + ": truncated vertex data");
-            take(i, vals.data());
-        }
-        return out;
+                lobes[l * sb::kLobeFloats + f] = v[_csb[(size_t)(f * L + l)]];
     }
 
-    f.clear();
-    f.seekg(h.data_start);
-    // Row-blocked read: a large model is hundreds of MB and one read() per
-    // vertex is most of the load time.
-    const int64_t kRows = 1 << 14;
-    std::vector<uint8_t> raw((size_t)h.row_bytes * kRows);
-    std::vector<float> vals(h.props.size());
-    for (int64_t row = 0; row < n; row += kRows) {
-        const int64_t nr = std::min(kRows, n - row);
-        f.read((char*)raw.data(), (std::streamsize)(nr * (int64_t)h.row_bytes));
-        if (!f) throw std::runtime_error(path + ": truncated vertex data");
-        for (int64_t i = 0; i < nr; i++) {
-            const uint8_t* r = raw.data() + (size_t)i * h.row_bytes;
-            for (size_t k = 0; k < h.props.size(); k++)
-                vals[k] = read_scalar(r, h.props[k]);
-            take(row + i, vals.data());
-        }
-    }
+    std::string _path;
+    std::ifstream _f;
+    PlyHeader _h;
+    SplatCloud _shape;
+    int _cx = 0, _cy = 0, _cz = 0, _cq[4] = {}, _cs[3] = {}, _co = 0, _cd[3] = {};
+    std::vector<int> _crest, _csb;
+    int64_t _K_sh = 0, _K = 0, _K_file = 0;
+    std::vector<float> _vals;
+    std::vector<uint8_t> _raw;
+};
+
+}  // namespace
+
+SplatCloud read_splat_ply(const std::string& path, bool want_sh) {
+    SplatRowReader r(path, want_sh);
+    SplatCloud out = r.shape();
+    r.size(out, out.num);
+    r.read(out, 0, out.num);
     return out;
+}
+
+void read_splat_ply_chunks(
+    const std::string& path, int64_t chunk_rows,
+    const std::function<void(const SplatCloud&, int64_t, int64_t)>& fn, bool want_sh) {
+    if (chunk_rows <= 0) throw std::runtime_error("read_splat_ply_chunks: chunk_rows <= 0");
+    SplatRowReader r(path, want_sh);
+    const int64_t total = r.shape().num;
+    SplatCloud c = r.shape();
+    for (int64_t first = 0; first < total; first += chunk_rows) {
+        c.num = std::min(chunk_rows, total - first);
+        r.size(c, c.num);
+        r.read(c, 0, c.num);
+        fn(c, first, total);
+    }
 }
 
 

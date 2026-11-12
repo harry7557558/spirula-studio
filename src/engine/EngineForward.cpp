@@ -64,6 +64,9 @@ constexpr int    kBinTileNext   = 1;    // ... but an accepted one right away
 constexpr double kCoarsenMinPairs = 2.25;
 // A coarser trial this much slower than its baseline has already lost.
 constexpr double kBinTileAbort  = 2.0;
+// A size no training step searches -- the viewer's, a preview's -- is forward
+// only. 30M splats at three zooms: within 6% of best at 16 px, 5.4x it at 64.
+constexpr int    kMacroLog2Render = 1;
 
 bool bin_tile_log() {
     static const bool on = [] {
@@ -151,11 +154,12 @@ void engine_bin_tile_observe(double step_seconds) {
 
 int engine_bin_macro_log2() {
     const auto& bin = bin_choice();
-    return engine().bin_tile_request != 0
-               ? std::max(macro_log2_from_pixels(engine().bin_tile_request),
-                          bin.floor)
-               : bin.macro_log2;
+    if (engine().bin_tile_request != 0)
+        return std::max(macro_log2_from_pixels(engine().bin_tile_request), bin.floor);
+    return bin.searched ? bin.macro_log2 : std::max(kMacroLog2Render, bin.floor);
 }
+
+void engine_bin_tile_claim() { bin_choice().searched = true; }
 
 void forward_3dgs(
     std::string primitive,   // "3dgs", "mip", "3dgut"

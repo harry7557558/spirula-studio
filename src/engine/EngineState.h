@@ -695,6 +695,9 @@ struct EngineState {
         // Splat-tile pairs per visible splat at `macro_log2`, last measured
         // outside a trial; gates the coarser probes.
         double pairs_per_splat = 0.0;
+        // A training step bins at this size, so the search owns it; until
+        // then renders use kMacroLog2Render.
+        bool searched = false;
     };
     std::map<uint64_t, BinTileChoice> bin_tile_auto;
     // PoolSlot::EngVLosses (the per-pixel loss cotangent seed) is uploaded

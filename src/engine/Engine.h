@@ -636,6 +636,7 @@ void engine_blit_view(
     TorchTensorView render_buffer,   // [H,W,1|3] float (channel matches buffer_key)
     TorchTensorView render_depth,    // [H,W,1] float, may be null when buffer_key=="alpha"
     TorchTensorView render_alpha,    // [H,W,1] float
+    bool            alpha_is_transmittance,  // render_alpha holds 1 - alpha
     int             view_camera_model,
     std::string     distortion,
     TorchTensorView view_intrins,    // [1,4]   float
@@ -652,12 +653,28 @@ void engine_blit_view(
     TorchTensorView out_rgb          // [H,W,3] uint8, pre-allocated CUDA
 );
 
+// engine_blit_view of the last forward_3dgs's own rgb, depth and coverage,
+// read where they are: no host round trip. False, drawing nothing, when that
+// render is not one float32 rgb image (a training step's half images).
+bool engine_blit_render(int view_camera_model, std::string distortion,
+                        TorchTensorView view_intrins, TorchTensorView view_viewmat,
+                        TorchTensorView view_dist_coeffs, bool show_training_cameras,
+                        bool show_overlay, float grid_dist, float grid_target_x,
+                        float grid_target_y, float grid_target_z,
+                        TorchTensorView out_rgb);
+// Ray depth (not normalized by coverage) and coverage of the last render at
+// one pixel; false outside it or without a depth channel.
+bool engine_render_sample(int x, int y, float& depth, float& alpha);
+
 // --- Viewer scenes (docs/notes/compare-view.md) ---
 //
 // Several splat sets resident at once, one bound at a time; activating one is
 // a pointer swap. Viewer-only: a slot has no optimizer or densify state.
 constexpr int kMaxEngineScenes = 8;
 
+// sh_value_bits is the slot's SH storage: 32, or 16 / 8 packed
+// (docs/notes/sh-quant-layout.md). 0 picks 16, or 8 when the free VRAM
+// could not also hold a render of every splat.
 void engine_scene_set_data_3dgs(
     int slot,
     int64_t num_splats,
@@ -667,8 +684,18 @@ void engine_scene_set_data_3dgs(
     TorchTensorView opacities,
     TorchTensorView features_dc,
     TorchTensorView features_sh,
-    int sb_lobes
+    int sb_lobes,
+    int sh_value_bits = 0
 );
+// The same upload in pieces, for a model too big to hold on the host whole:
+// begin sizes the slot, then runs of rows follow, each starting on a multiple
+// of 256 splats. The slot activates once every row has arrived.
+void engine_scene_begin_3dgs(int slot, int64_t num_splats, int num_sh, int sb_lobes,
+                             int sh_value_bits = 0);
+void engine_scene_upload_3dgs(int slot, int64_t first, TorchTensorView means,
+                              TorchTensorView quats, TorchTensorView scales,
+                              TorchTensorView opacities, TorchTensorView features_dc,
+                              TorchTensorView features_sh);
 
 // The model's own colour space, applied by engine_scene_activate. Two models
 // trained in different spaces are converted each its own way, which is the

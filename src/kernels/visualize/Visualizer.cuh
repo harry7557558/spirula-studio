@@ -14,6 +14,7 @@ void engine_blit_view(
     TorchTensorView render_buffer,
     TorchTensorView render_depth,
     TorchTensorView render_alpha,
+    bool            alpha_is_transmittance,
     int             view_camera_model,
     std::string     distortion,
     TorchTensorView view_intrins,

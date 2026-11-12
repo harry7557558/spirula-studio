@@ -12,6 +12,7 @@
 #include "core/ColorBasis.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -48,6 +49,13 @@ bool is_splat_ply(const std::string& path);
 // `want_sh` false skips the f_rest and sb_params columns, which are most of
 // the file: the mesher only needs geometry and DC colour.
 SplatCloud read_splat_ply(const std::string& path, bool want_sh = true);
+// The same file in runs of up to `chunk_rows` splats, front to back: `fn` gets
+// each run (num = its length, arrays reused between calls), its first splat's
+// index and the file's total. Host memory stays at one run.
+void read_splat_ply_chunks(
+    const std::string& path, int64_t chunk_rows,
+    const std::function<void(const SplatCloud& rows, int64_t first, int64_t total)>& fn,
+    bool want_sh = true);
 
 // The layout read_splat_ply expects. `keep` is a flag per splat; `moved` is
 // applied row by row, so baking a placement needs no second copy.
