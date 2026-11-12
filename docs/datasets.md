@@ -972,6 +972,10 @@ A 360 photograph -- an Insta360 `.insp`, cut into one JPEG per lens -- keeps
 its own EXIF through the cut: exposure and GPS as written, the focal cleared
 because it describes the whole frame, not one lens.
 
+The input preview's Sensors tab plots what a video logged or a folder's EXIF
+records, in stops about its mean, before anything is extracted
+(`docs/notes/source-preview.md`); so does `viewer/telemetry.html`.
+
 ### Colour LUTs
 
 Log footage is flat; a video row can name a 3D LUT that is baked into its

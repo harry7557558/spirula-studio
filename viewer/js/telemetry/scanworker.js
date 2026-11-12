@@ -71,8 +71,8 @@ const C = {
   exif:  (p, n) => Module.ccall('sst_exif', 'string', ['number', 'number'], [p, n]),
 };
 
-const STREAMS = ['gyro', 'accel', 'gravity', 'magnet', 'orientation', 'gps'];
-const STRIDE  = [4, 4, 4, 4, 5, 9];
+const STREAMS = ['gyro', 'accel', 'gravity', 'magnet', 'orientation', 'gps', 'exposure'];
+const STRIDE  = [4, 4, 4, 4, 5, 9, 4];
 
 function readStreams() {
   const out = {};
@@ -120,7 +120,8 @@ async function handle(m) {
     const isJpeg = head.length > 3 && head[0] === 0xFF && head[1] === 0xD8 && head[2] === 0xFF;
     if (isJpeg) {
       const exif = scanImage(file);
-      if (!exif || !exif.hasGps) { self.postMessage({ type: 'empty', id, reason: 'no EXIF GPS' }); }
+      const exposed = exif && (exif.exposureTime > 0 || exif.fNumber > 0 || exif.iso > 0);
+      if (!exif || !(exif.hasGps || exposed)) { self.postMessage({ type: 'empty', id, reason: 'no EXIF GPS or exposure' }); }
       else self.postMessage({ type: 'result', id, path, kind: 'image', exif,
                               size: file.size, lastModified: file.lastModified });
     } else {

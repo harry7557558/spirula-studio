@@ -499,13 +499,14 @@ SourcePreview::Result SourcePreview::draw(float height, double* clip_start, doub
     const bool video = _in.kind == PreviewInput::Kind::Video;
     if (video) _video.tick();
 
-    // The tabs this kind of input has. GPS & IMU only once something was
-    // found: a phone video with neither is no worse for the tab's absence.
+    // The tabs this kind of input has. Sensors only once something was
+    // found: a phone video with none is no worse for the tab's absence.
     std::vector<std::pair<Tab, const spirula::i18n::Msg*>> tabs;
     const std::shared_ptr<const SensorData> sd = _sensors.data();
-    const bool sensors = sd && sd->error.empty() &&
-                         (video ? SensorView::reads_video() && (sd->has_gps || sd->has_imu)
-                                : sd->with_gps > 0 || sd->with_attitude > 0);
+    const bool sensors =
+        sd && sd->error.empty() &&
+        (video ? SensorView::reads_video() && (sd->has_gps || sd->has_imu || !sd->exposure.empty())
+               : sd->with_gps > 0 || sd->with_attitude > 0 || sd->with_exposure > 0);
     if (video) tabs.push_back({Tab::Frames, &pmsg::tab_frames});
     if (!video && (!L || !L->photos.empty())) tabs.push_back({Tab::Photos, &pmsg::tab_photos});
     if (_in.kind == PreviewInput::Kind::Scan || (L && L->cloud))

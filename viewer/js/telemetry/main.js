@@ -28,7 +28,8 @@ const opts = {
   triad: true, accelVec: false, gravVec: false, trail: 0, triadSize: 0.12,
   grid: true, axes: true, follow: false, privacy: false, gyroDeg: true,
   rows: { gyro: true, gyroMag: false, accel: true, accelMag: false, gravity: false,
-          att: true, speed: true, alt: true, dop: false },
+          att: true, speed: true, alt: true, dop: false,
+          expo: true, shutter: false, iso: false, fnum: false },
 };
 
 const state = {
@@ -156,7 +157,7 @@ async function scanEntries(entries) {
 function addClip(msg) {
   if (msg.kind === 'image') { addPhotoResult(msg); return; }
   const clip = makeClip(msg, state.clips.length);
-  if (!clip.gps && !clip.gyro && !clip.accel && !clip.att) return;
+  if (!clip.gps && !clip.gyro && !clip.accel && !clip.att && !clip.expo) return;
   state.found++;
   registerClip(clip);
 }
@@ -170,6 +171,7 @@ function addPhotoResult(msg) {
   state.found++;
   if (fresh) { registerClip(clip); return; }
   clip._ch = null;
+  ensureFrame(clip);
   if (state.frame) projectClip(clip, state.frame);
   updateRanges();
   rebuildClip(clip);
@@ -182,18 +184,24 @@ function registerClip(clip) {
   state.clips.push(clip);
   clip.gpu = { track: new LineBuf(scene.gl), drops: new LineBuf(scene.gl), circles: new LineBuf(scene.gl),
                trail: [new LineBuf(scene.gl), new LineBuf(scene.gl), new LineBuf(scene.gl)] };
-  if (clip.gps && clip.gps.n && !state.frame) {
-    let k = 0;
-    while (k < clip.gps.n - 1 && !clip.gps.fix[k]) k++;
-    state.frame = new Frame(clip.gps.lat[k], clip.gps.lon[k], clip.gps.hasAlt[k] ? clip.gps.alt[k] : 0);
-    for (const c of state.clips) projectClip(c, state.frame);
-  } else if (clip.gps && state.frame) projectClip(clip, state.frame);
+  if (!ensureFrame(clip) && clip.gps && state.frame) projectClip(clip, state.frame);
   updateRanges();
   rebuildAll();
   if (state.active < 0) selectClip(state.clips.length - 1);
   renderList();
   dom.hint.style.display = 'none';
   state.needRender = true;
+}
+
+// The scene's origin, from the first clip with a fix; a photo folder may get
+// its first one late. True when this call set it.
+function ensureFrame(clip) {
+  if (state.frame || !clip.gps || !clip.gps.n) return false;
+  let k = 0;
+  while (k < clip.gps.n - 1 && !clip.gps.fix[k]) k++;
+  state.frame = new Frame(clip.gps.lat[k], clip.gps.lon[k], clip.gps.hasAlt[k] ? clip.gps.alt[k] : 0);
+  for (const c of state.clips) projectClip(c, state.frame);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +219,7 @@ function groundZ() {
 }
 
 function updateRanges() {
-  const r = { speed: 0, altMin: Infinity, altMax: -Infinity, dop: 0, gyro: 0, accel: 0 };
+  const r = { speed: 0, altMin: Infinity, altMax: -Infinity, dop: 0, gyro: 0, accel: 0, evMin: 0, evMax: 0 };
   for (const c of state.clips) {
     if (c.gps) for (let i = 0; i < c.gps.n; i++) {
       const s = c.gps.speed[i] >= 0 ? c.gps.speed[i] : c.gps.dspeed[i];
@@ -221,6 +229,8 @@ function updateRanges() {
     }
     if (c.gyro) for (let i = 0; i < c.gyro.n; i += 17) r.gyro = Math.max(r.gyro, c.gyro.mag[i]);
     if (c.accel) for (let i = 0; i < c.accel.n; i += 17) r.accel = Math.max(r.accel, c.accel.mag[i]);
+    const ev = expoLine(c);
+    if (ev) for (const v of ev) if (v === v) { r.evMin = Math.min(r.evMin, v); r.evMax = Math.max(r.evMax, v); }
   }
   if (!isFinite(r.altMin)) { r.altMin = 0; r.altMax = 1; }
   state.ranges = r;
@@ -244,8 +254,28 @@ function colorScalar(clip, i) {
       if (!clip.accel || !r.accel) return 0;
       return clip.accel.mag[indexAt(g.t[i], clip.accel.t, clip.accel.n)] / r.accel;
     }
+    case 'expo': {
+      const j = expoIndex(clip, g.t[i]), ev = expoLine(clip);
+      if (j < 0 || !(r.evMax > r.evMin) || !(ev[j] === ev[j])) return 0;
+      return (ev[j] - r.evMin) / (r.evMax - r.evMin);
+    }
     default: return 0;
   }
+}
+
+// The summed exposure, or the one factor there is when no factor is shared.
+function expoLine(clip) {
+  const e = clip.expo;
+  if (!e) return null;
+  return e.total || e.stops[[0, 1, 2].find((k) => e.any >> k & 1)];
+}
+
+// The exposure record at `t`: the frame's, or exactly that photo's; -1 if none.
+function expoIndex(clip, t) {
+  const e = clip.expo;
+  if (!e || !e.n) return -1;
+  const j = indexAt(t, e.t, e.n);
+  return clip.kind === 'photos' && e.t[j] !== Math.round(t) ? -1 : j;
 }
 
 const CIRCLE_SEGS = 24;
@@ -479,12 +509,58 @@ const ROWS = [
   { key: 'gravity', label: 'Gravity' }, { key: 'att', label: 'Attitude' },
   { key: 'speed', label: 'GPS speed' }, { key: 'alt', label: 'GPS altitude' },
   { key: 'dop', label: 'GPS DOP / fix' },
+  { key: 'expo', label: 'Exposure (EV)' }, { key: 'shutter', label: 'Shutter speed' },
+  { key: 'iso', label: 'ISO' }, { key: 'fnum', label: 'Aperture' },
 ];
 
 function clipSpan(clip) {
   let d = clip.duration || 0;
-  for (const s of [clip.gyro, clip.accel, clip.att, clip.gps]) if (s && s.n) d = Math.max(d, s.t[s.n - 1]);
+  for (const s of [clip.gyro, clip.accel, clip.att, clip.gps, clip.expo]) if (s && s.n) d = Math.max(d, s.t[s.n - 1]);
   return d || 1;
+}
+
+const fmtShutter = (s) => (s >= 0.3 ? `${s.toFixed(s < 10 ? 1 : 0)} s` : `1/${Math.round(1 / s)} s`);
+const fmtEv = (v) => (Math.abs(v) < 0.05 ? '0.0 EV' : `${v > 0 ? '+' : ''}${v.toFixed(1)} EV`);
+// The factor rows plot log2 of the value, so a stop is one height anywhere.
+const FACTORS = [
+  { key: 'shutter', name: 'shutter', label: 'Shutter speed', color: '#e05555', fmt: (v) => fmtShutter(2 ** v) },
+  { key: 'iso', name: 'ISO', label: 'ISO', color: '#4ecb71', fmt: (v) => `ISO ${Math.round(2 ** v)}` },
+  { key: 'fnum', name: 'aperture', label: 'Aperture', color: '#4f8ef7', fmt: (v) => `f/${(2 ** v).toFixed(1)}` },
+];
+
+function exposureRows(clip, rows) {
+  const e = clip.expo;
+  if (!e) return;
+  if (opts.rows.expo && e.common) {
+    const shared = [0, 1, 2].filter((k) => e.common >> k & 1);
+    const ch = [];
+    if (shared.length === 1) {
+      const f = FACTORS[shared[0]];
+      ch.push(chan(clip, 'ev', f.name, f.color, e.t, e.total, 1));
+    } else {
+      ch.push(chan(clip, 'ev', 'total', '#e8eaf2', e.t, e.total, 1));
+      for (const k of shared)
+        if (e.varies[k]) ch.push(chan(clip, `ev${k}`, FACTORS[k].name, FACTORS[k].color, e.t, e.stops[k], 1));
+    }
+    rows.push({ label: 'Exposure', unit: 'EV, 0 = mean', sym: true, fmt: fmtEv, channels: ch });
+  }
+  FACTORS.forEach((f, k) => {
+    if (opts.rows[f.key] && e.any >> k & 1)
+      rows.push({ label: f.label, unit: 'log scale', fmt: f.fmt,
+                  channels: [chan(clip, `lg${k}`, f.name, f.color, e.t, e.log2[k], 1)] });
+  });
+}
+
+function exposureText(clip, t) {
+  const j = expoIndex(clip, t);
+  if (j < 0) return '';
+  const e = clip.expo, out = [];
+  if (e.shutter[j] > 0) out.push(fmtShutter(e.shutter[j]));
+  if (e.iso[j] > 0) out.push(`ISO ${Math.round(e.iso[j])}`);
+  if (e.fnum[j] > 0) out.push(`f/${e.fnum[j].toFixed(1)}`);
+  const ev = expoLine(clip);
+  if (ev && ev[j] === ev[j]) out.push(fmtEv(ev[j]));
+  return out.join(' · ');
 }
 
 function buildRows(clip) {
@@ -517,6 +593,7 @@ function buildRows(clip) {
     chan(clip, opts.privacy ? 'alr' : 'al', 'alt', G, gp.t, opts.privacy ? relAlt(gp) : gp.alt, 1)] });
   if (opts.rows.dop && gp) rows.push({ label: 'DOP / fix', unit: '', channels: [
     chan(clip, 'dp', 'dop', Y, gp.t, gp.dop, 1), chan(clip, 'fx', 'fix', G, gp.t, Float32Array.from(gp.fix), 1)] });
+  exposureRows(clip, rows);
   return rows;
 }
 
@@ -587,6 +664,13 @@ function renderList() {
       t.title = ok ? 'readings look like a working sensor' : 'present, but the checks are not satisfied';
       el.append(t);
     }
+    if (c.expo) {
+      const t = document.createElement('span');
+      t.className = 'tag';
+      t.textContent = 'EXP';
+      t.title = 'records its exposure: shutter, ISO or aperture';
+      el.append(t);
+    }
     el.onclick = () => selectClip(i);
     dom.list.append(el);
   });
@@ -622,6 +706,7 @@ function updateLegend() {
   if (c.accel) s.push(`accel ${fmtHz(ck.accel && ck.accel.rate)}`);
   if (c.att) s.push(`attitude ${fmtHz(ck.orientation && ck.orientation.rate)}`);
   if (c.gps) s.push(`gps ${fmtHz(effectiveHz(ck.gps))}`);
+  if (c.expo) s.push(c.kind === 'photos' ? `exposure ${c.expo.n} photos` : `exposure ${fmtHz(c.expo.rate)}`);
   if (s.length) bits.push(s.join(' · '));
   const w = (ck.warnings || []).slice(0, 4);
   for (const x of w) bits.push(`<span class="warn">⚠ ${escapeHtml(x)}</span>`);
@@ -647,6 +732,7 @@ function updateColorbar() {
     dop: ['0', r.dop.toFixed(1)],
     gyro: ['0', `${(r.gyro * (opts.gyroDeg ? 180 / Math.PI : 1)).toFixed(0)} ${opts.gyroDeg ? 'deg/s' : 'rad/s'}`],
     accel: ['0', `${r.accel.toFixed(1)} m/s²`],
+    expo: [fmtEv(r.evMin), fmtEv(r.evMax)],
   }[opts.colorBy] || ['', ''];
   dom.cbLo.textContent = spec[0];
   dom.cbHi.textContent = spec[1];
@@ -657,8 +743,9 @@ function updateReadout() {
   if (!c) { dom.readout.textContent = ''; return; }
   const t = state.play;
   const out = [c.kind === 'photos' ? `photo ${Math.round(t) + 1} / ${c.photos.length}` : `t = ${fmtClock(t)}`];
-  if (c.gps && c.gps.n) {
-    const i = indexAt(t, c.gps.t, c.gps.n);
+  const gi = c.gps && c.gps.n ? indexAt(t, c.gps.t, c.gps.n) : -1;
+  if (gi >= 0 && (c.kind !== 'photos' || c.gps.t[gi] === Math.round(t))) {
+    const i = gi;
     if (opts.privacy) {
       if (c.local) out.push(`local ${(c.local[i * 3]).toFixed(1)} E, ${(c.local[i * 3 + 1]).toFixed(1)} N m`);
       out.push(`alt ${(c.gps.alt[i] - c.gps.alt[0]).toFixed(1)} m rel`);
@@ -667,9 +754,7 @@ function updateReadout() {
       if (c.gps.hasAlt[i]) out.push(`alt ${c.gps.alt[i].toFixed(1)} m`);
       if (c.gps.unix[i] > 0) out.push(new Date(c.gps.unix[i] * 1000).toISOString().replace('T', ' ').slice(0, 19) + ' UTC');
     }
-    if (c.kind === 'photos') {
-      if (!opts.privacy && c.photos[i]) out.push(c.photos[i].name);
-    } else {
+    if (c.kind !== 'photos') {
       const sp = c.gps.speed[i] >= 0 ? c.gps.speed[i] : c.gps.dspeed[i];
       out.push(`speed ${sp.toFixed(2)} m/s${c.gps.dop[i] > 0 ? ` · dop ${c.gps.dop[i].toFixed(1)}` : ''}`);
     }
@@ -679,6 +764,9 @@ function updateReadout() {
   if (c.accel) { const i = indexAt(t, c.accel.t, c.accel.n); out.push(`|a| ${c.accel.mag[i].toFixed(2)} m/s²`); }
   if (c.att) { const i = indexAt(t, c.att.t, c.att.n);
     out.push(`yaw ${c.att.yaw[i].toFixed(0)}° pitch ${c.att.pitch[i].toFixed(0)}° roll ${c.att.roll[i].toFixed(0)}°`); }
+  const ex = exposureText(c, t);
+  if (ex) out.push(ex);
+  if (c.kind === 'photos' && !opts.privacy && c.photos[Math.round(t)]) out.push(c.photos[Math.round(t)].name);
   dom.readout.innerHTML = out.map(escapeHtml).join('<br>');
 }
 

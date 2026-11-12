@@ -128,19 +128,19 @@ SS_MSG(tab_photos,
     TR("Fotoğraflar"));
 
 SS_MSG(tab_sensors,
-    EN("GPS & IMU"),
-    JA("GPS と IMU"),
-    ZH_HANS("GPS 与 IMU"),
-    ZH_HANT("GPS 與 IMU"),
-    KO("GPS와 IMU"),
-    DE("GPS und IMU"),
-    FR("GPS et IMU"),
-    ES("GPS e IMU"),
-    PT("GPS e IMU"),
-    IT("GPS e IMU"),
-    NL("Gps en IMU"),
-    RU("GPS и IMU"),
-    TR("GPS ve IMU"));
+    EN("Sensors"),
+    JA("センサー"),
+    ZH_HANS("传感器"),
+    ZH_HANT("感測器"),
+    KO("센서"),
+    DE("Sensoren"),
+    FR("Capteurs"),
+    ES("Sensores"),
+    PT("Sensores"),
+    IT("Sensori"),
+    NL("Sensoren"),
+    RU("Датчики"),
+    TR("Algılayıcılar"));
 
 SS_MSG(tab_cloud,
     EN("3D"),
@@ -1427,6 +1427,96 @@ SS_MSG(attitude_photos_help,
        "дроны."),
     TR("Dronların yazdığı gibi, kameranın nereye baktığını kaydeden fotoğraflar."));
 
+SS_MSG(exposure_records,
+    EN("Exposure records: {0}"),
+    JA("露出の記録: {0}"),
+    ZH_HANS("曝光记录：{0}"),
+    ZH_HANT("曝光紀錄：{0}"),
+    KO("노출 기록: {0}"),
+    DE("Belichtungsdaten: {0}"),
+    FR("Relevés d'exposition : {0}"),
+    ES("Registros de exposición: {0}"),
+    PT("Registros de exposição: {0}"),
+    IT("Dati di esposizione: {0}"),
+    NL("Belichtingsgegevens: {0}"),
+    RU("Записи экспозиции: {0}"),
+    TR("Pozlama kayıtları: {0}"));
+
+SS_MSG(exposure_records_help,
+    EN("Shutter speed, ISO and aperture as the camera logged them. Extracted "
+       "frames keep them in EXIF for training."),
+    JA("カメラが記録したシャッタースピード、ISO、絞りです。"
+       "抽出したフレームは EXIF にこれを残し、学習に使えます。"),
+    ZH_HANS("相机记录的快门速度、ISO 和光圈。"
+            "提取的帧会把它们写入 EXIF，供训练使用。"),
+    ZH_HANT("相機記錄的快門速度、ISO 與光圈。"
+            "擷取的影格會把它們寫入 EXIF，供訓練使用。"),
+    KO("카메라가 기록한 셔터 속도, ISO, 조리개입니다. "
+       "추출한 프레임은 이를 EXIF에 담아 학습에 씁니다."),
+    DE("Verschlusszeit, ISO und Blende, wie die Kamera sie protokolliert hat. "
+       "Extrahierte Bilder behalten sie im EXIF für das Training."),
+    FR("Vitesse d'obturation, ISO et ouverture telles que la caméra les a "
+       "enregistrées. Les images extraites les gardent dans l'EXIF pour "
+       "l'entraînement."),
+    ES("Velocidad de obturación, ISO y apertura tal como las registró la "
+       "cámara. Los fotogramas extraídos las guardan en el EXIF para el "
+       "entrenamiento."),
+    PT("Velocidade do obturador, ISO e abertura como a câmera as registrou. Os "
+       "quadros extraídos as guardam no EXIF para o treinamento."),
+    IT("Tempo di posa, ISO e diaframma come li ha registrati la fotocamera. I "
+       "fotogrammi estratti li conservano nell'EXIF per l'addestramento."),
+    NL("Sluitertijd, ISO en diafragma zoals de camera ze vastlegde. "
+       "Geëxtraheerde beelden bewaren ze in de EXIF voor de training."),
+    RU("Выдержка, ISO и диафрагма, как их записала камера. Извлечённые кадры "
+       "хранят их в EXIF для обучения."),
+    TR("Kameranın kaydettiği enstantane hızı, ISO ve diyafram. Çıkarılan "
+       "kareler bunları eğitim için EXIF'te tutar."));
+
+SS_MSG(exposure_photos,
+    EN("Exposure: {0} of {1} photos"),
+    JA("露出: {0} / {1} 枚"),
+    ZH_HANS("曝光：{0} / {1} 张照片"),
+    ZH_HANT("曝光：{0} / {1} 張相片"),
+    KO("노출: 사진 {1}장 중 {0}장"),
+    DE("Belichtung: {0} von {1} Fotos"),
+    FR("Exposition : {0} photos sur {1}"),
+    ES("Exposición: {0} de {1} fotos"),
+    PT("Exposição: {0} de {1} fotos"),
+    IT("Esposizione: {0} foto su {1}"),
+    NL("Belichting: {0} van {1} foto's"),
+    RU("Экспозиция: {0} фото из {1}"),
+    TR("Pozlama: {1} fotoğrafın {0} tanesinde"));
+
+SS_MSG(exposure_photos_help,
+    EN("Photos whose EXIF records shutter speed, ISO or aperture. Training can "
+       "start each photo's exposure from them."),
+    JA("EXIF にシャッタースピード、ISO、絞りのいずれかが記録された写真です。"
+       "学習は各写真の露出をこれから始められます。"),
+    ZH_HANS("EXIF 中记录了快门速度、ISO 或光圈的照片。"
+            "训练可以据此设定每张照片的初始曝光。"),
+    ZH_HANT("EXIF 中記錄了快門速度、ISO 或光圈的相片。"
+            "訓練可以據此設定每張相片的初始曝光。"),
+    KO("EXIF에 셔터 속도, ISO, 조리개 중 하나가 기록된 사진입니다. "
+       "학습은 이것으로 사진마다 노출을 시작할 수 있습니다."),
+    DE("Fotos, deren EXIF Verschlusszeit, ISO oder Blende verzeichnet. Das "
+       "Training kann die Belichtung jedes Fotos daraus beginnen."),
+    FR("Photos dont l'EXIF indique la vitesse d'obturation, l'ISO ou "
+       "l'ouverture. L'entraînement peut en tirer l'exposition initiale de "
+       "chaque photo."),
+    ES("Fotos cuyo EXIF registra la velocidad de obturación, el ISO o la "
+       "apertura. El entrenamiento puede partir de ellos para la exposición de "
+       "cada foto."),
+    PT("Fotos cujo EXIF registra velocidade do obturador, ISO ou abertura. O "
+       "treinamento pode partir deles para a exposição de cada foto."),
+    IT("Foto il cui EXIF registra tempo di posa, ISO o diaframma. "
+       "L'addestramento può partire da questi per l'esposizione di ogni foto."),
+    NL("Foto's waarvan de EXIF sluitertijd, ISO of diafragma vastlegt. De "
+       "training kan de belichting van elke foto daarmee beginnen."),
+    RU("Фотографии, в EXIF которых записаны выдержка, ISO или диафрагма. "
+       "Обучение может начать с них экспозицию каждой фотографии."),
+    TR("EXIF'inde enstantane hızı, ISO ya da diyafram kayıtlı fotoğraflar. "
+       "Eğitim her fotoğrafın pozlamasına bunlardan başlayabilir."));
+
 SS_MSG(gps_distinct,
     EN("Distinct positions: {0}"),
     JA("異なる位置: {0}"),
@@ -2038,6 +2128,66 @@ SS_MSG(plot_step,
     RU("Расстояние от предыдущего фото (м)"),
     TR("Önceki fotoğrafa uzaklık (m)"));
 
+SS_MSG(plot_exposure,
+    EN("Exposure (EV)"),
+    JA("露出 (EV)"),
+    ZH_HANS("曝光 (EV)"),
+    ZH_HANT("曝光 (EV)"),
+    KO("노출 (EV)"),
+    DE("Belichtung (LW)"),
+    FR("Exposition (IL)"),
+    ES("Exposición (EV)"),
+    PT("Exposição (EV)"),
+    IT("Esposizione (EV)"),
+    NL("Belichting (EV)"),
+    RU("Экспозиция (EV)"),
+    TR("Pozlama (EV)"));
+
+SS_MSG(plot_shutter,
+    EN("Shutter speed"),
+    JA("シャッタースピード"),
+    ZH_HANS("快门速度"),
+    ZH_HANT("快門速度"),
+    KO("셔터 속도"),
+    DE("Verschlusszeit"),
+    FR("Vitesse d'obturation"),
+    ES("Velocidad de obturación"),
+    PT("Velocidade do obturador"),
+    IT("Tempo di posa"),
+    NL("Sluitertijd"),
+    RU("Выдержка"),
+    TR("Enstantane hızı"));
+
+SS_MSG(plot_iso,
+    EN("ISO"),
+    JA("ISO 感度"),
+    ZH_HANS("ISO 感光度"),
+    ZH_HANT("ISO 感光度"),
+    KO("ISO 감도"),
+    DE("ISO"),
+    FR("ISO"),
+    ES("ISO"),
+    PT("ISO"),
+    IT("ISO"),
+    NL("ISO"),
+    RU("ISO"),
+    TR("ISO"));
+
+SS_MSG(plot_aperture,
+    EN("Aperture (f-number)"),
+    JA("絞り (F 値)"),
+    ZH_HANS("光圈 (f 值)"),
+    ZH_HANT("光圈 (f 值)"),
+    KO("조리개 (F값)"),
+    DE("Blende (Blendenzahl)"),
+    FR("Ouverture (nombre f)"),
+    ES("Apertura (número f)"),
+    PT("Abertura (número f)"),
+    IT("Diaframma (numero f)"),
+    NL("Diafragma (f-getal)"),
+    RU("Диафрагма (f-число)"),
+    TR("Diyafram (f sayısı)"));
+
 SS_MSG(plots_button,
     EN("Plots…"),
     JA("グラフ…"),
@@ -2266,6 +2416,66 @@ SS_MSG(ch_roll,
     RU("крен"),
     TR("yuvarlanma"));
 
+SS_MSG(ch_total,
+    EN("total"),
+    JA("合計"),
+    ZH_HANS("合计"),
+    ZH_HANT("合計"),
+    KO("합계"),
+    DE("gesamt"),
+    FR("total"),
+    ES("total"),
+    PT("total"),
+    IT("totale"),
+    NL("totaal"),
+    RU("итог"),
+    TR("toplam"));
+
+SS_MSG(ch_shutter,
+    EN("shutter"),
+    JA("シャッター"),
+    ZH_HANS("快门"),
+    ZH_HANT("快門"),
+    KO("셔터"),
+    DE("Verschluss"),
+    FR("obturation"),
+    ES("obturación"),
+    PT("obturador"),
+    IT("tempo"),
+    NL("sluiter"),
+    RU("выдержка"),
+    TR("enstantane"));
+
+SS_MSG(ch_iso,
+    EN("ISO"),
+    JA("ISO"),
+    ZH_HANS("ISO"),
+    ZH_HANT("ISO"),
+    KO("ISO"),
+    DE("ISO"),
+    FR("ISO"),
+    ES("ISO"),
+    PT("ISO"),
+    IT("ISO"),
+    NL("ISO"),
+    RU("ISO"),
+    TR("ISO"));
+
+SS_MSG(ch_aperture,
+    EN("aperture"),
+    JA("絞り"),
+    ZH_HANS("光圈"),
+    ZH_HANT("光圈"),
+    KO("조리개"),
+    DE("Blende"),
+    FR("ouverture"),
+    ES("apertura"),
+    PT("abertura"),
+    IT("diaframma"),
+    NL("diafragma"),
+    RU("диафрагма"),
+    TR("diyafram"));
+
 SS_MSG(diagnostics,
     EN("Diagnostics"),
     JA("診断"),
@@ -2325,6 +2535,81 @@ SS_MSG(hz_value,
     NL("{0} Hz"),
     RU("{0} Гц"),
     TR("{0} Hz"));
+
+SS_MSG(ev_value,
+    EN("{0} EV"),
+    JA("{0} EV"),
+    ZH_HANS("{0} EV"),
+    ZH_HANT("{0} EV"),
+    KO("{0} EV"),
+    DE("{0} LW"),
+    FR("{0} IL"),
+    ES("{0} EV"),
+    PT("{0} EV"),
+    IT("{0} EV"),
+    NL("{0} EV"),
+    RU("{0} EV"),
+    TR("{0} EV"));
+
+SS_MSG(shutter_fraction,
+    EN("1/{0} s"),
+    JA("1/{0} 秒"),
+    ZH_HANS("1/{0} 秒"),
+    ZH_HANT("1/{0} 秒"),
+    KO("1/{0}초"),
+    DE("1/{0} s"),
+    FR("1/{0} s"),
+    ES("1/{0} s"),
+    PT("1/{0} s"),
+    IT("1/{0} s"),
+    NL("1/{0} s"),
+    RU("1/{0} с"),
+    TR("1/{0} sn"));
+
+SS_MSG(shutter_seconds,
+    EN("{0} s"),
+    JA("{0} 秒"),
+    ZH_HANS("{0} 秒"),
+    ZH_HANT("{0} 秒"),
+    KO("{0}초"),
+    DE("{0} s"),
+    FR("{0} s"),
+    ES("{0} s"),
+    PT("{0} s"),
+    IT("{0} s"),
+    NL("{0} s"),
+    RU("{0} с"),
+    TR("{0} sn"));
+
+SS_MSG(iso_value,
+    EN("ISO {0}"),
+    JA("ISO {0}"),
+    ZH_HANS("ISO {0}"),
+    ZH_HANT("ISO {0}"),
+    KO("ISO {0}"),
+    DE("ISO {0}"),
+    FR("ISO {0}"),
+    ES("ISO {0}"),
+    PT("ISO {0}"),
+    IT("ISO {0}"),
+    NL("ISO {0}"),
+    RU("ISO {0}"),
+    TR("ISO {0}"));
+
+SS_MSG(f_value,
+    EN("f/{0}"),
+    JA("f/{0}"),
+    ZH_HANS("f/{0}"),
+    ZH_HANT("f/{0}"),
+    KO("f/{0}"),
+    DE("f/{0}"),
+    FR("f/{0}"),
+    ES("f/{0}"),
+    PT("f/{0}"),
+    IT("f/{0}"),
+    NL("f/{0}"),
+    RU("f/{0}"),
+    TR("f/{0}"));
 
 SS_MSG(tip_photo,
     EN("Photo {0}"),
@@ -2535,6 +2820,21 @@ SS_MSG(tip_gap,
     NL("Geen metingen gedurende {0} s"),
     RU("Нет показаний {0} с"),
     TR("{0} sn boyunca okuma yok"));
+
+SS_MSG(tip_exposure_mean,
+    EN("0 EV is this input's average; +1 EV is twice as bright."),
+    JA("0 EV はこの入力の平均、+1 EV は 2 倍の明るさです。"),
+    ZH_HANS("0 EV 是此输入的平均值，+1 EV 是两倍亮度。"),
+    ZH_HANT("0 EV 是此輸入的平均值，+1 EV 是兩倍亮度。"),
+    KO("0 EV는 이 입력의 평균이고, +1 EV는 두 배 밝기입니다."),
+    DE("0 LW ist der Mittelwert dieser Eingabe; +1 LW ist doppelt so hell."),
+    FR("0 IL est la moyenne de cette entrée ; +1 IL est deux fois plus clair."),
+    ES("0 EV es la media de esta entrada; +1 EV es el doble de brillo."),
+    PT("0 EV é a média desta entrada; +1 EV é o dobro do brilho."),
+    IT("0 EV è la media di questo ingresso; +1 EV è il doppio della luminosità."),
+    NL("0 EV is het gemiddelde van deze invoer; +1 EV is twee keer zo helder."),
+    RU("0 EV — среднее для этого входа; +1 EV — вдвое ярче."),
+    TR("0 EV bu girdinin ortalamasıdır; +1 EV iki kat parlaklıktır."));
 
 // ===========================================================================
 // 3D

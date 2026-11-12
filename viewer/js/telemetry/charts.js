@@ -223,28 +223,38 @@ export class Charts {
         ctx.strokeStyle = row.channels[k].color;
         ctx.lineWidth = 1;
         ctx.beginPath();
-        let prev = null;
+        let prev = null, used = 0;
+        const marks = [];
         for (let i = 0; i < plotW; i++) {
           if (!isFinite(col.lo[i])) continue;
           const x = this.gutter + i + 0.5;
-          const a = yOf(col.hi[i]), b = yOf(col.lo[i]);
-          if (prev !== null && prev.x < x - 1.5) { ctx.moveTo(x, a); }
-          else if (prev !== null) { ctx.lineTo(x, (a + b) / 2); }
+          const a = yOf(col.hi[i]), b = yOf(col.lo[i]), m = (a + b) / 2;
+          if (prev !== null) { ctx.moveTo(prev.x, prev.m); ctx.lineTo(x, m); }
           ctx.moveTo(x, a); ctx.lineTo(x, b);
-          prev = { x, a, b };
+          marks.push([x, m]);
+          prev = { x, m };
+          used++;
         }
         ctx.stroke();
+        // A few samples across the width (a photo folder, a zoomed-in stream)
+        // are joined by straight lines; each sample gets a dot so it shows.
+        if (used * 3 < plotW) {
+          ctx.fillStyle = row.channels[k].color;
+          for (const [x, y] of marks) ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+        }
       }
 
+      // row.fmt reads a value in the row's own terms, e.g. log2 seconds as 1/250 s.
+      const fmt = (v) => (isFinite(v) ? (row.fmt || fmtNum)(v) : '—');
       ctx.fillStyle = CSS.text;
       ctx.textAlign = 'right';
-      ctx.fillText(fmtNum(vmax), this.gutter - 6, yTop + 9);
-      ctx.fillText(fmtNum(vmin), this.gutter - 6, yBot - 1);
+      ctx.fillText(fmt(vmax), this.gutter - 6, yTop + 9);
+      ctx.fillText(fmt(vmin), this.gutter - 6, yBot - 1);
       ctx.textAlign = 'left';
       const head = row.label + (row.unit ? `  [${row.unit}]` : '');
       const parts = [[head, CSS.dim]];
       for (const ch of row.channels)
-        parts.push([this.hover ? `${ch.name} ${fmtNum(this.valueAt(ch, this.tOf(this.hover[0])))}` : ch.name, ch.color]);
+        parts.push([this.hover ? `${ch.name} ${fmt(this.valueAt(ch, this.tOf(this.hover[0])))}` : ch.name, ch.color]);
       let lx = this.gutter + 5;
       const wTotal = parts.reduce((s2, [t]) => s2 + ctx.measureText(t).width + 11, 0);
       ctx.fillStyle = 'rgba(18,20,27,0.82)';

@@ -11,15 +11,15 @@ What it shows depends on what the input is:
 
 | input | tabs |
 |---|---|
-| video | Video (frames, the timeline, playback and the clip), GPS & IMU, Details |
-| photo folder | Photos (grid and single view), GPS & IMU, Details |
+| video | Video (frames, the timeline, playback and the clip), Sensors, Details |
+| photo folder | Photos (grid and single view), Sensors, Details |
 | a dataset's photos | the same, plus 3D: the reconstruction already there |
 | laser scan | 3D (points, and the scanner's photographs as cameras), Photos (an E57's images), Details |
 
-The first tab is the one a new user needs; Details and the GPS & IMU tab's
+The first tab is the one a new user needs; Details and the Sensors tab's
 Diagnostics (the reader's own report, in English like every deep diagnostic)
-are for the user who wants to know why. GPS & IMU appears only once something
-was found: a phone video with neither has no tab to puzzle over.
+are for the user who wants to know why. Sensors appears only once a GPS, an
+IMU or an exposure was found: a phone video with none has no tab to puzzle over.
 
 ## Video
 
@@ -42,7 +42,7 @@ track, a seek within 0.3 s for both tracks, and 24 fps playback with none
 dropped; a GoPro MAX `.360` stitched plays at its 30 fps. While the playhead
 is dragged frames are decoded at the pane's size as fast as they come, and at
 2048 px once it rests. Space (or Play) plays at the video's own speed, read a
-few frames ahead; the GPS & IMU tab's playhead follows, and Space works there
+few frames ahead; the Sensors tab's playhead follows, and Space works there
 too. The decoders hold ~1.5 GB of device memory for that pair, given back
 after 10 s idle and whenever the device is taken back.
 
@@ -101,10 +101,11 @@ few KB read. At most a few hundred thumbnails stay on the GPU. Clicking one
 opens it at the pane's size (arrows, Home/End, Escape); masks that came with
 the folder are tinted in. Pictures are shown upright, as the run reads them.
 
-## GPS and IMU
+## Sensors: GPS, IMU and exposure
 
 `SensorView` reads a video's track with the reconstruction's own reader and
-checks (`sfm/core/Telemetry.h`), and a folder's EXIF GPS and drone attitude.
+checks (`sfm/core/Telemetry.h`), and a folder's EXIF GPS, exposure and drone
+attitude.
 
 - The map is metric -- metres east and north of the track's mean, a scale bar,
   north up -- with no basemap: tiles would mean sending the location to a tile
@@ -137,6 +138,24 @@ checks (`sfm/core/Telemetry.h`), and a folder's EXIF GPS and drone attitude.
   gimbal's direction, yaw left as written.
 - Plain verdicts over the map ("GPS: looks usable", "Distinct positions: 45"
   when a phone repeated one stale fix), with the checks' own warnings on hover.
+
+**Exposure.** What a camera logs per frame (GoPro `SHUT`/`ISOE`, the
+Insta360 trailer's shutter, DJI's ISO and shutter, a QooCam's `EXP`) or a
+photo's EXIF records (with the APEX tags as fallback) is plotted in stops:
+
+- **Exposure (EV)** -- shown by default. Each factor as the light it lets in
+  (log2 t, log2 ISO, -2 log2 N) about its own mean, and their sum over the
+  factors every record has, which is what `--ppisp-exposure-from-exif`
+  compares; 0 is the input's mean, +1 twice as bright. Factors that do not
+  move are left out of it; with only one factor logged, the sum is that factor.
+- **Shutter speed, ISO, Aperture** -- hidden until picked: each on a log axis,
+  read as 1/250 s, ISO 400, f/2.8. Hovering any of the four reads the record's
+  own values.
+
+A bracketed set is a sawtooth in the first plot, and a camera walking from
+shade into sun a step. "Exposure records: n" (a video) or "Exposure: n of m
+photos" sits with the verdicts; a video's frames carry the same values into
+their EXIF when they are extracted (`docs/datasets.md`).
 
 **All-zero GPS.** A receiver with no fix writes latitude 0, longitude 0. Such
 samples are dropped by `telemetry_read` itself (`Telemetry::gps_zero` counts

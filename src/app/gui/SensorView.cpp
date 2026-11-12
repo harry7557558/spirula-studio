@@ -181,19 +181,72 @@ const spirula::i18n::Msg& series_name(const SensorSeries& s, bool video) {
         case SensorSeries::Attitude: return video ? pmsg::plot_attitude : pmsg::plot_gimbal;
         case SensorSeries::Magnet: return pmsg::plot_magnet;
         case SensorSeries::Step: return pmsg::plot_step;
+        case SensorSeries::Exposure: return pmsg::plot_exposure;
+        case SensorSeries::Shutter: return pmsg::plot_shutter;
+        case SensorSeries::Iso: return pmsg::plot_iso;
+        case SensorSeries::Aperture: return pmsg::plot_aperture;
     }
     return pmsg::plot_speed;
 }
 
 ImU32 channel_colour(const SensorSeries& s, int c) {
+    if (s.ink[c]) return s.ink[c];
     if (s.channel[c] && (s.kind == SensorSeries::Speed || s.kind == SensorSeries::Altitude))
         return c == 0 ? kChannel[2] : kSecond;
-    return kChannel[c];
+    return kChannel[c % 3];
 }
 
 const char* channel_label(const SensorSeries& s, int c) {
     static const char* const xyz[3] = {"x", "y", "z"};
-    return s.channel[c] ? s.channel[c]->get() : xyz[c];
+    return s.channel[c] ? s.channel[c]->get() : xyz[c % 3];
+}
+
+std::string shutter_text(double s) {
+    if (s >= 0.3) return spirula::i18n::format(pmsg::shutter_seconds, {fixed(s, s < 10.0 ? 1 : 0)});
+    return spirula::i18n::format(pmsg::shutter_fraction, {fixed(1.0 / s, 0)});
+}
+
+// A reading as the plot's quantity is read: an exposure time as 1/250 s.
+std::string value_text(const SensorSeries& s, float v, int digits) {
+    switch (s.kind) {
+        case SensorSeries::Exposure: {
+            const std::string n = fixed(std::fabs(v) < 0.05f ? 0.0f : v, 1);
+            return spirula::i18n::format(pmsg::ev_value, {v >= 0.05f ? "+" + n : n});
+        }
+        case SensorSeries::Shutter: return shutter_text(std::exp2((double)v));
+        case SensorSeries::Iso:
+            return spirula::i18n::format(pmsg::iso_value, {fixed(std::exp2((double)v), 0)});
+        case SensorSeries::Aperture:
+            return spirula::i18n::format(pmsg::f_value, {fixed(std::exp2((double)v), 1)});
+        default: return fixed(v, digits);
+    }
+}
+
+bool is_exposure(const SensorSeries& s) {
+    return s.kind == SensorSeries::Exposure || s.kind == SensorSeries::Shutter ||
+           s.kind == SensorSeries::Iso || s.kind == SensorSeries::Aperture;
+}
+
+// The record at `t`: the nearest frame's, or exactly that photo's.
+const SensorExposure* exposure_at(const SensorData& d, double t) {
+    const std::vector<SensorExposure>& e = d.exposure;
+    auto it = std::lower_bound(e.begin(), e.end(), (float)t,
+                               [](const SensorExposure& a, float v) { return a.t < v; });
+    if (it == e.end() || (it != e.begin() && t - it[-1].t < it->t - t)) {
+        if (it == e.begin()) return nullptr;
+        --it;
+    }
+    if (!d.video && std::fabs(it->t - t) > 0.5) return nullptr;
+    return &*it;
+}
+
+std::string exposure_text(const SensorExposure& e) {
+    std::string out;
+    auto add = [&](const std::string& part) { out += (out.empty() ? "" : "  ·  ") + part; };
+    if (e.shutter > 0.0f) add(shutter_text(e.shutter));
+    if (e.iso > 0.0f) add(spirula::i18n::format(pmsg::iso_value, {fixed(e.iso, 0)}));
+    if (e.fnum > 0.0f) add(spirula::i18n::format(pmsg::f_value, {fixed(e.fnum, 1)}));
+    return out;
 }
 
 // What one fix says, under the pointer on the map or the 3D track.
@@ -254,6 +307,84 @@ void set_gap(SensorSeries& s) {
     if (dt.size() < 3) return;
     std::nth_element(dt.begin(), dt.begin() + dt.size() / 2, dt.end());
     s.gap = std::max(5.0f * dt[dt.size() / 2], 0.5f);
+}
+
+// Each factor as the stops of light it lets in (log2 t, log2 ISO, -2 log2 N),
+// and their sum over the factors every record has, which is what
+// --ppisp-exposure-from-exif compares (app/TrainerCore.cpp). 0 is the mean.
+void add_exposure(SensorData& d) {
+    const std::vector<SensorExposure>& in = d.exposure;
+    if (in.empty()) return;
+    const float none = std::numeric_limits<float>::quiet_NaN();
+    const SensorSeries::Kind kinds[3] = {SensorSeries::Shutter, SensorSeries::Iso, SensorSeries::Aperture};
+    const spirula::i18n::Msg* names[3] = {&pmsg::ch_shutter, &pmsg::ch_iso, &pmsg::ch_aperture};
+    std::vector<float> stops[3];
+    unsigned common = 7, any = 0;
+    for (const SensorExposure& e : in) {
+        const float f[3] = {e.shutter > 0.0f ? std::log2(e.shutter) : none,
+                            e.iso > 0.0f ? std::log2(e.iso) : none,
+                            e.fnum > 0.0f ? -2.0f * std::log2(e.fnum) : none};
+        unsigned has = 0;
+        for (int k = 0; k < 3; k++) {
+            stops[k].push_back(f[k]);
+            if (std::isfinite(f[k])) has |= 1u << k;
+        }
+        common &= has;
+        any |= has;
+    }
+    double mean[3] = {0, 0, 0};
+    float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
+    for (int k = 0; k < 3; k++) {
+        size_t n = 0;
+        for (float v : stops[k])
+            if (std::isfinite(v)) {
+                mean[k] += v;
+                lo[k] = std::min(lo[k], v);
+                hi[k] = std::max(hi[k], v);
+                n++;
+            }
+        if (n) mean[k] /= (double)n;
+    }
+    if (common) {
+        SensorSeries& s = add_series(d, SensorSeries::Exposure, 1);
+        const int factors = (common & 1) + (common >> 1 & 1) + (common >> 2 & 1);
+        std::vector<int> shown;   // factors drawn beside the sum: those that moved
+        for (int k = 0; k < 3; k++)
+            if (common >> k & 1u && (factors == 1 || hi[k] - lo[k] > 0.05f)) shown.push_back(k);
+        if (factors == 1) {
+            s.channel[0] = names[shown[0]];
+            s.ink[0] = kChannel[shown[0]];
+        } else {
+            s.channels = 1 + (int)shown.size();
+            s.channel[0] = &pmsg::ch_total;
+            s.ink[0] = IM_COL32(232, 232, 232, 255);
+            for (size_t c = 0; c < shown.size(); c++) {
+                s.channel[c + 1] = names[shown[c]];
+                s.ink[c + 1] = kChannel[shown[c]];
+            }
+        }
+        for (size_t i = 0; i < in.size(); i++) {
+            s.t.push_back(in[i].t);
+            float total = 0.0f;
+            for (int k = 0; k < 3; k++)
+                if (common >> k & 1u) total += stops[k][i] - (float)mean[k];
+            s.v[0].push_back(total);
+            if (factors > 1)
+                for (size_t c = 0; c < shown.size(); c++)
+                    s.v[c + 1].push_back(stops[shown[c]][i] - (float)mean[shown[c]]);
+        }
+        s.rate_hz = d.video ? median_rate(s.t) : 0.0;
+    }
+    for (int k = 0; k < 3; k++) {
+        if (!(any >> k & 1u)) continue;
+        SensorSeries& s = add_series(d, kinds[k], 1);
+        s.ink[0] = kChannel[k];
+        for (size_t i = 0; i < in.size(); i++) {
+            s.t.push_back(in[i].t);
+            s.v[0].push_back(k == 2 ? stops[k][i] / -2.0f : stops[k][i]);
+        }
+        s.rate_hz = d.video ? median_rate(s.t) : 0.0;
+    }
 }
 
 #ifdef SS_TOOL_SFM
@@ -408,6 +539,17 @@ std::shared_ptr<SensorData> read_video(const std::string& path) {
         unwrap_deg(s.v[0]);
         unwrap_deg(s.v[2]);
     }
+    for (const sfm::TelemetryExposure& e : t.exposure) {
+        SensorExposure x;
+        x.t = (float)e.t;
+        x.shutter = (float)e.shutter;
+        x.iso = (float)e.iso;
+        x.fnum = (float)e.fnum;
+        if (x.shutter > 0.0f || x.iso > 0.0f || x.fnum > 0.0f) d->exposure.push_back(x);
+    }
+    std::stable_sort(d->exposure.begin(), d->exposure.end(),
+                     [](const SensorExposure& a, const SensorExposure& b) { return a.t < b.t; });
+    add_exposure(*d);
     for (SensorSeries& s : d->series) set_gap(s);
     return d;
 }
@@ -535,6 +677,7 @@ void SensorView::load_photos(const std::string& key, std::vector<std::string> fi
             // Yaw as written: a survey turns about between its lines, and
             // unwrapping those turns would wind it up by thousands of degrees.
             if (!look.empty()) snap->series.push_back(look);
+            add_exposure(*snap);
             std::lock_guard<std::mutex> lk(_mu);
             if (!_cancel.load()) _data = std::move(snap);
         };
@@ -570,6 +713,17 @@ void SensorView::load_photos(const std::string& key, std::vector<std::string> fi
                 look.v[1].push_back((float)a.pitch_deg);
                 look.v[2].push_back((float)a.roll_deg);
                 d.with_attitude++;
+            }
+            SensorExposure x;
+            x.t = (float)i;
+            x.shutter = (float)(e.exposure_time > 0 ? e.exposure_time
+                                : std::isfinite(e.shutter_apex) ? std::exp2(-e.shutter_apex) : -1.0);
+            x.fnum = (float)(e.f_number > 0 ? e.f_number
+                             : std::isfinite(e.aperture_apex) ? std::exp2(e.aperture_apex / 2) : -1.0);
+            x.iso = e.iso > 0 ? (float)e.iso : -1.0f;
+            if (x.shutter > 0.0f || x.iso > 0.0f || x.fnum > 0.0f) {
+                d.exposure.push_back(x);
+                d.with_exposure++;
             }
             d.zero += e.gps_zero;
             d.scanned = (int)i + 1;
@@ -607,6 +761,10 @@ void SensorView::draw_status(const SensorData& d) {
         else if (d.imu_usable) chip(kGood, pmsg::imu_usable.get(), imu_tip);
         else chip(kWarn, pmsg::imu_unusable.get(),
                   imu_tip.empty() ? std::string(pmsg::imu_unusable_help.get()) : imu_tip);
+        if (!d.exposure.empty())
+            chip(kGood, spirula::i18n::format(pmsg::exposure_records,
+                                              {count_text((long long)d.exposure.size())}),
+                 pmsg::exposure_records_help.get());
     } else {
         const ImVec4 c = d.with_gps == 0 ? ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]
                          : d.with_gps < d.photos ? kWarn : kGood;
@@ -617,6 +775,11 @@ void SensorView::draw_status(const SensorData& d) {
             chip(kGood, spirula::i18n::format(pmsg::attitude_photos,
                                               {count_text(d.with_attitude), count_text(d.photos)}),
                  pmsg::attitude_photos_help.get());
+        if (d.with_exposure > 0)
+            chip(d.with_exposure < d.photos ? kWarn : kGood,
+                 spirula::i18n::format(pmsg::exposure_photos,
+                                       {count_text(d.with_exposure), count_text(d.photos)}),
+                 pmsg::exposure_photos_help.get());
         if (d.with_gps > 0 && d.distinct * 4 < (size_t)d.with_gps)
             chip(kWarn, spirula::i18n::format(pmsg::gps_distinct, {count_text((long long)d.distinct)}),
                  pmsg::gps_distinct_help.get());
@@ -658,11 +821,11 @@ SensorView::Result SensorView::draw(float height, double playhead, double clip_s
         ui::TextDisabledWrapped(pmsg::sensors_not_in_build);
         return r;
     }
-    if (d.video && !d.has_gps && !d.has_imu) {
+    if (d.video && !d.has_gps && !d.has_imu && d.exposure.empty()) {
         ui::TextDisabledWrapped(pmsg::sensors_none_video);
         return r;
     }
-    if (!d.video && d.done && d.with_gps == 0 && d.with_attitude == 0) {
+    if (!d.video && d.done && d.with_gps == 0 && d.with_attitude == 0 && d.with_exposure == 0) {
         draw_status(d);
         ui::TextDisabledWrapped(pmsg::sensors_none_photos);
         return r;
@@ -1286,7 +1449,7 @@ void SensorView::draw_series(const SensorData& d, const SensorSeries& s, float h
         bool any = false;
     };
     const int cols = std::max(1, (int)w);
-    std::vector<Col> col[3];
+    std::vector<Col> col[4];
     for (int c = 0; c < s.channels; c++) col[c].assign((size_t)cols, Col{});
     const size_t i0 = (size_t)std::max<std::ptrdiff_t>(
         0, std::lower_bound(s.t.begin(), s.t.end(), (float)t0) - s.t.begin() - 1);
@@ -1316,6 +1479,7 @@ void SensorView::draw_series(const SensorData& d, const SensorSeries& s, float h
         vmin = std::min(vmin, s.reference);
         vmax = std::max(vmax, s.reference);
     }
+    const bool flat = vmax == vmin;
     if (!(vmax > vmin)) {
         const float mid = vmax >= vmin ? vmin : 0.0f;
         vmin = mid - 1.0f;
@@ -1337,7 +1501,8 @@ void SensorView::draw_series(const SensorData& d, const SensorSeries& s, float h
         for (float x = at.x; x < br.x; x += px(8.0f))
             dl->AddLine(ImVec2(x, y), ImVec2(std::min(x + px(4.0f), br.x), y), c);
     };
-    if (vmin < 0.0f && vmax > 0.0f) dashed(0.0f, IM_COL32(255, 255, 255, 40));
+    const bool log2_axis = is_exposure(s) && s.kind != SensorSeries::Exposure;
+    if (vmin < 0.0f && vmax > 0.0f && !log2_axis) dashed(0.0f, IM_COL32(255, 255, 255, 40));
     if (s.reference >= 0.0f) dashed(s.reference, IM_COL32(255, 255, 255, 70));
 
     // Where a stream stops reporting for longer than its own rhythm: shaded,
@@ -1406,7 +1571,8 @@ void SensorView::draw_series(const SensorData& d, const SensorSeries& s, float h
         put(spirula::i18n::format(pmsg::hz_value, {fixed(s.rate_hz, s.rate_hz < 10.0 ? 1 : 0)}).c_str(),
             dim, 0.0f);
     const int digits = vmax - vmin < 10.0f ? 2 : vmax - vmin < 100.0f ? 1 : 0;
-    const std::string range = fixed(vmin, digits) + " – " + fixed(vmax, digits);
+    const std::string range = flat ? value_text(s, vmin + 1.0f, digits)
+                                   : value_text(s, vmin, digits) + " – " + value_text(s, vmax, digits);
     const float rw = ImGui::CalcTextSize(range.c_str()).x;
     if (cur.x + px(10.0f) < br.x - rw - px(5.0f))
         dl->AddText(ImVec2(br.x - rw - px(5.0f), at.y + px(1.0f)), dim, range.c_str());
@@ -1439,11 +1605,16 @@ void SensorView::draw_series(const SensorData& d, const SensorSeries& s, float h
                 }
                 sq += (double)v * v;
                 const ImVec4 c = ImGui::ColorConvertU32ToFloat4(channel_colour(s, ch));
-                ui::TextColoredRaw(c, std::string(channel_label(s, ch)) + "  " + fixed(v, 2));
+                const bool named = s.channels > 1 || s.channel[ch];
+                ui::TextColoredRaw(c, (named ? std::string(channel_label(s, ch)) + "  " : std::string()) +
+                                          value_text(s, v, 2));
             }
             const bool vector = s.kind == SensorSeries::Rotation || s.kind == SensorSeries::Acceleration ||
                                 s.kind == SensorSeries::Gravity || s.kind == SensorSeries::Magnet;
             if (vector && all) ui::Text(pmsg::tip_magnitude, {fixed(std::sqrt(sq), 2)});
+            if (is_exposure(s))
+                if (const SensorExposure* e = exposure_at(d, tm)) ui::TextRaw(exposure_text(*e));
+            if (s.kind == SensorSeries::Exposure) ui::TextDisabled(pmsg::tip_exposure_mean);
             for (const auto& [a, b] : holes)
                 if (tm >= a && tm <= b) ui::TextColored(kBad, pmsg::tip_gap, {fixed(b - a, 1)});
             ui::TextDisabled(d.video ? pmsg::plot_help : pmsg::plot_help_photos);

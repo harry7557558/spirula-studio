@@ -36,10 +36,11 @@ std::string         g_report;
 std::string         g_error;
 
 // Interleaved copies handed to JS as typed-array views: (t,x,y,z) per vector
-// reading, (t,w,x,y,z) per attitude, and nine f64 per fix -- lat/lon need the
-// double.
+// reading, (t,w,x,y,z) per attitude, (t,shutter,iso,fnum) per exposure, and
+// nine f64 per fix -- lat/lon need the double.
 std::vector<float>  g_vec[4];
 std::vector<float>  g_quat;
+std::vector<float>  g_expo;
 std::vector<double> g_gps;
 
 void jstr(std::string& o, const std::string& s) {
@@ -103,6 +104,11 @@ void build_result() {
     for (const sfm::TelemetryQuat& q : g_t.orientation) {
         g_quat.push_back((float)q.t); g_quat.push_back((float)q.w);
         g_quat.push_back((float)q.x); g_quat.push_back((float)q.y); g_quat.push_back((float)q.z);
+    }
+    g_expo.clear();
+    for (const sfm::TelemetryExposure& e : g_t.exposure) {
+        g_expo.push_back((float)e.t); g_expo.push_back((float)e.shutter);
+        g_expo.push_back((float)e.iso); g_expo.push_back((float)e.fnum);
     }
     g_gps.clear();
     for (const sfm::TelemetryGps& g : g_t.gps) {
@@ -171,18 +177,19 @@ KEEP int sst_scan(double size) {
         g_t, g_error);
     if (!ok) { g_json.clear(); g_report.clear(); return -1; }
     build_result();
-    return g_t.empty() ? 0 : 1;
+    return g_t.empty() && g_t.exposure.empty() ? 0 : 1;
 }
 
 KEEP const char* sst_json() { return g_json.c_str(); }
 KEEP const char* sst_report() { return g_report.c_str(); }
 KEEP const char* sst_error() { return g_error.c_str(); }
 
-// which: 0 gyro, 1 accel, 2 gravity, 3 magnet, 4 orientation, 5 gps.
+// which: 0 gyro, 1 accel, 2 gravity, 3 magnet, 4 orientation, 5 gps, 6 exposure.
 KEEP void* sst_stream(int which) {
     if (which >= 0 && which < 4) return g_vec[which].data();
     if (which == 4) return g_quat.data();
     if (which == 5) return g_gps.data();
+    if (which == 6) return g_expo.data();
     return nullptr;
 }
 
@@ -190,11 +197,13 @@ KEEP int sst_stream_count(int which) {
     if (which >= 0 && which < 4) return (int)(g_vec[which].size() / 4);
     if (which == 4) return (int)(g_quat.size() / 5);
     if (which == 5) return (int)(g_gps.size() / 9);
+    if (which == 6) return (int)(g_expo.size() / 4);
     return 0;
 }
 
-// A still's EXIF, from the head of a JPEG. One GPS fix and the lens identity
-// is all a photo carries, so it comes back as JSON rather than a stream.
+// A still's EXIF, from the head of a JPEG. One GPS fix, one exposure and the
+// lens identity is all a photo carries, so it comes back as JSON rather than a
+// stream. Exposure falls back to the APEX tags, as the trainer reads them.
 KEEP const char* sst_exif(const uint8_t* data, int len) {
     g_json.clear();
     sfm::ExifData e;
@@ -223,6 +232,11 @@ KEEP const char* sst_exif(const uint8_t* data, int len) {
     jkv(j, "alt", e.has_alt ? e.alt_m : 0.0);
     jkv(j, "hasAlt", e.has_alt ? 1 : 0);
     jkv(j, "focalMm", e.focal_mm);
+    jkv(j, "exposureTime", e.exposure_time > 0 ? e.exposure_time
+                           : std::isfinite(e.shutter_apex) ? std::exp2(-e.shutter_apex) : 0.0);
+    jkv(j, "fNumber", e.f_number > 0 ? e.f_number
+                      : std::isfinite(e.aperture_apex) ? std::exp2(e.aperture_apex / 2) : 0.0);
+    jkv(j, "iso", e.iso);
     jkv(j, "width", e.pixel_width);
     jkv(j, "height", e.pixel_height);
     j += "\"make\":"; jstr(j, e.make); j += ',';

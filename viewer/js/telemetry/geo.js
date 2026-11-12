@@ -127,21 +127,66 @@ export function buildGps(a) {
   return g;
 }
 
+// Shutter, ISO and aperture as the stops of light each lets in (log2 t,
+// log2 ISO, -2 log2 N), each about its own mean, and their sum over the factors
+// every record has: what the trainer's --ppisp-exposure-from-exif compares.
+export function buildExposure(t, shutter, iso, fnum) {
+  const n = t.length, val = [shutter, iso, fnum];
+  const log2 = [0, 1, 2].map(() => new Float32Array(n));
+  const stops = [0, 1, 2].map(() => new Float32Array(n));
+  let common = 7, any = 0;
+  for (let i = 0; i < n; i++) {
+    let has = 0;
+    for (let k = 0; k < 3; k++) {
+      const l = val[k][i] > 0 ? Math.log2(val[k][i]) : NaN;
+      log2[k][i] = l;
+      stops[k][i] = k === 2 ? -2 * l : l;
+      if (l === l) has |= 1 << k;
+    }
+    common &= has;
+    any |= has;
+  }
+  const varies = [false, false, false];
+  for (let k = 0; k < 3; k++) {
+    let sum = 0, m = 0, lo = Infinity, hi = -Infinity;
+    for (const v of stops[k]) if (v === v) { sum += v; m++; lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    for (let i = 0; i < n; i++) stops[k][i] -= m ? sum / m : 0;
+    varies[k] = hi - lo > 0.05;
+  }
+  let total = null;
+  if (common) {
+    total = new Float32Array(n);
+    for (let i = 0; i < n; i++)
+      for (let k = 0; k < 3; k++) if (common >> k & 1) total[i] += stops[k][i];
+  }
+  const rate = n > 1 && t[n - 1] > t[0] ? (n - 1) / (t[n - 1] - t[0]) : 0;
+  return { n, t, shutter, iso, fnum, log2, stops, total, common, any, varies, rate };
+}
+
+function splitExposure(a) {
+  if (!a) return null;
+  const n = a.length / 4;
+  const order = Array.from({ length: n }, (_, i) => i).sort((x, y) => a[x * 4] - a[y * 4]);
+  const t = new Float32Array(n), sh = new Float32Array(n), iso = new Float32Array(n), fn = new Float32Array(n);
+  order.forEach((j, i) => { t[i] = a[j * 4]; sh[i] = a[j * 4 + 1]; iso[i] = a[j * 4 + 2]; fn[i] = a[j * 4 + 3]; });
+  return n ? buildExposure(t, sh, iso, fn) : null;
+}
+
 const CLIP_COLORS = [
   [0.31, 0.62, 0.97], [0.98, 0.66, 0.25], [0.36, 0.83, 0.53], [0.92, 0.42, 0.52],
   [0.63, 0.51, 0.94], [0.30, 0.82, 0.83], [0.90, 0.83, 0.35], [0.85, 0.55, 0.85],
 ];
 
-// Geotagged stills are collected per folder rather than one clip each: a
-// shoot is one set of camera positions, and 500 list rows would be unusable.
-// The time axis is the photo index, in name order.
+// Stills with a position or an exposure are collected per folder rather than
+// one clip each: a shoot is one set of camera positions, and 500 list rows
+// would be unusable. The time axis is the photo index, in name order.
 export function makePhotoClip(folder, index) {
   return {
     id: `photo:${folder}`, path: folder, name: folder.replace(/\/$/, '').split('/').pop() || 'photos',
     size: 0, kind: 'photos', color: CLIP_COLORS[index % CLIP_COLORS.length],
     visible: true, report: '', photos: [],
-    meta: { carrier: 'EXIF GPS', camera: '', duration: 0, fps: 0, unixStart: 0, notes: [], check: {} },
-    gps: null, gyro: null, accel: null, gravity: null, magnet: null, att: null,
+    meta: { carrier: 'EXIF', camera: '', duration: 0, fps: 0, unixStart: 0, notes: [], check: {} },
+    gps: null, gyro: null, accel: null, gravity: null, magnet: null, att: null, expo: null,
     duration: 0, local: null,
   };
 }
@@ -149,30 +194,39 @@ export function makePhotoClip(folder, index) {
 export function addPhoto(clip, msg) {
   const e = msg.exif;
   clip.photos.push({
-    name: msg.path.split('/').pop(),
+    name: msg.path.split('/').pop(), hasGps: !!e.hasGps,
     lat: e.lat, lon: e.lon, alt: e.hasAlt ? e.alt : 0, hasAlt: !!e.hasAlt,
     unix: (msg.lastModified || 0) / 1000,
     camera: [e.make, e.model].filter(Boolean).join(' '),
     px: e.width && e.height ? `${e.width}x${e.height}` : '',
     focal: e.focalMm || 0,
+    shutter: e.exposureTime || 0, iso: e.iso || 0, fnum: e.fNumber || 0,
   });
   clip.photos.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const n = clip.photos.length;
-  const a = new Float64Array(n * 9);
-  for (let i = 0; i < n; i++) {
+  const fixes = [], exposed = [];
+  clip.photos.forEach((p, i) => {
+    if (p.hasGps) fixes.push(i);
+    if (p.shutter > 0 || p.iso > 0 || p.fnum > 0) exposed.push(i);
+  });
+  const a = new Float64Array(fixes.length * 9);
+  fixes.forEach((i, k) => {
     const p = clip.photos[i];
-    a[i * 9] = i; a[i * 9 + 1] = p.unix; a[i * 9 + 2] = p.lat; a[i * 9 + 3] = p.lon;
-    a[i * 9 + 4] = p.alt; a[i * 9 + 5] = (p.hasAlt ? 1 : 0) + 2;
-    a[i * 9 + 6] = -1; a[i * 9 + 7] = -1; a[i * 9 + 8] = 0;
-  }
-  clip.gps = buildGps(a);
+    a[k * 9] = i; a[k * 9 + 1] = p.unix; a[k * 9 + 2] = p.lat; a[k * 9 + 3] = p.lon;
+    a[k * 9 + 4] = p.alt; a[k * 9 + 5] = (p.hasAlt ? 1 : 0) + 2;
+    a[k * 9 + 6] = -1; a[k * 9 + 7] = -1; a[k * 9 + 8] = 0;
+  });
+  clip.gps = fixes.length ? buildGps(a) : null;
+  const pick = (key) => Float32Array.from(exposed, (i) => clip.photos[i][key] || -1);
+  clip.expo = exposed.length ? buildExposure(Float32Array.from(exposed), pick('shutter'), pick('iso'), pick('fnum')) : null;
   clip.duration = Math.max(1, n - 1);
   const cams = Array.from(new Set(clip.photos.map((p) => p.camera).filter(Boolean)));
   clip.meta.camera = cams.slice(0, 2).join(', ') + (cams.length > 2 ? `, +${cams.length - 2}` : '');
-  clip.meta.check = { gpsUsable: n > 0, gps: { count: n, tFirst: 0, tLast: n - 1, rate: 0 } };
-  const withAlt = clip.photos.filter((p) => p.hasAlt).length;
-  clip.report = [`${n} geotagged photo${n === 1 ? '' : 's'} in ${clip.path || '.'}`,
-                 `${withAlt} with an altitude`,
+  clip.meta.check = { gpsUsable: fixes.length > 0, gps: { count: fixes.length, tFirst: 0, tLast: n - 1, rate: 0 } };
+  const withAlt = clip.photos.filter((p) => p.hasGps && p.hasAlt).length;
+  clip.report = [`${n} photo${n === 1 ? '' : 's'} in ${clip.path || '.'}`,
+                 `${fixes.length} geotagged, ${withAlt} with an altitude`,
+                 `${exposed.length} with an exposure`,
                  cams.length ? `cameras: ${cams.join(', ')}` : 'no camera identity in EXIF'].join('\n');
 }
 
@@ -184,7 +238,7 @@ export function makeClip(msg, index) {
     color: CLIP_COLORS[index % CLIP_COLORS.length],
     visible: true, report: msg.report || '',
     meta: msg.meta || {}, gps: null, gyro: null, accel: null, gravity: null,
-    magnet: null, att: null, duration: 0, local: null,
+    magnet: null, att: null, expo: null, duration: 0, local: null,
   };
   const s = msg.streams || {};
   clip.gyro = splitVec(s.gyro);
@@ -197,8 +251,9 @@ export function makeClip(msg, index) {
     clip.att.rollU = unwrapDeg(clip.att.roll);
   }
   if (s.gps) clip.gps = buildGps(s.gps);
+  clip.expo = splitExposure(s.exposure);
   clip.duration = msg.meta.duration || 0;
-  for (const st of [clip.gyro, clip.accel, clip.gravity, clip.att, clip.gps])
+  for (const st of [clip.gyro, clip.accel, clip.gravity, clip.att, clip.gps, clip.expo])
     if (st && st.n) clip.duration = Math.max(clip.duration, st.t[st.n - 1]);
   return clip;
 }
