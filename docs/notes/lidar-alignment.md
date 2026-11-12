@@ -164,8 +164,11 @@ taken for it. Every case above was exercised on the FJD workspace
   differ from the interpolated ones by 0.17 deg (median), 0.42 deg at the 90th
   percentile. An interval the gyro does not cover, or whose gap exceeds 2 deg,
   keeps the interpolation, as does a capture without a readable `/imu`. The
-  photographs are extracted like an E57's (`app/XbinAnchors.h`: ffmpeg decodes
-  each camera's frames, which are all intra-coded), with poses from the same trajectory and
+  photographs are extracted like an E57's (`app/XbinAnchors.h`: each camera's
+  frames, which are all intra-coded, are decoded as a video's frames are -- in a
+  build with the in-process decoder they go into an MP4 that the GPU decodes,
+  or ffmpeg when the device cannot or "Extract frames with ffmpeg" is on; a
+  build without it gives the stream to ffmpeg), with poses from the same trajectory and
   their own lenses -- two `OPENCV_FISHEYE`, two `OPENCV` -- so "Use the
   scanner's camera poses" needs no reconstruction. "Add LiDAR scan..." takes
   the `.xbin`, and a capture folder dropped or added as a dataset is taken as

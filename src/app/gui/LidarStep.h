@@ -27,7 +27,7 @@ struct LidarJob {
     std::map<std::string, std::vector<app::lidar::XbinCameraPick>> xbin_cameras;
     // Captures whose photographs only place the model: in the reconstruction, not the dataset.
     std::set<std::string> xbin_place_only;
-    std::string ffmpeg_exe = "ffmpeg";   // decodes an XGRIDS capture's frames
+    app::lidar::XbinDecoder decoder;   // an XGRIDS capture's frames
     bool scan_photos = true;           // an E57's photographs join the reconstruction
     bool in_frame = false;             // the model is already in the scans' frame
     bool scanner_only = false;         // its photographs are all the images: no reconstruction

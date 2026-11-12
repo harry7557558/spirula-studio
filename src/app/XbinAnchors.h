@@ -1,8 +1,9 @@
 #pragma once
 
 // The photographs of an XGRIDS capture (data/XbinReader.h) as anchors: each
-// chosen camera's frames decoded by ffmpeg into `images_dir`/`subdir`/<camera>/,
-// named by their frame counter, with their poses from the device's trajectory.
+// chosen camera's frames decoded as a video's are (app/FrameExtract.h) into
+// `images_dir`/`subdir`/<camera>/, named by their frame counter, with their
+// poses from the device's trajectory.
 
 #include <algorithm>
 #include <atomic>
@@ -27,6 +28,13 @@ struct XbinCameraFolder {
 struct XbinCameraPick {
     bool taken = true;
     float fps = 0.0f;
+};
+
+// In-process where the build and the device can, else ffmpeg.
+struct XbinDecoder {
+    std::string ffmpeg_exe = "ffmpeg";
+    bool external = false;   // ffmpeg even where the device could decode
+    std::string device;      // as FrameExtractJob::device
 };
 
 // A camera's frames thinned to `fps`, fed in recorded order: the first of each
@@ -64,7 +72,7 @@ std::vector<XbinCameraFolder> extract_xbin_anchors(const std::string& xbin_path,
                                                    const std::string& anchors_path,
                                                    const std::vector<XbinCameraPick>& picks,
                                                    bool place_only,
-                                                   const std::string& ffmpeg_exe,
+                                                   const XbinDecoder& decoder,
                                                    const std::atomic<bool>* cancel = nullptr,
                                                    const XbinProgress& progress = {});
 
@@ -72,7 +80,7 @@ std::vector<XbinCameraFolder> extract_xbin_anchors(const std::string& xbin_path,
 // through the capture, into `dir`/`camera`/ under the names a run gives them.
 void extract_xbin_samples(const std::string& xbin_path, const std::string& dir,
                           const std::vector<XbinCameraPick>& picks, const std::string& camera,
-                          int per_camera, const std::string& ffmpeg_exe,
+                          int per_camera, const XbinDecoder& decoder,
                           const std::atomic<bool>* cancel = nullptr);
 
 }  // namespace app::lidar

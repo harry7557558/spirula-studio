@@ -120,7 +120,7 @@ bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
                     app::lidar::extract_xbin_anchors(
                         c, (root / "photos").string(), sub, anchors.string(),
                         xbin_cameras_of(job, c), job.xbin_place_only.count(c) > 0,
-                        job.ffmpeg_exe, &cancel,
+                        job.decoder, &cancel,
                         [&](const std::string& camera, int64_t done, int64_t total) {
                             prog.count(Stage::ScanPhotos, done, total);
                             prog.detail(Stage::ScanPhotos, camera + "   " + std::to_string(done) +
@@ -200,7 +200,7 @@ bool extract_scan_photos(const LidarJob& job, size_t scan, const std::string& wo
             // As many as the border fit reads; the panel offers fewer.
             app::lidar::extract_xbin_samples(clouds[scan], root.string(),
                                              xbin_cameras_of(job, clouds[scan]), camera,
-                                             app::BorderDetectOptions{}.samples, job.ffmpeg_exe,
+                                             app::BorderDetectOptions{}.samples, job.decoder,
                                              &cancel);
         } catch (const std::exception& e) {
             error = e.what();
