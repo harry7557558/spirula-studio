@@ -30,6 +30,15 @@ fresh.
 
 ## What a save contains
 
+`splat.ply` contains filtered, dequantized splats for viewing and export.
+Saving copies their parameters to the CPU, filters invalid or inactive rows,
+then packs the binary PLY in parallel into chunks of up to 8 MiB. `state.tar`
+streams the saved device buffers in chunks of up to 32 MiB without that
+per-splat conversion. Both are written with a `.tmp` suffix and renamed after
+all checkpoint files have closed successfully. A completed `splat.ply.tmp`
+can therefore remain while `state.tar.tmp` is still being written. These are
+buffered writes; timings depend on the OS cache and competing disk activity.
+
 A checkpoint written **when a run is stopped before its last step** always
 holds everything needed to continue: the world parameters, optimizer state and
 `full_resume` marker. That is true whatever **Save resumable checkpoints**

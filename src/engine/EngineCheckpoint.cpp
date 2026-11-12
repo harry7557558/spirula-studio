@@ -26,6 +26,9 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 
 namespace {
@@ -166,9 +169,8 @@ static std::string _json_str(const std::string& s, const std::string& key) {
     return (e == std::string::npos) ? "" : s.substr(v + 1, e - v - 1);
 }
 
-// A save killed part way (a second Ctrl-C, a force-quit) must not leave a
-// truncated splat.ply or state.tar that a viewer or --resume takes for the
-// latest: each file is written as <name>.tmp and renamed once all are on disk.
+// Interrupted writes must not look complete to viewers or --resume.
+// Files keep a .tmp suffix until every stream has closed successfully.
 struct StagedFiles {
     std::vector<fs::path> finals;
 
@@ -208,18 +210,12 @@ void engine_save_checkpoint(
     const int64_t N = s.cur_num_splats;
     const int K = s.num_sh;
 
-    // --- D->H copy world splat tensors at s.cur_num_splats ---
     auto h_means        = _ckpt_d2h<float3>(s.world.means.data_ptr(),        (size_t)N);
     auto h_quats        = _ckpt_d2h<float4>(s.world.quats.data_ptr(),        (size_t)N);
     auto h_scales       = _ckpt_d2h<float3>(s.world.scales.data_ptr(),       (size_t)N);
     auto h_opacities    = _ckpt_d2h<float >(s.world.opacities.data_ptr(),    (size_t)N);
     auto h_features_dc  = _ckpt_d2h<float3>(s.world.features_dc.data_ptr(),  (size_t)N);
-    // features_sh is stored [max_N, K] contiguous; copying first N rows = N*K float3.
-    // When sh_value_bits != 32 the canonical store is the packed buffer
-    // (`features_sh_quant{8,16}{,_fpbo}`); decode it on the host into the
-    // PLY row directly so we don't pay the ~N*K*12B fp32 staging allocation.
-    // The packed copy is ~N*3*K bytes (8-bit) or 2x (16-bit), much smaller
-    // than the fp32 staging would be.
+    // Decode packed SH into output chunks to avoid an N*K*12-byte fp32 copy.
     const bool quant_sh_value = (K > 0) && s.world.sh_value_quantize_enabled();
     const int  sh_value_bits  = s.world.sh_value_bits;
 
@@ -276,7 +272,6 @@ void engine_save_checkpoint(
             } else {
                 n_bounds_needed = (cells_needed + 255) / 256;
             }
-            // Don't run off the allocated bounds array.
             n_bounds_needed = std::min(n_bounds_needed, dev_n_bounds);
             h_value_bounds.resize((size_t)n_bounds_needed);
             backend::memcpy_sync(h_value_bounds.data(), dev_bounds,
@@ -285,12 +280,11 @@ void engine_save_checkpoint(
         }
     }
 
-    // Decode one SH cell value on the host. Inlined into the PLY write loop
-    // below; safe no-op (returns 0) if quant buffers weren't populated.
-    auto decode_sh = [&](int64_t splat_i, int j, int ch) -> float {
+    auto decode_sh = [&](int64_t base_cell, int64_t splat_i, int c) -> float {
         if (h_value_packed.empty() || h_value_bounds.empty()) return 0.0f;
-        const int64_t cell = sh_addr.cell(sh_addr.base(splat_i), 3 * j + ch);
-        const int64_t b_idx = cell / sh_addr.bounds_stride;
+        const int64_t cell = sh_addr.cell(base_cell, c);
+        // Both layouts use 256-wide blocks: splats for FPBO, cells otherwise.
+        const int64_t b_idx = sh_addr.pair_pitch > 0 ? splat_i >> 8 : cell >> 8;
         if (b_idx >= (int64_t)h_value_bounds.size()) return 0.0f;
         const float2 mm = h_value_bounds[(size_t)b_idx];
         if (sh_value_bits == 8) {
@@ -349,49 +343,60 @@ void engine_save_checkpoint(
         if (!ply) throw std::runtime_error("Failed to open PLY for write: " + ply_path.string());
         ply << spirula::splat_ply_header(kept, basis, s.primitive);
 
-        // Buffer multiple rows per write for throughput.
-        constexpr int ROWS_PER_FLUSH = 1024;
-        std::vector<float> buf((size_t)vertex_floats * ROWS_PER_FLUSH);
-        int rows_in_buf = 0;
-        std::vector<float> rest_row((size_t)std::max(K, 1) * 3);
-        auto flush = [&]() {
-            if (rows_in_buf == 0) return;
-            ply.write(reinterpret_cast<const char*>(buf.data()),
-                      (std::streamsize)rows_in_buf * vertex_floats * sizeof(float));
-            rows_in_buf = 0;
-        };
-        for (int64_t i = 0; i < N; i++) {
-            if (!keep[i]) continue;
-            float* row = buf.data() + (size_t)rows_in_buf * vertex_floats;
-            int p = 0;
-            row[p++] = h_means[i].x; row[p++] = h_means[i].y; row[p++] = h_means[i].z;
-            row[p++] = 0.f; row[p++] = 0.f; row[p++] = 0.f;  // nx, ny, nz
-            row[p++] = h_features_dc[i].x; row[p++] = h_features_dc[i].y; row[p++] = h_features_dc[i].z;
-            if (K > 0) {
-                const float* rest = rest_row.data();
-                if (quant_sh_value) {
-                    for (int j = 0; j < K; j++)
-                        for (int ch = 0; ch < 3; ch++)
-                            rest_row[(size_t)(j * 3 + ch)] = decode_sh(i, j, ch);
-                } else {
-                    rest = &h_features_sh[(size_t)(i * K)].x;
-                }
-                spirula::splat_ply_put_rest(rest, basis, row + p);
-                p += 3 * K;
+        constexpr size_t chunk_bytes = 32 << 20;
+        const int chunk_rows = (int)std::min<int64_t>(kept,
+            std::max<size_t>(1, chunk_bytes / (vertex_floats * sizeof(float))));
+        std::vector<float> buf((size_t)vertex_floats * chunk_rows);
+        std::vector<int64_t> indices(chunk_rows);
+        int pack_threads = 1;
+#ifdef _OPENMP
+        pack_threads = std::min(8, omp_get_max_threads());
+#endif
+        for (int64_t next = 0; next < N && chunk_rows > 0;) {
+            int rows = 0;
+            while (next < N && rows < chunk_rows) {
+                if (keep[next]) indices[rows++] = next;
+                ++next;
             }
-            row[p++] = h_opacities[i];
-            row[p++] = h_scales[i].x; row[p++] = h_scales[i].y; row[p++] = h_scales[i].z;
-            row[p++] = h_quats[i].x; row[p++] = h_quats[i].y; row[p++] = h_quats[i].z; row[p++] = h_quats[i].w;
-            rows_in_buf++;
-            if (rows_in_buf == ROWS_PER_FLUSH) flush();
+            if (!rows) continue;
+#pragma omp parallel num_threads(pack_threads) if(rows >= 4096)
+            {
+                std::vector<float> rest_row((size_t)std::max(K, 1) * 3);
+#pragma omp for schedule(static)
+                for (int r = 0; r < rows; ++r) {
+                    const int64_t i = indices[r];
+                    float* row = buf.data() + (size_t)r * vertex_floats;
+                    int p = 0;
+                    row[p++] = h_means[i].x; row[p++] = h_means[i].y; row[p++] = h_means[i].z;
+                    row[p++] = 0.f; row[p++] = 0.f; row[p++] = 0.f;  // nx, ny, nz
+                    row[p++] = h_features_dc[i].x; row[p++] = h_features_dc[i].y; row[p++] = h_features_dc[i].z;
+                    if (K > 0) {
+                        const float* rest = rest_row.data();
+                        if (quant_sh_value) {
+                            const int64_t base_cell = sh_addr.base(i);
+                            for (int j = 0; j < K; ++j)
+                                for (int ch = 0; ch < 3; ++ch)
+                                    rest_row[j * 3 + ch] = decode_sh(base_cell, i, j * 3 + ch);
+                        } else {
+                            rest = &h_features_sh[(size_t)(i * K)].x;
+                        }
+                        spirula::splat_ply_put_rest(rest, basis, row + p);
+                        p += 3 * K;
+                    }
+                    row[p++] = h_opacities[i];
+                    row[p++] = h_scales[i].x; row[p++] = h_scales[i].y; row[p++] = h_scales[i].z;
+                    row[p++] = h_quats[i].x; row[p++] = h_quats[i].y; row[p++] = h_quats[i].z; row[p++] = h_quats[i].w;
+                }
+            }
+            ply.write(reinterpret_cast<const char*>(buf.data()),
+                      (std::streamsize)rows * vertex_floats * sizeof(float));
+            if (!ply) throw std::runtime_error("Failed to write " + ply_path.string());
         }
-        flush();
         ply.close();
         if (!ply) throw std::runtime_error("Failed to write " + ply_path.string());
     }
 
     // --- state.tar: metadata-driven resume payload (see file header) ---------
-    // Which buffers to serialize: Always (base) or Always+Resume (full resume).
     const SaveClass save_min = full_dump ? SaveClass::Resume : SaveClass::Always;
 
     const fs::path tar_path = staged.add(out_root / "state.tar");
@@ -399,14 +404,11 @@ void engine_save_checkpoint(
     if (!tar)
         throw std::runtime_error("Failed to open state.tar for write: " + tar_path.string());
 
-    // state.json -- runtime + validation manifest (config lives in config.json).
     {
         std::string sj = _build_state_json(s, step, full_dump);
         ckpt::tar_write_bytes(tar, "state.json", sj.data(), sj.size());
     }
 
-    // One flat typed .npy per saved pool slot. Chunked D->H copy through a small
-    // reusable host buffer -- bounded host RAM, ZERO extra device memory.
     std::vector<char> host_stage;
     for (const auto& sl : DevicePool::global().saved(save_min)) {
         ckpt::tar_write_npy_device(tar, sl.name + ".npy",

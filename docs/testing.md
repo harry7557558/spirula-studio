@@ -52,6 +52,14 @@ support, and masked color fitting. See
 [projective depth optimization](notes/projective-depth.md) for the update and
 evaluation definitions.
 
+`checkpoint_ply` checks checkpoint filtering, row order, partial output chunks,
+empty output, and 8/16/32-bit SH with both packed layouts; Vulkan also covers
+spherical-beta lobes. Run with `OMP_NUM_THREADS=1` to check serial packing.
+`./build_vulkan/checkpoint_ply . 2000000 8 1` times three saves of two million
+synthetic splats with 8-bit SH and FPBO storage (last argument: 0 for per-cell
+storage). Temporary outputs are removed. Timings include device readback and
+buffered file writes, but not a durability flush to the physical drive.
+
 **The same source builds under both backends.** Each file only touches
 `backend::`, the generated launch declarations, and `Tensor.h`. The workflow
 is dump-then-compare:
