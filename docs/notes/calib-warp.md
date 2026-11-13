@@ -40,11 +40,17 @@ no loss and no gradient. The copy the loss reads is float16.
 The mask, depth and normal ground truth go through the same table at their own
 resolution. Depth and normals are bilinear over the valid taps, renormalized,
 the way the loss resamples them (`core/Interpolation.cuh`), so a hole does not
-bleed; with no valid tap the pixel is invalid. The mask takes the nearest tap
-and is also cut by the unwarped one, so it never reaches a tile the forward
-skipped. With a depth or normal bilateral
-grid, its gradient comes back at the warped positions, a sub-pixel shift on a
-grid that smooth.
+bleed; with no valid tap the pixel is invalid. The mask takes the nearest tap,
+clamped to the image. Alpha supervision reads a masked pixel as "should be
+empty", so a 0 is a label, not a gap: written off the edge, it carves a slab
+through an object that crosses the frame border, a visible slice in other
+views. For the same reason the mask is cut by the unwarped one only when the
+forward skipped the tiles that one excludes, which it does only without alpha
+supervision; the cut keeps the warped mask out of those tiles. On a masked
+object capture (`centered-object`, two seeds), alcc LPIPS-A 0.368 with both 0s,
+0.364 clamped, 0.362 clamped and uncut. With a depth or normal bilateral grid,
+its gradient comes back at the warped positions, a sub-pixel shift on a grid
+that smooth.
 
 ## Fitting
 

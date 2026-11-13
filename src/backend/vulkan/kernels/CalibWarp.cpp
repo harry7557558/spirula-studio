@@ -21,7 +21,7 @@ struct CalibWarpParams {
     float v_scale, eps;
     float step, damping, smooth, prior, max_step;
     uint32_t wgs_per_row;
-    int32_t _pad0;
+    int32_t cut_by_source;
     float f_scale;
     int32_t has_intr;
     int32_t gt_warped;
@@ -98,7 +98,7 @@ void calib_warp_gt_forward(
 void calib_warp_aux_forward(
     TorchTensorView src, TorchTensorView render_depth, TorchTensorView render_Ts,
     TorchTensorView params, TorchTensorView intrins, TorchTensorView cam_indices,
-    int grid_n, int D, int render_H, int render_W, TorchTensorView out
+    int grid_n, int D, int render_H, int render_W, bool cut_by_source, TorchTensorView out
 ) {
     check(grid_n, D);
     const auto& s = std::get<2>(src);
@@ -124,6 +124,7 @@ void calib_warp_aux_forward(
     p.H = render_H;
     p.W = render_W;
     p.n = grid_n;
+    p.cut_by_source = cut_by_source ? 1 : 0;
     if (p.B <= 0 || p.Hm <= 0 || p.Wm <= 0 || p.H <= 0 || p.W <= 0) return;
     vkk::Fold f = vkk::fold_1d((int64_t)p.B * p.Hm * p.Wm, 256);
     p.wgs_per_row = f.per_row;

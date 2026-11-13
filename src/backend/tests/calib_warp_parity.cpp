@@ -274,19 +274,23 @@ int main(int argc, char** argv) {
             float* o_dm = upload(dm);
             float* o_nm = upload(nm);
             uint8_t* o_mm = upload(mm);
+            uint8_t* o_mc = upload(mm);
             const TorchTensorView td = ttv(d_dm, {k.B, Ha, Wa, 1}), tn = ttv(d_nm, {k.B, Ha, Wa, 3}),
                                   tm = ttv(d_mm, {k.B, Ha, Wa, 1}, 1);
             for (bool planted : {false, true}) {
                 const TorchTensorView t = tab(planted ? d_truth : params, P);
                 calib_warp_aux_forward(td, t_depth, t_ts, t, ttv(d_intr, {k.B, 4}), ttv(d_cams, {k.B}),
-                                       k.n, k.D, k.H, k.W, ttv(o_dm, {k.B, Ha, Wa, 1}));
+                                       k.n, k.D, k.H, k.W, false, ttv(o_dm, {k.B, Ha, Wa, 1}));
                 calib_warp_aux_forward(tn, t_depth, t_ts, t, ttv(d_intr, {k.B, 4}), ttv(d_cams, {k.B}),
-                                       k.n, k.D, k.H, k.W, ttv(o_nm, {k.B, Ha, Wa, 3}));
+                                       k.n, k.D, k.H, k.W, false, ttv(o_nm, {k.B, Ha, Wa, 3}));
                 calib_warp_aux_forward(tm, t_depth, t_ts, t, ttv(d_intr, {k.B, 4}), ttv(d_cams, {k.B}),
-                                       k.n, k.D, k.H, k.W, ttv(o_mm, {k.B, Ha, Wa, 1}, 1));
+                                       k.n, k.D, k.H, k.W, false, ttv(o_mm, {k.B, Ha, Wa, 1}, 1));
+                calib_warp_aux_forward(tm, t_depth, t_ts, t, ttv(d_intr, {k.B, 4}), ttv(d_cams, {k.B}),
+                                       k.n, k.D, k.H, k.W, true, ttv(o_mc, {k.B, Ha, Wa, 1}, 1));
                 const auto gd = download(o_dm, dm.size()), gn = download(o_nm, nm.size());
-                const auto gm = download(o_mm, mm.size());
-                int64_t bad = 0;
+                const auto gm = download(o_mm, mm.size()), gc = download(o_mc, mm.size());
+                // Off the image the mask is clamped, not 0: no tolerance there.
+                int64_t bad = 0, off_image = 0, off_bad = 0;
                 for (int b = 0; b < k.B; ++b)
                     for (int y = 0; y < Ha; ++y)
                         for (int x = 0; x < Wa; ++x) {
@@ -314,9 +318,14 @@ int main(int argc, char** argv) {
                                 sx += fx * Wa / k.W;
                                 sy += fy * Ha / k.H;
                             }
-                            const int ix = (int)std::floor(sx + 0.5), iy = (int)std::floor(sy + 0.5);
-                            const bool in = ix >= 0 && ix < Wa && iy >= 0 && iy < Ha;
-                            const uint8_t wm = in && mm[i] ? mm[((size_t)b * Ha + iy) * Wa + ix] : 0;
+                            const int rx = (int)std::floor(sx + 0.5), ry = (int)std::floor(sy + 0.5);
+                            const bool off = rx < 0 || rx >= Wa || ry < 0 || ry >= Ha;
+                            const int ix = std::min(std::max(rx, 0), Wa - 1);
+                            const int iy = std::min(std::max(ry, 0), Ha - 1);
+                            const uint8_t wm = mm[((size_t)b * Ha + iy) * Wa + ix];
+                            const bool mask_ok = gm[i] == wm && gc[i] == (mm[i] ? wm : 0);
+                            off_image += off;
+                            off_bad += off && !mask_ok;
                             // Bilinear over the valid taps.
                             const int x0 = (int)std::floor(sx), y0 = (int)std::floor(sy);
                             double ad = 0, wd = 0, an[3] = {}, wn = 0;
@@ -335,7 +344,7 @@ int main(int argc, char** argv) {
                                 }
                             }
                             const auto close_to = [](double a, double b) { return std::fabs(a - b) <= 1e-4 * (1 + std::fabs(b)); };
-                            bool ok = gm[i] == wm && close_to(gd[i], wd > 0 ? ad / wd : 0.0);
+                            bool ok = mask_ok && close_to(gd[i], wd > 0 ? ad / wd : 0.0);
                             for (int c = 0; c < 3; ++c) ok = ok && close_to(gn[3 * i + c], wn > 0 ? an[c] / wn : -1.0);
                             bad += !ok;
                         }
@@ -344,13 +353,19 @@ int main(int argc, char** argv) {
                                  planted ? "planted" : "zero", (long long)bad, (long long)k.B * A);
                     ++failures;
                 }
+                if (off_bad > 0 || (planted && off_image == 0)) {
+                    std::fprintf(stderr, "D=%d: mask off the image wrong at %lld of %lld samples\n",
+                                 D, (long long)off_bad, (long long)off_image);
+                    ++failures;
+                }
                 if (planted) {
                     loose.insert(loose.end(), gd.begin(), gd.end());
                     loose.insert(loose.end(), gn.begin(), gn.end());
                     for (uint8_t m : gm) loose.push_back((float)m);
+                    for (uint8_t m : gc) loose.push_back((float)m);
                 }
             }
-            for (void* q : std::initializer_list<void*>{d_dm, d_nm, d_mm, o_dm, o_nm, o_mm})
+            for (void* q : std::initializer_list<void*>{d_dm, d_nm, d_mm, o_dm, o_nm, o_mm, o_mc})
                 backend::device_free(q);
         }
 

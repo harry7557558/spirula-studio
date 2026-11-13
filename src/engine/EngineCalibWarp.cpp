@@ -153,7 +153,7 @@ bool engine_calib_warp_wants_depth() {
 }
 
 template <typename T>
-static void warp_aux(DeviceTensor3D<T>& map, const char* key) {
+static void warp_aux(DeviceTensor3D<T>& map, const char* key, bool cut_by_source = false) {
     if (map.data_ptr() == nullptr || map.numel() == 0 ||
         map.template size<0>() != engine().camera.num)
         return;
@@ -163,7 +163,7 @@ static void warp_aux(DeviceTensor3D<T>& map, const char* key) {
     auto& cw = engine().calib_warp;
     calib_warp_aux_forward(src, depth_tv(), ts_tv(), table_tv(cw.params), intrins_tv(), cam_tv(),
                            cw.grid_n, cw.D, (int)engine().camera.height,
-                           (int)engine().camera.width,
+                           (int)engine().camera.width, cut_by_source,
                            TorchTensorView((uint64_t)out, std::get<1>(src), std::get<2>(src)));
     map = DeviceTensor3D<T>(TorchTensorView((uint64_t)out, std::get<1>(src), std::get<2>(src)));
 }
@@ -171,7 +171,7 @@ static void warp_aux(DeviceTensor3D<T>& map, const char* key) {
 // Point gt.rgb, and the depth, normal and mask beside it, at the ground truth
 // warped through the installed cameras' rows;
 // _engine_calib_warp_restore_gt() points it back. False when it cannot apply.
-static bool _swap_in_warped_gt() {
+static bool _swap_in_warped_gt(bool tiles_skipped) {
     auto& cw = engine().calib_warp;
     if (!cw.enabled || !engine().gt.has_gt || !_tv_valid(engine().gt.rgb)) return false;
     const int64_t C = engine().camera.num, H = engine().camera.height,
@@ -192,12 +192,12 @@ static bool _swap_in_warped_gt() {
     cw.src_alpha = engine().gt.alpha;
     warp_aux(engine().gt.depth, "eng.calib_warp.depth");
     warp_aux(engine().gt.normal, "eng.calib_warp.normal");
-    if (engine().gt.has_mask) warp_aux(engine().gt.alpha, "eng.calib_warp.mask");
+    if (engine().gt.has_mask) warp_aux(engine().gt.alpha, "eng.calib_warp.mask", tiles_skipped);
     cw.swapped = true;
     return true;
 }
 
-void _engine_calib_warp_before_loss(int step) {
+void _engine_calib_warp_before_loss(int step, bool tiles_skipped) {
     auto& cw = engine().calib_warp;
     cw.active_this_step = false;
     if (!cw.enabled || step < cw.start_step) return;
@@ -207,12 +207,12 @@ void _engine_calib_warp_before_loss(int step) {
     }();
     if (log_every > 0 && step % log_every == 0) log_stats(step);
     StepTimingScope timing(StepPart::Calibration, StepScale::Pixels);
-    cw.active_this_step = _swap_in_warped_gt();
+    cw.active_this_step = _swap_in_warped_gt(tiles_skipped);
 }
 
 void _engine_calib_warp_preview() {
     // A preview stays swapped: the next step installs its own ground truth.
-    if (_swap_in_warped_gt()) engine().calib_warp.swapped = false;
+    if (_swap_in_warped_gt(false)) engine().calib_warp.swapped = false;
 }
 
 void _engine_calib_warp_after_loss(TorchTensorView v_render_rgb) {

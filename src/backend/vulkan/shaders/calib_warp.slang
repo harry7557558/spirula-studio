@@ -45,7 +45,7 @@ struct CalibWarpParams {
     float v_scale, eps;
     float step, damping, smooth, prior, max_step;
     uint wgs_per_row;
-    int _pad0;
+    int cut_by_source;  // aux mask: stay inside the unwarped one
     float f_scale;      // focal multiplier of the pyramid level
     int has_intr;
     int gt_warped;      // gt already resampled at p + flow (accumulate)
@@ -492,10 +492,11 @@ void calib_warp_aux_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     gindex_t plane = gindex_t(b) * gindex_t(hw);
     gindex_t o = gindex_t(gid);
     if (kAuxKind == 0) {
-        int ix = int(floor(sx + 0.5f)), iy = int(floor(sy + 0.5f));
-        bool inb = ix >= 0 && ix < p.Wm && iy >= 0 && iy < p.Hm;
+        // Clamped, as in the CUDA kernel: off the edge a 0 carves the scene.
+        int ix = clamp(int(floor(sx + 0.5f)), 0, p.Wm - 1);
+        int iy = clamp(int(floor(sy + 0.5f)), 0, p.Hm - 1);
         uint v = 0u;
-        if (inb && u8_load(p.gt, o) != 0u)
+        if (p.cut_by_source == 0 || u8_load(p.gt, o) != 0u)
             v = u8_load(p.gt, plane + gindex_t(iy) * gindex_t(p.Wm) + gindex_t(ix));
         u8_store(p.out, o, v);
         return;

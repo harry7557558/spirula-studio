@@ -457,7 +457,7 @@ __global__ void calib_warp_aux_fwd_kernel(
     const void* __restrict__ src_v, const float* __restrict__ depth,
     const float* __restrict__ Ts, const float* __restrict__ params, int P,
     const float4* __restrict__ intrins, const int32_t* __restrict__ cam_idx,
-    int H, int W, int Ha, int Wa, int n, int D, void* __restrict__ out_v
+    int H, int W, int Ha, int Wa, int n, int D, bool cut_by_source, void* __restrict__ out_v
 ) {
     const int pix = blockIdx.x * blockDim.x + threadIdx.x;
     const int b = blockIdx.y;
@@ -478,12 +478,12 @@ __global__ void calib_warp_aux_fwd_kernel(
     const size_t plane = (size_t)b * Ha * Wa;
     if constexpr (Kind == 0) {
         const uint8_t* src = (const uint8_t*)src_v;
-        const int ix = (int)floorf(sx + 0.5f), iy = (int)floorf(sy + 0.5f);
-        const bool in = ix >= 0 && ix < Wa && iy >= 0 && iy < Ha;
-        // Also cut by its own value here, so it never reaches a tile the
-        // forward skipped (compute_tile_active reads the unwarped mask).
+        // Clamped: alpha supervision reads a 0 as "should be empty", and a 0
+        // off the edge carves the scene along the frame border.
+        const int ix = min(max((int)floorf(sx + 0.5f), 0), Wa - 1);
+        const int iy = min(max((int)floorf(sy + 0.5f), 0), Ha - 1);
         ((uint8_t*)out_v)[plane + pix] =
-            in && src[plane + pix] ? src[plane + (size_t)iy * Wa + ix] : 0;
+            cut_by_source && !src[plane + pix] ? 0 : src[plane + (size_t)iy * Wa + ix];
     } else {
         constexpr int Ch = Kind == 1 ? 1 : 3;
         const float* src = (const float*)src_v;
@@ -546,7 +546,7 @@ void calib_warp_gt_forward(
 void calib_warp_aux_forward(
     TorchTensorView src, TorchTensorView render_depth, TorchTensorView render_Ts,
     TorchTensorView params, TorchTensorView intrins, TorchTensorView cam_indices,
-    int grid_n, int D, int render_H, int render_W, TorchTensorView out
+    int grid_n, int D, int render_H, int render_W, bool cut_by_source, TorchTensorView out
 ) {
     _cw_check(grid_n, D);
     const auto& s = std::get<2>(src);
@@ -562,7 +562,7 @@ void calib_warp_aux_forward(
             _cw_ptr(src), (const float*)_cw_ptr(render_depth), (const float*)_cw_ptr(render_Ts),
             (const float*)_cw_ptr(params), P, (const float4*)_cw_ptr(intrins),
             (const int32_t*)_cw_ptr(cam_indices), render_H, render_W, Ha, Wa, grid_n, D,
-            (void*)_cw_ptr(out));
+            cut_by_source, (void*)_cw_ptr(out));
     };
     if (elem == 1) launch(calib_warp_aux_fwd_kernel<0>);
     else if (Ch == 1) launch(calib_warp_aux_fwd_kernel<1>);

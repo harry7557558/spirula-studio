@@ -185,8 +185,9 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     const bool alpha_reads_masked = no_tile_skip ||
         cfg.loss.weights[(int)LossWeightIndex::AlphaSup] != 0.0f ||
         cfg.loss.weights[(int)LossWeightIndex::AlphaSupUnder] != 0.0f;
-    if (engine().gt.has_mask && engine().gt.alpha.data_ptr() != nullptr &&
-        !alpha_reads_masked) {
+    const bool skip_tiles = engine().gt.has_mask && engine().gt.alpha.data_ptr() != nullptr &&
+        !alpha_reads_masked;
+    if (skip_tiles) {
         const int macro_log2 = engine_bin_macro_log2();
         const int64_t per_image = intersect_tile_count(
             engine().camera.width, engine().camera.height, macro_log2);
@@ -228,7 +229,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
         forward_3dgs(primitive, sh_degree, packed, /*output_median=*/false, (int)dist_type);
     }
     _engine_step_image_stages(bilagrid_cam_indices);
-    _engine_calib_warp_before_loss(step);
+    _engine_calib_warp_before_loss(step, skip_tiles);
 
     engine_prepare_projective_depth(cfg.optim);
     auto losses = engine_compute_loss_backward(

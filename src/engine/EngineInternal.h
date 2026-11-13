@@ -241,7 +241,8 @@ void _ensure_ppisp_optim_state();
 
 // Calibration warp: fit and swap gt.rgb for the warped copy before the loss,
 // the loss-gradient update after it, and the swap undone after the backward.
-void _engine_calib_warp_before_loss(int step);
+// tiles_skipped: the forward left out tiles the unwarped mask excludes.
+void _engine_calib_warp_before_loss(int step, bool tiles_skipped);
 void _engine_calib_warp_after_loss(TorchTensorView v_render_rgb);
 void _engine_calib_warp_restore_gt();
 // The compare view's: gt.rgb as the loss would read it for the installed view.

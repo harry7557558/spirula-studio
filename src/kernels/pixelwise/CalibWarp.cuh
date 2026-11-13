@@ -7,7 +7,8 @@
 // then with D = 4 a parallax term that is divided by the rendered depth.
 // The gradient and Hessian tables are per image of the batch, not per table row.
 // calib_warp_aux_forward moves a uint8 mask (nearest), a depth or a normal map
-// (bilinear over valid taps) through the same table at its own size.
+// (bilinear over valid taps) through the same table at its own size;
+// cut_by_source keeps a mask inside its unwarped self, for skipped tiles.
 
 #include <core/Tensor.h>
 
@@ -33,7 +34,7 @@ void calib_warp_gt_forward(
 void calib_warp_aux_forward(
     TorchTensorView src, TorchTensorView render_depth, TorchTensorView render_Ts,
     TorchTensorView params, TorchTensorView intrins, TorchTensorView cam_indices,
-    int grid_n, int D, int render_H, int render_W, TorchTensorView out
+    int grid_n, int D, int render_H, int render_W, bool cut_by_source, TorchTensorView out
 );
 
 
