@@ -5282,7 +5282,8 @@ void GuiApp::draw_dataset_source() {
         // A scan's photographs or views join the images, so they cannot be
         // read where they are.
         photo_import_combo(&_photo_import,
-                           _sources.size() > 1 || (!_sources.empty() && _sources[0].heif) ||
+                           _sources.size() > 1 ||
+                               (!_sources.empty() && _sources[0].foreign_photos) ||
                                (!_lidar.empty() && !_lidar_in_frame));
     }
 
@@ -7750,7 +7751,7 @@ GuiApp::DatasetFolders GuiApp::workspace_folders(const WorkspaceState& prior) co
         // the app's convention -- only a bundled folder is ever left flipped.
         f.mask_dir = (fs::path(_workspace) / "masks").string();
     } else if (prior.input_masks && _sources.size() == 1 && !_sources[0].is_video &&
-               _sources[0].packed_lenses == 0 && !_sources[0].heif) {
+               _sources[0].packed_lenses == 0 && !_sources[0].foreign_photos) {
         // Masks that came with the photos pair with them where they lie.
         f.image_dir = fs::absolute(_sources[0].path, ec).string();
         f.mask_dir = fs::absolute(_sources[0].mask_dir, ec).string();

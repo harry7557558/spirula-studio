@@ -1105,38 +1105,34 @@ SS_MSG(photo_kept_unconverted,
     RU("{0} скопирован без изменений, а не перекодирован."),
     TR("{0} yeniden kodlanmak yerine olduğu gibi kopyalandı."));
 
-SS_MSG(heif_exif_left_behind,
-    EN("HEIC photos converted by ffmpeg: {0}. ffmpeg leaves their EXIF behind, "
-       "so the reconstruction has no focal length or GPS from them."),
-    JA("ffmpeg で変換した HEIC 写真: {0}。ffmpeg は EXIF を引き継がないため、"
-       "再構成にはそれらの焦点距離も GPS もありません。"),
-    ZH_HANS("用 ffmpeg 转换的 HEIC 照片：{0}。ffmpeg 不会保留它们的 EXIF，"
-            "因此重建时没有这些照片的焦距和 GPS。"),
-    ZH_HANT("用 ffmpeg 轉換的 HEIC 照片：{0}。ffmpeg 不會保留它們的 EXIF，"
-            "因此重建時沒有這些照片的焦距和 GPS。"),
-    KO("ffmpeg 으로 변환한 HEIC 사진: {0}. ffmpeg 은 EXIF 를 옮기지 않으므로 "
-       "재구성에는 이 사진들의 초점 거리와 GPS 가 없습니다."),
-    DE("Mit ffmpeg umgewandelte HEIC-Fotos: {0}. ffmpeg übernimmt ihre "
-       "EXIF-Daten nicht, der Rekonstruktion fehlen daher ihre Brennweite und "
-       "ihr GPS."),
-    FR("Photos HEIC converties par ffmpeg : {0}. ffmpeg ne reprend pas leurs "
-       "EXIF : la reconstruction n'a ni leur focale ni leur GPS."),
-    ES("Fotos HEIC convertidas con ffmpeg: {0}. ffmpeg no conserva su EXIF, así "
-       "que la reconstrucción no tiene su distancia focal ni su GPS."),
-    PT("Fotos HEIC convertidas pelo ffmpeg: {0}. O ffmpeg não conserva o EXIF "
-       "delas, por isso a reconstrução fica sem a distância focal e o GPS."),
-    IT("Foto HEIC convertite con ffmpeg: {0}. ffmpeg non ne conserva l'EXIF, "
-       "quindi la ricostruzione non ha la loro focale né il GPS."),
-    NL("HEIC-foto's omgezet door ffmpeg: {0}. ffmpeg neemt hun EXIF niet mee, "
-       "dus de reconstructie heeft hun brandpuntsafstand en GPS niet."),
-    RU("Фото HEIC, преобразованные ffmpeg: {0}. ffmpeg не переносит их EXIF, "
-       "поэтому у реконструкции нет их фокусного расстояния и GPS."),
-    TR("ffmpeg ile dönüştürülen HEIC fotoğraflar: {0}. ffmpeg EXIF bilgilerini "
-       "taşımıyor; bu yüzden yeniden yapılandırmada odak uzaklıkları ve GPS "
-       "yok."));
+SS_MSG(photos_exif_left_behind,
+    EN("Photos converted by ffmpeg without their EXIF: {0}. The reconstruction "
+       "has no focal length or GPS from them."),
+    JA("EXIF を引き継がずに ffmpeg で変換した写真: {0}。再構成にはそれらの焦点距離も "
+       "GPS もありません。"),
+    ZH_HANS("用 ffmpeg 转换且没有保留 EXIF 的照片：{0}。重建时没有这些照片的焦距和 GPS。"),
+    ZH_HANT("用 ffmpeg 轉換且沒有保留 EXIF 的照片：{0}。重建時沒有這些照片的焦距和 GPS。"),
+    KO("EXIF 없이 ffmpeg 으로 변환한 사진: {0}. 재구성에는 이 사진들의 초점 거리와 "
+       "GPS 가 없습니다."),
+    DE("Ohne ihre EXIF-Daten mit ffmpeg umgewandelte Fotos: {0}. Der Rekonstruktion "
+       "fehlen ihre Brennweite und ihr GPS."),
+    FR("Photos converties par ffmpeg sans leurs EXIF : {0}. La reconstruction n'a "
+       "ni leur focale ni leur GPS."),
+    ES("Fotos convertidas con ffmpeg sin su EXIF: {0}. La reconstrucción no tiene "
+       "su distancia focal ni su GPS."),
+    PT("Fotos convertidas pelo ffmpeg sem o EXIF delas: {0}. A reconstrução fica "
+       "sem a distância focal e o GPS."),
+    IT("Foto convertite con ffmpeg senza il loro EXIF: {0}. La ricostruzione non "
+       "ha la loro focale né il GPS."),
+    NL("Foto's zonder hun EXIF omgezet door ffmpeg: {0}. De reconstructie heeft "
+       "hun brandpuntsafstand en GPS niet."),
+    RU("Фото, преобразованные ffmpeg без их EXIF: {0}. У реконструкции нет их "
+       "фокусного расстояния и GPS."),
+    TR("EXIF bilgileri olmadan ffmpeg ile dönüştürülen fotoğraflar: {0}. Yeniden "
+       "yapılandırmada odak uzaklıkları ve GPS yok."));
 
 // {1} the reason, English: ffmpeg's last line or the decoder's message.
-SS_MSG(err_heif_convert_failed,
+SS_MSG(err_photo_convert_failed,
     EN("{0} could not be converted to JPEG: {1}"),
     JA("{0} を JPEG に変換できませんでした: {1}"),
     ZH_HANS("无法把 {0} 转换为 JPEG：{1}"),
@@ -1151,41 +1147,40 @@ SS_MSG(err_heif_convert_failed,
     RU("Не удалось преобразовать {0} в JPEG: {1}"),
     TR("{0} JPEG'e dönüştürülemedi: {1}"));
 
-SS_MSG(err_heif_in_dataset_folder,
-    EN("{0} holds HEIC photos and is also this dataset's own images folder, so "
-       "their JPEGs have nowhere to go. Choose another output folder."),
-    JA("{0} には HEIC 写真があり、このデータセット自身の画像フォルダーでもある"
-       "ため、変換した JPEG の置き場所がありません。別の出力フォルダーを選んで"
-       "ください。"),
-    ZH_HANS("{0} 里有 HEIC 照片，同时它又是这个数据集自己的图像文件夹，转换出的 "
-            "JPEG 无处存放。请选择另一个输出文件夹。"),
-    ZH_HANT("{0} 裡有 HEIC 照片，同時它又是這個資料集自己的影像資料夾，轉換出的 "
-            "JPEG 無處存放。請選擇另一個輸出資料夾。"),
-    KO("{0} 에는 HEIC 사진이 있고 이 데이터셋 자신의 이미지 폴더이기도 해서, "
-       "변환한 JPEG 를 둘 곳이 없습니다. 다른 출력 폴더를 고르세요."),
-    DE("{0} enthält HEIC-Fotos und ist zugleich der eigene Bildordner dieses "
-       "Datensatzes, daher gibt es keinen Platz für ihre JPEGs. Wählen Sie einen "
-       "anderen Ausgabeordner."),
-    FR("{0} contient des photos HEIC et est aussi le dossier d'images propre à "
-       "ce jeu de données : leurs JPEG n'ont nulle part où aller. Choisissez un "
-       "autre dossier de sortie."),
-    ES("{0} contiene fotos HEIC y es también la carpeta de imágenes propia de "
-       "este conjunto de datos, así que sus JPEG no tienen dónde ir. Elige otra "
-       "carpeta de salida."),
-    PT("{0} contém fotos HEIC e é também a pasta de imagens do próprio conjunto "
-       "de dados, por isso os JPEG delas não têm para onde ir. Escolha outra "
-       "pasta de saída."),
-    IT("{0} contiene foto HEIC ed è anche la cartella delle immagini di questo "
-       "set di dati, quindi i loro JPEG non hanno dove andare. Scelga un'altra "
-       "cartella di destinazione."),
-    NL("{0} bevat HEIC-foto's en is ook de eigen beeldenmap van deze dataset, "
-       "dus hun JPEG's kunnen nergens heen. Kies een andere uitvoermap."),
-    RU("В {0} есть фото HEIC, и это же собственная папка изображений набора "
-       "данных, так что их JPEG некуда положить. Выберите другую выходную "
-       "папку."),
-    TR("{0} HEIC fotoğraflar içeriyor ve aynı zamanda bu veri kümesinin kendi "
-       "görüntü klasörü; bu yüzden JPEG'lerinin gidecek yeri yok. Başka bir "
-       "çıktı klasörü seçin."));
+SS_MSG(err_foreign_photos_in_dataset_folder,
+    EN("{0} holds HEIC, JPEG XL or AVIF photos and is also this dataset's own "
+       "images folder, so their JPEGs have nowhere to go. Choose another output "
+       "folder."),
+    JA("{0} には HEIC/JPEG XL/AVIF 写真があり、このデータセット自身の画像フォルダー"
+       "でもあるため、変換した JPEG の置き場所がありません。別の出力フォルダーを"
+       "選んでください。"),
+    ZH_HANS("{0} 里有 HEIC/JPEG XL/AVIF 照片，同时它又是这个数据集自己的图像文件夹，"
+            "转换出的 JPEG 无处存放。请选择另一个输出文件夹。"),
+    ZH_HANT("{0} 裡有 HEIC/JPEG XL/AVIF 照片，同時它又是這個資料集自己的影像資料夾，"
+            "轉換出的 JPEG 無處存放。請選擇另一個輸出資料夾。"),
+    KO("{0} 에는 HEIC/JPEG XL/AVIF 사진이 있고 이 데이터셋 자신의 이미지 폴더이기도 "
+       "해서, 변환한 JPEG 를 둘 곳이 없습니다. 다른 출력 폴더를 고르세요."),
+    DE("{0} enthält HEIC-, JPEG-XL- oder AVIF-Fotos und ist auch der Bildordner "
+       "des Datensatzes: kein Platz für ihre JPEGs. Wählen Sie einen anderen "
+       "Ausgabeordner."),
+    FR("{0} contient des photos HEIC, JPEG XL ou AVIF et est le dossier d'images "
+       "du jeu de données : pas de place pour leurs JPEG. Choisissez un autre "
+       "dossier de sortie."),
+    ES("{0} contiene fotos HEIC, JPEG XL o AVIF y es la carpeta de imágenes del "
+       "conjunto: sus JPEG no tienen dónde ir. Elige otra carpeta de salida."),
+    PT("{0} contém fotos HEIC, JPEG XL ou AVIF e é também a pasta de imagens do "
+       "próprio conjunto de dados, por isso os JPEG delas não têm para onde ir. "
+       "Escolha outra pasta de saída."),
+    IT("{0} contiene foto HEIC, JPEG XL o AVIF ed è la cartella immagini del set "
+       "di dati: i loro JPEG non hanno dove andare. Scelga un'altra cartella."),
+    NL("{0} bevat HEIC-, JPEG XL- of AVIF-foto's en is ook de eigen beeldenmap van "
+       "deze dataset, dus hun JPEG's kunnen nergens heen. Kies een andere uitvoermap."),
+    RU("В {0} есть фото HEIC, JPEG XL или AVIF, и это же собственная папка "
+       "изображений набора данных, так что их JPEG некуда положить. Выберите другую "
+       "выходную папку."),
+    TR("{0} HEIC, JPEG XL veya AVIF fotoğraflar içeriyor ve veri kümesinin "
+       "görüntü klasörü; JPEG'lerinin gidecek yeri yok. Başka bir çıktı klasörü "
+       "seçin."));
 
 SS_MSG(err_ffmpeg_heif_too_old,
     EN("ffmpeg '{0}' is version {1}, which cannot put a HEIC photo together from "

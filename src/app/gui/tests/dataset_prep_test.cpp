@@ -12,9 +12,12 @@
 #include "app/gui/DatasetPrep.h"
 #include "app/gui/DatasetRecord.h"
 #include "app/gui/FilmReel.h"
+#include "app/gui/ForeignPhoto.h"
 #include "app/gui/PickSheet.h"
+#include "app/gui/Subprocess.h"
 #include "app/gui/mask/MaskLayer.h"
 #include "core/SourcePath.h"
+#include "external/stb_image.h"
 #include "external/stb_image_write.h"
 #include "i18n/catalog/Log.h"
 #include "i18n/catalog/MaskEdit.h"
@@ -338,9 +341,10 @@ void test_heif_folder() {
     const fs::path root = scratch("heif");
     const fs::path photos = root / "photos", ws = root / "dataset";
     for (int i = 0; i < 3; i++) write_jpg(photos / (std::string(1, (char)('a' + i)) + ".jpg"), 16, 12, i);
-    check(!gui::folder_has_heif(photos.string()), "a folder of JPEGs holds no HEIC");
+    check(!gui::folder_has_foreign_photos(photos.string()), "a folder of JPEGs holds no HEIC");
     std::ofstream(photos / "d.HEIC", std::ios::binary) << "not a photo";
-    check(gui::folder_has_heif(photos.string()) && gui::is_image_file(photos / "d.HEIC"),
+    check(gui::folder_has_foreign_photos(photos.string()) &&
+              gui::is_image_file(photos / "d.HEIC"),
           "a .HEIC is a photo, whatever its case");
 
     gui::PrepJob job;
@@ -349,11 +353,11 @@ void test_heif_folder() {
     job.ffmpeg_exe = (root / "no-such-ffmpeg").string();
     gui::PrepInput in;
     in.path = photos.string();
-    in.heif = true;
+    in.foreign_photos = true;
     job.inputs = {in};
     check(!gui::reads_photos_in_place(job.inputs, job.photo_import),
           "a HEIC folder is not read in place");
-    job.inputs[0].heif = false;   // run() asks the disk itself
+    job.inputs[0].foreign_photos = false;   // run() asks the disk itself
     gui::RunProgress prog;
     std::string err;
     const bool ran = run_prep(job, prog, err);
@@ -364,6 +368,115 @@ void test_heif_folder() {
     check(!fs::exists(ws / "images" / "d.jpg", ec) &&
               !fs::exists(ws / "images" / "d.jpg.part", ec),
           "no half-written JPEG is left for a resumed run to keep");
+}
+
+// libjxl 0.12 (through ImageMagick): 16x12 stored, codestream orientation 6,
+// a container with an Exif box (FocalLength 16 mm, Model "T", Orientation 6).
+const uint8_t kJxlTurned[] = {
+    0x00, 0x00, 0x00, 0x0c, 0x4a, 0x58, 0x4c, 0x20, 0x0d, 0x0a, 0x87, 0x0a, 0x00,
+    0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70, 0x6a, 0x78, 0x6c, 0x20, 0x00, 0x00,
+    0x00, 0x00, 0x6a, 0x78, 0x6c, 0x20, 0x00, 0x00, 0x00, 0x13, 0x6a, 0x78, 0x6c,
+    0x70, 0x00, 0x00, 0x00, 0x00, 0xff, 0x0a, 0x58, 0x30, 0x0b, 0xe4, 0x04, 0x00,
+    0x00, 0x00, 0x8e, 0x45, 0x78, 0x69, 0x66, 0x00, 0x00, 0x00, 0x06, 0x45, 0x78,
+    0x69, 0x66, 0x00, 0x00, 0x4d, 0x4d, 0x00, 0x2a, 0x00, 0x00, 0x00, 0x08, 0x00,
+    0x04, 0x01, 0x10, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x54, 0x00, 0x00, 0x00,
+    0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x06, 0x00, 0x00, 0x02,
+    0x13, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x87, 0x69,
+    0x00, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3e, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x04, 0x90, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x04, 0x30, 0x32,
+    0x33, 0x32, 0x91, 0x01, 0x00, 0x07, 0x00, 0x00, 0x00, 0x04, 0x01, 0x02, 0x03,
+    0x00, 0x92, 0x0a, 0x00, 0x05, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x74,
+    0xa0, 0x01, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0xff, 0xff, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+    0x00, 0x4e, 0x6a, 0x78, 0x6c, 0x70, 0x80, 0x00, 0x00, 0x01, 0x40, 0x16, 0x88,
+    0x06, 0x00, 0xec, 0x00, 0x41, 0x5e, 0x16, 0x00, 0x80, 0x0a, 0x95, 0x51, 0xc6,
+    0x0d, 0x5e, 0xce, 0xf5, 0x7c, 0xf9, 0xa1, 0xc3, 0x62, 0xda, 0xc6, 0x75, 0x86,
+    0xb6, 0xda, 0xb6, 0xb0, 0x84, 0xb1, 0xd9, 0x5e, 0x18, 0x24, 0x24, 0x1c, 0xc0,
+    0xc6, 0x05, 0xf5, 0xcd, 0xb1, 0xe1, 0x21, 0x43, 0x0d, 0x81, 0x4a, 0x12, 0x29,
+    0x10, 0x77, 0xeb, 0x91, 0x08, 0xd4, 0x8b, 0x4d, 0x1e, 0x4c, 0x1d
+};
+// libjxl 0.12 (through ffmpeg): a bare 40x24 codestream, no container.
+const uint8_t kJxlBare[] = {
+    0xff, 0x0a, 0x05, 0xc8, 0x00, 0x13, 0x88, 0x02, 0x00, 0xe4, 0x00, 0xb5, 0x9f,
+    0x20, 0x00, 0x00, 0x15, 0x2a, 0xa3, 0x8c, 0x1b, 0xbc, 0x9c, 0xeb, 0xf9, 0xf2,
+    0x43, 0x87, 0xc5, 0xb4, 0x8d, 0xeb, 0x0c, 0x6d, 0xb5, 0x6d, 0x61, 0x09, 0x63,
+    0xb3, 0xbd, 0x30, 0x48, 0x48, 0x38, 0x43, 0xe6, 0x4d, 0x75, 0xf0, 0xe6, 0x81,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1a, 0xce, 0x96, 0xb0, 0x34, 0x00, 0x00,
+    0x54, 0x92, 0x00
+};
+
+void write_bytes(const fs::path& p, const uint8_t* b, size_t n) {
+    std::error_code ec;
+    fs::create_directories(p.parent_path(), ec);
+    std::ofstream(p, std::ios::binary).write((const char*)b, (std::streamsize)n);
+}
+
+// JPEG XL and AVIF join HEIC: found, never read in place, sized and their EXIF
+// read from the header, and a JPEG XL's EXIF carried across ffmpeg's convert.
+void test_jxl_avif_folder() {
+    const fs::path root = scratch("jxl");
+    const fs::path photos = root / "photos", ws = root / "dataset";
+    write_bytes(photos / "a.jxl", kJxlTurned, sizeof kJxlTurned);
+    write_bytes(photos / "b.JXL", kJxlBare, sizeof kJxlBare);
+    write_jpg(photos / "a.jpg", 16, 12, 0);
+    check(gui::folder_has_foreign_photos(photos.string()) &&
+              gui::is_image_file(photos / "b.JXL") && gui::is_image_file(photos / "c.avif") &&
+              gui::is_foreign_photo_path("c.AVIF") && !gui::is_heif_path("c.avif"),
+          "a .jxl and an .avif are photos to convert, whatever their case");
+
+    int w = 0, h = 0;
+    check(gui::foreign_photo_size((photos / "a.jxl").string(), w, h) && w == 12 && h == 16,
+          "jxl: orientation 6 is the upright 12x16");
+    check(gui::foreign_photo_size((photos / "b.JXL").string(), w, h) && w == 40 && h == 24,
+          "jxl: a bare codestream is sized too");
+    std::vector<uint8_t> exif;
+    check(gui::foreign_photo_exif((photos / "a.jxl").string(), exif) && exif.size() > 6,
+          "jxl: the Exif box is read");
+    const sfm::ExifData e =
+        exif.size() > 6 ? sfm::parseExifTiff(exif.data() + 6, exif.size() - 6) : sfm::ExifData{};
+    check(e.valid && std::fabs(e.focal_mm - 16.0) < 1e-9 && e.orientation == 6,
+          "jxl: the box holds the photo's focal and turn");
+    check(gui::foreign_photo_exif((photos / "b.JXL").string(), exif) && exif.empty(),
+          "jxl: a bare codestream has no EXIF, and none is missed");
+    check(!gui::foreign_photo_exif((photos / "c.avif").string(), exif),
+          "avif: EXIF is not read here, so it may be missed");
+
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    job.photo_import = gui::PhotoImport::Copy;
+    job.ffmpeg_exe = (root / "no-such-ffmpeg").string();
+    gui::PrepInput in;
+    in.path = photos.string();
+    job.inputs = {in};
+    gui::RunProgress prog;
+    std::string err;
+    const bool ran = run_prep(job, prog, err);
+    check(!ran && err == spirula::i18n::format(spirula::i18n::msg::log::err_ffmpeg_missing,
+                                               {job.ffmpeg_exe}),
+          "jxl: without ffmpeg the run names it: " + err);
+
+    if (!gui::command_exists("ffmpeg")) {
+        std::puts("SKIP: jxl conversion, ffmpeg is unavailable");
+        return;
+    }
+    job.ffmpeg_exe = "ffmpeg";
+    std::error_code ec;
+    fs::remove_all(ws, ec);
+    if (!run_prep(job, prog, err)) {
+        // An ffmpeg built without libjxl: what it said is the error.
+        std::printf("SKIP: jxl conversion, ffmpeg cannot decode it: %s\n", err.c_str());
+        return;
+    }
+    const fs::path turned = ws / "images" / "a_jxl.jpg", bare = ws / "images" / "b.jpg";
+    check(fs::exists(ws / "images" / "a.jpg", ec) && fs::exists(turned, ec) &&
+              fs::exists(bare, ec),
+          "jxl: a.jxl meets a.jpg and takes a_jxl.jpg");
+    int c = 0;
+    check(stbi_info(turned.string().c_str(), &w, &h, &c) && w == 12 && h == 16,
+          "jxl: ffmpeg's JPEG is upright");
+    const sfm::ExifData out = sfm::readExif(turned.string());
+    check(out.valid && std::fabs(out.focal_mm - 16.0) < 1e-9 && out.orientation == 1,
+          "jxl: the EXIF is carried across, its turn flattened");
 }
 
 // A chequerboard smeared sideways across `smear` pixels: 10 px of edge sharp,
@@ -900,6 +1013,7 @@ int main() {
     test_feature_masks_workspace();
     test_model_masking_needs_segmentation();
     test_heif_folder();
+    test_jxl_avif_folder();
     test_skipped_photos();
     test_frames_reel_counts_images();
     test_packed_photo_one_lens();

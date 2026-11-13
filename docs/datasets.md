@@ -595,6 +595,26 @@ pivot and nothing else. `src/data/SceneCenter.h` is the one implementation;
 the table of centres travels to a viewer on `ViewerRenderConfig::centers`,
 and the training viewer's browser client fetches it from `/scene`.
 
+## Photos in HEIC, JPEG XL or AVIF
+
+Nothing past dataset preparation reads these, so a folder holding any is never
+read in place: each such photo becomes a JPEG in the dataset's `images/`,
+whatever the import mode (`app/gui/ForeignPhoto.h`). A name already taken gets
+the source's extension: `a.jxl` beside `a.jpg` becomes `a_jxl.jpg`.
+
+| format | decoded by | its EXIF in the JPEG |
+|---|---|---|
+| HEIC / HEIF | the in-process decoder (`SS_ENABLE_PATENTED`), else ffmpeg 7.0+ | kept in-process, lost through ffmpeg |
+| JPEG XL (`.jxl`) | ffmpeg built with libjxl | kept: the container's `Exif` box is spliced back, unless it is Brotli-compressed (`brob`) |
+| AVIF (`.avif`) | ffmpeg | lost |
+
+ffmpeg applies the file's own turn and mirror, so the JPEG is upright and a
+carried EXIF has its Orientation reset to 1. A run that lost EXIF says for how
+many photos: SfM has no focal-length prior or GPS for them. A 33 MP JPEG XL
+converts in 0.7 s at a 0.35 GB peak and an AVIF in 0.4 s at 0.25 GB, so those
+run side by side; HEIF through ffmpeg runs one at a time (2.6 GB for a 24 MP
+grid).
+
 ## EXIF orientation
 
 A phone held upright records a **landscape file plus a tag** that says to turn

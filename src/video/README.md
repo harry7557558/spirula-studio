@@ -175,7 +175,7 @@ to `VideoPipeline` as a stream of key frames through an in-memory `Demuxer`,
 and composes, crops (`clap`), turns (`irot`) and mirrors (`imir`) the result
 in the order the item lists those properties. The EXIF item comes back as a
 JPEG APP1 payload, which is what keeps the focal-length prior when the photo
-becomes a JPEG in a dataset (`app/gui/HeifPhoto.h`).
+becomes a JPEG in a dataset (`app/gui/ForeignPhoto.h`).
 
 Four things decided by measurement or by the spec's history:
 

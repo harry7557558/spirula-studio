@@ -159,9 +159,10 @@ struct PrepInput {
     // .mp4, or each .insp of a folder (app::packed_lens_count); two become cam0/, cam1/.
     // 0 = not such an input, or not measured yet.
     int packed_lenses = 0;
-    // The folder holds HEIC photos, which nothing downstream reads: they are
-    // converted whatever the import mode, so it cannot be read in place.
-    bool heif = false;
+    // The folder holds HEIC, JPEG XL or AVIF photos, which nothing downstream
+    // reads: they are converted whatever the import mode, so it cannot be read
+    // in place.
+    bool foreign_photos = false;
     // Areas of the frame that are never scene -- the fisheye border, a
     // watermark, the rig in shot. Per input because it describes a lens, and
     // resolved per camera folder when it asks for the border to be fitted
@@ -478,7 +479,8 @@ inline bool all_videos_every_frame(const std::vector<PrepInput>& inputs,
 inline bool reads_photos_in_place(const std::vector<PrepInput>& inputs,
                                   PhotoImport mode) {
     return mode == PhotoImport::InPlace && inputs.size() == 1 &&
-           !inputs[0].is_video && inputs[0].packed_lenses == 0 && !inputs[0].heif;
+           !inputs[0].is_video && inputs[0].packed_lenses == 0 &&
+           !inputs[0].foreign_photos;
 }
 
 // Where a job's images will be, before it has run: what PrepResult::image_dir
@@ -679,8 +681,8 @@ inline constexpr size_t kMaxCameraFolders = 64;
 // symlinks (a prepared capture's images/ is often a link into the raw one) and
 // stops at the first hit, so it is cheap enough for the UI thread.
 bool folder_has_images(const std::string& dir);
-// ... and a HEIC photo, on the same terms.
-bool folder_has_heif(const std::string& dir);
+// ... and a HEIC, JPEG XL or AVIF photo, on the same terms.
+bool folder_has_foreign_photos(const std::string& dir);
 
 // The photo extensions an input folder is indexed for.
 bool is_image_file(const std::filesystem::path& p);
