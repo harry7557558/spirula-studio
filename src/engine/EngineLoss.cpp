@@ -145,6 +145,7 @@ static void _engine_raster_proj_backward(
     float v_dist_rgb_per_depth = 0.0f
 ) {
     SplatStageTimer stage_timer;
+    StepTimingScope timing(StepPart::Backward, StepScale::SplatsPixels);
     RenderOutput::TensorTuple v_render_outputs = std::make_tuple(
         DeviceTensor3D<float3>(v_render_rgb),
         _tv_valid(v_render_depth) ? DeviceTensor3D<float>(v_render_depth)
@@ -305,6 +306,7 @@ static void _engine_raster_proj_backward(
     // optimizer step; we just stash the screen-space gradients for that call.
     engine().fwd.v_splats_s = v_splats_s_out;
     engine_observe_projective_depth();
+    StepTimingScope proj_timing(StepPart::Backward, StepScale::Splats);
     if (!engine().optim.use_fused_proj_bwd_optim) {
         // SH VALUE-quant: when active in non-FPBO mode, project_vjp reads
         // the source SH via the codec instead of fp32 features_sh (which is
@@ -984,6 +986,7 @@ std::map<std::string, float> engine_compute_loss_backward(
     float color_shift_reg_weight,
     float color_shift_reg_beta
 ) {
+    StepTimingScope timing(StepPart::Loss, StepScale::Pixels);
     return _engine_loss(loss_weights, w_ssim, perceptual_loss, num_loss_scales,
                         loss_scale_min_pixels, compute_loss_map, loss_map_mode,
                         robust_edge_aware_quantile, nms_falloff,

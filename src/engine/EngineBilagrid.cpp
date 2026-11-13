@@ -273,6 +273,9 @@ void engine_init_bilagrid_normal(int n_grids, int L, int H, int W,
 // Compute TV losses for each enabled bilagrid into a pool-backed 3-float
 // device buffer at [rgb_tv, depth_tv, normal_tv]; unset entries stay 0.
 void _engine_bilagrid_tv_into(float* tv_buf3_device) {
+    StepTimingScope timing(
+        engine().bilagrid_rgb.enabled ? StepPart::Appearance : StepPart::Geometry,
+        StepScale::Images);
     backend::memset_async(tv_buf3_device, 0, 3 * sizeof(float), kBilagridStream);
     auto run = [&](auto& bg, int slot) {
         if (bg.grids.template size<0>() == 0) return;
@@ -331,6 +334,9 @@ void _set_cur_cam_indices(TorchTensorView tv) {
 // in a single kernel launch without any gather of grid params. When
 // `cam_indices` is empty/null, kernels fall back to identity (ni -> ni).
 void engine_bilagrid_forward(TorchTensorView cam_indices) {
+    StepTimingScope timing(
+        engine().bilagrid_rgb.enabled ? StepPart::Appearance : StepPart::Geometry,
+        StepScale::Pixels);
     _set_cur_cam_indices(cam_indices);
     int H = engine().camera.height;
     int W = engine().camera.width;
@@ -809,6 +815,9 @@ void _ensure_bilagrid_optim_state() {
 }
 
 void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
+    StepTimingScope timing(
+        engine().bilagrid_rgb.enabled ? StepPart::Appearance : StepPart::Geometry,
+        StepScale::Images);
     _ensure_bilagrid_optim_state();
     int32_t adam_step = step + 1;
     int C_batch = (int)engine().camera.num;

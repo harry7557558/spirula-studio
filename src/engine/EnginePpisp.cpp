@@ -74,6 +74,7 @@ void engine_init_ppisp(int n_grids, std::string param_type, bool use_adagrad,
 // with bilagrid). When that index buffer is empty, fall back to identity.
 void _engine_ppisp_forward_current() {
     if (!engine().ppisp.enabled) return;
+    StepTimingScope timing(StepPart::Appearance, StepScale::Pixels);
 
     int H = engine().camera.height;
     int W = engine().camera.width;
@@ -107,6 +108,7 @@ void _engine_ppisp_forward_current() {
 
 void engine_ppisp_forward(TorchTensorView cam_indices) {
     if (!engine().ppisp.enabled) return;
+    StepTimingScope timing(StepPart::Appearance, StepScale::Pixels);
     // Repopulating with the same tensor is cheap (DeviceVector<int32_t> takes
     // a view of device memory when the source is on device).
     _set_cur_cam_indices(cam_indices);
@@ -174,6 +176,7 @@ float* _engine_ppisp_reg_loss_into(
     const std::array<float, (int)PPISPRegLossIndex::length>& loss_weights,
     bool compute_grad
 ) {
+    StepTimingScope timing(StepPart::Appearance, StepScale::Images);
     int N = (int)engine().ppisp.params.size<0>();
     int kRaw = ppisp_param_spec(engine().ppisp.param_type).num_raw_losses;
     int kLoss = (int)PPISPRegLossIndex::length;
@@ -235,6 +238,7 @@ float* _engine_ppisp_reg_loss_into(
 
 void engine_ppisp_optim_step(int step, const PpispStepConfig& cfg) {
     if (!engine().ppisp.enabled) return;
+    StepTimingScope timing(StepPart::Appearance, StepScale::Images);
     _ensure_ppisp_optim_state();
     if (cfg.lr <= 0.0f) {
         // Still zero accumulated grads for next iteration to match other paths.

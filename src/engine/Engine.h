@@ -24,6 +24,7 @@
 
 #include "data/DataManager.h"
 #include "engine/EngineConfig.h"
+#include "engine/StepTiming.h"
 
 #include <map>
 #include <string>
@@ -733,6 +734,10 @@ size_t engine_get_scratch_bytes();
 // before the step, read after; < 0 if not armed or the device has no timer.
 void engine_step_timing_arm();
 double engine_step_timing_read();
+// Every kernel, fill and copy from arm to read, classified by StepTiming.h;
+// false when the backend timed nothing (CUDA, or no device timestamps).
+void engine_dispatch_timing_arm();
+bool engine_dispatch_timing_read(StepCells& out);
 
 // Formatted per-category pool report (SS_PROFILE). Reads the pool's
 // high-water capacities, so it is a peak, not an instantaneous figure.

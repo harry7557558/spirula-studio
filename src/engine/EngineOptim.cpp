@@ -676,6 +676,7 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
 
 
 void engine_optim_step(int step, const OptimConfig& cfg) {
+    StepTimingScope timing(StepPart::Optimizer, StepScale::Splats);
     if (engine().optim.use_fused_proj_bwd_optim) {
         engine_fused_proj_bwd_optim_step(step, cfg);
         return;

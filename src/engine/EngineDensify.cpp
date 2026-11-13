@@ -125,6 +125,7 @@ static void _log_score_by_size(int step, int64_t n) {
 
 
 void engine_max_weight_begin_step(int step, int max_steps, const DensifyConfig& cfg) {
+    StepTimingScope timing(StepPart::Densify, StepScale::Splats);
     auto& mw = engine().max_weight;
     const bool track = cfg.use_revised_densification
         && cfg.dead_criterion != DeadCriterion::Opacity && cfg.refine_every > 0
@@ -154,6 +155,7 @@ void engine_max_weight_begin_step(int step, int max_steps, const DensifyConfig& 
 
 
 int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
+    StepTimingScope timing(StepPart::Densify, StepScale::Splats);
     int64_t cur_num_splats = engine().cur_num_splats;
     int64_t max_num_splats = engine().max_num_splats;
     bool quantize_sh = engine().optim.sh_quantize_enabled();

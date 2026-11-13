@@ -521,11 +521,27 @@ std::string strip_feature_suffixes(std::string name) {
     return name;
 }
 
+// The entry names of engine/StepTimingTable.h's rows: X("<entry>", ...).
+bool read_timing_table(const std::string& path, std::set<std::string>& out) {
+    bool ok = false;
+    const std::string text = read_file(path, &ok);
+    if (!ok) return false;
+    const std::string key = "X(\"";
+    for (size_t at = text.find(key); at != std::string::npos; at = text.find(key, at)) {
+        at += key.size();
+        const size_t end = text.find('"', at);
+        if (end == std::string::npos) break;
+        out.insert(text.substr(at, end - at));
+    }
+    return true;
+}
+
 int run_embed(const std::vector<std::string>& args) {
-    std::string out_cpp, listfile, nn_tag;
+    std::string out_cpp, listfile, nn_tag, timing_table;
     bool sfm = false, nn = false;
     for (size_t i = 0; i < args.size(); i++) {
         if (args[i] == "--list" && i + 1 < args.size()) listfile = args[++i];
+        else if (args[i] == "--timing-table" && i + 1 < args.size()) timing_table = args[++i];
         else if (args[i] == "--sfm") sfm = true;
         else if (args[i] == "--nn" && i + 1 < args.size()) {
             nn = true;
@@ -619,6 +635,28 @@ int run_embed(const std::vector<std::string>& args) {
                     "engine's device does not enable (for half floats use "
                     "pack_half2 / unpack_half2 in vulkan/rgb_format.slang)\n",
                     name.c_str(), c.name);
+                failed = true;
+            }
+    }
+    // Every engine kernel says what it is for in the step breakdown, and every
+    // row there names a kernel that exists.
+    if (!timing_table.empty()) {
+        std::set<std::string> rows, entries;
+        if (!read_timing_table(timing_table, rows)) {
+            std::fprintf(stderr, "embed: cannot read %s\n", timing_table.c_str());
+            return 1;
+        }
+        for (const std::string& name : kept) entries.insert(strip_feature_suffixes(name));
+        for (const std::string& e : entries)
+            if (!rows.count(e)) {
+                std::fprintf(stderr, "  NO TIMING CLASS: %s has no row in %s\n",
+                             e.c_str(), timing_table.c_str());
+                failed = true;
+            }
+        for (const std::string& r : rows)
+            if (r[0] != '@' && !entries.count(r)) {
+                std::fprintf(stderr, "  STALE TIMING ROW: %s in %s names no kernel\n",
+                             r.c_str(), timing_table.c_str());
                 failed = true;
             }
     }

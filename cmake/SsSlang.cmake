@@ -130,18 +130,18 @@ function(ss_build_spirv_tool out_var)
     set(${out_var} ${tool_exe} PARENT_SCOPE)
 endfunction()
 
-# ss_embed_spirv(<out_cpp> <listfile> <comment> BLOBS <spv>... FLAGS <arg>...)
+# ss_embed_spirv(<out_cpp> <listfile> <comment> BLOBS <spv>... FLAGS <arg>... DEPENDS <file>...)
 #
 # The one route from .spv blobs into a binary (spirv_tool embed). Records
 # <listfile> for shader_limits_test, so no embedded shader set escapes it.
 function(ss_embed_spirv out_cpp listfile comment)
-    cmake_parse_arguments(PARSE_ARGV 3 _e "" "" "BLOBS;FLAGS")
+    cmake_parse_arguments(PARSE_ARGV 3 _e "" "" "BLOBS;FLAGS;DEPENDS")
     ss_build_spirv_tool(_tool)
     string(REPLACE ";" "\n" _body "${_e_BLOBS}")
     ss_write_if_different(${listfile} "${_body}\n")
     add_custom_command(OUTPUT ${out_cpp}
         COMMAND ${_tool} embed ${_e_FLAGS} ${out_cpp} --list ${listfile}
-        DEPENDS ${_tool} ${_e_BLOBS} ${listfile}
+        DEPENDS ${_tool} ${_e_BLOBS} ${listfile} ${_e_DEPENDS}
         COMMENT "${comment}"
         VERBATIM)
     set_property(GLOBAL APPEND PROPERTY SS_SPIRV_LISTFILES ${listfile})

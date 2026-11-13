@@ -5,9 +5,11 @@
 #include "i18n/catalog/Gui.h"
 
 #include <algorithm>
+#include <utility>
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace gui {
 
@@ -89,6 +91,50 @@ void breakdown(const VramForecast& v) {
     if (faded) ui::TextDisabled(msg::vram_breakdown_growth);
 }
 
+// What a basic setting takes off the peak: Splat is sized for cap_max, Image
+// follows the pixels, splat x img both (TrainForecast's exponents), and the
+// 360-camera preset's five views a frame are five images' appearance grids.
+void savings(const VramForecast& v, const SavingsContext& ctx) {
+    if (!v.projected || v.peak_mean <= 0.0) return;
+    const auto cat = [&](VramCategory c) { return v.category[(int)c]; };
+    const double sxi = std::max(cat(VramCategory::SplatXImg), v.grow_peak_mean - v.scratch);
+    const std::string basic = msg::section_basic_options.get();
+    struct Tip { double saved; std::string text; };
+    std::vector<Tip> tips;
+    const auto add = [&](double saved, const spirula::i18n::Msg& m, const std::string& a,
+                         const std::string& c, const std::string& d = {}) {
+        tips.push_back({saved, ui::format(m, {gib(saved), a, c, d})});
+    };
+    add(cat(VramCategory::Image) * 0.75 + sxi * (1.0 - std::pow(0.25, spirula::kSplatXImgVramExp)),
+        msg::vram_tip_halve, msg::opt_resolution.get(), basic);
+    add(cat(VramCategory::Splat) * 0.5 + sxi * (1.0 - std::pow(0.5, v.growth_power)),
+        msg::vram_tip_halve, msg::opt_max_splats.get(), basic);
+    if (ctx.sh_degree > 0 && v.sh_bytes > 0.0) {
+        // SH rows hold (d + 1)^2 - 1 coefficients; measured 3 -> 2 -> 1 -> 0
+        // freed 84 / 53 / 38 MiB of 176 at 1M splats, within 7% of this.
+        const auto coeffs = [](int d) { return (double)((d + 1) * (d + 1) - 1); };
+        const int d = ctx.sh_degree;
+        add(v.sh_bytes * (1.0 - coeffs(d - 1) / coeffs(d)), msg::vram_tip_set,
+            msg::opt_sh_degree.get(), std::to_string(d - 1), basic);
+    }
+    if (ctx.frames_split && ctx.preset_360)
+        add(cat(VramCategory::Appearance) * (1.0 - ctx.images_kept), msg::vram_tip_preset, msg::section_preset.get(),
+            ctx.preset_360_label, ctx.preset_general_label);
+    std::stable_sort(tips.begin(), tips.end(),
+                     [](const Tip& a, const Tip& c) { return a.saved > c.saved; });
+    bool titled = false;
+    for (const Tip& t : tips) {
+        if (t.saved < 0.05 * v.peak_mean) continue;
+        if (!titled) {
+            ImGui::Spacing();
+            ui::Text(msg::vram_tips_title);
+            titled = true;
+        }
+        ImGui::Bullet();
+        ui::TextWrappedRaw(t.text);
+    }
+}
+
 }  // namespace
 
 const spirula::i18n::Msg* oom_risk_label(OomRisk r) {
@@ -100,7 +146,7 @@ const spirula::i18n::Msg* oom_risk_label(OomRisk r) {
     }
 }
 
-void vram_forecast_card(const VramForecast& v, int total_steps) {
+void vram_forecast_card(const VramForecast& v, int total_steps, const SavingsContext& ctx) {
     ui::Text(msg::vram_chart_title);
     forecast_chart(v, std::max(1, total_steps), std::to_string(total_steps));
     forecast_legend(msg::vram_legend_run);
@@ -116,6 +162,7 @@ void vram_forecast_card(const VramForecast& v, int total_steps) {
     ImGui::Spacing();
     ui::Text(msg::vram_breakdown_title);
     breakdown(v);
+    savings(v, ctx);
 }
 
 }  // namespace gui

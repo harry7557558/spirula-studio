@@ -8,11 +8,15 @@
 #include "app/ResourceForecast.h"
 #include "core/PoolSlots.h"
 #include "engine/EngineConfig.h"
+#include "engine/StepTiming.h"
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
+#include <deque>
 #include <mutex>
+#include <utility>
 #include <vector>
 
 namespace spirula {
@@ -57,6 +61,8 @@ struct VramForecast : ResourceForecast {
     double scratch = 0.0;
     double unpooled = 0.0;
     double grow_peak_mean = 0.0;
+    double growth_power = 1.0;   // splat x img ~ msplats^p, the fits' mixture
+    double sh_bytes = 0.0;       // of `category[Splat]`, the SH rows
 };
 
 struct ForecastSetup {
@@ -66,6 +72,8 @@ struct ForecastSetup {
     int distinct_batches = 1;      // views a step can draw, for the peak draw
     int sh_degree = 0;             // the step's SH degree is
     int sh_degree_every = 0;       //   min(step / sh_degree_every, sh_degree)
+    // Progressive resolution: (first step, image divisor), ascending.
+    std::vector<std::pair<int, int>> resolution_stages;
     // Splat memory first allocated, for cap_max, at a later step: the
     // local-PCA regularizer's neighbour caches.
     uint64_t deferred_bytes = 0;
@@ -83,7 +91,39 @@ struct MemorySample {
     uint64_t process_bytes = 0, used_bytes = 0, total_bytes = 0;
     uint64_t process_peak_bytes = 0;   // since the previous sample
     uint64_t commit_free_bytes = 0;
+    size_t sh_bytes = 0;         // the splats' SH rows, part of the Splat category
 };
+
+// One finished step for the time breakdown: its wall clock with the host
+// spans inside it, and on a timed step every kernel's GPU time.
+struct StepSample {
+    int step = 0;
+    double wall_s = 0.0;       // the save included
+    double save_s = 0.0;
+    double data_wait_s = 0.0;
+    bool densify = false;      // densify steps are sampled as their own stratum
+    bool timed = false;
+    StepCells gpu;
+};
+
+// Where time goes, in seconds over `steps` steps. The host spans are the
+// Loading and Saving rows; `unaccounted` is the wall time nothing above
+// explains: host work between kernels and an idle GPU.
+struct TimeBreakdown {
+    bool known = false;
+    double steps = 0.0;
+    int window = 0;            // steps averaged, per step
+    StepCells cells;
+    double unaccounted = 0.0;
+    double total() const { return cells.total() + unaccounted; }
+};
+
+// Splat x pixel kernels' time ~ r^0.45 msplats^0.5 and splat x img bytes ~
+// r^0.35, r the pixel count over the full resolution's: paired runs on garden
+// and bonsai at two resolutions, docs/notes/step-timing.md.
+constexpr double kSplatPixelTimeExp = 0.45;
+constexpr double kSplatPixelSplatExp = 0.5;
+constexpr double kSplatXImgVramExp = 0.35;
 
 class TrainForecast {
 public:
@@ -95,21 +135,29 @@ public:
     void add_step(int step, double wall_s, int64_t splats, double splat_gpu_s);
     void add_save(double seconds, int64_t splats);
     void add_memory(const MemorySample& m);
+    void add_breakdown(const StepSample& s);
 
     // Time left from `next_step` with `live` splats entering it.
     EtaForecast eta(int next_step, int64_t live) const;
     // Without the history and projection series when `series` is false.
     VramForecast vram(bool series = true) const;
+    // Per step, averaged over the last window of steps.
+    TimeBreakdown time_measured() const;
+    // This run from its first step to the last: measured, then forecast.
+    TimeBreakdown time_forecast(int next_step, int64_t live) const;
+    // The image size's pixel count over the full resolution's at `step`.
+    double pixel_ratio(int step) const;
 
 private:
     struct Window {
         std::vector<double> wall, gpu;     // gpu < 0: step not timed
         std::vector<double> msplats;
+        std::vector<double> pixels;        // pixel_ratio
         std::vector<int> coeffs;
     };
-    // Step time = a + (b0 + b1 * sh_coeffs) * msplats^gamma, and the splat
-    // stages' GPU time = c + the same term: a Kalman filter over
-    // [a, b0, b1, c], one per exponent, weighted by how well each predicted.
+    // Step time = a ra + (b0 + b1 * sh_coeffs) * msplats^gamma * rb, the splat
+    // stages' GPU time = c ra + the same term (ra, rb: fixed_load, splat_load):
+    // a Kalman filter over [a, b0, b1, c] per exponent, weighted by prediction.
     struct TimeModel {
         double gamma = 1.0;
         double x[4] = {0, 0, 0, 0};
@@ -121,8 +169,47 @@ private:
         double log_ratio = 0.0, log_ratio_sq = 0.0;
         double peak = 0.0;               // the window's own high-water of the growth
     };
+    // splat x img + scratch, at its high-water = g0 + g1 * msplats^p * r^q:
+    // a Kalman filter over [g0, g1], one per exponent, scored like TimeModel.
+    struct MemModel {
+        double p = 1.0;
+        double g[2] = {0, 0};
+        double G[2][2] = {};
+        double score = 0.0;
+    };
+    struct Remaining {
+        double seconds = -1.0, sigma = -1.0;
+        double saves = 0.0;      // of `seconds`, the checkpoint saves
+        double steps = 0.0;
+        // Steps left in units of the next step's cost, for the cells that
+        // scale with the splats, with splats and pixels, and with pixels.
+        double splats = 0.0, splats_pixels = 0.0, pixels = 0.0;
+    };
+    struct StepRec {
+        int step;
+        double wall, save, data;
+        bool densify;
+    };
+    struct TimedRec {
+        int step;
+        bool densify;
+        StepCells gpu;
+    };
 
     int sh_coeffs(int step) const;
+    double fixed_load(double r) const { return _px_share * r + 1.0 - _px_share; }
+    double splat_load(double r) const {
+        return _sp_share * std::pow(r, kSplatPixelTimeExp) + 1.0 - _sp_share;
+    }
+    double memory_x(const MemModel& m, double msplats, int step) const;
+    // f(first, end, coeffs, r) over [from, to) in pieces of constant SH
+    // coefficients and pixel ratio.
+    template <class F>
+    void pieces(int from, int to, F&& f) const;
+    Remaining remaining(int next_step, int64_t live) const;
+    // The window's per-step GPU cells, densify steps weighted by their share.
+    bool window_gpu(StepCells& out) const;
+    bool measured(TimeBreakdown& b) const;
     void close_time_window();
     void update_time_model(TimeModel& t, const Window& w, double y, double var_y,
                            double g, double var_g, bool timed, bool first);
@@ -142,12 +229,10 @@ private:
     double _save_per_msplat = 0.0;
     int _saves = 0;
 
-    // splat x img + scratch, at its high-water = g0 + g1 * msplats: a Kalman
-    // filter over [g0, g1], started once the first densify step has run.
+    // Started once the first densify step has run.
     MemWindow _mw;
     bool _mem_init = false;
-    double _g[2] = {0, 0};
-    double _G[2][2] = {};
+    std::array<MemModel, 3> _mm;
     double _demand_sd = 0.0;
     double _swing_sq = 0.0;              // windows' peaks about the fit, relative, squared
     double _ours_hw = 0.0, _grow_hw = 0.0;
@@ -158,7 +243,19 @@ private:
     int _history_skip = 0;
     double _others_mean = 0.0, _others_sq = 0.0;
     int _others_n = 0;
+    double _image_bytes = 0.0;           // the Image category at _image_ratio
+    double _image_ratio = 1.0;
     VramForecast _vram;
+
+    // Of the time that does not follow the splats, and of what does, the shares
+    // that follow the pixels: from the breakdown, or these priors without it.
+    double _px_share = 0.75, _sp_share = 0.5;
+    std::deque<StepRec> _steps;          // the last window
+    std::deque<TimedRec> _timed;         // in the window, plus each stratum's latest
+    // This run so far: wall, host spans and the GPU cells, estimated from the
+    // window on the steps that were not timed.
+    double _run_steps = 0.0, _run_wall = 0.0;
+    StepCells _run_cells;
 };
 
 template <class F>

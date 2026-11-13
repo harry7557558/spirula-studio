@@ -1494,6 +1494,9 @@ void TrainerSession::setup_engine() {
     if (cfg.progressive_resolution) {
         for (const auto& [epoch, divisor] : progressive::to_epochs(resolution_setpoints(cfg), _batches_per_epoch))
             dm.resolution_stages.emplace_back(epoch * _batches_per_epoch, divisor);
+        _resolution_stages.clear();
+        for (const auto& [from, divisor] : dm.resolution_stages)
+            _resolution_stages.emplace_back((int)std::min<int64_t>(from, INT_MAX), divisor);
         if (!cfg.resume.empty()) {
             try {
                 const JsonValue state = ckpt::read_state_json(ckpt::resolve_checkpoint(cfg.resume).ckpt_dir);
@@ -1818,6 +1821,11 @@ double TrainerSession::eta_seconds() const {
     return _forecast.eta(step, _live_splats.load()).seconds;
 }
 
+TimeBreakdown TrainerSession::time_breakdown(bool whole_run) const {
+    return whole_run ? _forecast.time_forecast(cur_step.load(), _live_splats.load())
+                     : _forecast.time_measured();
+}
+
 void TrainerSession::observe_memory(int step, int64_t splats_ran) {
     MemorySample m;
     m.step = step;
@@ -1839,6 +1847,18 @@ void TrainerSession::observe_memory(int step, int64_t splats_ran) {
     m.process_peak_bytes = mu.process_peak_bytes;
     m.has_commit = mu.has_commit;
     m.commit_free_bytes = mu.commit_free_bytes;
+    // The SH rows and their optimizer state, quantized or not: what a lower SH
+    // degree frees. Buffer names, so once a window rather than every step.
+    if (step % 100 == 0 || _sh_bytes == 0) {
+        size_t sh = 0;
+        for (const auto& [name, used, cap] : engine_get_pool_breakdown())
+            if (name.find("features_sh") != std::string::npos ||
+                name.find("sh_quant") != std::string::npos ||
+                name.find("world.sh_vq") != std::string::npos)
+                sh += cap;
+        _sh_bytes = sh;
+    }
+    m.sh_bytes = _sh_bytes;
     backend::memory_peak_reset();
     _forecast.add_memory(m);
 
@@ -1875,6 +1895,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         fs.distinct_batches = _batches_per_epoch;
         fs.sh_degree = cfg.sh_degree;
         fs.sh_degree_every = cfg.sh_degree_warmup_every;
+        fs.resolution_stages = _resolution_stages;
         if (cfg.pca_reg_neighbors > 0 && cfg.pca_reg_knn.find("-cached") != std::string::npos) {
             const uint64_t k = (uint64_t)std::min(cfg.pca_reg_neighbors, kPcaRegMaxNeighbors - 1);
             const bool lists = cfg.pca_reg_knn != "morton-cached";
@@ -1904,6 +1925,18 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         // is time this step took. Timing only the work below reported 6 ms on
         // a step the run was actually spending 24 ms on.
         auto step_start = std::chrono::steady_clock::now();
+        // One step in ten: on Vulkan each bracket is a queue submission.
+        const bool timed = step % 10 == 0;
+        // The breakdown also times every densify step, a stratum of its own.
+        // SS_STEP_TIMING=0 turns it off, the A/B lever for what it costs.
+        static const bool step_timing = [] {
+            const char* v = spirula::env("STEP_TIMING");
+            return !(v && v[0] == '0');
+        }();
+        const bool densify_step = cfg.refine_every > 0 && step % cfg.refine_every == 0;
+        const bool kernels_timed = step_timing && (timed || densify_step);
+        // Armed before the yield, so a viewer render the step waits for is in it.
+        if (kernels_timed) engine_dispatch_timing_arm();
         while (render_pending.load())
             std::this_thread::sleep_for(std::chrono::microseconds(500));
 
@@ -1911,11 +1944,11 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         std::string data_error;
         double save_s = 0.0, splat_gpu_s = -1.0, data_wait_s = 0.0;
         int64_t splats_ran = 0;
-        // One step in ten: on Vulkan each bracket is a queue submission.
-        const bool timed = step % 10 == 0;
+        StepSample sample;
         {
             std::lock_guard<std::mutex> lk(engine_mutex);
             if (step > start_step && cfg.steps_per_save > 0 && step % cfg.steps_per_save == 0) {
+                StepTimingScope saving(StepPart::Saving, StepScale::Splats);
                 const auto t0 = std::chrono::steady_clock::now();
                 // The one checkpoint kept is what a crash resumes from, so it carries the optimizer.
                 save_checkpoint(step, cfg.save_full_checkpoint || cfg.save_only_latest_checkpoint);
@@ -1930,6 +1963,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
                 data_error = e.what();
             }
             if (timed) splat_gpu_s = engine_step_timing_read();
+            if (kernels_timed) sample.timed = engine_dispatch_timing_read(sample.gpu);
             _live_splats = engine_get_cur_num_splats();
             data_wait_s = engine_take_data_wait_seconds();
         }
@@ -1958,6 +1992,12 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
             if (_step_latencies.size() > 100) _step_latencies.pop_front();
         }
         _forecast.add_step(step, latency - save_s, splats_ran, splat_gpu_s);
+        sample.step = step;
+        sample.wall_s = latency;
+        sample.save_s = save_s;
+        sample.data_wait_s = data_wait_s;
+        sample.densify = densify_step;
+        _forecast.add_breakdown(sample);
         if (_perf.enabled()) {
             _perf.add_step(latency, data_wait_s, splat_gpu_s, save_s);
             _perf.tick(step + 1, engine_train_resolution_divisor(), _live_splats.load(), paused.load(), [this] {
@@ -1971,6 +2011,45 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         observe_memory(step, splats_ran);
         // SS_FORECAST_LOG=1: the forecast's state every 100 steps, English,
         // for checking it against how the run actually ends.
+        // SS_STEP_TIMING_LOG=1: the measured step breakdown every 100 steps.
+        static const bool timing_log = spirula::env("STEP_TIMING_LOG") != nullptr;
+        if (timing_log && (step + 1) % 100 == 0) {
+            const TimeBreakdown b = _forecast.time_measured();
+            if (b.known) {
+                std::string line = "[step-timing] step " + std::to_string(step + 1);
+                char buf[160];
+                const DevicePool::CategoryBytes pool = DevicePool::global().category_bytes();
+                std::snprintf(buf, sizeof buf, "  splats %lld  splat_x_img %.1f MiB",
+                              (long long)_live_splats.load(),
+                              pool.cap[(int)VramCategory::SplatXImg] / 1048576.0);
+                line += buf;
+                std::snprintf(buf, sizeof buf, "  total %.2f ms  unaccounted %.2f", b.total() * 1e3,
+                              b.unaccounted * 1e3);
+                line += buf;
+                for (int c = 0; c < kStepScales; ++c) {
+                    std::snprintf(buf, sizeof buf, "  %s %.2f", step_scale_name((StepScale)c),
+                                  b.cells.scale((StepScale)c) * 1e3);
+                    line += buf;
+                }
+                line += "\n   ";
+                for (int p = 0; p < kStepParts; ++p) {
+                    const double t = b.cells.part((StepPart)p);
+                    if (t <= 0.0) continue;
+                    std::snprintf(buf, sizeof buf, " %s %.2f", step_part_name((StepPart)p), t * 1e3);
+                    line += buf;
+                }
+                line += "\n   ";
+                for (int p = 0; p < kStepParts; ++p)
+                    for (int c = 0; c < kStepScales; ++c) {
+                        const double t = b.cells.s[p][c];
+                        if (t < 1e-5) continue;
+                        std::snprintf(buf, sizeof buf, " %s/%s %.3f", step_part_name((StepPart)p),
+                                      step_scale_name((StepScale)c), t * 1e3);
+                        line += buf;
+                    }
+                std::fprintf(stderr, "%s\n", line.c_str());
+            }
+        }
         static const bool forecast_log = spirula::env("FORECAST_LOG") != nullptr;
         if (forecast_log && (step + 1) % 100 == 0) {
             const EtaForecast e = _forecast.eta(step + 1, _live_splats.load());

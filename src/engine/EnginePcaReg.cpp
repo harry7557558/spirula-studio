@@ -57,6 +57,7 @@ struct PartTimer {
 
 void engine_pca_reg_step(int step, const PcaRegConfig& cfg,
                          std::map<std::string, float>& loss_dict) {
+    StepTimingScope timing(StepPart::Regularizer, StepScale::Splats);
     auto& e = engine();
     auto& s = e.pca_reg;
     s.v_means = DeviceVector<float3>();

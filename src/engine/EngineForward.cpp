@@ -1,6 +1,7 @@
 // Engine forward pass + debug forward.
 
 #include "engine/Engine.h"
+
 #include "engine/EngineCommon.h"
 #include "engine/EngineInternal.h"
 #include "engine/EngineState.h"
@@ -10,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -277,6 +279,8 @@ void forward_3dgs(
     const ColorBasis color{sh_degree, engine().sb_lobes};
 
     // --- Projection ---
+    std::optional<StepTimingScope> timing;
+    timing.emplace(StepPart::Render, StepScale::Splats);
     if (packed) {
         DeviceVector<int32_t> cam_ids, gauss_ids;
         DeviceVector<uint2> aabb_vec;
@@ -387,6 +391,8 @@ void forward_3dgs(
     auto& bin = bin_choice();
     engine().fwd.macro_log2 = engine_bin_macro_log2();
     const int macro_before = engine().fwd.macro_log2;
+    timing.reset();
+    timing.emplace(StepPart::Render, StepScale::SplatsPixels);
 
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
         aabb_q, depths_nd, ellipse,
@@ -479,6 +485,8 @@ void forward_3dgs(
     engine().fwd.render_Ts = render_Ts;
     engine().fwd.render_median = render_median;
     engine().fwd.last_ids = last_ids;
+
+    timing.reset();
 
     // render -> bg -> [PPISP] -> encode -> [PPISP] -> bilagrid -> [PPISP] ->
     // loss. The stages before the grid run here, so eval and viewer renders get

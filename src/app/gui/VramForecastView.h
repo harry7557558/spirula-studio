@@ -5,6 +5,7 @@
 
 #include "app/TrainForecast.h"
 #include "app/gui/ResourceForecastView.h"
+#include "app/gui/StepTimingView.h"
 
 namespace gui {
 
@@ -13,6 +14,7 @@ const spirula::i18n::Msg* oom_risk_label(spirula::OomRisk r);
 
 // Memory over the run with its projection, then this run's usage by category.
 // Call inside a tooltip.
-void vram_forecast_card(const spirula::VramForecast& v, int total_steps);
+void vram_forecast_card(const spirula::VramForecast& v, int total_steps,
+                        const SavingsContext& ctx);
 
 }  // namespace gui

@@ -216,8 +216,9 @@ src/
 │                             seeding -> step loop -> eval. Both the CLI and
 │                             the GUI drive this; it lives in the engine
 │                             library (cmake/sources.txt), not the app targets.
-│                             TrainForecast.{h,cpp} beside it is the run's ETA
-│                             and VRAM forecast -- docs/notes/train-forecast.md;
+│                             TrainForecast.{h,cpp} beside it is the run's ETA,
+│                             VRAM forecast and step-time breakdown --
+│                             docs/notes/train-forecast.md, step-timing.md;
 │                             ResourceForecast.h is the shape every job's RAM /
 │                             VRAM forecast takes, RunReport.h how a child
 │                             reports it -- docs/notes/memory-forecast.md
@@ -750,6 +751,10 @@ small default buffer is not enough for these bulk paths.
   count and outlives a call goes in `POOL_LIVE_SPLAT_TABLE`, so it is sized
   for `cap_max` once: the trainer's VRAM forecast assumes only `splat x img`
   grows during a run.
+- **A new Vulkan kernel needs a row in `engine/StepTimingTable.h`**: what it
+  is for and what its time grows with, for the step-time breakdown the GUI
+  shows. The SPIR-V embed fails without it; a shared utility says `Scope` and
+  its caller opens a `StepTimingScope` (docs/notes/step-timing.md).
 - **`SS_PROFILE=1`** enables the per-stage backend timing breakdown
   (H2D / D2H / D2D / memset / device / host), header-only, both backends, plus
   a per-category VRAM breakdown after any run that trained. What the biggest

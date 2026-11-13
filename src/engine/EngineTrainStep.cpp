@@ -386,6 +386,7 @@ static DensifyAccumMode _step_accum_mode(const EngineStepConfig& cfg) {
 // Avg with atomicAdd (Avg over both planar lanes, divided later).
 static void _fold_accum_weight(DeviceVector<float>& dst, int64_t num_splats) {
     if (engine().fwd.accum_weight.data_ptr() == nullptr) return;
+    StepTimingScope timing(StepPart::Densify, StepScale::Splats);
     const DensifyAccumMode mode = engine().fwd.accum_mode;
     const int64_t n = num_splats * accum_lanes(mode);
     if (mode == DensifyAccumMode::Max)

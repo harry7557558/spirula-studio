@@ -209,6 +209,7 @@ void engine_set_background_step_params(uint32_t seed, float randomize_weight,
 void _engine_background_forward() {
     auto& bg = engine().background;
     if (!bg.enabled || bg.mode == EngineBackground::Mode::None) return;
+    StepTimingScope timing(StepPart::Background, StepScale::Pixels);
 
     int C_batch = (int)engine().camera.num;
     int H       = engine().camera.height;
@@ -457,6 +458,7 @@ void _engine_background_backward_hook(
 void engine_background_optim_step(int step, const BackgroundStepConfig& cfg) {
     auto& bg = engine().background;
     if (!bg.enabled) return;
+    StepTimingScope timing(StepPart::Background, StepScale::Fixed);
     if (bg.mode != EngineBackground::Mode::Sh) return;
 
     _ensure_bg_sh_optim_state();

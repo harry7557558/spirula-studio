@@ -337,11 +337,13 @@ bool record_dispatch(Stream stream, const char* entry_name,
         }
     }
     int ts = gpu_ts_begin(cb, entry_name);  // GPU-timestamp timing (profile)
+    const int dt = dispatch_ts_begin(cb, entry_name);
     if (base)
         vkCmdDispatchBase(cb, base[0], base[1], base[2], groups_x, groups_y,
                           groups_z);
     else
         vkCmdDispatch(cb, groups_x, groups_y, groups_z);
+    dispatch_ts_end(cb, dt);
     gpu_ts_end(cb, ts);
     stream_barrier(cb);
     return true;

@@ -27,6 +27,7 @@
 #include "app/gui/PickSheetView.h"
 #include "app/gui/PairPreview.h"
 #include "app/gui/SfmProgress.h"
+#include "app/gui/StepTimingView.h"
 #include "app/gui/Layout.h"
 #include "app/gui/LidarStep.h"
 #include "app/gui/MeshRunner.h"
@@ -653,6 +654,9 @@ private:
     // Right-aligned VRAM readout on the status strip; x0/avail describe the
     // strip's content region (window-local left edge and width).
     void draw_vram_readout(float x0, float avail);
+    // "details" beside the step rate: where the time goes, on hover and pinned.
+    void draw_timing_link();
+    SavingsContext savings_context(const spirula::TrainerSession& session) const;
 
     // ---- layout ----
     // The height the log panel gets when `avail` vertical pixels are shared
@@ -1336,6 +1340,7 @@ private:
 
     // VRAM readout on the status strip, polled from the backend at ~2 Hz.
     backend::MemoryUsage _vram;
+    StepTimingViewState _timing_view;
     double _vram_polled_at = -1.0;
 };
 

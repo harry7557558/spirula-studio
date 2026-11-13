@@ -12500,10 +12500,12 @@ void GuiApp::draw_status_strip() {
                  {ms, format_duration_coarse(_train_clock.elapsed(now)),
                   format_duration_coarse(_train_clock.remaining(now)),
                   format_count((double)p.num_splats)});
+        draw_timing_link();
     } else if (ph == TrainRunner::Phase::Done && p.total_steps > 0) {
         ui::ProgressBar(1.0f, ImVec2(-8, 0), msg::status_done_steps,
                         {p.step + 1, format_duration_coarse(_runner.elapsed_seconds())});
         ui::TextDisabled(msg::status_explore);
+        draw_timing_link();
     } else if (ph == TrainRunner::Phase::Preparing) {
         const std::string fetching = _runner.fetch_line();
         const float frac = _runner.fetch_progress();
@@ -12534,6 +12536,44 @@ void GuiApp::draw_status_strip() {
     }
 
     draw_vram_readout(x0, avail);
+}
+
+SavingsContext GuiApp::savings_context(const spirula::TrainerSession& session) const {
+    SavingsContext ctx;
+    ctx.frames_split = session.post.any_warp;
+    ctx.sh_degree = session.cfg.sh_degree;
+    if (ctx.frames_split && session.post.n_post > 0)
+        ctx.images_kept =
+            (double)session.post.K_per_camera.size() / (double)session.post.n_post;
+    ctx.preset_360 = _train_presets.file.empty() && _preset == "360-camera";
+    ctx.preset_360_label = preset_label("360-camera");
+    ctx.preset_general_label = preset_label("3dgs");
+    return ctx;
+}
+
+void GuiApp::draw_timing_link() {
+#ifdef SS_BACKEND_VULKAN
+    spirula::TrainerSession* session = _runner.engine_ready() ? _runner.session() : nullptr;
+    if (!session) return;
+    _timing_view.follow(session, session->cur_step.load());
+    ImGui::SameLine();
+    // A link rather than a third bar: the row is already the one that gives
+    // way first, and the breakdown needs words to read anyway.
+    if (ui::TextLink(msg::timing_details)) ImGui::OpenPopup("##step_timing");
+    const bool pinned = ImGui::IsPopupOpen("##step_timing");
+    if (!pinned &&
+        ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_NoSharedDelay) &&
+        ImGui::BeginTooltip()) {
+        step_timing_card(session->time_breakdown(false), session->time_breakdown(true),
+                         session->cfg, savings_context(*session), _timing_view, false);
+        ImGui::EndTooltip();
+    }
+    if (ImGui::BeginPopup("##step_timing")) {
+        step_timing_card(session->time_breakdown(false), session->time_breakdown(true),
+                         session->cfg, savings_context(*session), _timing_view, true);
+        ImGui::EndPopup();
+    }
+#endif
 }
 
 void GuiApp::draw_vram_readout(float x0, float avail) {
@@ -12602,7 +12642,8 @@ void GuiApp::draw_vram_readout(float x0, float avail) {
         ui::TextDisabled(msg::vram_help);
         ImGui::PopTextWrapPos();
         ImGui::Separator();
-        vram_forecast_card(session->forecast().vram(), session->cfg.num_iterations);
+        vram_forecast_card(session->forecast().vram(), session->cfg.num_iterations,
+                           savings_context(*session));
         ImGui::EndTooltip();
     };
 

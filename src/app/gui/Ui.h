@@ -405,6 +405,7 @@ inline bool CheckboxRaw(const char* id, bool* v) {
 inline bool RadioButton(const Msg& m, bool active) {
     return ImGui::RadioButton(detail::label(m), active);
 }
+inline bool TextLink(const Msg& m) { return ImGui::TextLink(detail::label(m)); }
 inline bool Selectable(const Msg& m, bool selected = false) {
     return ImGui::Selectable(detail::label(m), selected);
 }

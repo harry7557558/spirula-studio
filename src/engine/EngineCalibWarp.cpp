@@ -206,6 +206,7 @@ void _engine_calib_warp_before_loss(int step) {
         return v && *v ? std::atoi(v) : 0;
     }();
     if (log_every > 0 && step % log_every == 0) log_stats(step);
+    StepTimingScope timing(StepPart::Calibration, StepScale::Pixels);
     cw.active_this_step = _swap_in_warped_gt();
 }
 
@@ -217,6 +218,7 @@ void _engine_calib_warp_preview() {
 void _engine_calib_warp_after_loss(TorchTensorView v_render_rgb) {
     auto& cw = engine().calib_warp;
     if (!cw.active_this_step || !_tv_valid(v_render_rgb)) return;
+    StepTimingScope timing(StepPart::Calibration, StepScale::Pixels);
     const int64_t C = engine().camera.num, H = engine().camera.height,
                   W = engine().camera.width;
     const TorchTensorView cams = cam_tv(), intr = intrins_tv(), params = table_tv(cw.params);

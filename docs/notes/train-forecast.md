@@ -8,7 +8,8 @@ against synthetic runs whose answers are known, and `SS_FORECAST_LOG=1` prints
 its state every 100 steps for checking it against a real run.
 
 Both models lean on the same fact: until the model reaches `cap_max`, the
-splat count still to come is **known**. `engine_densify_step` grows it by
+splat count still to come is **known**. So is the image size, under
+progressive resolution: `ForecastSetup::resolution_stages`. `engine_densify_step` grows it by
 `densify_grows_at` / `densify_target` (`engine/EngineConfig.h`), and
 `SplatSchedule` replays that same rule forward. The SH degree schedule
 (`min(step / sh_degree_warmup_every, sh_degree)`) is known the same way. So
@@ -48,6 +49,24 @@ The ETA also adds the checkpoint saves still to come, at the seconds per
 million splats the saves so far took; a save is excluded from its step's
 wall time for that reason.
 
+### The image size
+
+Under progressive resolution a step at a quarter of the size costs a fraction
+of a full one, and a model fitted on the early stages alone forecast the run
+at that rate. So both terms carry the pixel ratio `r` (the step's pixel count
+over the full size's):
+
+    a (f_a r + 1 - f_a) + (b0 + b1 k) N^gamma (f_b r^0.45 + 1 - f_b)
+
+`f_a` is the share of the time outside the splat term that follows the
+pixels, `f_b` the share of the splat term in the splat x pixel kernels; both
+come from the step breakdown (docs/notes/step-timing.md), converted from the
+`r` they were measured at to full size, with priors 0.75 and 0.5 before it
+has measured. `r^0.45` is the splat x pixel kernels' exponent, measured there.
+Without progressive resolution `r = 1` and the model is the one above. On a
+synthetic run of 1/4, 1/2 then full size the ETA at step 1000 (1/4 size) was
+6% over the truth where the last 100 steps' rate said half of it.
+
 Replayed on three recorded runs, error in the time left:
 
 | step | 300 | 1000 | 2000 | 3000 | 4000 | 5000 |
@@ -80,11 +99,18 @@ Two measurements decide what "the growth" is:
   (the oversize draw's weights: 2.3% on bicycle). The rest of the densify
   scratch is in the arena, sized by the live count, so it is growth.
 
-The growth is `g0 + g1 * N`, a Kalman filter over `[g0, g1]` from one
-high-water measurement per window, starting at `g0 = 0`: fitting a fixed
-chunk from the first windows under-read bonsai's peak by 14 sigma, while
-putting it all per splat over-reads garden's (its 55 MiB chunk) by up to
-36% -- the safe side. Four terms widen the projection:
+The growth is `g0 + g1 * N^p * r^0.35`, a Kalman filter over `[g0, g1]` per
+exponent `p` (0.6, 0.8, 1.0) from one high-water measurement per window,
+starting at `g0 = 0`: fitting a fixed chunk from the first windows under-read
+bonsai's peak by 14 sigma, while putting it all per splat over-reads garden's
+(its 55 MiB chunk) by up to 36% -- the safe side. The exponents are weighted
+like the ETA's, by how well each predicted the next window, from a prior of
+0.2 / 0.3 / 0.5 that leans linear: splat x img grew as `N^0.3-0.5` on garden
+and bonsai up to 1M splats (smaller splats cover fewer tiles), but under-reading
+a peak is the costly mistake. `r^0.35` is the category's measured exponent in
+the pixel ratio (docs/notes/step-timing.md); under progressive resolution the
+Image category is projected in proportion to `r` too. Four terms widen the
+projection:
 
 - the expected largest per-step demand over the draws still to come at each
   count, minus what a window already saw (the pool keeps the largest draw, and

@@ -42,6 +42,7 @@ static DeviceTensor3D<float3> _arena_image(const char* key, PoolPhase phase,
 }
 
 bool _engine_appearance_forward(AppearancePpisp ppisp) {
+    StepTimingScope timing(StepPart::Appearance, StepScale::Pixels);
     auto& a = engine().appearance;
     const bool transient = a.transient_pending;
     a.transient_pending = false;
