@@ -2740,13 +2740,24 @@ bool splice_exif(const fs::path& jpeg_path, std::vector<uint8_t> exif, bool& wri
     return !write_failed;
 }
 
+bool convert_to_jpeg(const fs::path& from, const fs::path& to,
+                     const fs::path& mask_to, int orientation, bool& wrote_mask);
+
+// What one HEIC, JPEG XL or AVIF photo became.
+struct ForeignResult {
+    bool exif_lost = false;   // ffmpeg converted it and EXIF may have stayed behind
+    bool wrote_mask = false;  // its alpha became mask_to
+    bool kept_png = false;    // its alpha had nowhere else to go: png_to, RGBA
+};
+
 // A HEIC, JPEG XL or AVIF photo as the JPEG at `to`, via a temporary name so an
-// interrupted run leaves nothing a resumed one would keep. `exif_lost`: ffmpeg
-// converted it and EXIF may have stayed behind (all but a JPEG XL's does).
-bool foreign_photo_to_jpeg(const fs::path& from, const fs::path& to, bool builtin,
+// interrupted run leaves nothing a resumed one would keep. With alpha it goes
+// where a PNG's would: a JPEG and `mask_to`, or else an RGBA PNG at `png_to`.
+bool foreign_photo_to_jpeg(const fs::path& from, const fs::path& to,
+                           const fs::path& mask_to, const fs::path& png_to, bool builtin,
                            const std::string& ffmpeg_exe, const std::atomic<bool>& cancel,
-                           bool& exif_lost, std::string& note, std::string& error) {
-    exif_lost = false;
+                           ForeignResult& res, std::string& note, std::string& error) {
+    res = ForeignResult{};
     fs::path part = to;
     part += ".part";
     std::error_code ec;
@@ -2768,11 +2779,39 @@ bool foreign_photo_to_jpeg(const fs::path& from, const fs::path& to, bool builti
         }
     }
     if (!done) {
-        if (!ffmpeg_photo_to_jpeg(ffmpeg_exe, from.string(), part.string(), cancel, error))
-            return false;
         std::vector<uint8_t> exif;
         const bool all_read = foreign_photo_exif(from.string(), exif);
         const bool has = exif.size() > 6;
+        if (foreign_photo_has_alpha(from.string())) {
+            fs::path rgba = to;
+            rgba += ".part.png";
+            if (!ffmpeg_photo_convert(ffmpeg_exe, from.string(), rgba.string(), true, cancel,
+                                      error))
+                return false;
+            if (mask_to.empty()) {
+                // No EXIF rides along: nothing downstream reads a PNG's.
+                fs::rename(rgba, png_to, ec);
+                if (ec) {
+                    error = fmt(lmsg::err_photo_convert_failed, {from.string(), ec.message()});
+                    fs::remove(rgba, ec);
+                    return false;
+                }
+                res.kept_png = true;
+                res.exif_lost = !all_read || has;
+                return true;
+            }
+            const bool ok = convert_to_jpeg(rgba, part, mask_to, 1, res.wrote_mask);
+            fs::remove(rgba, ec);
+            if (!ok) {
+                fs::remove(part, ec);
+                error = fmt(lmsg::err_photo_convert_failed,
+                            {from.string(), "cannot write " + part.string()});
+                return false;
+            }
+        } else if (!ffmpeg_photo_to_jpeg(ffmpeg_exe, from.string(), part.string(), cancel,
+                                         error)) {
+            return false;
+        }
         bool torn = false;
         // A maker note past a segment's 16-bit length is dropped, as in
         // write_jpeg_with_exif: jpegInsertApp1 refuses it.
@@ -2783,7 +2822,7 @@ bool foreign_photo_to_jpeg(const fs::path& from, const fs::path& to, bool builti
                         {from.string(), "cannot write " + part.string()});
             return false;
         }
-        exif_lost = !all_read || (has && !carried);
+        res.exif_lost = !all_read || (has && !carried);
     }
     fs::rename(part, to, ec);
     if (ec) {
@@ -2915,6 +2954,7 @@ struct PhotoMove {
     // A packed .insp: one JPEG per lens, `to` being the last of them.
     std::vector<fs::path> split;
     bool foreign = false;  // HEIC, JPEG XL or AVIF: converted whatever the import mode
+    fs::path png_to;       // ... where one with alpha goes when it gets no mask
 };
 
 // A re-encoded photo takes the .jpg its bytes now are; the parsers match a
@@ -2968,16 +3008,25 @@ std::vector<PhotoMove> plan_photo_moves(const std::vector<fs::path>& files,
         }
         if (is_foreign_photo_path(f.string())) {
             // Converted whatever the import mode, for the same reason. A clash
-            // takes the source's extension: a_heic.jpg, a_jxl.jpg.
-            fs::path cand = m.to.parent_path() / (rel.stem().string() + ".jpg");
-            if (taken.count(cand)) {
-                std::string ext = rel.extension().string().substr(1);
-                for (auto& c : ext) c = (char)std::tolower((unsigned char)c);
-                cand = m.to.parent_path() / (rel.stem().string() + "_" + ext + ".jpg");
-            }
-            taken.insert(cand);
-            m.to = cand;
+            // takes the source's extension: a_heic.jpg, a_jxl.jpg. Both names
+            // are held: whether it has alpha is asked only when it is converted.
+            std::string ext = rel.extension().string().substr(1);
+            for (auto& c : ext) c = (char)std::tolower((unsigned char)c);
+            auto claim = [&](const char* as) {
+                fs::path cand = m.to.parent_path() / (rel.stem().string() + as);
+                if (taken.count(cand))
+                    cand = m.to.parent_path() / (rel.stem().string() + "_" + ext + as);
+                taken.insert(cand);
+                return cand;
+            };
+            m.to = claim(".jpg");
+            m.png_to = claim(".png");
             m.foreign = true;
+            if (!mask_root.empty() && !is_heif_path(f.string())) {
+                const fs::path cand =
+                    mask_root / rel.parent_path() / (rel.stem().string() + ".png");
+                if (mask_taken.insert(cand).second) m.mask_to = cand;
+            }
             plan.push_back(std::move(m));
             continue;
         }
@@ -3367,7 +3416,11 @@ bool DatasetPrep::gather_photos(const PrepJob& job, const PrepInput& in,
 
         auto step = [&](const PhotoMove& m) {
             std::error_code probe_ec;
-            if (fs::exists(m.to, probe_ec)) { tally.kept++; return true; }
+            if (fs::exists(m.to, probe_ec) ||
+                (!m.png_to.empty() && fs::exists(m.png_to, probe_ec))) {
+                tally.kept++;
+                return true;
+            }
             std::error_code dir_ec;
             fs::create_directories(m.to.parent_path(), dir_ec);
             if (dir_ec && !fs::is_directory(m.to.parent_path(), dir_ec)) {
@@ -3389,14 +3442,15 @@ bool DatasetPrep::gather_photos(const PrepJob& job, const PrepInput& in,
                 return false;
             }
             if (m.foreign) {
-                bool exif_lost = false;
+                ForeignResult res;
                 std::string note, why;
-                const bool ok = foreign_photo_to_jpeg(m.from, m.to, heif_builtin,
-                                                      job.ffmpeg_exe, _cancel, exif_lost,
-                                                      note, why);
+                const bool ok = foreign_photo_to_jpeg(m.from, m.to, m.mask_to, m.png_to,
+                                                      heif_builtin, job.ffmpeg_exe, _cancel,
+                                                      res, note, why);
                 if (ok) {
                     tally.converted++;
-                    if (exif_lost) tally.exif_lost++;
+                    if (res.exif_lost) tally.exif_lost++;
+                    if (res.wrote_mask) tally.masked++;
                 }
                 std::lock_guard<std::mutex> lk(notes_mu);
                 if (!note.empty() && notes.size() < 20) notes.push_back(note);

@@ -32,6 +32,14 @@ bool decode_heif_builtin(const std::string& path, int& w, int& h,
 bool ffmpeg_photo_to_jpeg(const std::string& ffmpeg_exe, const std::string& photo,
                           const std::string& jpeg, const std::atomic<bool>& cancel,
                           std::string& error);
+// The same, or with `rgba_png` an RGBA PNG that keeps the photo's alpha.
+bool ffmpeg_photo_convert(const std::string& ffmpeg_exe, const std::string& photo,
+                          const std::string& out, bool rgba_png,
+                          const std::atomic<bool>& cancel, std::string& error);
+
+// A JPEG XL or AVIF that carries alpha, from its header alone: a JPEG XL's
+// extra channels, an AVIF's auxiliary alpha image. False for HEIF.
+bool foreign_photo_has_alpha(const std::string& path);
 
 // A JPEG XL's EXIF as a JPEG APP1 payload, empty when it has none. False when
 // the photo may carry EXIF this does not read: HEIF, AVIF, or a JPEG XL whose

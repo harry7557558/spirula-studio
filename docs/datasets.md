@@ -609,7 +609,11 @@ the source's extension: `a.jxl` beside `a.jpg` becomes `a_jxl.jpg`.
 | AVIF (`.avif`) | ffmpeg | lost |
 
 ffmpeg applies the file's own turn and mirror, so the JPEG is upright and a
-carried EXIF has its Orientation reset to 1. A run that lost EXIF says for how
+carried EXIF has its Orientation reset to 1. A JPEG XL or AVIF with alpha (read
+from the header: a JPEG XL's extra channels, an AVIF's auxiliary alpha image)
+goes where a PNG with alpha would: "Copy, re-encoded as JPEG" writes a JPEG and
+a mask in `masks/`, anything else keeps an RGBA PNG the trainer reads the alpha
+of. A run that lost EXIF says for how
 many photos: SfM has no focal-length prior or GPS for them. A 33 MP JPEG XL
 converts in 0.7 s at a 0.35 GB peak and an AVIF in 0.4 s at 0.25 GB, so those
 run side by side; HEIF through ffmpeg runs one at a time (2.6 GB for a 24 MP
