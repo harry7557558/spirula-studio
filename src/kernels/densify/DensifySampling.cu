@@ -290,6 +290,8 @@ __global__ void compute_efraimidis_spirakis_weight_kernel(
     uint32_t seed,
     const float* weights,
     const bool* mask,
+    const float* floor_opacities,  // logits; null for no floor
+    float floor_logit,
     float* out_weights,
     int32_t* num_eligible  // null to skip counting
 ) {
@@ -301,6 +303,9 @@ __global__ void compute_efraimidis_spirakis_weight_kernel(
     float w = weights[idx * stride];
     w = w / __logf(fmaxf(1.0f - u, 1e-30f));  // larger w -> smaller (more negative) value
     if (mask != nullptr && !mask[idx])
+        w = 0.0f;
+    // `!(>=)` so a NaN opacity fails the floor too.
+    if (floor_opacities != nullptr && !(floor_opacities[idx] >= floor_logit))
         w = 0.0f;
     out_weights[idx] = w;
     // Strictly negative: a positive weight the mask admits. -0.0 is not one.
@@ -326,7 +331,9 @@ int32_t* weighted_sample_without_replacement_internal(
     bool* masks_ptr,
     uint32_t num_sample,
     uint32_t seed,
-    uint32_t* num_eligible
+    uint32_t* num_eligible,
+    const float* floor_opacities,
+    float floor_logit
 ) {
     // int stride = (int)(weights_numel / numel);
     int stride = 2;  // above is incorrect during warmup
@@ -346,6 +353,8 @@ int32_t* weighted_sample_without_replacement_internal(
         seed,
         weights_ptr,
         masks_ptr,
+        floor_opacities,
+        floor_logit,
         sorting_values,
         d_eligible
     );

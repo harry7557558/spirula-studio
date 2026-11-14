@@ -237,6 +237,7 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     int64_t cur_num_splats,
     float min_opacity,
     float split_opacity_k,
+    float min_split_opacity,  // splats under it are not split; 0 = off
     DeviceVector<float3> means, DeviceVector<float4> quats, DeviceVector<float3> scales, DeviceVector<float> opacs, DeviceVector<float3> features_dc, DeviceVector<float3> features_sh,
     DeviceVector<float3> g1_means, DeviceVector<float4> g1_quats, DeviceVector<float3> g1_scales, DeviceVector<float> g1_opacs, DeviceVector<float3> g1_features_dc, DeviceVector<float3> g1_features_sh,
     DeviceVector<float3> g2_means, DeviceVector<float4> g2_quats, DeviceVector<float3> g2_scales, DeviceVector<float> g2_opacs, DeviceVector<float3> g2_features_dc, DeviceVector<float3> g2_features_sh,
@@ -320,9 +321,11 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     DeviceVector<float2> weights = sample_weights.data_ptr()
         ? sample_weights : densify_accum_buffer;
     uint32_t num_eligible = 0;
+    const bool floor = min_split_opacity > 0.0f;
     int32_t* src_indices = weighted_sample_without_replacement_internal(
         cur_num_splats, (float*)weights.data_ptr(),
-        weights.size() * 2, mask, num_relocate, seed, &num_eligible);
+        weights.size() * 2, mask, num_relocate, seed, &num_eligible,
+        floor ? opacs.data_ptr() : nullptr, floor ? split_floor_logit(min_split_opacity) : 0.0f);
     // Past the live splats of positive weight the draw returns dead ones,
     // each also some pair's dst: the two writes race and the revival is lost.
     // The rest wait for the next step.
@@ -361,11 +364,14 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     return num_relocate;
 }
 
+// Returns how many were added: under `min_split_opacity` (0 = off) that is
+// at most the number of splats opaque enough to split.
 /*[AutoHeaderGeneratorExport]*/
-void add_splats_with_long_axis_split_tensor(
+int64_t add_splats_with_long_axis_split_tensor(
     int64_t cur_num_splats,
     int64_t num_new_splats,
     float split_opacity_k,
+    float min_split_opacity,
     DeviceVector<float3> means, DeviceVector<float4> quats, DeviceVector<float3> scales, DeviceVector<float> opacs, DeviceVector<float3> features_dc, DeviceVector<float3> features_sh,
     DeviceVector<float3> g1_means, DeviceVector<float4> g1_quats, DeviceVector<float3> g1_scales, DeviceVector<float> g1_opacs, DeviceVector<float3> g1_features_dc, DeviceVector<float3> g1_features_sh,
     DeviceVector<float3> g2_means, DeviceVector<float4> g2_quats, DeviceVector<float3> g2_scales, DeviceVector<float> g2_opacs, DeviceVector<float3> g2_features_dc, DeviceVector<float3> g2_features_sh,
@@ -391,7 +397,7 @@ void add_splats_with_long_axis_split_tensor(
     uint32_t seed
 ) {
     if (num_new_splats == 0)
-        return;
+        return 0;
     int32_t* bias_correction_steps_ptr = bias_correction_steps.data_ptr();
     const size_t n4 = 4 * (size_t)cur_num_splats;
     pool_begin_phase(PoolPhase::Densify,
@@ -399,9 +405,17 @@ void add_splats_with_long_axis_split_tensor(
 
     DeviceVector<float2> weights = sample_weights.data_ptr()
         ? sample_weights : densify_accum_buffer;
+    const bool floor = min_split_opacity > 0.0f;
+    uint32_t num_eligible = 0;
     int32_t* split_indices = weighted_sample_without_replacement_internal(
         cur_num_splats, (float*)weights.data_ptr(),
-        weights.size() * 2, nullptr, num_new_splats, seed);
+        weights.size() * 2, nullptr, num_new_splats, seed,
+        floor ? &num_eligible : nullptr,
+        floor ? opacs.data_ptr() : nullptr, floor ? split_floor_logit(min_split_opacity) : 0.0f);
+    // Past the splats over the floor the draw returns ones under it.
+    if (floor) num_new_splats = std::min<int64_t>(num_new_splats, num_eligible);
+    if (num_new_splats == 0)
+        return 0;
 
     #define _DENSIFY_LAS_ADD_LAUNCH(T, bnd_ptr, bps) \
         relocate_with_long_axis_split_kernel<T><<<_LAUNCH_ARGS_1D(num_new_splats, 256)>>>( \
@@ -431,6 +445,7 @@ void add_splats_with_long_axis_split_tensor(
         cur_num_splats, num_new_splats, split_indices, /*dst_indices=*/nullptr,
         sh_value_packed.data_ptr(), sh_value_bounds.data_ptr(),
         num_sh, num_sh_buffer, sh_value_bits, sh_value_bounds_per_splat);
+    return num_new_splats;
 }
 
 

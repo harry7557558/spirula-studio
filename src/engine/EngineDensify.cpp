@@ -124,6 +124,88 @@ static void _log_score_by_size(int step, int64_t n) {
 }
 
 
+static bool _stats_log_on() {
+    static const bool on = [] {
+        const char* v = spirula::env("DENSIFY_STATS_LOG");
+        return v && *v && v[0] != '0';
+    }();
+    return on;
+}
+
+// What a refine step found, gathered before it changes anything.
+struct RefineStats {
+    bool    valid = false;
+    int64_t dead_opacity = 0, dead_weight = 0, dead_stale = 0;
+    float   alpha_p10 = 0, alpha_p50 = 0, alpha_p90 = 0, low05 = 0, marginal = 0;
+    float   floor = 0, under_floor = 0, draw_under_floor = 0;
+};
+
+// SS_DENSIFY_STATS_LOG: dead by cause and the live opacity distribution, read
+// back to the host. `floor` is the split floor, or 0.25 for reference when off.
+static void _refine_stats(int64_t n, const DensifyConfig& cfg, float split_opacity_k,
+                          bool dead_by_opacity, DeviceVector<float>& max_weight,
+                          RefineStats& stats) {
+    auto& opt = engine().optim;
+    const DeviceVector<float2>& dv_score =
+        opt.densify_sample_score.data_ptr() ? opt.densify_sample_score : opt.accum_buffer;
+    if (n <= 0 || dv_score.data_ptr() == nullptr) return;
+    const size_t N = (size_t)n;
+    std::vector<float> logit(N), weight;
+    std::vector<float2> score(N);
+    std::vector<uint32_t> visit;
+    backend::memcpy_sync(logit.data(), engine().world.opacities.data_ptr(), N * sizeof(float),
+                         backend::MemcpyKind::DeviceToHost);
+    backend::memcpy_sync(score.data(), dv_score.data_ptr(), N * sizeof(float2),
+                         backend::MemcpyKind::DeviceToHost);
+    if (max_weight.data_ptr() != nullptr) {
+        weight.resize(N);
+        backend::memcpy_sync(weight.data(), max_weight.data_ptr(), N * sizeof(float),
+                             backend::MemcpyKind::DeviceToHost);
+    }
+    if (opt.visit_counters.data_ptr() != nullptr && cfg.dead_after_steps > 0) {
+        visit.resize(N);
+        backend::memcpy_sync(visit.data(), opt.visit_counters.data_ptr(), N * sizeof(uint32_t),
+                             backend::MemcpyKind::DeviceToHost);
+    }
+    stats.floor = cfg.min_split_opacity > 0.0f ? cfg.min_split_opacity : 0.25f;
+    std::vector<float> live_alpha;
+    live_alpha.reserve(N);
+    double w_all = 0, w_under = 0;
+    int64_t low = 0, marginal = 0, under = 0;
+    for (size_t i = 0; i < N; ++i) {
+        const float a = 1.0f / (1.0f + std::exp(-logit[i]));
+        if (dead_by_opacity && a <= cfg.min_opacity) { ++stats.dead_opacity; continue; }
+        if (!weight.empty() && weight[i] <= cfg.min_opacity) { ++stats.dead_weight; continue; }
+        if (!visit.empty() && visit_unrendered_steps(visit[i]) >= (uint32_t)cfg.dead_after_steps) {
+            ++stats.dead_stale;
+            continue;
+        }
+        live_alpha.push_back(a);
+        low += a < 0.05f;
+        marginal += a * split_opacity_k <= cfg.min_opacity;
+        const float w = std::isfinite(score[i].x) ? std::max(score[i].x, 0.0f) : 0.0f;
+        w_all += w;
+        if (a < stats.floor) { ++under; w_under += w; }
+    }
+    if (!live_alpha.empty()) {
+        auto q = [&](double f) {
+            const size_t k = std::min(live_alpha.size() - 1, (size_t)(f * (double)live_alpha.size()));
+            std::nth_element(live_alpha.begin(), live_alpha.begin() + (std::ptrdiff_t)k, live_alpha.end());
+            return live_alpha[k];
+        };
+        const double live = (double)live_alpha.size();
+        stats.alpha_p10 = q(0.1);
+        stats.alpha_p50 = q(0.5);
+        stats.alpha_p90 = q(0.9);
+        stats.low05 = (float)((double)low / live);
+        stats.marginal = (float)((double)marginal / live);
+        stats.under_floor = (float)((double)under / live);
+        stats.draw_under_floor = (float)(w_under / std::max(w_all, 1e-30));
+    }
+    stats.valid = true;
+}
+
+
 void engine_max_weight_begin_step(int step, int max_steps, const DensifyConfig& cfg) {
     StepTimingScope timing(StepPart::Densify, StepScale::Splats);
     auto& mw = engine().max_weight;
@@ -490,10 +572,14 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     if (do_densify && use_revised)
         _log_score_by_size(step, cur_num_splats);
 
+    RefineStats stats;
+    if (do_densify && use_revised && _stats_log_on())
+        _refine_stats(cur_num_splats, cfg, split_opacity_k, dead_by_opacity, dv_max_weight, stats);
+
     if (do_densify && use_revised) {
         // Revised relocation (long axis split)
         num_relocated = relocate_splats_with_long_axis_split_tensor(
-            cur_num_splats, cfg.min_opacity, split_opacity_k,
+            cur_num_splats, cfg.min_opacity, split_opacity_k, cfg.min_split_opacity,
             dv_means, dv_quats, dv_scales, dv_opacs, dv_features_dc, dv_features_sh,
             dv_g1_means, dv_g1_quats, dv_g1_scales, dv_g1_opacs, dv_g1_features_dc, dv_g1_features_sh,
             dv_g2_means, dv_g2_quats, dv_g2_scales, dv_g2_opacs, dv_g2_features_dc, dv_g2_features_sh,
@@ -523,10 +609,11 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                     cfg.oversize_split_fraction * (float)num_added);
                 n_oversize = std::max(0, std::min(n_oversize, num_added));
             }
+            // Under the split floor either draw can come back short.
             auto add_split = [&](int64_t n_cur, int n_new,
                                  DeviceVector<float2> weights, uint32_t seed) {
-                add_splats_with_long_axis_split_tensor(
-                    n_cur, n_new, split_opacity_k,
+                return (int)add_splats_with_long_axis_split_tensor(
+                    n_cur, n_new, split_opacity_k, cfg.min_split_opacity,
                     dv_means, dv_quats, dv_scales, dv_opacs, dv_features_dc, dv_features_sh,
                     dv_g1_means, dv_g1_quats, dv_g1_scales, dv_g1_opacs, dv_g1_features_dc, dv_g1_features_sh,
                     dv_g2_means, dv_g2_quats, dv_g2_scales, dv_g2_opacs, dv_g2_features_dc, dv_g2_features_sh,
@@ -548,8 +635,10 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                 densify_oversize_weight_tensor(
                     cur_num_splats, cfg.oversize_score_blend, dv_oversize,
                     dv_score.data_ptr() ? dv_score : dv_accum_buf, dv_over_w);
-                add_split(cur_num_splats, n_oversize, dv_over_w,
-                          2 * step + 1 + 0x5bf03635u);
+                const int n_quota = n_oversize;
+                n_oversize = add_split(cur_num_splats, n_oversize, dv_over_w,
+                                       2 * step + 1 + 0x5bf03635u);
+                num_added -= n_quota - n_oversize;
                 // The split kernel carries accum_buf src -> dst but not the
                 // transformed score, so the second draw would rank the new
                 // splats on whatever those slots held in a past life.
@@ -558,8 +647,8 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                                          0, (size_t)n_oversize * sizeof(float2));
             }
             if (num_added - n_oversize > 0)
-                add_split(cur_num_splats + n_oversize,
-                          num_added - n_oversize, dv_score, 2 * step + 1);
+                num_added = n_oversize + add_split(cur_num_splats + n_oversize,
+                                                   num_added - n_oversize, dv_score, 2 * step + 1);
         }
     } else if (do_densify) {
         // MCMC relocation
@@ -626,6 +715,17 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
         }
     }
 
+    if (stats.valid)
+        std::fprintf(stderr,
+                     "[densify] step=%d n=%lld dead=%lld dead_opacity=%lld dead_weight=%lld "
+                     "dead_stale=%lld relocated=%lld added=%d alpha_p10=%.4f alpha_p50=%.4f "
+                     "alpha_p90=%.4f low05=%.4f marginal=%.4f floor=%.3f under_floor=%.4f "
+                     "draw_under_floor=%.4f\n",
+                     step, (long long)cur_num_splats, (long long)num_dead,
+                     (long long)stats.dead_opacity, (long long)stats.dead_weight,
+                     (long long)stats.dead_stale, (long long)num_relocated, num_added,
+                     stats.alpha_p10, stats.alpha_p50, stats.alpha_p90, stats.low05, stats.marginal,
+                     stats.floor, stats.under_floor, stats.draw_under_floor);
     if (do_densify) {
         engine().optim.last_num_dead      = num_dead;
         engine().optim.last_num_relocated = num_relocated;

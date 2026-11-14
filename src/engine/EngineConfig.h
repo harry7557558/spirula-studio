@@ -284,6 +284,9 @@ struct DensifyConfig {
     // Split events (revivals + growth) per refine step, as a fraction of the
     // live count; revivals draw first. >= 1 leaves both uncapped.
     float max_split_fraction            = 1.0f;
+    // A splat under this opacity is not drawn as a split source, so no split
+    // makes halves fainter than k times it. 0 = off.
+    float min_split_opacity             = 0.0f;
     // Draw weight for splits scales with renders since the last split.
     bool  split_weight_by_renders       = false;
     // A splat unrendered for this many steps is relocated as dead; 0 = off.

@@ -30,8 +30,9 @@ child. The Vulkan copies of the bit layout are in `visit.slang`.
 |---|---|---|
 | `reg_rendered_only` | on | per-splat regularizers (opacity, scale, erank, quat norm, DC/SH pull, screen-size hinge) act only on rendered splats |
 | `dead_after_epochs` | 2 | a splat unrendered for this many passes over the train set is relocated as dead |
-| `split_weight_by_renders` | on | the split draw weight is the refinement score times the renders since the last split; the refinement-score view shows the product |
+| `split_weight_by_renders` | off | the split draw weight is the refinement score times the renders since the last split; the refinement-score view shows the product |
 | `max_split_fraction` | 0.1 | revivals plus growth per refine step capped at this share of the live count, revivals first |
+| `densify_min_split_opacity` | 0 (off) | a splat under this opacity is not drawn as a split source; growth stops short of its quota when too few sources pass |
 | `min_renders_per_refine` | 0 | images per step raised until a splat at `render_quantile` of views is rendered this often between refine steps, up to `max_train_batch_size` |
 | `view_sampling` | uniform | `deficit` draws images by how under-rendered the splats they last contributed to are (`view_deficit_power`, `view_deficit_max_ratio`) |
 
@@ -65,6 +66,14 @@ over-counts and the rule stays close to the plain steps-per-pass rule there.
 It only ever raises the batch size.
 
 ## Log line
+
+`SS_DENSIFY_STATS_LOG=1` prints one `[densify]` line per refine step to
+stderr: the dead count by cause (opacity, peak weight, unrendered), the
+opacity quantiles of the live splats, the share under 0.05, the share one
+split away from the cull (`marginal`), and the share of live splats and of
+the draw weight under the split floor (0.25 when the floor is off). It reads
+four per-splat buffers back to the host per refine step, so it is a
+diagnostic, not a default.
 
 On refine steps the CLI prints `num_dead`, `num_relocated` and `num_added`
 next to PSNR. `num_dead` rising refine step over refine step is the early

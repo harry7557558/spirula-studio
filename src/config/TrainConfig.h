@@ -235,6 +235,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(bool, use_long_axis_split, true, "detail", "expert", "")               \
     X(TrainVec3f, long_axis_split_opacity_k, train_v3f(0.5f, 0.55f, 15000.0f), "detail", "basic", "") \
     X(float, max_split_fraction, 0.1f, "detail", "advanced", "")             \
+    X(float, densify_min_split_opacity, 0.05f, "detail", "advanced", "")     \
     X(bool, split_weight_by_renders, false, "detail", "advanced", "")        \
     X(float, dead_after_epochs, 2.0f, "detail", "advanced", "")              \
     X(float, max_screen_size, 0.3f, "detail", "basic", "")                   \

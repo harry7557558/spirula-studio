@@ -76,11 +76,13 @@ static_assert(sizeof(DensifyNoiseParams) == 6 * 8 + 6 * 4,
 
 // Mirrors EfraimidisParams.
 struct EfraimidisParams {
-    uint64_t weights, mask, out_keys, eligible;
+    uint64_t weights, mask, out_keys, eligible, floor_opacs;
     uint32_t stride, seed, use_mask, numel, wgs_per_row;
+    float floor_logit;
+    uint32_t use_floor;
     uint32_t _pad0;
 };
-static_assert(sizeof(EfraimidisParams) == 4 * 8 + 6 * 4,
+static_assert(sizeof(EfraimidisParams) == 5 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 // Mirrors RelocMaskParams.
@@ -366,12 +368,20 @@ uint32_t fill_g1g2(P& p, const DeviceVector<float3>& g1_means,
     return g1_means.data_ptr() ? 1u : 0u;
 }
 
+// The split floor as the logit the draw compares raw opacities against.
+float split_floor_logit(float opacity) {
+    opacity = std::min(opacity, 1.0f - 1e-6f);
+    return std::log(opacity / (1.0f - opacity));
+}
+
 // weighted_sample_without_replacement_internal (DensifySampling.cu), with the
 // keys as order-preserving uint32 bits for a stable radix sort -- which, unlike
-// CUB's, keeps -0.0 ahead of +0.0. `num_eligible` as there.
+// CUB's, keeps -0.0 ahead of +0.0. `num_eligible` and the floor as there.
 const int32_t* wswr_sample(int64_t numel, const float* weights_ptr,
                            const int32_t* mask_ptr, uint32_t num_sample,
-                           uint32_t seed, uint32_t* num_eligible = nullptr) {
+                           uint32_t seed, uint32_t* num_eligible = nullptr,
+                           const float* floor_opacs = nullptr,
+                           float floor_logit = 0.0f) {
     // stride fixed to 2 (accum buffer float2; see the CUDA comment about
     // warmup making the derived stride incorrect)
     DeviceVector<int32_t> keys_in, keys_out, idx_in, idx_out, out_idx;
@@ -393,6 +403,9 @@ const int32_t* wswr_sample(int64_t numel, const float* weights_ptr,
     ep.stride = 2;
     ep.seed = seed;
     ep.use_mask = mask_ptr ? 1u : 0u;
+    ep.floor_opacs = vkk::or_fallback(floor_opacs);
+    ep.floor_logit = floor_logit;
+    ep.use_floor = floor_opacs ? 1u : 0u;
     ep.numel = (uint32_t)numel;
     vkk::dispatch_flat("densify.densify_efraimidis_keys", {}, numel, 256, &ep,
                        sizeof(ep), &ep.wgs_per_row);
@@ -782,6 +795,7 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     int64_t cur_num_splats,
     float min_opacity,
     float split_opacity_k,
+    float min_split_opacity,
     DeviceVector<float3> means, DeviceVector<float4> quats, DeviceVector<float3> scales, DeviceVector<float> opacs, DeviceVector<float3> features_dc, DeviceVector<float3> features_sh,
     DeviceVector<float3> g1_means, DeviceVector<float4> g1_quats, DeviceVector<float3> g1_scales, DeviceVector<float> g1_opacs, DeviceVector<float3> g1_features_dc, DeviceVector<float3> g1_features_sh,
     DeviceVector<float3> g2_means, DeviceVector<float4> g2_quats, DeviceVector<float3> g2_scales, DeviceVector<float> g2_opacs, DeviceVector<float3> g2_features_dc, DeviceVector<float3> g2_features_sh,
@@ -851,12 +865,15 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     if (num_relocate == 0) return 0;
 
     uint32_t num_eligible = 0;
+    const bool floor = min_split_opacity > 0.0f;
     const int32_t* src_indices = wswr_sample(
         cur_num_splats,
         (const float*)(sample_weights.data_ptr()
                            ? sample_weights.data_ptr()
                            : densify_accum_buffer.data_ptr()),
-        mask.data_ptr(), (uint32_t)num_relocate, seed, &num_eligible);
+        mask.data_ptr(), (uint32_t)num_relocate, seed, &num_eligible,
+        floor ? opacs.data_ptr() : nullptr,
+        floor ? split_floor_logit(min_split_opacity) : 0.0f);
     // As in Relocation.cu: a dead src is also some pair's dst, and they race.
     num_relocate = std::min<int32_t>(num_relocate, (int32_t)num_eligible);
     if (num_relocate == 0) return 0;
@@ -878,10 +895,11 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     return num_relocate;
 }
 
-void add_splats_with_long_axis_split_tensor(
+int64_t add_splats_with_long_axis_split_tensor(
     int64_t cur_num_splats,
     int64_t num_new_splats,
     float split_opacity_k,
+    float min_split_opacity,
     DeviceVector<float3> means, DeviceVector<float4> quats, DeviceVector<float3> scales, DeviceVector<float> opacs, DeviceVector<float3> features_dc, DeviceVector<float3> features_sh,
     DeviceVector<float3> g1_means, DeviceVector<float4> g1_quats, DeviceVector<float3> g1_scales, DeviceVector<float> g1_opacs, DeviceVector<float3> g1_features_dc, DeviceVector<float3> g1_features_sh,
     DeviceVector<float3> g2_means, DeviceVector<float4> g2_quats, DeviceVector<float3> g2_scales, DeviceVector<float> g2_opacs, DeviceVector<float3> g2_features_dc, DeviceVector<float3> g2_features_sh,
@@ -903,17 +921,24 @@ void add_splats_with_long_axis_split_tensor(
     DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed
 ) {
-    if (num_new_splats == 0 || cur_num_splats <= 0) return;
+    if (num_new_splats == 0 || cur_num_splats <= 0) return 0;
     const size_t n4 = 4 * (size_t)cur_num_splats;
     pool_begin_phase(PoolPhase::Densify,
                      DevicePool::arena_span({n4, n4, n4, n4, 4 * (size_t)num_new_splats}));
 
+    const bool floor = min_split_opacity > 0.0f;
+    uint32_t num_eligible = 0;
     const int32_t* split_indices = wswr_sample(
         cur_num_splats,
         (const float*)(sample_weights.data_ptr()
                            ? sample_weights.data_ptr()
                            : densify_accum_buffer.data_ptr()),
-        nullptr, (uint32_t)num_new_splats, seed);
+        nullptr, (uint32_t)num_new_splats, seed, floor ? &num_eligible : nullptr,
+        floor ? opacs.data_ptr() : nullptr,
+        floor ? split_floor_logit(min_split_opacity) : 0.0f);
+    // As in Relocation.cu: past the floor's splats the draw returns others.
+    if (floor) num_new_splats = std::min<int64_t>(num_new_splats, num_eligible);
+    if (num_new_splats == 0) return 0;
 
     launch_relocate_las(cur_num_splats, num_new_splats, split_opacity_k,
                         split_indices, nullptr, means, quats, scales, opacs,
@@ -929,6 +954,7 @@ void add_splats_with_long_axis_split_tensor(
                           nullptr, sh_value_packed.data_ptr(),
                           sh_value_bounds.data_ptr(), num_sh, num_sh_buffer,
                           sh_value_bits, sh_value_bounds_per_splat);
+    return num_new_splats;
 }
 
 void relocate_splats_mcmc_tensor(

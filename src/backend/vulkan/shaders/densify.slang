@@ -417,16 +417,19 @@ void _dn_mcmc_relocation(inout float opacity, inout float3 scale, int n_idx) {
 // ascending order bit-exactly for identical key bits.
 // ---------------------------------------------------------------------------
 
-struct EfraimidisParams {  // 52 bytes: pushed directly
+struct EfraimidisParams {  // 68 bytes: pushed directly
     float* weights;   // [numel * stride]
     int* mask;        // [numel] int32 0/1 (use_mask gates; fallback-backed)
     uint* out_keys;   // [numel] sortable key bits
     int* eligible;    // [1] += 1 per strictly negative key
+    float* floor_opacs;  // [numel] logits (use_floor gates; fallback-backed)
     uint stride;
     uint seed;
     uint use_mask;
     uint numel;
     uint wgs_per_row;
+    float floor_logit;
+    uint use_floor;
 };
 
 [shader("compute")]
@@ -442,6 +445,8 @@ void densify_efraimidis_keys(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     // larger w -> smaller (more negative) value
     w = w / log(max(1.0f - u, 1e-30f));
     if (p.use_mask != 0 && p.mask[idx] == 0) w = 0.0f;
+    // `!(>=)` so a NaN opacity fails the floor too.
+    if (p.use_floor != 0 && !(p.floor_opacs[idx] >= p.floor_logit)) w = 0.0f;
     // Strictly negative: a positive weight the mask admits. -0.0 is not one.
     if (w < 0.0f) {
         int unused;

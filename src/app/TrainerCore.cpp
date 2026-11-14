@@ -695,6 +695,7 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.densify.las_split_opacity_k_final  = c.long_axis_split_opacity_k[1];
     cfg.densify.las_split_opacity_k_warmup = (int)c.long_axis_split_opacity_k[2];
     cfg.densify.max_split_fraction = c.max_split_fraction;
+    cfg.densify.min_split_opacity = c.densify_min_split_opacity;
     cfg.densify.split_weight_by_renders = c.split_weight_by_renders;
     cfg.densify.dead_after_steps = c.dead_after_epochs > 0.0f
         ? (int)std::min(65535.0, std::max(1.0, std::round(

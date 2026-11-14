@@ -400,9 +400,10 @@ int main(int argc, char** argv) {
     auto call_relocate_las = [&](Model& m, float min_opacity, uint32_t seed,
                                  float* max_weight = nullptr,
                                  bool dead_by_opacity = true,
-                                 int64_t* num_dead = nullptr) {
+                                 int64_t* num_dead = nullptr,
+                                 float min_split_opacity = 0.0f) {
         relocate_splats_with_long_axis_split_tensor(
-            N, min_opacity, /*split_opacity_k=*/0.6f,
+            N, min_opacity, /*split_opacity_k=*/0.6f, min_split_opacity,
             dv<float3>(m.means, CAP), dv<float4>(m.quats, CAP),
             dv<float3>(m.scales, CAP), dv<float>(m.opacs, CAP),
             dv<float3>(m.dc, CAP),
@@ -438,9 +439,10 @@ int main(int argc, char** argv) {
     };
 
     auto call_add_las = [&](Model& m, int64_t num_add, uint32_t seed,
-                            float* max_weight = nullptr) {
-        add_splats_with_long_axis_split_tensor(
-            N, num_add, /*split_opacity_k=*/0.6f,
+                            float* max_weight = nullptr,
+                            float min_split_opacity = 0.0f) {
+        const int64_t added = add_splats_with_long_axis_split_tensor(
+            N, num_add, /*split_opacity_k=*/0.6f, min_split_opacity,
             dv<float3>(m.means, CAP), dv<float4>(m.quats, CAP),
             dv<float3>(m.scales, CAP), dv<float>(m.opacs, CAP),
             dv<float3>(m.dc, CAP),
@@ -473,6 +475,7 @@ int main(int argc, char** argv) {
             seed);
         backend::device_synchronize();
         check_projective_state(m);
+        return added;
     };
 
     auto call_relocate_mcmc = [&](Model& m, float min_opacity,
@@ -719,6 +722,36 @@ int main(int argc, char** argv) {
     {
         Model m = build_model(4, 8, false, false, 8, 15, -1, -1, -1);
         call_add_las(m, 333, 66u);
+        readback_model(m);
+    }
+    // Split floor: only splats at or over it are sources, and an add asking
+    // for more than there are stops at their count.
+    {
+        Model m = build_model(32, 32, false, false, 15, 15, -1, -1, -1);
+        const float floor = 0.97f, floor_logit = std::log(floor / (1.0f - floor));
+        std::vector<float> before(N), after(N);
+        backend::memcpy_sync(before.data(), m.opacs, N * sizeof(float),
+                             MemcpyKind::DeviceToHost);
+        int64_t over = 0;
+        for (int64_t i = 0; i < N; i++) over += before[i] >= floor_logit;
+        const int64_t added = call_add_las(m, 600, 171u, nullptr, floor);
+        backend::memcpy_sync(after.data(), m.opacs, N * sizeof(float),
+                             MemcpyKind::DeviceToHost);
+        int64_t under_split = 0;
+        for (int64_t i = 0; i < N; i++)
+            under_split += before[i] < floor_logit && after[i] != before[i];
+        if (over == 0 || over >= 600 || added != over || under_split != 0) {
+            std::printf("densify_parity: add_las under a split floor added "
+                        "%lld (want %lld of 600), split %lld under it\n",
+                        (long long)added, (long long)over, (long long)under_split);
+            revived_ok = false;
+        }
+        readback_model(m);
+    }
+    {
+        Model m = build_model(32, 32, false, false, 15, 15, /*lowopac=*/517,
+                              -1, -1);
+        call_relocate_las(m, 0.005f, 181u, nullptr, true, nullptr, 0.9f);
         readback_model(m);
     }
 
