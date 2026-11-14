@@ -134,7 +134,6 @@ enum class SaveClass : uint8_t {
   X(EngDensifyWorldGradScore       , "eng.densify.world_grad_score",      Splat    , Never) \
   X(EngDensifySampleScore          , "eng.densify.sample_score",          Splat    , Never) \
   X(EngDensifyOversize             , "eng.densify.oversize",              Splat    , Never) \
-  X(EngDensifyOversizeWeight       , "eng.densify.oversize_weight",       Splat    , Never) \
   X(EngLearnedScoreStats           , "eng.densify.learned_score_stats",   Other    , Never) \
   X(EngRegionWeight                , "eng.region.weight",                 Splat    , Never) \
   X(EngRegionProgram               , "eng.region.program",                Other    , Never) \
@@ -513,10 +512,11 @@ enum class PoolPhase : uint8_t {
 
 // X(PoolSlot enumerator, PoolPhase enumerator)
 #define POOL_ALIAS_TABLE(X) \
-  /* The sort keys and tile counts: no caller reads the key array the \
-     intersector returns, and the counts never leave it. */ \
+  /* The sort keys, the tile counts and the sort's alternate index buffer: \
+     none leaves the intersector, which sorts into isect.flat_a. */ \
   X(IsectIdsA          , TileIsect) \
   X(IsectIdsB          , TileIsect) \
+  X(IsectFlatB         , TileIsect) \
   X(IsectTilesPerSplat , TileIsect) \
   X(IsectCumTiles      , TileIsect) \
   /* Screen-space gradients: written by the raster backward, consumed by the \
@@ -595,9 +595,8 @@ static_assert(ce_alias_rows_unique(),
 // them for cap_max on first use: Splat then stops growing as the model
 // densifies, which the training VRAM forecast assumes.
 #define POOL_LIVE_SPLAT_TABLE(X) \
-  X(EngSubbatchAccumWeightSum)       X(EngDensifyOversizeWeight) \
-  X(RasterBwdVWorld)                 X(PcaRegPermCache) \
-  X(PcaRegNbrsCache)
+  X(EngSubbatchAccumWeightSum)       X(RasterBwdVWorld) \
+  X(PcaRegPermCache)                 X(PcaRegNbrsCache)
 
 inline constexpr PoolSlot kLiveSplatSlots[] = {
 #define X(name) PoolSlot::name,

@@ -375,6 +375,10 @@ static inline DeviceTensorFloatND _fnd_view(float* ptr, int64_t N, int64_t P) {
 }
 
 
+// The angular bound of a step that one backward covers (the fused path): a
+// slice of that backward's arena phase rather than a buffer of its own.
+static const char* const kProjectiveBoundStep = "eng.projective_angular_bound.step";
+
 void engine_clear_projective_depth() {
     auto& s = engine();
     s.optim.observe_projective = {};
@@ -386,6 +390,7 @@ void engine_clear_projective_depth() {
     pool.free(PoolSlot::EngProjectiveState);
     pool.free(PoolSlot::EngProjectiveInformation);
     pool.free(PoolSlot::EngProjectiveAngularBound);
+    pool.free_dynamic_prefix(kProjectiveBoundStep);
     pool.free(PoolSlot::EngProjectiveCenters);
 }
 
@@ -447,7 +452,13 @@ void engine_prepare_projective_depth(const OptimConfig& cfg) {
         }
     }
     opt.observe_projective = projective_depth_state(cfg);
-    if (opt.observe_projective.states) {
+    if (opt.observe_projective.states && opt.use_fused_proj_bwd_optim) {
+        // Carved by engine_observe_projective_depth, once the phase is open.
+        if (s.projective_angular_bound.data_ptr() && DevicePool::global().phase() != PoolPhase::RasterBwd)
+            DevicePool::global().free(PoolSlot::EngProjectiveAngularBound);
+        s.projective_angular_bound = DeviceVector<float>();
+        opt.observe_projective.angular_bound = nullptr;
+    } else if (opt.observe_projective.states) {
         s.projective_angular_bound.resize(PoolSlot::EngProjectiveAngularBound,s.max_num_splats);
         opt.observe_projective.angular_bound = s.projective_angular_bound.data_ptr();
         if (!opt.skip_grad_zero && !opt.zero_grad_in_optim)
@@ -460,6 +471,15 @@ void engine_observe_projective_depth() {
     auto depth = s.optim.observe_projective;
     s.optim.observe_projective = {};
     if (!depth.states || s.fwd.v_splats_s.empty()) return;
+    if (s.optim.use_fused_proj_bwd_optim) {
+        float* bound = (float*)DevicePool::global().acquire_dynamic(
+            VramCategory::Splat, kProjectiveBoundStep,
+            (size_t)s.cur_num_splats * sizeof(float), PoolPhase::RasterBwd);
+        backend::memset_async(bound, 0, s.cur_num_splats * sizeof(float));
+        s.projective_angular_bound = DeviceVector<float>(std::make_tuple(
+            (uint64_t)bound, (uint32_t)sizeof(float), std::vector<int64_t>{s.cur_num_splats, 1}));
+        depth.angular_bound = bound;
+    }
     bool gut = s.primitive == "3dgut";
     int stride = gut ? SCRG_STRIDE : SCR2_STRIDE;
     int offset = gut ? SCRG_OPAC : SCR2_OPAC;

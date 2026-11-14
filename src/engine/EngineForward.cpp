@@ -408,6 +408,9 @@ void forward_3dgs(
     if (bin.probing != 1 && engine().fwd.macro_log2 == bin.macro_log2)
         bin.pairs_per_splat = (double)flatten_ids.size() /
                               (double)std::max<int64_t>(depths_nd.numel(), 1);
+    engine().isect_peak_pairs = std::max(engine().isect_peak_pairs, (int64_t)depths_nd.numel());
+    engine().isect_peak_count = std::max(engine().isect_peak_count, (int64_t)flatten_ids.size());
+    engine().isect_last_count = (int64_t)flatten_ids.size();
     if (engine().fwd.macro_log2 > macro_before) {
         // The intersect had to coarsen. That size is now a floor, and any
         // search state below it measured a setting this run cannot use.

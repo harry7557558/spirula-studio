@@ -376,26 +376,6 @@ int main(int argc, char** argv) {
             readback_f(acc, d_stats, 2);
         }
 
-        // ---- densify_oversize_weight ----
-        {
-            std::vector<float> over(N), sc(N * 2);
-            for (int64_t i = 0; i < N; i++) {
-                over[i] = (i % 3 == 0) ? 0.f : uf(0.f, 4.f);
-                sc[2 * i] = (i % 7 == 0) ? 0.f : uf(0.f, 5.f);
-                sc[2 * i + 1] = uf(0.f, 3.f);
-            }
-            float* d_over = upload(over);
-            float* d_sc = upload(sc);
-            float* d_out = upload(std::vector<float>(N * 2, 0.f));
-            for (float blend : {0.0f, 0.5f, 1.0f}) {
-                densify_oversize_weight_tensor(N, blend, dv_f(d_over, N),
-                                               dv_f2(d_sc, N),
-                                               dv_f2(d_out, N));
-                backend::device_synchronize();
-                readback_f(acc, d_out, N * 2);
-            }
-        }
-
         // ---- densify_clip_score ----
         // (quantile, power): quantile 1 must still run the power pass, and a
         // non-null score_out must leave the accumulator's own .x un-powered.

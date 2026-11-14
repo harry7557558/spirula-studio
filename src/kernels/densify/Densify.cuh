@@ -193,15 +193,6 @@ void densify_update_weight(
 );
 
 
-void densify_oversize_weight_tensor(
-    int64_t num_splats,
-    float blend,
-    DeviceVector<float> oversize_accum,
-    DeviceVector<float2> score,
-    DeviceVector<float2> out
-);
-
-
 int64_t relocate_splats_with_long_axis_split_tensor(
     int64_t cur_num_splats,
     float min_opacity,
@@ -259,6 +250,10 @@ int64_t add_splats_with_long_axis_split_tensor(
     // densify_accum_buffer. Separate so a transformed score can drive the
     // draw while the kernel still propagates the raw accumulator src -> dst.
     DeviceVector<float2> sample_weights,
+    // The oversize split channel's accumulator, [N]: the draw's weight is then
+    // (oversize_accum + floor) * weight^oversize_blend. Empty to skip.
+    DeviceVector<float> oversize_accum,
+    float oversize_blend,
     DeviceVector<int32_t> bias_correction_steps,
     DeviceVector<uint32_t> visit_counters,
     DeviceVector<float> max_weight,  // carried src -> dst; empty to skip

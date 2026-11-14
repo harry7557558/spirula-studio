@@ -761,6 +761,13 @@ small default buffer is not enough for these bulk paths.
   category costs per element, and what has already been tried against it, is
   `docs/notes/vram-splat-x-img.md`. `SS_VRAM_TRACE=<MiB>` prints every pool
   allocation at least that large with the process total and peak it brings.
+- **The VRAM forecast replays the tile intersector's band rule.** The sort is
+  cut into bands of tile rows by `intersect_bands_for`
+  (`kernels/tile/IntersectTile.cuh`), and `app/TrainForecast.cpp` calls the
+  same function to size the tile phase at a future splat count. Change the
+  rule there only. A change to the forecast is checked against recorded runs:
+  `SS_FORECAST_DUMP=<file>` and `train_forecast_replay`
+  (docs/notes/train-forecast.md).
 - **On Windows, VRAM is also limited by commit charge.** WDDM charges every
   device allocation to the system commit limit (RAM + page file), so a small
   page file fails an allocation as out-of-memory with VRAM to spare; the

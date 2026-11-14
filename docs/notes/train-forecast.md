@@ -84,48 +84,97 @@ is not biased, and its early error is what the prior cannot know.
 ## VRAM
 
 Only `splat x img` grows during training (docs/notes/vram-splat-x-img.md),
-so ours at a future step is everything else now plus the growth, projected.
-Two measurements decide what "the growth" is:
+so ours at a future step is everything else now plus that category,
+projected. It is projected from what its buffers hold, not from its total:
 
-- It is read off the process **high-water**, not the pool, and not off a
-  sample at the end of the step: the backend counts the peak of what the
-  process holds (`MemoryUsage::process_peak_bytes`), and the trainer restarts
-  it after each sample, so a transient inside the step -- an unreserved arena
-  phase overflowing beside the old arena -- is in the window that saw it.
-- The first densify step allocates `splat x img` scratch of its own -- 10 ->
-  55 MiB on garden, count unchanged -- so the fit starts after it. Before
-  that the forecast is provisional: growth all per splat, +-70%, plus 3% +-
-  2.5% of the splat category for the live-splat scratch the step reserves
-  (the oversize draw's weights: 2.3% on bicycle). The rest of the densify
-  scratch is in the arena, sized by the live count, so it is growth.
+- **Visible pairs** (`nnz`, the most one forward has made): the screen rows,
+  boxes and ids outside the arena, and the raster backward's phase inside it.
+  They follow the splat count -- the view that sees most of the model keeps
+  its share of it -- so they are scaled by the count, +-10% per e-fold.
+- **Splat-tile pairs** (`n_isects`, likewise the most): 4 bytes each in the
+  list the raster reads, 20 more in the tile phase while a band is sorted.
+  These do NOT follow the count: a model of few large splats already makes
+  most of the pairs its refined self will (london: 1.5M splats, 8 MP), and
+  the count per splat falls as splats shrink. This is the one thing fitted.
+- **The arena** is as large as its largest phase, and
+  `DevicePool::arena_phases()` says what each asked for, split into per-pixel
+  slices (the loss pyramid, sized by the image alone) and per-splat ones. The
+  tile phase is recomputed with the intersector's own rule
+  (`intersect_bands_for`) at the projected pairs; the densify lists are bytes
+  per live splat (28 before a relocate has measured them).
 
-The growth is `g0 + g1 * N^p * r^0.35`, a Kalman filter over `[g0, g1]` per
-exponent `p` (0.6, 0.8, 1.0) from one high-water measurement per window,
-starting at `g0 = 0`: fitting a fixed chunk from the first windows under-read
-bonsai's peak by 14 sigma, while putting it all per splat over-reads garden's
-(its 55 MiB chunk) by up to 36% -- the safe side. The exponents are weighted
-like the ETA's, by how well each predicted the next window, from a prior of
-0.2 / 0.3 / 0.5 that leans linear: splat x img grew as `N^0.3-0.5` on garden
-and bonsai up to 1M splats (smaller splats cover fewer tiles), but under-reading
-a peak is the costly mistake. `r^0.35` is the category's measured exponent in
-the pixel ratio (docs/notes/step-timing.md); under progressive resolution the
-Image category is projected in proportion to `r` too. Four terms widen the
-projection:
+`engine_get_isect_peaks` supplies the two pair counts and the last forward's
+splat-tile pairs. Without them (`SS_POOL_ALIAS=0`, which leaves the arena
+out) the fit is of everything that follows the splats at once, as it was.
 
-- the expected largest per-step demand over the draws still to come at each
-  count, minus what a window already saw (the pool keeps the largest draw, and
-  a view that sees more of the model sets it);
-- 0.3 relative sigma per e-fold the count is extrapolated;
+Three things the forecast got wrong before it was built this way, each seen
+on london (fisheye, 3504x2336, `--cap-max 15000000`, 1.5M splats at start):
+
+- the arena's loss phase -- 0.28 GiB at 8 MP, of the 0.41 GiB the category
+  held at first -- was extrapolated per splat with the rest: 14.5 GiB
+  projected at the start against the 10.2 the run reached;
+- the spread of a step's demand was measured over all views and applied as a
+  normal tail. Indoors most views see a sliver of the model and a few see all
+  of it: the spread is the lower tail's, and the largest views were in the
+  window already. A run at its cap for 19000 steps still projected +1.5 GiB;
+- the peak was a running max over the schedule's segments, each adding its
+  own share of an error that is common to all of them (13.8 GiB against 10.5
+  without it, at step 500).
+
+The splat-tile pairs are `g0 + g1 * N^p * r^0.35`, a Kalman filter over
+`[g0, g1]` per exponent `p` (0.6, 0.8, 1.0) from one high-water measurement
+per window, starting at `g0 = 0`, the exponents weighted like the ETA's by how
+well each predicted the next window, from a prior of 0.2 / 0.3 / 0.5 that
+leans linear: under-reading a peak is the costly mistake. `r^0.35` is the
+category's measured exponent in the pixel ratio (docs/notes/step-timing.md);
+under progressive resolution the Image category and the arena's per-pixel
+slices are projected in proportion to `r`. The peak is the larger of the
+high-water measured so far and the demand at the count that asks most, taken
+once. What widens it:
+
+- the views not seen yet. The pool keeps the largest draw, so a count held
+  for longer than a window sees larger ones: the expected largest of the
+  draws to come less that of the draws seen, times the sigma of the TOP of a
+  step's log demand (a window's top twentieth; 0.25 before one has closed).
+  A count already held has seen its draws, and after one round of the views
+  all of them -- a run at its cap projects what it has measured;
+- 0.3 relative sigma per e-fold the count is extrapolated (the fit), 0.1 for
+  the visible pairs;
 - 0.15 relative sigma per e-fold of steps still to run, whatever the count:
-  splats shrink and spread as a run goes, so the tiles each covers -- and with
-  them bytes per splat -- move even once the count is at the cap;
-- the spread of each window's own peak about the fit, an average of its
-  squared relative error: the ceiling a view sets swings from window to
-  window, and a fit to the running high-water alone does not see that.
+  splats shrink and spread as a run goes, so the tiles each covers move even
+  once the count is at the cap;
+- how far a window's own peak rose ABOVE the fit, while views remain unseen.
 
-Before the first densify step nothing has measured the growth, and the band
-says so by its width (70% per splat, plus the scratch estimate's 2.5%) rather
-than by a note under the chart.
+The growth is read off the process **high-water**, not the pool, and not off
+a sample at the end of the step: the backend counts the peak of what the
+process holds (`MemoryUsage::process_peak_bytes`), and the trainer restarts it
+after each sample, so a transient inside the step is carried as a constant on
+top. The first densify step allocates scratch of its own, so the fit starts
+after it; before that the forecast is provisional -- growth all per splat,
++-70% -- and the band says so by its width.
+
+`SS_FORECAST_DUMP=<file>` records everything the model is fed
+(`app/ForecastTrace.h`) and `train_forecast_replay <file> [every]` runs the
+model over it again: projected peak, sigma and error against the peak the run
+reached. That is how a change here is checked against real runs without
+training them.
+
+Replayed on three recorded runs (Vulkan, RTX 5070), error in the projected
+peak against the peak the run reached, before this model and with it:
+
+| run | at step 1 | first 1000 steps | growth | at the cap |
+|---|---|---|---|---|
+| london, 15M cap, to 8100: before | +67% | +25% to +70% | +1% to +9% | +5% to +8% |
+| london: now | -5% | 0% to +14% | -5% to +7% | 0% to +2% |
+| garden 1/4, 1M cap, 30k: before | +86% | +26% | +1% to +9% | +1% to +2% |
+| garden: now | -5% | 0% | 0% to +13% | 0% to +1% |
+| 360 preset, 5650 faces, 10k: before | +24% | +3% | | -1% to +2% |
+| 360 preset: now | -9% | -4% | | -2% to +1% |
+
+Now the truth is inside 2.4 sigma at every checkpoint of the three (250 steps
+apart on london, 1000 on the others). The under-reads are the first steps,
+when one view has been drawn and the band is at its widest (london 8.1 +- 0.8
+GiB against 8.5).
 
 "Others" is device use minus ours (on CUDA that includes the context), an
 exponential average with its spread. The chance of running out is the normal
@@ -145,6 +194,3 @@ under Windows the limit is the lower of the device's and ours plus the commit
 still free (`limit`, `commit_limited`), and the out-of-memory error
 says so when commit is what is short.
 
-On the three runs, from the first densify step on, the projected peak stayed
-within 2 sigma or above the truth, by at most 8% (bonsai 1/4), 10% (bonsai
-1/2) and 36% (garden) of it.

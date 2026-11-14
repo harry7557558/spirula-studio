@@ -292,6 +292,8 @@ __global__ void compute_efraimidis_spirakis_weight_kernel(
     const bool* mask,
     const float* floor_opacities,  // logits; null for no floor
     float floor_logit,
+    const float* oversize_accum,   // [numel]; null draws on `weights` alone
+    float oversize_blend,
     float* out_weights,
     int32_t* num_eligible  // null to skip counting
 ) {
@@ -301,6 +303,16 @@ __global__ void compute_efraimidis_spirakis_weight_kernel(
 
     float u = (float)hash_uint3(seed, blockIdx.x, threadIdx.x) * exp2f(-32.0f);
     float w = weights[idx * stride];
+    // The oversize split channel's weight. The floor makes an all-zero
+    // accumulator degrade to a draw from the error score itself.
+    if (oversize_accum != nullptr) {
+        constexpr float kOversizeFloor = 1e-3f;
+        const float s = fmaxf(w, 0.0f);
+        w = oversize_accum[idx] + kOversizeFloor;
+        if (oversize_blend > 0.0f)
+            w *= (oversize_blend == 1.0f) ? s : powf(s, oversize_blend);
+        if (!isfinite(w)) w = 0.0f;
+    }
     w = w / __logf(fmaxf(1.0f - u, 1e-30f));  // larger w -> smaller (more negative) value
     if (mask != nullptr && !mask[idx])
         w = 0.0f;
@@ -333,7 +345,9 @@ int32_t* weighted_sample_without_replacement_internal(
     uint32_t seed,
     uint32_t* num_eligible,
     const float* floor_opacities,
-    float floor_logit
+    float floor_logit,
+    const float* oversize_accum,
+    float oversize_blend
 ) {
     // int stride = (int)(weights_numel / numel);
     int stride = 2;  // above is incorrect during warmup
@@ -355,6 +369,8 @@ int32_t* weighted_sample_without_replacement_internal(
         masks_ptr,
         floor_opacities,
         floor_logit,
+        oversize_accum,
+        oversize_blend,
         sorting_values,
         d_eligible
     );

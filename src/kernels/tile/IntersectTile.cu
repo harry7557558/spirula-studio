@@ -76,6 +76,7 @@ inline __device__ int count_ellipse_grid_overlaps(
     float3 inv_cov,
     int grid_xmin, int grid_xmax,
     int grid_ymin, int grid_ymax,
+    bool by_rows,                       // sweep rows, else columns
     const int32_t* __restrict__ live,   // this image's tiles, or null
     uint32_t tile_width, BinTile t
 ) {
@@ -83,7 +84,7 @@ inline __device__ int count_ellipse_grid_overlaps(
 
     int n_tiles = 0;
 
-    if ((grid_ymax-grid_ymin)*t.ix <= (grid_xmax-grid_xmin)*t.iy) {
+    if (by_rows) {
         for (int y = grid_ymin; y < grid_ymax; y++) {
             float y0 = y * t.y - xy.y;
             float y1 = y0 + t.y;
@@ -150,7 +151,12 @@ __global__ void intersect_tile_kernel(
     int64_t *__restrict__ isect_ids,  // [n_isects]
     int32_t *__restrict__ flatten_ids,  // [n_isects]
     const int32_t n_isects,  // write pass: clamps the window below
-    const BinTile bt
+    const BinTile bt,
+    // Rows [band_row0, band_row1) of the I * tile_height the images stack to,
+    // and the tile the write pass's keys count from.
+    const int32_t band_row0,
+    const int32_t band_row1,
+    const int64_t key_tile_base
 ) {
     uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= I * N) {
@@ -173,7 +179,8 @@ __global__ void intersect_tile_kernel(
                 (idx == 0) ? 0 : max(cum_tiles_per_splat[idx - 1], 0);
             int32_t max_idx = min(cum_tiles_per_splat[idx], n_isects);
             while (cur_idx < max_idx) {
-                int64_t tile_id = iid * tile_width * tile_height;
+                int64_t tile_id =
+                    max(iid * tile_width * tile_height, key_tile_base) - key_tile_base;
                 isect_ids[cur_idx] = (tile_id << 32) | (int64_t)0xffffffff;
                 flatten_ids[cur_idx] = static_cast<int32_t>(idx);
                 ++cur_idx;
@@ -202,6 +209,17 @@ __global__ void intersect_tile_kernel(
     tile_max.x = (uint32_t)min(max(0, (int)ceilf((xmax + 0.5f) * bt.inv_x)), (int)tile_width);
     tile_max.y = (uint32_t)min(max(0, (int)ceilf((ymax + 0.5f) * bt.inv_y)), (int)tile_height);
     const int64_t iid_c = (image_ids ? image_ids[idx] : idx / N);
+    // The sweep direction is chosen on the whole box and the rows cut to the
+    // band after, so a banded splat keeps the tiles the whole image gives it.
+    const bool by_rows =
+        (tile_max.y-tile_min.y)*bt.ix <= (tile_max.x-tile_min.x)*bt.iy;
+    {
+        const int image_row = (int)iid_c * (int)tile_height;
+        const int y0 = clamp(band_row0 - image_row, (int)tile_min.y, (int)tile_max.y);
+        const int y1 = clamp(band_row1 - image_row, y0, (int)tile_max.y);
+        tile_min.y = (uint32_t)y0;
+        tile_max.y = (uint32_t)y1;
+    }
     const int32_t* live = tile_active
         ? tile_active + iid_c * (int64_t)tile_width * tile_height : nullptr;
     if constexpr (is_counting_pass) {
@@ -210,7 +228,7 @@ __global__ void intersect_tile_kernel(
             tiles_per_splat[idx] = count_ellipse_grid_overlaps(
                 xy, conic,
                 tile_min.x, tile_max.x, tile_min.y, tile_max.y,
-                live, tile_width, bt
+                by_rows, live, tile_width, bt
             );
         else if (tile_active == nullptr)
             tiles_per_splat[idx] = max(static_cast<int32_t>(
@@ -241,7 +259,7 @@ __global__ void intersect_tile_kernel(
     int32_t cur_idx = (idx == 0) ? 0 : max(cum_tiles_per_splat[idx - 1], 0);
     int32_t max_idx = min(cum_tiles_per_splat[idx], n_isects);
     if constexpr (is_ellipse) {
-        if ((tile_max.y-tile_min.y)*bt.ix <= (tile_max.x-tile_min.x)*bt.iy) {
+        if (by_rows) {
             for (int y = tile_min.y; y < tile_max.y; y++) {
                 float y0 = y * bt.y - xy.y;
                 float y1 = y0 + bt.y;
@@ -258,7 +276,7 @@ __global__ void intersect_tile_kernel(
                 for (int x = min_x; x < max_x && cur_idx < max_idx; x++) {
                     if (live && !live[(int64_t)y * tile_width + x]) continue;
                     int64_t tile_id = iid * tile_width * tile_height + int64_t(y) * tile_width + int64_t(x);
-                    isect_ids[cur_idx] = (tile_id << 32) | (int64_t)depth_u32;
+                    isect_ids[cur_idx] = ((tile_id - key_tile_base) << 32) | (int64_t)depth_u32;
                     flatten_ids[cur_idx] = static_cast<int32_t>(idx);
                     ++cur_idx;
                 }
@@ -281,7 +299,7 @@ __global__ void intersect_tile_kernel(
                 for (int y = min_y; y < max_y && cur_idx < max_idx; y++) {
                     if (live && !live[(int64_t)y * tile_width + x]) continue;
                     int64_t tile_id = iid * tile_width * tile_height + int64_t(y) * tile_width + int64_t(x);
-                    isect_ids[cur_idx] = (tile_id << 32) | (int64_t)depth_u32;
+                    isect_ids[cur_idx] = ((tile_id - key_tile_base) << 32) | (int64_t)depth_u32;
                     flatten_ids[cur_idx] = static_cast<int32_t>(idx);
                     ++cur_idx;
                 }
@@ -294,7 +312,7 @@ __global__ void intersect_tile_kernel(
                 if (cur_idx >= max_idx) break;
                 if (live && !live[(int64_t)i * tile_width + j]) continue;
                 int64_t tile_id = iid * tile_width * tile_height + i * tile_width + j;
-                isect_ids[cur_idx] = (tile_id << 32) | (int64_t)depth_u32;
+                isect_ids[cur_idx] = ((tile_id - key_tile_base) << 32) | (int64_t)depth_u32;
                 flatten_ids[cur_idx] = static_cast<int32_t>(idx);
                 ++cur_idx;
             }
@@ -302,7 +320,8 @@ __global__ void intersect_tile_kernel(
     }
     // this can happen with floating point optimization, make sure it doesn't introduce invalid ID
     while (cur_idx < max_idx) {
-        int64_t tile_id = iid * tile_width * tile_height;
+        int64_t tile_id =
+            max(iid * tile_width * tile_height, key_tile_base) - key_tile_base;
         isect_ids[cur_idx] = (tile_id << 32) | (int64_t)0xffffffff;
         flatten_ids[cur_idx] = static_cast<int32_t>(idx);
         ++cur_idx;
@@ -311,15 +330,23 @@ __global__ void intersect_tile_kernel(
 
 
 
+// Offsets of a band's tiles, whose sorted keys count tiles from the band's
+// first and whose pairs start at isect_base in the whole list. n_isects == 0:
+// launched with one thread, which fills every offset with isect_base.
 __global__ void intersect_offset_kernel(
     const uint32_t n_isects,
     const int64_t *__restrict__ isect_ids,
-    const uint32_t I,
-    const uint32_t tile_width,
-    const uint32_t tile_height,
-    int32_t *__restrict__ offsets // [I, tile_height, tile_width]
+    const uint32_t n_offsets,
+    const uint32_t isect_base,
+    int32_t *__restrict__ offsets // [n_offsets]
 ) {
     uint32_t idx = cg::this_grid().thread_rank();
+    if (n_isects == 0) {
+        if (idx == 0)
+            for (uint32_t i = 0; i < n_offsets; ++i)
+                offsets[i] = static_cast<int32_t>(isect_base);
+        return;
+    }
     if (idx >= n_isects)
         return;
 
@@ -328,12 +355,12 @@ __global__ void intersect_offset_kernel(
     if (idx == 0) {
         // write out the offsets until the first valid tile (inclusive)
         for (uint32_t i = 0; i < tile_id + 1; ++i)
-            offsets[i] = static_cast<int32_t>(idx);
+            offsets[i] = static_cast<int32_t>(isect_base + idx);
     }
     if (idx == n_isects - 1) {
         // write out the rest of the offsets
-        for (uint32_t i = tile_id + 1; i < I * tile_width * tile_height; ++i)
-            offsets[i] = static_cast<int32_t>(n_isects);
+        for (uint32_t i = tile_id + 1; i < n_offsets; ++i)
+            offsets[i] = static_cast<int32_t>(isect_base + n_isects);
     }
 
     if (idx > 0) {
@@ -345,7 +372,7 @@ __global__ void intersect_offset_kernel(
 
         // write out the offsets between the previous and current tiles
         for (uint32_t i = tile_id_prev + 1; i < tile_id + 1; ++i)
-            offsets[i] = static_cast<int32_t>(idx);
+            offsets[i] = static_cast<int32_t>(isect_base + idx);
     }
 }
 
@@ -443,33 +470,18 @@ std::tuple<
             " (camera, gaussian) pairs in one batch exceeds the 2^31 limit");
     const uint32_t total_count = (uint32_t)total_count64;
     const uint32_t N = packed ? total_count : total_count / I;
+    const size_t count_span = 4 * (size_t)total_count;
 
     intersect_check_image_size(image_width, image_height);
 
-    /* Count tiles intersected per splat, coarsening the binning until the
-       exact total fits int32. Re-counting costs one count pass (~0.3% of a
-       step, and flat in tile size); the alternative is throwing. */
     uint32_t tile_width = 0, tile_height = 0, n_tiles = 0;
-    int64_t n_isects64 = 0;
     const int32_t* active = tile_active;
-    int32_t n_isects = 0;
     DeviceVector<int32_t> tiles_per_splat, cum_tiles_per_splat;
-    DeviceTensor3D<int32_t> offsets_out;
     DeviceVector<int64_t> isect_ids_a, isect_ids_b;
-    DeviceVector<int32_t> flatten_ids_a, flatten_ids_b;
-    size_t isect_reserve = 0;
-    for (;;) {
-        // Opens the tile-intersect phase, whose buffers share the arena with
-        // the raster backward (POOL_ALIAS_TABLE, core/PoolSlots.h). Re-opened
-        // per attempt: an arena slot may be acquired only once per phase.
-        pool_begin_phase(PoolPhase::TileIsect,
-                         isect_reserve ? isect_reserve
-                                       : DevicePool::arena_span({4 * (size_t)total_count}));
-        bt = bin_tile(macro_log2);
-        tile_width = _CEIL_DIV(image_width, (uint32_t)bt.ix);
-        tile_height = _CEIL_DIV(image_height, (uint32_t)bt.iy);
-        n_tiles = intersect_check_tile_count(tile_width, tile_height, I);
+    DeviceVector<int32_t> flatten_alt;
 
+    // Tiles each splat touches in rows [row0, row1), and their exact total.
+    auto count_rows = [&](int32_t row0, int32_t row1) -> int64_t {
         tiles_per_splat.resize(PoolSlot::IsectTilesPerSplat, total_count);
         (ellipse.data != nullptr ?
             intersect_tile_kernel<true, true> :
@@ -488,14 +500,14 @@ std::tuple<
             tile_width, tile_height,
             active,
             tiles_per_splat.data_ptr(),
-            nullptr, nullptr, 0, bt
+            nullptr, nullptr, 0, bt, row0, row1, 0
         );
         CHECK_DEVICE_ERROR(cudaGetLastError());
 
         /* Exact total, reduced in int64: the int32 scan below wraps silently
            past 2^31, and past 2^32 it wraps back to a plausible positive that
            would size the key buffers and send the write pass off the end. */
-        n_isects64 = 0;
+        int64_t n = 0;
         if (total_count > 0) {
             DeviceVector<int64_t> isect_total;
             isect_total.resize(PoolSlot::IsectTotal, 1);
@@ -504,9 +516,33 @@ std::tuple<
             CUB_WRAPPER(cub::DeviceReduce::Sum, widened, isect_total.data_ptr(),
                         (int)total_count);
             CHECK_DEVICE_ERROR(cudaGetLastError());
-            cudaMemcpy(&n_isects64, isect_total.data_ptr(), sizeof(int64_t),
+            cudaMemcpy(&n, isect_total.data_ptr(), sizeof(int64_t),
                        cudaMemcpyDeviceToHost);
         }
+        return n;
+    };
+
+    /* Count tiles intersected per splat, coarsening the binning until the
+       exact total fits int32. Re-counting costs one count pass (~0.3% of a
+       step, and flat in tile size); the alternative is throwing. */
+    int64_t n_isects64 = 0;
+    int32_t n_isects = 0, rows = 0;
+    int bands = 1;
+    size_t isect_reserve = 0;
+    for (;;) {
+        // Opens the tile-intersect phase, whose buffers share the arena with
+        // the raster backward (POOL_ALIAS_TABLE, core/PoolSlots.h). Re-opened
+        // per attempt: an arena slot may be acquired only once per phase.
+        pool_begin_phase(PoolPhase::TileIsect,
+                         isect_reserve ? isect_reserve
+                                       : DevicePool::arena_span({count_span}));
+        bt = bin_tile(macro_log2);
+        tile_width = _CEIL_DIV(image_width, (uint32_t)bt.ix);
+        tile_height = _CEIL_DIV(image_height, (uint32_t)bt.iy);
+        n_tiles = intersect_check_tile_count(tile_width, tile_height, I);
+        rows = (int32_t)(I * tile_height);
+
+        n_isects64 = count_rows(0, rows);
         if (intersect_should_coarsen(n_isects64, macro_log2)) {
             // tile_active was built for the old tile grid; dropping it only
             // costs the skipped-tile optimization for this step, and the next
@@ -517,28 +553,16 @@ std::tuple<
         }
         intersect_check_isect_count(n_isects64);
         n_isects = (int32_t)n_isects64;
+        bands = intersect_band_count(n_isects, total_count, rows);
+        if (bands > 1) break;
         // Grown past the arena: reopen sized for it and count again, rather
         // than overflow into buffers beside the old arena (core/Tensor.h).
         const size_t isect_span = DevicePool::arena_span(
-            {4 * (size_t)total_count, 4 * (size_t)total_count,
-             8 * (size_t)n_isects, 8 * (size_t)n_isects});
+            {count_span, count_span, 8 * (size_t)n_isects, 8 * (size_t)n_isects,
+             4 * (size_t)n_isects});
         if (!DevicePool::global().phase_reserve(isect_span) && isect_reserve == 0) {
             isect_reserve = isect_span;
             continue;
-        }
-
-        /* Inclusive prefix sum -> cumulative tile counts */
-        cum_tiles_per_splat.resize(PoolSlot::IsectCumTiles, total_count);
-        CUB_WRAPPER(cub::DeviceScan::InclusiveSum,
-            tiles_per_splat.data_ptr(), cum_tiles_per_splat.data_ptr(),
-            (int)total_count);
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-        offsets_out.resize(PoolSlot::IsectOffsets, I, tile_height, tile_width);
-        if (n_isects != 0) {
-            isect_ids_a.resize(PoolSlot::IsectIdsA, n_isects);
-            isect_ids_b.resize(PoolSlot::IsectIdsB, n_isects);
-            flatten_ids_a.resize(PoolSlot::IsectFlatA, n_isects);
-            flatten_ids_b.resize(PoolSlot::IsectFlatB, n_isects);
         }
         break;
     }
@@ -550,57 +574,134 @@ std::tuple<
         return v && *v;
     }();
 
+    DeviceTensor3D<int32_t> offsets_out;
+    offsets_out.resize(PoolSlot::IsectOffsets, I, tile_height, tile_width);
     if (n_isects == 0) {
         offsets_out.zero();
         return std::make_tuple(DeviceVector<int64_t>{}, DeviceVector<int32_t>{}, offsets_out);
     }
-
-    (ellipse.data != nullptr ?
-        intersect_tile_kernel<false, true> :
-        intersect_tile_kernel<false, false>
-    )<<<_LAUNCH_ARGS_1D(I*N, 256)>>>(
-        packed ? 1 : I, N,
-        image_ids != nullptr ? image_ids->data_ptr() : nullptr,
-        (const float4*)std::get<0>(intrins),
-        aabb.data_ptr(),
-        image_width, image_height,
-        depths.data_ptr(),
-        ellipse,
-        cum_tiles_per_splat.data_ptr(),
-        tile_width, tile_height,
-        active,
-        nullptr,
-        isect_ids_a.data_ptr(),
-        flatten_ids_a.data_ptr(),
-        n_isects, bt
-    );
-    CHECK_DEVICE_ERROR(cudaGetLastError());
-
     if (log_isects)
         std::fprintf(stderr, "[isects] %lld pairs, %s\n", (long long)n_isects,
                      tile_active ? "masked tiles skipped" : "every tile");
+    // The one list the raster keeps; every band sorts into its own stretch.
+    DeviceVector<int32_t> flatten_ids;
+    flatten_ids.resize(PoolSlot::IsectFlatA, n_isects);
 
-    /* Sort by (tile_id << 32 | depth) key */
-    cub::DoubleBuffer<int64_t> d_keys(isect_ids_a.data_ptr(), isect_ids_b.data_ptr());
-    cub::DoubleBuffer<int32_t> d_values(flatten_ids_a.data_ptr(), flatten_ids_b.data_ptr());
-    int tile_n_bits = 0;
-    while ((1U << tile_n_bits) <= n_tiles) ++tile_n_bits;
-    CUB_WRAPPER(cub::DeviceRadixSort::SortPairs,
-        d_keys, d_values, n_isects, 0, 32 + tile_n_bits);
-    CHECK_DEVICE_ERROR(cudaGetLastError());
+    // Keys, sort and offsets of the pairs tiles_per_splat holds: rows [row0,
+    // row1), whose tiles the keys count from tile0, into flatten_ids[base..].
+    auto sort_rows = [&](int32_t row0, int32_t row1, uint32_t tile0,
+                         uint32_t n_offsets, int32_t base, int32_t n) {
+        /* Inclusive prefix sum -> cumulative tile counts */
+        cum_tiles_per_splat.resize(PoolSlot::IsectCumTiles, total_count);
+        CUB_WRAPPER(cub::DeviceScan::InclusiveSum,
+            tiles_per_splat.data_ptr(), cum_tiles_per_splat.data_ptr(),
+            (int)total_count);
+        CHECK_DEVICE_ERROR(cudaGetLastError());
+        isect_ids_a.resize(PoolSlot::IsectIdsA, n);
+        isect_ids_b.resize(PoolSlot::IsectIdsB, n);
+        flatten_alt.resize(PoolSlot::IsectFlatB, n);
 
-    /* Pick whichever buffer CUB left the sorted result in */
-    DeviceVector<int64_t> isect_ids_out  = d_keys.selector   ? isect_ids_b  : isect_ids_a;
-    DeviceVector<int32_t> flatten_ids_out = d_values.selector ? flatten_ids_b : flatten_ids_a;
+        int tile_n_bits = 0;
+        while ((1U << tile_n_bits) <= n_offsets) ++tile_n_bits;
+        const int end_bit = 32 + tile_n_bits;
+        // CUB swaps the buffers once per pass and its pass count follows the
+        // key bits: start where the last sort of this width says the result
+        // lands in flatten_ids, and copy when it did not.
+        static int8_t swaps[65] = {};
+        int32_t* const out = flatten_ids.data_ptr() + base;
+        const bool odd = swaps[end_bit] == 1;
+        cub::DoubleBuffer<int64_t> d_keys(isect_ids_a.data_ptr(), isect_ids_b.data_ptr());
+        cub::DoubleBuffer<int32_t> d_values(odd ? flatten_alt.data_ptr() : out,
+                                            odd ? out : flatten_alt.data_ptr());
 
-    /* Compute per-tile start offsets */
-    intersect_offset_kernel<<<_LAUNCH_ARGS_1D(n_isects, 256)>>>(
-        n_isects,
-        isect_ids_out.data_ptr(),
-        I, tile_width, tile_height,
-        offsets_out.data_ptr()
-    );
-    CHECK_DEVICE_ERROR(cudaGetLastError());
+        (ellipse.data != nullptr ?
+            intersect_tile_kernel<false, true> :
+            intersect_tile_kernel<false, false>
+        )<<<_LAUNCH_ARGS_1D(I*N, 256)>>>(
+            packed ? 1 : I, N,
+            image_ids != nullptr ? image_ids->data_ptr() : nullptr,
+            (const float4*)std::get<0>(intrins),
+            aabb.data_ptr(),
+            image_width, image_height,
+            depths.data_ptr(),
+            ellipse,
+            cum_tiles_per_splat.data_ptr(),
+            tile_width, tile_height,
+            active,
+            nullptr,
+            d_keys.Current(),
+            d_values.Current(),
+            n, bt, row0, row1, (int64_t)tile0
+        );
+        CHECK_DEVICE_ERROR(cudaGetLastError());
 
-    return std::make_tuple(isect_ids_out, flatten_ids_out, offsets_out);
+        /* Sort by (tile_id << 32 | depth) key */
+        CUB_WRAPPER(cub::DeviceRadixSort::SortPairs,
+            d_keys, d_values, n, 0, end_bit);
+        CHECK_DEVICE_ERROR(cudaGetLastError());
+        if (d_values.Current() != out) {
+            cudaMemcpy(out, d_values.Current(), (size_t)n * sizeof(int32_t),
+                       cudaMemcpyDeviceToDevice);
+            swaps[end_bit] = odd ? 0 : 1;
+        }
+
+        /* Compute per-tile start offsets */
+        intersect_offset_kernel<<<_LAUNCH_ARGS_1D(n, 256)>>>(
+            n, d_keys.Current(), n_offsets, (uint32_t)base,
+            offsets_out.data_ptr() + tile0
+        );
+        CHECK_DEVICE_ERROR(cudaGetLastError());
+    };
+
+    if (bands == 1) {
+        sort_rows(0, rows, 0, n_tiles, 0, n_isects);
+        return std::make_tuple(DeviceVector<int64_t>{}, flatten_ids, offsets_out);
+    }
+
+    /* One band of rows at a time: count, sort into its stretch of the list. */
+    const int64_t share = ((int64_t)n_isects + bands - 1) / bands;
+    size_t reserve = DevicePool::arena_span(
+        {count_span, count_span, 8 * (size_t)share, 8 * (size_t)share, 4 * (size_t)share});
+    int32_t row = 0, base = 0;
+    uint32_t tile0 = 0;
+    double density = (double)n_isects / (double)rows;
+    while (row < rows) {
+        int32_t take = intersect_band_rows(share, density, rows - row);
+        int64_t n = 0;
+        for (bool reserved = false;;) {
+            pool_begin_phase(PoolPhase::TileIsect, reserve);
+            n = count_rows(row, row + take);
+            // Rows are not equally full: a band well past its share is halved.
+            if ((double)n > kIsectBandSlack * (double)share && take > 1) {
+                take = (take + 1) / 2;
+                continue;
+            }
+            const size_t span = DevicePool::arena_span(
+                {count_span, count_span, 8 * (size_t)n, 8 * (size_t)n, 4 * (size_t)n});
+            if (!DevicePool::global().phase_reserve(span) && !reserved) {
+                reserve = span;
+                reserved = true;
+                continue;
+            }
+            break;
+        }
+        if ((int64_t)base + n > (int64_t)n_isects)
+            throw std::runtime_error("tile intersect: the bands count more pairs than the image");
+        const bool last = row + take >= rows;
+        const uint32_t n_offsets =
+            (last ? n_tiles : (uint32_t)(row + take) * tile_width) - tile0;
+        if (n > 0) {
+            sort_rows(row, row + take, tile0, n_offsets, base, (int32_t)n);
+        } else if (last) {
+            intersect_offset_kernel<<<1, 1>>>(
+                0, nullptr, n_offsets, (uint32_t)base, offsets_out.data_ptr() + tile0);
+            CHECK_DEVICE_ERROR(cudaGetLastError());
+        }
+        // An empty band's tiles wait for the next one, whose keys reach back.
+        if (n > 0) tile0 += n_offsets;
+        base += (int32_t)n;
+        row += take;
+        density = (double)n / (double)take;
+    }
+    return std::make_tuple(DeviceVector<int64_t>{}, flatten_ids, offsets_out);
 }

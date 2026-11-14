@@ -465,7 +465,10 @@ Vulkan.
 - `kernels/IntersectTile.cpp` + `backend/vulkan/shaders/intersect_tile.slang`:
   `do_intersect_tile_generic` = count -> `backend::inclusive_sum<int32>` ->
   4-byte n_isects readback -> key write -> `backend::sort_pairs<int64,int32>`
-  (begin 0, end 32 + tile bits, exactly the CUB call) -> offset kernel.
+  (begin 0, end 32 + tile bits, exactly the CUB call) -> offset kernel, per
+  band of tile rows when the pairs are many (docs/notes/vram-splat-x-img.md,
+  "Sorting in bands"). The sort starts in the payload buffer that leaves its
+  result in the caller's list: one swap per 8 key bits.
   Ellipse-vs-AABB mode is a runtime null-check on proj_conic (the CUDA
   template bool only folds that check).
 - `kernels/RasterizeFwd.cpp` + `backend/vulkan/shaders/rasterize_fwd.slang`: closely

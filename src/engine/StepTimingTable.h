@@ -75,7 +75,6 @@
   X("densify.densify_mcmc_reloc_index_map",          Densify,     Splats) \
   X("densify.densify_mcmc_update_add",               Densify,     Splats) \
   X("densify.densify_mcmc_update_reloc",             Densify,     Splats) \
-  X("densify.densify_oversize_weight",               Densify,     Splats) \
   X("densify.densify_relocate_las",                  Densify,     Splats) \
   X("densify.densify_reloc_mask",                    Densify,     Splats) \
   X("densify.densify_revised_add_noise",             Densify,     Splats) \

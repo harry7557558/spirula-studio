@@ -610,14 +610,15 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                 n_oversize = std::max(0, std::min(n_oversize, num_added));
             }
             // Under the split floor either draw can come back short.
-            auto add_split = [&](int64_t n_cur, int n_new,
-                                 DeviceVector<float2> weights, uint32_t seed) {
+            // `oversize` non-empty makes it the oversize channel's draw.
+            auto add_split = [&](int64_t n_cur, int n_new, DeviceVector<float2> weights,
+                                 DeviceVector<float> oversize, uint32_t seed) {
                 return (int)add_splats_with_long_axis_split_tensor(
                     n_cur, n_new, split_opacity_k, cfg.min_split_opacity,
                     dv_means, dv_quats, dv_scales, dv_opacs, dv_features_dc, dv_features_sh,
                     dv_g1_means, dv_g1_quats, dv_g1_scales, dv_g1_opacs, dv_g1_features_dc, dv_g1_features_sh,
                     dv_g2_means, dv_g2_quats, dv_g2_scales, dv_g2_opacs, dv_g2_features_dc, dv_g2_features_sh,
-                    dv_accum_buf, weights,
+                    dv_accum_buf, weights, oversize, cfg.oversize_score_blend,
                     dv_bias_steps, dv_visit, dv_max_weight,
                     sh_optim_bits, num_sh,
                     dv_sh_quant_bounds, sh_bounds_per_splat,
@@ -629,14 +630,8 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
             };
             auto& dv_score = engine().optim.densify_sample_score;
             if (n_oversize > 0) {
-                DeviceVector<float2> dv_over_w;
-                dv_over_w.resize(PoolSlot::EngDensifyOversizeWeight,
-                                 cur_num_splats);
-                densify_oversize_weight_tensor(
-                    cur_num_splats, cfg.oversize_score_blend, dv_oversize,
-                    dv_score.data_ptr() ? dv_score : dv_accum_buf, dv_over_w);
                 const int n_quota = n_oversize;
-                n_oversize = add_split(cur_num_splats, n_oversize, dv_over_w,
+                n_oversize = add_split(cur_num_splats, n_oversize, dv_score, dv_oversize,
                                        2 * step + 1 + 0x5bf03635u);
                 num_added -= n_quota - n_oversize;
                 // The split kernel carries accum_buf src -> dst but not the
@@ -648,7 +643,8 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
             }
             if (num_added - n_oversize > 0)
                 num_added = n_oversize + add_split(cur_num_splats + n_oversize,
-                                                   num_added - n_oversize, dv_score, 2 * step + 1);
+                                                   num_added - n_oversize, dv_score,
+                                                   DeviceVector<float>(), 2 * step + 1);
         }
     } else if (do_densify) {
         // MCMC relocation

@@ -350,6 +350,12 @@ engine_get_pool_breakdown_categorized() {
     return out;
 }
 
+void engine_get_isect_peaks(int64_t& pairs, int64_t& isects, int64_t& last_isects) {
+    pairs = engine().isect_peak_pairs;
+    isects = engine().isect_peak_count;
+    last_isects = engine().isect_last_count;
+}
+
 size_t engine_get_scratch_bytes() {
     return DeviceScratch::global().capBytes();
 }

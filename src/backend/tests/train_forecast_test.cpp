@@ -195,6 +195,78 @@ static void vram_predicts_peak() {
     run_vram(1.0, 3000, 0.6);
 }
 
+// An indoor capture: a few views see the whole model, most a sliver of it, and
+// the arena holds a loss phase the pixels size (`loss_gib`). Neither the long
+// lower tail nor that phase is growth: the peak is the views that see it all.
+static void vram_bounded_views(double loss_gib) {
+    const DensifyConfig d = densify(500, 15000, 100, 1.05f);
+    const int T = 30000;
+    const int64_t cap = 3000000;
+    const SplatSchedule sch(d, T, cap);
+    ForecastSetup fs;
+    fs.schedule = sch;
+    fs.distinct_batches = 1000;
+    TrainForecast fc;
+    fc.reset(fs);
+    std::mt19937 rng(11);
+    std::vector<double> seen(1000);
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    for (double& v : seen) v = u(rng) < 0.1 ? 1.0 : 0.02 + 0.5 * u(rng) * u(rng);
+    std::vector<int> order(1000);
+    for (int i = 0; i < 1000; ++i) order[i] = i;
+
+    const double gib = 1024.0 * 1024.0 * 1024.0;
+    const int sxi = (int)VramCategory::SplatXImg;
+    std::vector<int64_t> n_at(T + 1);
+    sch.segments(0, 300000, [&](int f, int e, int64_t n) {
+        for (int s = f; s < e; ++s) n_at[s] = n;
+    });
+    n_at[T] = n_at[T - 1];
+    // Per visible splat: 60 bytes owned, 100 in the tile phase.
+    const size_t loss = (size_t)(loss_gib * gib);
+    size_t owned = 0, tile = 0;
+    double truth = 0.0;
+    std::vector<VramForecast> at;
+    const int stops[] = {1000, 3000, 6000, 20000};
+    for (int s = 0; s < T; ++s) {
+        if (s % 1000 == 0) std::shuffle(order.begin(), order.end(), rng);
+        const double visible = (double)n_at[s] * seen[order[s % 1000]];
+        owned = std::max(owned, (size_t)(60.0 * visible));
+        tile = std::max(tile, (size_t)(100.0 * visible));
+        const size_t arena = std::max(loss, tile);
+        MemorySample m;
+        m.step = s;
+        m.splats_ran = n_at[s];
+        m.splats_next = n_at[s + 1];
+        m.pool_used[sxi] = (size_t)(160.0 * visible);
+        m.pool_cap[sxi] = owned + arena;
+        m.pool_cap[(int)VramCategory::Splat] = (size_t)gib;
+        m.arena_cap = arena;
+        m.phase_pixels[(int)PoolPhase::Loss] = loss;
+        m.phase_splats[(int)PoolPhase::TileIsect] = tile;
+        m.has_process = m.has_used = m.has_total = true;
+        m.process_bytes = (uint64_t)gib + owned + arena;
+        m.used_bytes = m.process_bytes;
+        m.total_bytes = (uint64_t)(24.0 * gib);
+        truth = (double)m.process_bytes;
+        fc.add_memory(m);
+        for (int stop : stops)
+            if (s == stop) at.push_back(fc.vram());
+    }
+    for (size_t i = 0; i < at.size(); ++i) {
+        const VramForecast& v = at[i];
+        std::printf("  vram, bounded views, %.1f GiB loss phase @%d: peak %.3f +- %.3f GiB, "
+                    "truth %.3f GiB\n", loss_gib, stops[i], v.peak_mean / gib,
+                    v.peak_sigma / gib, truth / gib);
+        CHECK(v.peak_mean > truth - 2.0 * v.peak_sigma - 0.02 * truth, "under-read at %d",
+              stops[i]);
+        // Every view has come round at the held count by 20000: the peak is known.
+        const double slack = stops[i] >= 20000 ? 0.03 : stops[i] >= 6000 ? 0.08 : 0.25;
+        CHECK(v.peak_mean < truth * (1.0 + slack), "over-read at %d: %.3f vs %.3f GiB",
+              stops[i], v.peak_mean / gib, truth / gib);
+    }
+}
+
 static double cost(StepCells& gpu, double m, double r, bool densify) {
     gpu = StepCells{};
     gpu.at(StepPart::Render, StepScale::Splats) = 0.004 * m;
@@ -304,6 +376,8 @@ int main() {
     schedule_matches_engine_rule();
     eta_tracks_growth();
     vram_predicts_peak();
+    vram_bounded_views(0.0);
+    vram_bounded_views(0.5);
     breakdown_adds_up();
     eta_follows_resolution();
     if (g_fail) {

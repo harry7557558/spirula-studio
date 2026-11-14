@@ -440,7 +440,8 @@ int main(int argc, char** argv) {
 
     auto call_add_las = [&](Model& m, int64_t num_add, uint32_t seed,
                             float* max_weight = nullptr,
-                            float min_split_opacity = 0.0f) {
+                            float min_split_opacity = 0.0f,
+                            float* oversize = nullptr, float oversize_blend = 0.0f) {
         const int64_t added = add_splats_with_long_axis_split_tensor(
             N, num_add, /*split_opacity_k=*/0.6f, min_split_opacity,
             dv<float3>(m.means, CAP), dv<float4>(m.quats, CAP),
@@ -464,6 +465,7 @@ int main(int argc, char** argv) {
                                              : (void*)m.sh_state_packed,
                        0),
             dv<float2>(m.accum, CAP), DeviceVector<float2>{},
+            dv<float>(oversize, oversize ? CAP : 0), oversize_blend,
             dv<int32_t>(m.bias_steps, CAP), dv<uint32_t>(m.visit, CAP),
             dv<float>(max_weight, max_weight ? CAP : 0),
             m.sh_optim_bits, (int)m.num_sh,
@@ -723,6 +725,17 @@ int main(int argc, char** argv) {
         Model m = build_model(4, 8, false, false, 8, 15, -1, -1, -1);
         call_add_las(m, 333, 66u);
         readback_model(m);
+    }
+    // The oversize channel: the draw's weight is (accum + floor) * score^blend,
+    // computed inside the key kernel.
+    for (float blend : {0.0f, 0.5f, 1.0f}) {
+        Model m = build_model(32, 32, false, false, 15, 15, -1, -1, -1);
+        std::vector<float> over(CAP);
+        for (int64_t i = 0; i < CAP; i++) over[i] = i % 3 == 0 ? 0.f : uf(0.f, 4.f);
+        float* d_over = upload(over);
+        call_add_las(m, 444, 77u, nullptr, 0.0f, d_over, blend);
+        readback_model(m);
+        backend::device_free(d_over);
     }
     // Split floor: only splats at or over it are sources, and an add asking
     // for more than there are stops at their count.

@@ -119,35 +119,6 @@ void densify_update_weight(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 }
 
 // ---------------------------------------------------------------------------
-// densify_oversize_weight
-// ---------------------------------------------------------------------------
-
-struct DensifyOversizeWeightParams {  // 32 bytes: pushed directly
-    float* oversize_accum;  // [N]
-    float2* score;          // [N, 2], lane 0 = error score
-    float2* out;            // [N, 2], lane 0 = weight
-    float blend;
-    uint num_splats;
-    uint wgs_per_row;
-    uint _pad0;
-};
-
-[shader("compute")]
-[numthreads(256, 1, 1)]
-void densify_oversize_weight(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-                             uniform DensifyOversizeWeightParams p) {
-    uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
-    if (idx >= p.num_splats) return;
-    const float kOversizeFloor = 1e-3f;
-    float s = max(p.score[idx].x, 0.0f);
-    float w = p.oversize_accum[idx] + kOversizeFloor;
-    if (p.blend > 0.0f)
-        w *= (p.blend == 1.0f) ? s : pow(s, p.blend);
-    p.out[idx] = float2(_dn_finitef(w) ? w : 0.0f, 0.0f);
-}
-
-
-// ---------------------------------------------------------------------------
 // densify_clip_scale
 // ---------------------------------------------------------------------------
 
@@ -417,12 +388,13 @@ void _dn_mcmc_relocation(inout float opacity, inout float3 scale, int n_idx) {
 // ascending order bit-exactly for identical key bits.
 // ---------------------------------------------------------------------------
 
-struct EfraimidisParams {  // 68 bytes: pushed directly
+struct EfraimidisParams {  // 84 bytes: pushed directly
     float* weights;   // [numel * stride]
     int* mask;        // [numel] int32 0/1 (use_mask gates; fallback-backed)
     uint* out_keys;   // [numel] sortable key bits
     int* eligible;    // [1] += 1 per strictly negative key
     float* floor_opacs;  // [numel] logits (use_floor gates; fallback-backed)
+    float* oversize;  // [numel] (use_oversize gates; fallback-backed)
     uint stride;
     uint seed;
     uint use_mask;
@@ -430,6 +402,8 @@ struct EfraimidisParams {  // 68 bytes: pushed directly
     uint wgs_per_row;
     float floor_logit;
     uint use_floor;
+    float oversize_blend;
+    uint use_oversize;
 };
 
 [shader("compute")]
@@ -442,6 +416,16 @@ void densify_efraimidis_keys(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     float u = float(_dn_hash_u3(p.seed, block_lin, tid)) * exp2(-32.0f);
     float w = p.weights[idx * p.stride];
+    // The oversize split channel's weight. The floor makes an all-zero
+    // accumulator degrade to a draw from the error score itself.
+    if (p.use_oversize != 0) {
+        const float kOversizeFloor = 1e-3f;
+        float s = max(w, 0.0f);
+        w = p.oversize[idx] + kOversizeFloor;
+        if (p.oversize_blend > 0.0f)
+            w *= (p.oversize_blend == 1.0f) ? s : pow(s, p.oversize_blend);
+        if (!_dn_finitef(w)) w = 0.0f;
+    }
     // larger w -> smaller (more negative) value
     w = w / log(max(1.0f - u, 1e-30f));
     if (p.use_mask != 0 && p.mask[idx] == 0) w = 0.0f;

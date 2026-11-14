@@ -21,9 +21,10 @@ struct IsectCountParams {
         wgs_per_row, macro_log2;
     int32_t row_stride, xy_off, conic_off, opac_off;
     float max_sigma;
+    int32_t band_row0, band_row1;
     uint32_t _pad0;
 };
-static_assert(sizeof(IsectCountParams) == 6 * 8 + 14 * 4,
+static_assert(sizeof(IsectCountParams) == 6 * 8 + 16 * 4,
               "params layout must match the slang struct");
 
 struct IsectWriteParams {
@@ -33,8 +34,11 @@ struct IsectWriteParams {
         wgs_per_row, n_isects, macro_log2;
     int32_t row_stride, xy_off, conic_off, opac_off;
     float max_sigma;
+    int32_t band_row0, band_row1;
+    uint32_t key_tile_base;
+    uint32_t _pad0;
 };
-static_assert(sizeof(IsectWriteParams) == 8 * 8 + 14 * 4,
+static_assert(sizeof(IsectWriteParams) == 8 * 8 + 18 * 4,
               "params layout must match the slang struct");
 
 struct TileActiveParams {
@@ -48,9 +52,9 @@ static_assert(sizeof(TileActiveParams) == 2 * 8 + 13 * 4 + 4 /*pad*/,
 
 struct IsectOffsetParams {
     uint64_t isect_ids, offsets;
-    uint32_t n_isects, n_offsets, wgs_per_row;
+    uint32_t n_isects, n_offsets, wgs_per_row, isect_base;
 };
-static_assert(sizeof(IsectOffsetParams) == 2 * 8 + 3 * 4 + 4 /*pad*/,
+static_assert(sizeof(IsectOffsetParams) == 2 * 8 + 4 * 4,
               "params layout must match the slang struct");
 
 }  // namespace
@@ -113,24 +117,63 @@ std::tuple<
     intersect_check_image_size(image_width, image_height);
 
     const uint64_t p_screen = (uint64_t)ellipse.data;
+    const vkk::Fold fold = vkk::fold_1d(total_count, 256);
+    const size_t count_span = 4 * (size_t)total_count;
+
+    uint32_t tile_width = 0, tile_height = 0, n_tiles = 0;
+    const int32_t* active = tile_active;
+    // Spec IDs: 0 = kEllipse, 1 = kHasXy, 2 = kPacked, 3 = kSkipTiles
+    // (see intersect_tile.slang). Both passes must agree, so it is settled
+    // by the count loop rather than by the caller's tile_active.
+    backend::vk::SpecList mode_spec;
+    DeviceVector<int32_t> tiles_per_splat, cum_tiles_per_splat;
+    DeviceVector<uint32_t> isect_total;
+    DeviceVector<int64_t> isect_ids_a, isect_ids_b;
+    DeviceVector<int32_t> flatten_alt;
+
+    // Tiles each splat touches in rows [row0, row1), and their exact total: a
+    // wrapped int32 prefix sum would drive the write pass off its buffers.
+    auto count_rows = [&](int32_t row0, int32_t row1) -> int64_t {
+        tiles_per_splat.resize(PoolSlot::IsectTilesPerSplat, total_count);
+        isect_total.resize(PoolSlot::IsectTotal, 2);
+        isect_total.zero();
+        IsectCountParams cp{};
+        cp.aabb = (uint64_t)aabb.data_ptr();
+        cp.proj_screen = p_screen;
+        cp.tiles_per_splat = (uint64_t)tiles_per_splat.data_ptr();
+        cp.image_ids = packed ? (uint64_t)image_ids->data_ptr() : 0;
+        cp.tile_active = vkk::or_fallback(active);
+        cp.isect_total = (uint64_t)isect_total.data_ptr();
+        cp.N = N;
+        cp.image_width = image_width;
+        cp.image_height = image_height;
+        cp.tile_width = tile_width;
+        cp.tile_height = tile_height;
+        cp.total = total_count;
+        cp.macro_log2 = (uint32_t)macro_log2;
+        cp.wgs_per_row = fold.per_row;
+        cp.row_stride = ellipse.stride;
+        cp.xy_off = ellipse.xy;
+        cp.conic_off = ellipse.conic;
+        cp.opac_off = ellipse.opac;
+        cp.max_sigma = ellipse.max_sigma;
+        cp.band_row0 = row0;
+        cp.band_row1 = row1;
+        vkk::dispatch("intersect_tile.intersect_tile_count", mode_spec,
+                      fold.per_row, fold.rows, 1, &cp, sizeof(cp));
+        uint32_t words[2] = {0, 0};
+        if (total_count > 0)
+            backend::memcpy_sync(words, isect_total.data_ptr(), sizeof(words),
+                                 backend::MemcpyKind::DeviceToHost);
+        return (int64_t)words[0] | ((int64_t)words[1] << 32);
+    };
 
     /* Count tiles intersected per splat, coarsening the binning until the
        exact total fits int32. Re-counting costs one count pass (~0.3% of a
        step, and flat in tile size); the alternative is throwing. */
-    uint32_t tile_width = 0, tile_height = 0, n_tiles = 0;
     int64_t n_isects64 = 0;
-    const int32_t* active = tile_active;
-    int32_t n_isects = 0;
-    DeviceTensor3D<int32_t> offsets_out;
-    DeviceVector<int32_t> cum_tiles_per_splat;
-    DeviceVector<int64_t> isect_ids_a, isect_ids_b;
-    DeviceVector<int32_t> flatten_ids_a, flatten_ids_b;
-    // Spec IDs: 0 = kEllipse, 1 = kHasXy, 2 = kPacked, 3 = kSkipTiles
-    // (see intersect_tile.slang). Both passes must agree, so it is settled
-    // by the loop below rather than by the caller's tile_active.
-    backend::vk::SpecList mode_spec;
-    DeviceVector<int32_t> tiles_per_splat;
-    DeviceVector<uint32_t> isect_total;
+    int32_t n_isects = 0, rows = 0;
+    int bands = 1;
     size_t isect_reserve = 0;
     for (;;) {
         // Opens the tile-intersect phase, whose buffers share the arena with
@@ -138,55 +181,17 @@ std::tuple<
         // per attempt: an arena slot may be acquired only once per phase.
         pool_begin_phase(PoolPhase::TileIsect,
                          isect_reserve ? isect_reserve
-                                       : DevicePool::arena_span({4 * (size_t)total_count}));
+                                       : DevicePool::arena_span({count_span}));
         tile_width = _CEIL_DIV(image_width, (uint32_t)bin_tile_x(macro_log2));
         tile_height = _CEIL_DIV(image_height, (uint32_t)bin_tile_y(macro_log2));
         n_tiles = intersect_check_tile_count(tile_width, tile_height, I);
+        rows = (int32_t)(I * tile_height);
 
         mode_spec = backend::vk::SpecList{p_screen ? 1u : 0u,
                                           ellipse.xy >= 0 ? 1u : 0u,
                                           packed ? 1u : 0u,
                                           active ? 1u : 0u};
-
-        tiles_per_splat.resize(PoolSlot::IsectTilesPerSplat, total_count);
-        isect_total.resize(PoolSlot::IsectTotal, 2);
-        isect_total.zero();
-        {
-            vkk::Fold g = vkk::fold_1d(total_count, 256);
-            IsectCountParams cp{};
-            cp.aabb = (uint64_t)aabb.data_ptr();
-            cp.proj_screen = p_screen;
-            cp.tiles_per_splat = (uint64_t)tiles_per_splat.data_ptr();
-            cp.image_ids = packed ? (uint64_t)image_ids->data_ptr() : 0;
-            cp.tile_active = vkk::or_fallback(active);
-            cp.isect_total = (uint64_t)isect_total.data_ptr();
-            cp.N = N;
-            cp.image_width = image_width;
-            cp.image_height = image_height;
-            cp.tile_width = tile_width;
-            cp.tile_height = tile_height;
-            cp.total = total_count;
-            cp.macro_log2 = (uint32_t)macro_log2;
-            cp.wgs_per_row = g.per_row;
-            cp.row_stride = ellipse.stride;
-            cp.xy_off = ellipse.xy;
-            cp.conic_off = ellipse.conic;
-            cp.opac_off = ellipse.opac;
-            cp.max_sigma = ellipse.max_sigma;
-            vkk::dispatch("intersect_tile.intersect_tile_count", mode_spec,
-                          g.per_row, g.rows, 1, &cp, sizeof(cp));
-        }
-
-        /* Exact total, checked before the int32 scan runs over it: a wrapped
-           prefix sum would drive the write pass off the end of buffers sized
-           from it. */
-        uint32_t total_words[2] = {0, 0};
-        if (total_count > 0)
-            backend::memcpy_sync(total_words, isect_total.data_ptr(),
-                                 sizeof(total_words),
-                                 backend::MemcpyKind::DeviceToHost);
-        n_isects64 =
-            (int64_t)total_words[0] | ((int64_t)total_words[1] << 32);
+        n_isects64 = count_rows(0, rows);
         if (intersect_should_coarsen(n_isects64, macro_log2)) {
             // tile_active was built for the old tile grid; dropping it only
             // costs the skipped-tile optimization for this step, and the next
@@ -197,49 +202,65 @@ std::tuple<
         }
         intersect_check_isect_count(n_isects64);
         n_isects = (int32_t)n_isects64;
+        bands = intersect_band_count(n_isects, total_count, rows);
+        if (bands > 1) break;
         // Grown past the arena: reopen sized for it and count again, rather
         // than overflow into buffers beside the old arena (core/Tensor.h).
         const size_t isect_span = DevicePool::arena_span(
-            {4 * (size_t)total_count, 4 * (size_t)total_count,
-             8 * (size_t)n_isects, 8 * (size_t)n_isects});
+            {count_span, count_span, 8 * (size_t)n_isects, 8 * (size_t)n_isects,
+             4 * (size_t)n_isects});
         if (!DevicePool::global().phase_reserve(isect_span) && isect_reserve == 0) {
             isect_reserve = isect_span;
             continue;
         }
-
-        /* Inclusive prefix sum -> cumulative tile counts */
-        cum_tiles_per_splat.resize(PoolSlot::IsectCumTiles, total_count);
-        backend::inclusive_sum<int32_t>(tiles_per_splat.data_ptr(),
-                                        cum_tiles_per_splat.data_ptr(),
-                                        total_count);
-        offsets_out.resize(PoolSlot::IsectOffsets, I, tile_height, tile_width);
-        if (n_isects != 0) {
-            isect_ids_a.resize(PoolSlot::IsectIdsA, n_isects);
-            isect_ids_b.resize(PoolSlot::IsectIdsB, n_isects);
-            flatten_ids_a.resize(PoolSlot::IsectFlatA, n_isects);
-            flatten_ids_b.resize(PoolSlot::IsectFlatB, n_isects);
-        }
         break;
     }
 
+    DeviceTensor3D<int32_t> offsets_out;
+    offsets_out.resize(PoolSlot::IsectOffsets, I, tile_height, tile_width);
     if (n_isects == 0) {
         offsets_out.zero();
         return std::make_tuple(DeviceVector<int64_t>{},
                                DeviceVector<int32_t>{}, offsets_out);
     }
+    // The one list the raster keeps; every band sorts into its own stretch.
+    DeviceVector<int32_t> flatten_ids;
+    flatten_ids.resize(PoolSlot::IsectFlatA, n_isects);
 
-    {
-        vkk::Fold g = vkk::fold_1d(total_count, 256);
+    // Keys, sort and offsets of the pairs tiles_per_splat holds: rows [row0,
+    // row1), whose tiles the keys count from tile0, into flatten_ids[base..].
+    auto sort_rows = [&](int32_t row0, int32_t row1, uint32_t tile0,
+                         uint32_t n_offsets, int32_t base, int32_t n) {
+        cum_tiles_per_splat.resize(PoolSlot::IsectCumTiles, total_count);
+        backend::inclusive_sum<int32_t>(tiles_per_splat.data_ptr(),
+                                        cum_tiles_per_splat.data_ptr(),
+                                        total_count);
+        isect_ids_a.resize(PoolSlot::IsectIdsA, n);
+        isect_ids_b.resize(PoolSlot::IsectIdsB, n);
+        flatten_alt.resize(PoolSlot::IsectFlatB, n);
+
+        int tile_n_bits = 0;
+        while ((1U << tile_n_bits) <= n_offsets) ++tile_n_bits;
+        const int end_bit = 32 + tile_n_bits;
+        // One pass per 8 bits, each swapping the buffers: start in the one
+        // that leaves the result in flatten_ids (backend/vulkan/SortScanVulkan.cpp).
+        int32_t* const out = flatten_ids.data_ptr() + base;
+        const bool odd = ((end_bit + 7) / 8) & 1;
+        backend::DoubleBuffer<int64_t> d_keys(isect_ids_a.data_ptr(),
+                                              isect_ids_b.data_ptr());
+        backend::DoubleBuffer<int32_t> d_values(
+            odd ? flatten_alt.data_ptr() : out, odd ? out : flatten_alt.data_ptr());
+
         IsectWriteParams wp{};
         wp.image_ids = packed ? (uint64_t)image_ids->data_ptr() : 0;
         wp.aabb = (uint64_t)aabb.data_ptr();
         wp.depths = (uint64_t)depths.data_ptr();
         wp.proj_screen = p_screen;
         wp.cum_tiles = (uint64_t)cum_tiles_per_splat.data_ptr();
-        wp.isect_ids = (uint64_t)isect_ids_a.data_ptr();
-        wp.flatten_ids = (uint64_t)flatten_ids_a.data_ptr();
+        wp.isect_ids = (uint64_t)d_keys.current();
+        wp.flatten_ids = (uint64_t)d_values.current();
         wp.tile_active = vkk::or_fallback(active);
-        wp.n_isects = (uint32_t)n_isects;
+        wp.n_isects = (uint32_t)n;
         wp.N = N;
         wp.image_width = image_width;
         wp.image_height = image_height;
@@ -247,43 +268,91 @@ std::tuple<
         wp.tile_height = tile_height;
         wp.total = total_count;
         wp.macro_log2 = (uint32_t)macro_log2;
-        wp.wgs_per_row = g.per_row;
+        wp.wgs_per_row = fold.per_row;
         wp.row_stride = ellipse.stride;
         wp.xy_off = ellipse.xy;
         wp.conic_off = ellipse.conic;
         wp.opac_off = ellipse.opac;
         wp.max_sigma = ellipse.max_sigma;
-        vkk::dispatch("intersect_tile.intersect_tile_write", mode_spec, g.per_row,
-                      g.rows, 1, &wp, sizeof(wp));
-    }
+        wp.band_row0 = row0;
+        wp.band_row1 = row1;
+        wp.key_tile_base = tile0;
+        vkk::dispatch_ring("intersect_tile.intersect_tile_write", mode_spec,
+                           fold.per_row, fold.rows, 1, &wp, sizeof(wp));
 
-    /* Sort by (tile_id << 32 | depth) key */
-    backend::DoubleBuffer<int64_t> d_keys(isect_ids_a.data_ptr(),
-                                          isect_ids_b.data_ptr());
-    backend::DoubleBuffer<int32_t> d_values(flatten_ids_a.data_ptr(),
-                                            flatten_ids_b.data_ptr());
-    int tile_n_bits = 0;
-    while ((1U << tile_n_bits) <= n_tiles) ++tile_n_bits;
-    backend::sort_pairs(d_keys, d_values, n_isects, 0, 32 + tile_n_bits);
+        /* Sort by (tile_id << 32 | depth) key */
+        backend::sort_pairs(d_keys, d_values, n, 0, end_bit);
+        if (d_values.current() != out)
+            throw std::runtime_error("tile intersect: sort left its result in the scratch buffer");
 
-    /* Pick whichever buffer the sort left the result in */
-    DeviceVector<int64_t> isect_ids_out =
-        d_keys.selector ? isect_ids_b : isect_ids_a;
-    DeviceVector<int32_t> flatten_ids_out =
-        d_values.selector ? flatten_ids_b : flatten_ids_a;
-
-    /* Compute per-tile start offsets */
-    {
-        vkk::Fold g = vkk::fold_1d(n_isects, 256);
+        /* Compute per-tile start offsets */
+        vkk::Fold g = vkk::fold_1d(n, 256);
         IsectOffsetParams op{};
-        op.isect_ids = (uint64_t)isect_ids_out.data_ptr();
-        op.offsets = (uint64_t)offsets_out.data_ptr();
-        op.n_isects = (uint32_t)n_isects;
-        op.n_offsets = n_tiles;
+        op.isect_ids = (uint64_t)d_keys.current();
+        op.offsets = (uint64_t)(offsets_out.data_ptr() + tile0);
+        op.n_isects = (uint32_t)n;
+        op.n_offsets = n_offsets;
         op.wgs_per_row = g.per_row;
-        vkk::dispatch("intersect_tile.intersect_offset", {}, g.per_row,
-                      g.rows, 1, &op, sizeof(op));
+        op.isect_base = (uint32_t)base;
+        vkk::dispatch("intersect_tile.intersect_offset", {}, g.per_row, g.rows,
+                      1, &op, sizeof(op));
+    };
+
+    if (bands == 1) {
+        sort_rows(0, rows, 0, n_tiles, 0, n_isects);
+        return std::make_tuple(DeviceVector<int64_t>{}, flatten_ids, offsets_out);
     }
 
-    return std::make_tuple(isect_ids_out, flatten_ids_out, offsets_out);
+    /* One band of rows at a time: count, sort into its stretch of the list. */
+    const int64_t share = ((int64_t)n_isects + bands - 1) / bands;
+    size_t reserve = DevicePool::arena_span(
+        {count_span, count_span, 8 * (size_t)share, 8 * (size_t)share, 4 * (size_t)share});
+    int32_t row = 0, base = 0;
+    uint32_t tile0 = 0;
+    double density = (double)n_isects / (double)rows;
+    while (row < rows) {
+        int32_t take = intersect_band_rows(share, density, rows - row);
+        int64_t n = 0;
+        for (bool reserved = false;;) {
+            pool_begin_phase(PoolPhase::TileIsect, reserve);
+            n = count_rows(row, row + take);
+            // Rows are not equally full: a band well past its share is halved.
+            if ((double)n > kIsectBandSlack * (double)share && take > 1) {
+                take = (take + 1) / 2;
+                continue;
+            }
+            const size_t span = DevicePool::arena_span(
+                {count_span, count_span, 8 * (size_t)n, 8 * (size_t)n, 4 * (size_t)n});
+            if (!DevicePool::global().phase_reserve(span) && !reserved) {
+                reserve = span;
+                reserved = true;
+                continue;
+            }
+            break;
+        }
+        if ((int64_t)base + n > (int64_t)n_isects)
+            throw std::runtime_error("tile intersect: the bands count more pairs than the image");
+        const bool last = row + take >= rows;
+        const uint32_t n_offsets =
+            (last ? n_tiles : (uint32_t)(row + take) * tile_width) - tile0;
+        if (n > 0) {
+            sort_rows(row, row + take, tile0, n_offsets, base, (int32_t)n);
+        } else if (last) {
+            IsectOffsetParams op{};
+            // Not read with no pairs, but a load llvmpipe may still speculate.
+            op.isect_ids = vkk::null_fallback();
+            op.offsets = (uint64_t)(offsets_out.data_ptr() + tile0);
+            op.n_offsets = n_offsets;
+            op.wgs_per_row = 1;
+            op.isect_base = (uint32_t)base;
+            vkk::dispatch("intersect_tile.intersect_offset", {}, 1, 1, 1, &op,
+                          sizeof(op));
+        }
+        // An empty band's tiles wait for the next one, whose keys reach back.
+        if (n > 0) tile0 += n_offsets;
+        base += (int32_t)n;
+        row += take;
+        density = (double)n / (double)take;
+    }
+    return std::make_tuple(DeviceVector<int64_t>{}, flatten_ids, offsets_out);
 }

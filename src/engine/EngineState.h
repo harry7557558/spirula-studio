@@ -677,6 +677,10 @@ struct EngineState {
     // Binning tile edge in pixels the caller asked for, or 0 to let the
     // forward choose from the measured splat footprint (engine_set_bin_tile_size).
     int     bin_tile_request = 0;
+    // The most (camera, gaussian) and splat-tile pairs one forward has made,
+    // for the VRAM forecast: what the intersector's bands are cut from.
+    int64_t isect_peak_pairs = 0, isect_peak_count = 0;
+    int64_t isect_last_count = 0;   // the last forward's
     // Keyed by (width << 32 | height): a viewport render at another
     // resolution measures another footprint and must not retune training's.
     // Search: docs/notes/binning-tile-size.md.

@@ -475,6 +475,11 @@ use the benchmark tools, which fix the workload:
 ./build_vulkan/image_loss_bench [mode] [width] [height] [iters] [dump]
 ```
 
+`train_forecast_replay <trace> [every_steps]` is not a test either: it runs
+the trainer's VRAM forecast over a run recorded with `SS_FORECAST_DUMP=<file>`
+and prints what it projected against the peak the run reached
+(docs/notes/train-forecast.md).
+
 `fpbo_bench` defaults to fused projection backward and Adam. `qgrad` measures
 the separate quantized projection backward, including gradient clears and
 camera-range preparation; `adam` measures only the separate quantized SH Adam

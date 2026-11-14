@@ -1,6 +1,7 @@
 // TrainerCore.cpp -- see TrainerCore.h.
 
 #include "app/TrainerCore.h"
+#include "app/ForecastTrace.h"
 #include "backend/api/BackendRuntime.h"
 #include "core/Env.h"
 #include "core/HardwareThreads.h"
@@ -1838,6 +1839,13 @@ void TrainerSession::observe_memory(int step, int64_t splats_ran) {
         m.pool_cap[c] = pool.cap[c];
     }
     m.scratch = engine_get_scratch_bytes();
+    const DevicePool::ArenaPhases arena = DevicePool::global().arena_phases();
+    m.arena_cap = arena.cap;
+    for (int p = 0; p < (int)PoolPhase::Count; ++p) {
+        m.phase_pixels[p] = arena.peak[p].pixels;
+        m.phase_splats[p] = arena.peak[p].splats;
+    }
+    engine_get_isect_peaks(m.isect_pairs, m.isect_count, m.isect_step);
     const backend::MemoryUsage mu = backend::memory_usage();
     m.has_process = mu.has_process;
     m.has_used = mu.has_used;
@@ -1861,6 +1869,10 @@ void TrainerSession::observe_memory(int step, int64_t splats_ran) {
     }
     m.sh_bytes = _sh_bytes;
     backend::memory_peak_reset();
+    if (_forecast_dump) {
+        forecast_trace_sample(_forecast_dump.get(), m);
+        if (step % 100 == 0) std::fflush(_forecast_dump.get());
+    }
     _forecast.add_memory(m);
 
     // Once per level, so a run that stays at risk says it once.
@@ -1905,6 +1917,11 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
             fs.deferred_step = std::max(cfg.pca_reg_start_iter, start_step);
         }
         _forecast.reset(fs);
+        // SS_FORECAST_DUMP=<file>: the run's memory samples, for train_forecast_replay.
+        if (const char* dump = spirula::env("FORECAST_DUMP"); dump && *dump && !_forecast_dump) {
+            _forecast_dump.reset(std::fopen(dump, "w"));
+            if (_forecast_dump) forecast_trace_setup(_forecast_dump.get(), fs);
+        }
         _live_splats = engine_get_cur_num_splats();
         _warned_risk = OomRisk::Low;
         backend::memory_peak_reset();  // setup's transients are not the run's

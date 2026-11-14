@@ -40,6 +40,7 @@ public:
     int total_steps() const { return _total; }
     int refine_every() const { return _d.refine_every; }
     int64_t cap() const { return _cap; }
+    const DensifyConfig& densify() const { return _d; }
 
 private:
     DensifyConfig _d;
@@ -56,12 +57,14 @@ struct EtaForecast {
 // everything else on the device, which includes the backend's own context.
 struct VramForecast : ResourceForecast {
     // Ours now, split by pool category, plus scratch and what the pool does
-    // not account for; and the splat x img share projected at the peak.
+    // not account for; and splat x img plus scratch projected at the peak,
+    // with the part of that the arena's per-pixel slices hold.
     std::array<double, (int)VramCategory::Count> category{};
     double scratch = 0.0;
     double unpooled = 0.0;
     double grow_peak_mean = 0.0;
-    double growth_power = 1.0;   // splat x img ~ msplats^p, the fits' mixture
+    double grow_peak_pixels = 0.0;
+    double growth_power = 1.0;   // the rest of it ~ msplats^p, the fits' mixture
     double sh_bytes = 0.0;       // of `category[Splat]`, the SH rows
 };
 
@@ -92,6 +95,14 @@ struct MemorySample {
     uint64_t process_peak_bytes = 0;   // since the previous sample
     uint64_t commit_free_bytes = 0;
     size_t sh_bytes = 0;         // the splats' SH rows, part of the Splat category
+    // Of pool_cap[SplatXImg], the alias arena; and per PoolPhase the most its
+    // per-pixel and its per-splat slices came to (DevicePool::arena_phases).
+    size_t arena_cap = 0;
+    std::array<size_t, (int)PoolPhase::Count> phase_pixels{}, phase_splats{};
+    // The most visible and splat-tile pairs one forward has made
+    // (engine_get_isect_peaks): what the tile phase's bands are cut from.
+    int64_t isect_pairs = 0, isect_count = 0;
+    int64_t isect_step = 0;      // the step's last forward's splat-tile pairs
 };
 
 // One finished step for the time breakdown: its wall clock with the host
@@ -166,11 +177,12 @@ private:
     };
     struct MemWindow {
         int steps = 0;
-        double log_ratio = 0.0, log_ratio_sq = 0.0;
+        std::vector<float> log_ratio;    // per step: splat x img bytes in use, per splat
         double peak = 0.0;               // the window's own high-water of the growth
     };
-    // splat x img + scratch, at its high-water = g0 + g1 * msplats^p * r^q:
-    // a Kalman filter over [g0, g1], one per exponent, scored like TimeModel.
+    // What follows the splats (splat_demand), at its high-water = g0 + g1 *
+    // msplats^p * r^q: a Kalman filter over [g0, g1], one per exponent, scored
+    // like TimeModel.
     struct MemModel {
         double p = 1.0;
         double g[2] = {0, 0};
@@ -233,9 +245,16 @@ private:
     MemWindow _mw;
     bool _mem_init = false;
     std::array<MemModel, 3> _mm;
-    double _demand_sd = 0.0;
-    double _swing_sq = 0.0;              // windows' peaks about the fit, relative, squared
+    double _demand_sd = 0.0;             // of a step's log demand, its upper tail's
+    bool _demand_init = false;
+    double _swing_sq = 0.0;              // windows' peaks above the fit, relative, squared
+    bool _swing_init = false;
     double _ours_hw = 0.0, _grow_hw = 0.0;
+    double _transient = 0.0;             // the most a step's peak stood above its end
+    int64_t _held_count = 0;             // the count the last steps ran with,
+    int _held_steps = 0;                 //   and how many of them
+    double _densify_per_splat = 0.0;     // the Densify phase's bytes per live splat
+    double _densify_seen = 0.0;
 
     std::vector<VramForecast::Sample> _history;
     std::vector<VramForecast::Band> _projection;

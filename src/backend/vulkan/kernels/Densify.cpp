@@ -43,16 +43,6 @@ struct DensifyLearnedScoreParams {
 static_assert(sizeof(DensifyLearnedScoreParams) == 5 * 8 + 10 * 4,
               "params layout must match the slang struct");
 
-// Mirrors DensifyOversizeWeightParams.
-struct DensifyOversizeWeightParams {
-    uint64_t oversize_accum, score, out;
-    float blend;
-    uint32_t num_splats, wgs_per_row;
-    uint32_t _pad0;
-};
-static_assert(sizeof(DensifyOversizeWeightParams) == 3 * 8 + 4 * 4,
-              "params layout must match the slang struct");
-
 // Mirrors DensifyClipScaleParams.
 struct DensifyClipScaleParams {
     uint64_t radii, log_scales, logit_opacs;
@@ -76,13 +66,15 @@ static_assert(sizeof(DensifyNoiseParams) == 6 * 8 + 6 * 4,
 
 // Mirrors EfraimidisParams.
 struct EfraimidisParams {
-    uint64_t weights, mask, out_keys, eligible, floor_opacs;
+    uint64_t weights, mask, out_keys, eligible, floor_opacs, oversize;
     uint32_t stride, seed, use_mask, numel, wgs_per_row;
     float floor_logit;
     uint32_t use_floor;
+    float oversize_blend;
+    uint32_t use_oversize;
     uint32_t _pad0;
 };
-static_assert(sizeof(EfraimidisParams) == 5 * 8 + 8 * 4,
+static_assert(sizeof(EfraimidisParams) == 6 * 8 + 10 * 4,
               "params layout must match the slang struct");
 
 // Mirrors RelocMaskParams.
@@ -381,7 +373,9 @@ const int32_t* wswr_sample(int64_t numel, const float* weights_ptr,
                            const int32_t* mask_ptr, uint32_t num_sample,
                            uint32_t seed, uint32_t* num_eligible = nullptr,
                            const float* floor_opacs = nullptr,
-                           float floor_logit = 0.0f) {
+                           float floor_logit = 0.0f,
+                           const float* oversize = nullptr,
+                           float oversize_blend = 0.0f) {
     // stride fixed to 2 (accum buffer float2; see the CUDA comment about
     // warmup making the derived stride incorrect)
     DeviceVector<int32_t> keys_in, keys_out, idx_in, idx_out, out_idx;
@@ -406,6 +400,9 @@ const int32_t* wswr_sample(int64_t numel, const float* weights_ptr,
     ep.floor_opacs = vkk::or_fallback(floor_opacs);
     ep.floor_logit = floor_logit;
     ep.use_floor = floor_opacs ? 1u : 0u;
+    ep.oversize = vkk::or_fallback(oversize);
+    ep.oversize_blend = oversize_blend;
+    ep.use_oversize = oversize ? 1u : 0u;
     ep.numel = (uint32_t)numel;
     vkk::dispatch_flat("densify.densify_efraimidis_keys", {}, numel, 256, &ep,
                        sizeof(ep), &ep.wgs_per_row);
@@ -634,24 +631,6 @@ void densify_learned_score_tensor(
     p.num_splats = (uint32_t)num_splats;
     p.use_oversize = oversize_accum.data_ptr() ? 1u : 0u;
     vkk::dispatch_flat("densify.densify_learned_score", {}, num_splats, 256,
-                       &p, sizeof(p), &p.wgs_per_row);
-}
-
-void densify_oversize_weight_tensor(
-    int64_t num_splats,
-    float blend,
-    DeviceVector<float> oversize_accum,
-    DeviceVector<float2> score,
-    DeviceVector<float2> out
-) {
-    if (num_splats <= 0) return;
-    DensifyOversizeWeightParams p{};
-    p.oversize_accum = (uint64_t)oversize_accum.data_ptr();
-    p.score = (uint64_t)score.data_ptr();
-    p.out = (uint64_t)out.data_ptr();
-    p.blend = blend;
-    p.num_splats = (uint32_t)num_splats;
-    vkk::dispatch_flat("densify.densify_oversize_weight", {}, num_splats, 256,
                        &p, sizeof(p), &p.wgs_per_row);
 }
 
@@ -905,6 +884,8 @@ int64_t add_splats_with_long_axis_split_tensor(
     DeviceVector<float3> g2_means, DeviceVector<float4> g2_quats, DeviceVector<float3> g2_scales, DeviceVector<float> g2_opacs, DeviceVector<float3> g2_features_dc, DeviceVector<float3> g2_features_sh,
     DeviceVector<float2> densify_accum_buffer,
     DeviceVector<float2> sample_weights,
+    DeviceVector<float> oversize_accum,
+    float oversize_blend,
     DeviceVector<int32_t> bias_correction_steps,
     DeviceVector<uint32_t> visit_counters,
     DeviceVector<float> max_weight,
@@ -935,7 +916,8 @@ int64_t add_splats_with_long_axis_split_tensor(
                            : densify_accum_buffer.data_ptr()),
         nullptr, (uint32_t)num_new_splats, seed, floor ? &num_eligible : nullptr,
         floor ? opacs.data_ptr() : nullptr,
-        floor ? split_floor_logit(min_split_opacity) : 0.0f);
+        floor ? split_floor_logit(min_split_opacity) : 0.0f,
+        oversize_accum.data_ptr(), oversize_blend);
     // As in Relocation.cu: past the floor's splats the draw returns others.
     if (floor) num_new_splats = std::min<int64_t>(num_new_splats, num_eligible);
     if (num_new_splats == 0) return 0;

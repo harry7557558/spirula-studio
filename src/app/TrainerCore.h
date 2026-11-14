@@ -18,6 +18,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <deque>
 #include <filesystem>
 #include <functional>
@@ -372,6 +373,7 @@ private:
     std::atomic<int64_t> _live_splats{0};
     OomRisk _warned_risk = OomRisk::Low;
     size_t _sh_bytes = 0;          // observe_memory's, refreshed once a window
+    std::unique_ptr<std::FILE, int (*)(std::FILE*)> _forecast_dump{nullptr, std::fclose};
 };
 
 }  // namespace spirula

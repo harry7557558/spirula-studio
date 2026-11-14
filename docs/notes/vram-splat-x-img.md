@@ -20,8 +20,8 @@ Three numbers describe a step, and every buffer below is one of them:
 Splat buffers are sized for `cap_max`, so everything else a run allocates is
 fixed once the first densify step has run -- which is what lets the trainer
 forecast its peak from this category alone. Scratch requested per LIVE splat
-that lives across a step (`raster_bwd.accum_weight`,
-`fused_proj_bwd.cam_bounds`, the oversize draw's weights) is Splat too:
+that lives across a step (the sub-batch score sum, the raster backward's
+world gradients, the PCA regularizer's caches) is Splat too:
 `POOL_LIVE_SPLAT_TABLE` in `core/PoolSlots.h` makes the pool allocate it for
 `cap_max` on first use, scaling the request by cap / live. Measured on bonsai
 at 1/4 resolution, 228k -> 666k splats: splat stays at 1042.6 MiB (revised) /
@@ -42,9 +42,10 @@ Per element, after the 2026-08-30 pass:
 | `raster_bwd.v_screen` | 40 x `nnz` | its gradient, fp32 for the atomics |
 | `proj.aabb` | 8 x `nnz` | 16-bit fixed point, shaders/aabb16.h |
 | `proj.depths` / `camera_ids` / `gaussian_ids` | 4 x `nnz` each | |
-| `isect.tiles_per_splat`, `isect.cum_tiles` | 4 x `nnz` each | |
-| `isect.ids_a/b` | 8 x `n_isects` each | sort key `(tile_id << 32) \| depth` |
-| `isect.flat_a/b` | 4 x `n_isects` each | sort payload |
+| `isect.tiles_per_splat`, `isect.cum_tiles` | 4 x `nnz` each | arena |
+| `isect.ids_a/b` | 8 x one band each | sort key `(tile_id << 32) \| depth`, arena |
+| `isect.flat_b` | 4 x one band | the sort's alternate payload, arena |
+| `isect.flat_a` | 4 x `n_isects` | the sorted list the raster reads |
 
 ## The bitmask compaction
 
@@ -140,6 +141,60 @@ Worth revisiting only together with:
   trade at 1.95 (small frames, so a splat covers ~2 tiles). At 4K the sort
   cost scales with `n_isects` while the gather cost scales with `nnz`, so the
   same change should come out ahead. Measure before believing it.
+
+## Sorting in bands
+
+The sort needs both key buffers and a second payload buffer: 20 bytes a pair
+that are dead once the offsets are written, beside the 4 the raster keeps. On
+a scene whose views see most of the model through many tiles that scratch IS
+the category -- ZipNeRF london at `--cap-max 15000000` (fisheye, 3504x2336):
+14.3M visible pairs, 119M splat-tile pairs, 2.0 GiB of keys in the arena.
+
+So the intersector sorts a band of tile rows at a time. Both passes take a row
+range (`band_row0/1`): a band's count pass, scan, key write and sort run on
+that band alone, the keys count tiles from the band's first
+(`key_tile_base`), and the sorted payload lands in the band's stretch of
+`isect.flat_a` -- the sort starts in whichever payload buffer leaves it there
+(the Vulkan sort swaps once per 8 key bits; CUB's swap count is learned per
+key width and a miss costs one copy). `intersect_offset` adds the band's base.
+
+- **How many** (`intersect_bands_for`, `kernels/tile/IntersectTile.cuh`):
+  enough that a band's 20 bytes a pair fit under what the arena's OTHER
+  phases already hold, so the intersector stops being the phase that sizes
+  it; never for under 6M pairs, never below 4M pairs a band, and at most
+  2^26 / `nnz` bands (2 to 16), because every band reads all `nnz` boxes
+  twice. With no other phase yet (a run's first forward, a viewer-only
+  session) a band is 16M pairs. The VRAM forecast replays this same function
+  (docs/notes/train-forecast.md), so change it there and nowhere else.
+- **Which rows**: the band's share of the pairs at the pairs-per-row the last
+  band measured (`intersect_band_rows`), halved and recounted when a band
+  comes out more than 1.25x its share (`kIsectBandSlack`).
+- **Identical output.** The row-or-column sweep of the ellipse test is chosen
+  on the whole box before the rows are cut, so a banded splat keeps exactly
+  its tiles; `render_parity` and `meshing_parity` dumps are byte-identical
+  under `SS_ISECT_BANDS=3` and `=7` on both backends (`SS_ISECT_BANDS=<n>`
+  forces the count, `=1` turns banding off).
+
+london to step 8100 (the cap is reached at 5500), Vulkan, RTX 5070, MiB:
+
+| | one sort | bands |
+|---|---|---|
+| owned `splat x img` | 1733 | 1256 |
+| arena | 1956 | 839 |
+| pool + scratch | 10404 | 8696 |
+
+The 1.7 GiB is the keys (16 bytes of 113M-119M pairs down to four bands'
+worth), `isect.flat_b` leaving the owned buffers, and 114 MiB of the Splat
+category below. Time is unchanged: 300 steps resumed from the same 15M
+checkpoint ran 344 ms a step before and 339 after (two alternating pairs,
+~2% apart run to run), and the run of the pair that drew the 119M-pair view
+peaked at 10397 MiB before and 8601 after. A band costs one more count and
+write pass over the visible pairs -- 0.5 and 1 ms at 14M of them, against a
+165 ms sub-batch -- which is what the 2^26 / `nnz` limit keeps bounded.
+
+What is left of the category there: the screen rows (547 MiB) and the list
+(433), then the arena, which the tile phase still sizes at four bands (0.77
+GiB of per-splat slices against the raster backward's 0.65).
 
 ## The phase arena
 
@@ -244,15 +299,27 @@ beside the new one.
   nothing) and prints the arena's one allocation as `of which alias arena`, so
   the category caps and the pool total still add up.
 
-### Candidates not yet taken
+### Per-splat scratch that no longer owns memory
 
 `raster_bwd.accum_weight` (114 MiB) and `fused_proj_bwd.cam_bounds` (4 bytes a
-splat) are now in `POOL_ALIAS_TABLE` under `RasterBwd`. Stale views in the
+splat) are in `POOL_ALIAS_TABLE` under `RasterBwd`. Stale views in the
 non-split training path are cleared before forward/backward and after densify,
 saving ~53 to 114 MiB peak VRAM during backward without lifetime hazards.
-Remaining candidate: `eng.densify.oversize_weight` (8 bytes a splat), which is
-filled by the engine before the draw opens its phase, so it would need the
-draw to compute it.
+
+The oversize split channel's draw weights (8 bytes a splat, held for `cap_max`)
+are gone: the draw's key kernel computes `(oversize + floor) * score^blend`
+itself from the accumulator it is handed (`add_splats_with_long_axis_split_tensor`'s
+`oversize_accum`), which is the same arithmetic one launch earlier.
+
+The projective-depth angular bound (4 bytes a splat) is a `RasterBwd` slice
+when one backward covers the step -- the fused optimizer path, where it is
+written after the raster backward and read by the optimizer step. A step that
+accumulates over passes (split batches, unequal faces) keeps the owned buffer:
+its bound is a maximum over passes, and the arena is reset between them.
+
+Together, bonsai at `--cap-max 2000000`: the Splat category went from 172 to
+160 bytes a splat at SH degree 0 and 356 to 344 at 3 on the fused path, 204 to
+196 at degree 0 on the split one.
 
 ## The packed AABB
 
@@ -296,7 +363,12 @@ center, since 3DGUT stores none of its own).
    `raster_bwd.v_screen`, which is accumulated with float atomics -- fp16
    atomic add is not portable to the Vulkan baseline, so only the forward row
    could shrink, and then the two buffers stop sharing a layout.
-2. **Splitting one training image into tile bands** -- low priority. It bounds
-   `n_isects` per launch rather than per image, which is the only lever that
-   helps the 4K case without touching precision. It does not help the
-   `nnz`-sized buffers at all, which is why it is below the one above.
+2. **The split path's gradient accumulators** (73 bytes a splat at SH 3, 28
+   at SH 0, for `cap_max`). A step over several passes cannot use the fused
+   optimizer, so it accumulates quantized world gradients. The SH part is
+   rank-limited -- one RGB gradient per camera centre times that centre's
+   basis -- so storing the RGB gradients per pass would be 12 bytes a pass
+   instead of 45; not done.
+3. **Rasterizing in the sort's bands.** The bands bound the sort's scratch;
+   the 4-byte list still holds every pair. Rasterizing band by band would
+   bound that too, at the cost of every raster kernel learning a row range.

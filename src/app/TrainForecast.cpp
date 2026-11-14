@@ -2,6 +2,8 @@
 
 #include "app/TrainForecast.h"
 
+#include "kernels/tile/IntersectTile.cuh"
+
 #include <algorithm>
 #include <cmath>
 
@@ -101,10 +103,21 @@ void robust_mean(const std::vector<double>& v, double& mean, double& var) {
 }
 
 // Live-splat scratch the first densify step allocates for cap_max, as a share
-// of the Splat category before it: the oversize draw's weights, 2.3% on bicycle
-// (revised, SH 3); a sample score or a region weight adds 2.5% / 1.2% more.
-constexpr double kFirstDensifySplatShare = 0.03;
-constexpr double kFirstDensifySplatSigma = 0.025;
+// of the Splat category before it: nothing by default, 2.5% / 1.2% with a
+// sample score (--densify-final-score-power) or a region weight.
+constexpr double kFirstDensifySplatShare = 0.0;
+constexpr double kFirstDensifySplatSigma = 0.012;
+// A relocate's mask, list and draw in the arena's Densify phase, before the
+// first one has measured them (docs/notes/vram-splat-x-img.md).
+constexpr double kDensifyBytesPerSplat = 28.0;
+// A splat-tile pair unbanded: the list's 4 bytes and the sort's 20. The scale
+// of the fit's variable, not a size the forecast charges.
+constexpr double kPairListBytes = 24.0;
+// The most visible pairs follow the count; sigma per e-fold of it.
+constexpr double kPairSigma = 0.1;
+// Sigma of the top of a step's log demand before a window has measured it:
+// single windows read 0.03-0.2 on garden and 0.1-1.2 on london (median 0.5).
+constexpr double kDemandPriorSd = 0.25;
 
 // Pipeline creation and first-touch allocation: bonsai's first 100 steps ran
 // 17% slower than the next 500 at the same splat count.
@@ -181,8 +194,14 @@ void TrainForecast::reset(const ForecastSetup& s) {
     _mw = MemWindow{};
     _mem_init = false;
     _demand_sd = 0.0;
+    _demand_init = false;
     _swing_sq = 0.0;
+    _swing_init = false;
     _ours_hw = _grow_hw = 0.0;
+    _transient = 0.0;
+    _held_count = 0;
+    _held_steps = 0;
+    _densify_per_splat = _densify_seen = 0.0;
     _history.clear();
     _projection.clear();
     _history_stride = 1;
@@ -583,6 +602,36 @@ double TrainForecast::memory_x(const MemModel& m, double msplats, int step) cons
            std::pow(pixel_ratio(step), kSplatXImgVramExp);
 }
 
+namespace {
+
+// The largest per-splat share of an arena phase.
+double splat_phase(const MemorySample& m) {
+    double phase = 0.0;
+    for (size_t b : m.phase_splats) phase = std::max(phase, (double)b);
+    return phase;
+}
+
+// The arena, as much of splat x img as it is.
+double arena_bytes(const MemorySample& m) {
+    return std::min((double)m.arena_cap, (double)m.pool_cap[(int)VramCategory::SplatXImg]);
+}
+
+// What follows the splats: scratch, the splat x img buffers that own their
+// memory, and of the arena the phase that asks most per splat. The arena's
+// per-pixel slices (the loss pyramid) do not, and are projected apart.
+double splat_demand(const MemorySample& m) {
+    return (double)m.pool_cap[(int)VramCategory::SplatXImg] - arena_bytes(m) + splat_phase(m) +
+           (double)m.scratch;
+}
+
+// The engine has counted its pairs and the pool its phases: enough to project
+// the category from what each buffer holds instead of from its total.
+bool pairs_known(const MemorySample& m) {
+    return m.isect_count > 0 && m.isect_pairs > 0 && m.arena_cap > 0;
+}
+
+}  // namespace
+
 void TrainForecast::add_memory(const MemorySample& m) {
     std::lock_guard<std::mutex> lk(_mu);
     const int sxi = (int)VramCategory::SplatXImg;
@@ -593,10 +642,20 @@ void TrainForecast::add_memory(const MemorySample& m) {
         _others_sq += a * (o * o - _others_sq);
         ++_others_n;
     }
-    if (m.splats_ran > 0 && m.pool_used[sxi] > 0) {
-        const double lr = std::log((double)m.pool_used[sxi] / (double)m.splats_ran);
-        _mw.log_ratio += lr;
-        _mw.log_ratio_sq += lr * lr;
+    // A step's demand: its splat-tile pairs where the engine counts them, else
+    // the category's bytes in use.
+    const double demand = m.isect_step > 0 ? (double)m.isect_step : (double)m.pool_used[sxi];
+    if (m.splats_ran > 0 && demand > 0.0)
+        _mw.log_ratio.push_back((float)std::log(demand / (double)m.splats_ran));
+    if (m.splats_ran != _held_count) {
+        _held_count = m.splats_ran;
+        _held_steps = 0;
+    }
+    ++_held_steps;
+    const double densify = (double)m.phase_splats[(int)PoolPhase::Densify];
+    if (densify > _densify_seen && m.splats_ran > 0) {
+        _densify_seen = densify;
+        _densify_per_splat = densify / (double)m.splats_ran;
     }
     // What grows is measured off the process high-water, not the pool: a
     // transient inside the step -- an arena overflow, a phase growing -- is
@@ -604,23 +663,37 @@ void TrainForecast::add_memory(const MemorySample& m) {
     double pool = (double)m.scratch;
     for (size_t c : m.pool_cap) pool += (double)c;
     const double ours = m.has_process ? (double)m.process_bytes : pool;
-    const double steady = (double)m.pool_cap[sxi] + (double)m.scratch;
     const double peak_now = m.has_process ? std::max(ours, (double)m.process_peak_bytes) : ours;
     _ours_hw = std::max(_ours_hw, peak_now);
-    _grow_hw = std::max(steady, _ours_hw - (ours - steady));
-    _mw.peak = std::max(_mw.peak, std::max(steady, peak_now - (ours - steady)));
+    _transient = std::max(_transient, peak_now - ours);
+    if (pairs_known(m)) {
+        // The fit is of the splat-tile pairs alone; refresh_vram derives the
+        // rest from the visible pairs, which follow the count.
+        _grow_hw = kPairListBytes * (double)m.isect_count;
+        _mw.peak = _grow_hw;
+    } else {
+        const double steady = splat_demand(m);
+        _grow_hw = std::max(steady, _ours_hw - (ours - steady));
+        _mw.peak = std::max(_mw.peak, std::max(steady, peak_now - (ours - steady)));
+    }
     if (++_mw.steps >= _window_len) close_mem_window(m);
     refresh_vram(m);
 }
 
 void TrainForecast::close_mem_window(const MemorySample& m) {
-    const MemWindow w = _mw;
-    _mw = MemWindow{};
-    if (w.steps >= 2) {
-        const double mean = w.log_ratio / w.steps;
-        const double sd =
-            std::sqrt(std::max(0.0, w.log_ratio_sq / w.steps - mean * mean));
-        _demand_sd = _demand_sd > 0.0 ? 0.7 * _demand_sd + 0.3 * sd : sd;
+    MemWindow w;
+    std::swap(w, _mw);
+    // How much further a step's demand reaches with more draws, read off the
+    // window's top twentieth alone: views that see the whole model pile up
+    // there, and the spread of the ones that see little says nothing about it.
+    if (w.log_ratio.size() >= 20) {
+        std::sort(w.log_ratio.begin(), w.log_ratio.end());
+        const size_t n = w.log_ratio.size(), k = n - 1 - n / 20;
+        const double tail = (double)w.log_ratio[n - 1] - (double)w.log_ratio[k];
+        const double z = norm_quantile(((double)k + 0.625) / ((double)n + 0.25));
+        const double sd = tail / (expected_max((double)n) - z);
+        _demand_sd = _demand_init ? 0.7 * _demand_sd + 0.3 * sd : sd;
+        _demand_init = true;
     }
     // The first densify step allocates splat x img scratch of its own -- 10
     // -> 55 MiB on garden with the count unchanged -- so nothing before it
@@ -631,8 +704,8 @@ void TrainForecast::close_mem_window(const MemorySample& m) {
     const double n = (double)m.splats_ran / 1e6;
     double best = _mm[0].score;
     for (const MemModel& mm : _mm) best = std::max(best, mm.score);
-    // How far each window's own peak strays from the fit: the ceiling a view
-    // sets swings from window to window, and the projection must allow for it.
+    // How far a window's own peak rises above the fit: the ceiling a view sets
+    // swings from window to window. Only the upside can raise the high-water.
     if (_mem_init && w.peak > 0.0) {
         double pred = 0.0, wsum = 0.0;
         for (const MemModel& mm : _mm) {
@@ -642,8 +715,9 @@ void TrainForecast::close_mem_window(const MemorySample& m) {
         }
         pred /= wsum;
         if (pred > 0.0) {
-            const double r = (w.peak - pred) / pred;
-            _swing_sq = _swing_sq > 0.0 ? 0.7 * _swing_sq + 0.3 * r * r : r * r;
+            const double r = std::max(0.0, (w.peak - pred) / pred);
+            _swing_sq = _swing_init ? 0.7 * _swing_sq + 0.3 * 2.0 * r * r : 2.0 * r * r;
+            _swing_init = true;
         }
     }
     const double R = (kMemFloor * _grow_hw) * (kMemFloor * _grow_hw);
@@ -705,7 +779,18 @@ void TrainForecast::refresh_vram(const MemorySample& m) {
         _history_stride *= 2;
     }
 
-    const double fixed = ours - (v.category[sxi] + v.scratch);
+    // Ours is `fixed`, which only the image size moves, plus what follows the
+    // splats: `base` outside the arena (with the step's transient), and the
+    // arena, the largest of its phases.
+    const bool by_pairs = pairs_known(m);
+    const double arena = arena_bytes(m);
+    const double owned = v.category[sxi] - arena;
+    const double base = by_pairs ? owned : std::max(0.0, _grow_hw - splat_phase(m));
+    const double fixed = by_pairs ? ours + _transient - owned - arena
+                                  : ours - (splat_demand(m) - splat_phase(m)) - arena;
+    // Owned bytes a visible pair: the screen row, box, depth and ids.
+    const double pair_bytes =
+        by_pairs ? std::max(0.0, owned - 4.0 * (double)m.isect_count) / (double)m.isect_pairs : 0.0;
     const SplatSchedule& sch = _setup.schedule;
     const int next = m.step + 1;
     const int first = sch.first_densify(_setup.start_step);
@@ -748,23 +833,85 @@ void TrainForecast::refresh_vram(const MemorySample& m) {
     v.growth_power = 0.0;
     for (const Fit& f : fits) v.growth_power += f.w * f.m.p;
 
+    // What follows the splats at a step whose fitted demand is `g` and count
+    // `count`, `lift` the views not seen yet: the owned buffers and the arena,
+    // each phase's per-pixel slices following the image size.
+    const double densify_per_splat =
+        _densify_per_splat > 0.0 ? _densify_per_splat : kDensifyBytesPerSplat;
+    const bool densifies = first >= 0;
+    const double count_now = (double)std::max<int64_t>(m.splats_ran, 1);
+    const double pair_cameras = std::max(1.0, std::ceil((double)m.isect_pairs / count_now));
+    auto grown_at = [&](int step, double g, int64_t count, double lift, double* pixels) {
+        const double f = g / _grow_hw;
+        const double by_count = (double)count / count_now * lift;
+        const double rr = pixel_ratio(step) / _image_ratio;
+        // A camera sees each splat once, so the pairs stay under the count.
+        const double pairs = std::min((double)m.isect_pairs * by_count,
+                                      pair_cameras * (double)count);
+        const double isects = g / kPairListBytes;
+        double most = arena, most_px = -1.0, others = 0.0;
+        const int tile = (int)PoolPhase::TileIsect;
+        // The tile phase last: its keys are sorted in bands sized to the others.
+        for (int i = 0; i < (int)PoolPhase::Count; ++i) {
+            const int p = i + 1 < (int)PoolPhase::Count ? (i < tile ? i : i + 1) : tile;
+            const double px = (double)m.phase_pixels[p] * rr;
+            double sp = (double)m.phase_splats[p] * (by_pairs ? by_count : f);
+            if (p == (int)PoolPhase::Densify && densifies && arena > 0.0)
+                sp = densify_per_splat * (double)count;
+            if (p == tile && by_pairs) {
+                // The intersector's own rule, at the pairs this demand brings.
+                const int bands = intersect_bands_for((int64_t)isects, (int64_t)pairs,
+                                                      (int64_t)others, (int64_t)px);
+                sp = 8.0 * pairs + (double)kIsectBandBytes *
+                                       (bands > 1 ? kIsectBandSlack * isects / bands : isects);
+            }
+            if (p != tile) others = std::max(others, px + sp);
+            if (px + sp >= most) { most = px + sp; most_px = px; }
+        }
+        if (pixels) {
+            // No phase outgrows the arena: the split of the one that sized it.
+            if (most_px < 0.0) {
+                double top = -1.0;
+                for (int p = 0; p < (int)PoolPhase::Count; ++p) {
+                    const double t = (double)m.phase_pixels[p] + (double)m.phase_splats[p];
+                    if (t > top) { top = t; most_px = (double)m.phase_pixels[p]; }
+                }
+            }
+            *pixels = std::min(most, std::max(0.0, most_px));
+        }
+        return most + (by_pairs ? pair_bytes * pairs + 4.0 * isects : base * f);
+    };
+
     const double C = std::max(1, _setup.distinct_batches);
-    const double seen = expected_max(std::min<double>(_window_len, C));
-    double hw_mean = _grow_hw, hw_sd = 0.0;
+    // The draws behind the high-water the fit reads: the windows whose count
+    // was within a fifth of this one (four, at 5% a window), or the run's so far.
+    const double fit_draws =
+        std::min<double>(std::min<double>(4.0 * _window_len, C), m.step - _setup.start_step + 1);
+    double hw_mean = _grow_hw, hw_sd = 0.0, hw_lift = 1.0, hw_lift_sd = 0.0;
+    int64_t hw_count = m.splats_next;
     const double deferred =
         next <= _setup.deferred_step ? (double)_setup.deferred_bytes : 0.0;
-    auto band = [&](int step, double g_mean, double g_sd) {
+    auto band = [&](int step, double g_mean, double g_sd, int64_t count, double lift,
+                    double lift_sd) {
         const bool extra = provisional && step >= first;
         // Progressive resolution: the per-image buffers follow the pixels.
         const double images =
             _image_bytes * std::max(0.0, pixel_ratio(step) / _image_ratio - 1.0);
-        const double mean = fixed + g_mean + images + (extra ? extra_mean : 0.0) +
+        const double rest = fixed + images + (extra ? extra_mean : 0.0) +
                             (step >= _setup.deferred_step ? deferred : 0.0);
-        const double sd = std::sqrt(g_sd * g_sd + (extra ? extra_sd * extra_sd : 0.0));
-        v.projection.push_back({(double)step, mean, sd});
+        const double grown = grown_at(step, g_mean, count, lift, nullptr);
+        const double sd = grown_at(step, g_mean + g_sd, count, lift, nullptr) - grown;
+        // The pairs' own spread: the views not seen yet, and the largest view's
+        // share of the model, which drifts as the count grows.
+        const double pairs_sd = !by_pairs ? 0.0
+            : std::hypot(grown_at(step, g_mean, count, lift + lift_sd, nullptr) - grown,
+                         kPairSigma * std::log(std::max(1.0, (double)count / count_now)) * grown);
+        v.projection.push_back(
+            {(double)step, rest + grown,
+             std::sqrt(sd * sd + pairs_sd * pairs_sd + (extra ? extra_sd * extra_sd : 0.0))});
     };
     const double swing = std::sqrt(_swing_sq);
-    band(next, hw_mean, 0.0);
+    band(next, hw_mean, 0.0, hw_count, hw_lift, hw_lift_sd);
     sch.segments(next, m.splats_next, [&](int f, int e, int64_t count) {
         const double n = (double)count / 1e6;
         // The exponents' mixture: its mean and its spread, the fits' own
@@ -781,30 +928,49 @@ void TrainForecast::refresh_vram(const MemorySample& m) {
         }
         for (int i = 0; i < 3; ++i)
             model_var += fits[i].w * (mean_i[i] - g0 - per_splat) * (mean_i[i] - g0 - per_splat);
-        // The pool keeps the largest draw: more draws at one count, larger peak.
-        const double corr = std::max(
-            0.0, _demand_sd * (expected_max(std::min<double>(e - f, C)) - seen));
+        // The pool keeps the largest draw. The fit is the high-water a window
+        // of draws leaves; a count held for longer sees more views, up to all
+        // of them, and one already held has seen its share.
+        const double held = f == next && count == _held_count ? (double)_held_steps : 0.0;
+        const double seen = std::min(std::max(held, fit_draws), C);
+        const double draws = std::min(std::max(held + (double)(e - f), seen), C);
+        const double more = std::max(0.0, expected_max(draws) - expected_max(seen));
+        const double corr = (_demand_init ? _demand_sd : kDemandPriorSd) * more;
         // Bytes per splat drift as splats shrink; the further the count is
         // extrapolated, the less the fit so far says.
         const double reach = kReach * std::log(n / n_now) * per_splat;
         const double drift = kSizeDrift * std::log((double)e / (double)std::max(1, next)) * per_splat;
+        // A window's peak strays above the fit only through views not seen yet.
+        const double stray = swing * std::min(1.0, more) * per_splat;
         const double g_mean = g0 + per_splat * (1.0 + corr);
-        const double g_sd = std::sqrt(model_var + reach * reach + drift * drift +
-                                      swing * swing * per_splat * per_splat +
-                                      0.25 * corr * corr * per_splat * per_splat);
+        // Until a window has measured that tail its prior is all the forecast has.
+        const double tail = (_demand_init ? 0.5 : 1.0) * corr * per_splat;
+        const double g_sd = std::sqrt(model_var + reach * reach + drift * drift + stray * stray +
+                                      tail * tail);
+        // Against the high-water measured, not the one projected a segment
+        // back: the fits' error is one error, common to every count, and a
+        // running max over segments would count it once per segment.
         double mean, sd;
-        max_with(g_mean, g_sd, hw_mean, mean, sd);
-        const double keep = hw_sd > 0.0
-            ? 1.0 - norm_cdf((g_mean - hw_mean) / std::max(g_sd, 1.0)) : 0.0;
-        sd = std::sqrt(sd * sd + keep * keep * hw_sd * hw_sd);
-        if (f > next) band(f, hw_mean, hw_sd);
-        hw_mean = mean;
-        hw_sd = sd;
-        band(e - 1, hw_mean, hw_sd);
+        max_with(g_mean, g_sd, _grow_hw, mean, sd);
+        if (f > next) band(f, hw_mean, hw_sd, hw_count, hw_lift, hw_lift_sd);
+        if (mean >= hw_mean) {
+            hw_mean = mean;
+            hw_sd = sd;
+        }
+        hw_count = count;
+        if (1.0 + corr >= hw_lift) {
+            hw_lift = 1.0 + corr;
+            hw_lift_sd = std::hypot((_demand_init ? 0.5 : 1.0) * corr, swing * std::min(1.0, more),
+                                    drift / std::max(per_splat, 1.0));
+        }
+        band(e - 1, hw_mean, hw_sd, hw_count, hw_lift, hw_lift_sd);
     });
 
     v.projected = true;
-    v.grow_peak_mean = hw_mean;
+    double arena_px = 0.0;
+    v.grow_peak_mean = grown_at(sch.total_steps() - 1, hw_mean, hw_count, hw_lift, &arena_px) +
+                       (by_pairs ? v.scratch : 0.0);
+    v.grow_peak_pixels = arena_px;
     v.peak_mean = std::max(_ours_hw, v.projection.back().mean);
     v.peak_sigma = v.projection.back().sigma;
     if (v.capacity > 0.0) {

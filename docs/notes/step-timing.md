@@ -204,10 +204,11 @@ column x `1 - frames / views`. On a mixed fisheye and pinhole indoor capture
 (428 frames, 1208 views, 3000 steps) appearance correction was the largest
 row, 2.0 of 9.2 ms a step, and the training-images column 1.6 ms of it.
 
-The VRAM card's: half the resolution takes the Image category x 3/4 and the
-projected splat x img peak x `1 - 0.25^0.35`; half the cap takes the Splat
-category (sized for `cap_max`) x 1/2 and the peak x `1 - 0.5^p`, `p` the
-VRAM forecast's fitted exponent; one SH degree less takes the SH rows and
+The VRAM card's: half the resolution takes x 3/4 of the Image category and
+of the arena's per-pixel slices in the projected splat x img peak, and x `1 -
+0.25^0.35` of the rest of that peak; half the cap takes the Splat category
+(sized for `cap_max`) x 1/2 and that rest x `1 - 0.5^p`, `p` the VRAM
+forecast's fitted exponent; one SH degree less takes the SH rows and
 their optimizer state x `1 - K(d-1) / K(d)`, `K(d) = (d+1)^2 - 1`, read off
 the pool's SH buffers (3 -> 2 -> 1 -> 0 freed 84 / 53 / 38 MiB of 176 at 1M
 splats, within 7% of that); the preset switch the Appearance category x

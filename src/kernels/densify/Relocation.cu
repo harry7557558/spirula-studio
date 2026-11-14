@@ -380,6 +380,10 @@ int64_t add_splats_with_long_axis_split_tensor(
     // densify_accum_buffer. Separate so a transformed score can drive the
     // draw while the kernel still propagates the raw accumulator src -> dst.
     DeviceVector<float2> sample_weights,
+    // The oversize split channel's accumulator, [N]: the draw's weight is then
+    // (oversize_accum + floor) * weight^oversize_blend. Empty to skip.
+    DeviceVector<float> oversize_accum,
+    float oversize_blend,
     DeviceVector<int32_t> bias_correction_steps,
     DeviceVector<uint32_t> visit_counters,
     DeviceVector<float> max_weight,  // carried src -> dst; empty to skip
@@ -411,7 +415,8 @@ int64_t add_splats_with_long_axis_split_tensor(
         cur_num_splats, (float*)weights.data_ptr(),
         weights.size() * 2, nullptr, num_new_splats, seed,
         floor ? &num_eligible : nullptr,
-        floor ? opacs.data_ptr() : nullptr, floor ? split_floor_logit(min_split_opacity) : 0.0f);
+        floor ? opacs.data_ptr() : nullptr, floor ? split_floor_logit(min_split_opacity) : 0.0f,
+        oversize_accum.data_ptr(), oversize_blend);
     // Past the splats over the floor the draw returns ones under it.
     if (floor) num_new_splats = std::min<int64_t>(num_new_splats, num_eligible);
     if (num_new_splats == 0)

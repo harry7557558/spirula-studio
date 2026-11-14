@@ -728,6 +728,9 @@ std::vector<std::tuple<std::string, size_t, size_t>> engine_get_pool_breakdown()
 std::vector<std::tuple<std::string, std::string, size_t, size_t>>
 engine_get_pool_breakdown_categorized();
 size_t engine_get_scratch_bytes();
+// The most visible and splat-tile pairs one forward has made since the reset,
+// and the splat-tile pairs of the last one.
+void engine_get_isect_peaks(int64_t& pairs, int64_t& isects, int64_t& last_isects);
 
 // GPU seconds the next step spends in its splat stages (forward, raster and
 // projection backward, optimizer, densify) for the trainer's ETA model. Arm
