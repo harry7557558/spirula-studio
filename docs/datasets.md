@@ -647,9 +647,12 @@ JPEG" would re-encode becomes a JPEG XL instead, and nothing becomes a JPEG.
   copied as it is.
 
 97 cut-outs (33 MP RGBA PNG) came to 377 MB of JPEG XL against the JPEG
-mode's 707 MB of JPEGs, each beside the same 33 MB of masks, in 41.7 s against
-36.4 s. SfM found the features in 5.9 s against 4.3 s, and 3000 full-size
-steps took 3:35 against 3:31.
+mode's 707 MB of JPEGs, each beside the same 33 MB of masks, in 32.2 s against
+28.7 s. libjxl's encoder is held by memory bandwidth (about 5.5 such photos a
+second here, however many run at once), so this mode runs up to 16 photos at a
+time where RAM allows, and works on each where it was decoded. SfM found the
+features in 5.9 s against 4.3 s (libjxl decodes a 33 MP photo in 541 ms on one
+thread, stb a JPEG in 194 ms), and 3000 full-size steps took 3:35 against 3:31.
 
 ### Video frames as JPEG XL or AVIF
 

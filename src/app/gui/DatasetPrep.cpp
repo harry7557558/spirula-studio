@@ -20,6 +20,7 @@
 
 #include "core/AvifImage.h"
 #include "core/HardwareThreads.h"
+#include "core/HostMemory.h"
 #include "core/ImageFile.h"
 #include "core/ImageOrient.h"
 #include "core/JxlImage.h"
@@ -2973,54 +2974,60 @@ bool convert_to_jxl(const fs::path& from, const fs::path& to, const fs::path& ma
     wrote_mask = false;
     const std::string src = from.string();
     int w = 0, h = 0, ch = 0;
-    std::vector<uint8_t> px;
+    // Pixels are worked on where they were decoded: the encoder is held by
+    // memory bandwidth, and a 33 MP copy is 130 MB of it.
+    std::vector<uint8_t> own;
+    std::unique_ptr<stbi_uc, void (*)(void*)> stb(nullptr, stbi_image_free);
+    uint8_t* px = nullptr;
     if (tiff::is_tiff(src)) {
         tiff::Info info;
         if (!tiff::probe(src, info).empty() || info.sample != tiff::Sample::U8) return false;
         tiff::Options opt;
         opt.channels = info.channels == 2 || info.channels == 4 ? 4 : info.channels == 1 ? 1 : 3;
         opt.threads = 1;
-        if (!tiff::decode_srgb8(src, opt, info, px).empty()) return false;
+        if (!tiff::decode_srgb8(src, opt, info, own).empty()) return false;
         w = info.width;
         h = info.height;
         ch = opt.channels;
+        px = own.data();
     } else {
         if (!stbi_info(src.c_str(), &w, &h, &ch) || stbi_is_16_bit(src.c_str())) return false;
-        stbi_uc* p = stbi_load(src.c_str(), &w, &h, &ch, 0);
-        if (!p) return false;
-        px.assign(p, p + (size_t)w * h * ch);
-        stbi_image_free(p);
+        stb.reset(stbi_load(src.c_str(), &w, &h, &ch, 0));
+        if (!stb) return false;
+        px = stb.get();
     }
+    const bool alpha = ch == 2 || ch == 4;
+    if (alpha && mask_to.empty()) return false;
     const sfm::ExifTransform xf = sfm::exifTransform(orientation);
     int dw = w, dh = h;
     if (!xf.identity()) {
         spirula::oriented_size(xf.turns_cw, dw, dh);
-        std::vector<uint8_t> turned(px.size());
-        spirula::orient_pixels(px.data(), w, h, ch, xf.turns_cw, xf.mirror, turned.data());
-        px.swap(turned);
+        std::vector<uint8_t> turned((size_t)w * h * ch);
+        spirula::orient_pixels(px, w, h, ch, xf.turns_cw, xf.mirror, turned.data());
+        own.swap(turned);
+        stb.reset();
+        px = own.data();
     }
-    const bool alpha = ch == 2 || ch == 4;
-    if (alpha && mask_to.empty()) return false;
     std::error_code ec;
     if (alpha) {
+        // The colour packed down over the alpha in place, behind the reads.
         const size_t n = (size_t)dw * (size_t)dh;
         const int color = ch - 1;
-        std::vector<uint8_t> opaque(n * (size_t)color), mask(n);
+        std::vector<uint8_t> mask(n);
         for (size_t i = 0; i < n; i++) {
-            for (int c = 0; c < color; c++)
-                opaque[i * (size_t)color + (size_t)c] = px[i * (size_t)ch + (size_t)c];
             mask[i] = px[i * (size_t)ch + (size_t)color] >= 128 ? 255 : 0;
+            for (int c = 0; c < color; c++)
+                px[i * (size_t)color + (size_t)c] = px[i * (size_t)ch + (size_t)c];
         }
         // Written first, as convert_to_jpeg does: the photo's existence marks the pair whole.
         fs::create_directories(mask_to.parent_path(), ec);
         if (!stbi_write_png(mask_to.string().c_str(), dw, dh, 1, mask.data(), dw)) return false;
-        px.swap(opaque);
         ch = color;
     }
     std::vector<uint8_t> exif = sfm::readExifSegment(src);
     if (exif.size() > 6) sfm::exifFlattenOrientation(exif.data() + 6, exif.size() - 6, dw, dh);
     std::vector<uint8_t> bytes;
-    if (!jxl::encode_srgb8(px.data(), dw, dh, ch, kPhotoJpegQuality + app::kJxlOverJpegQuality,
+    if (!jxl::encode_srgb8(px, dw, dh, ch, kPhotoJpegQuality + app::kJxlOverJpegQuality,
                            app::kJxlEffort, exif, threads, bytes)
              .empty()) {
         if (alpha) fs::remove(mask_to, ec);
@@ -3677,9 +3684,14 @@ bool DatasetPrep::gather_photos(const PrepJob& job, const PrepInput& in,
         // is the CPU's, ~60 ms a photo (1.4 s for a 24 MP HEIC). Each worker holds a
         // decoded frame that glibc faults in on every call: 24 MB at 4K, ~320 MB .insp.
         const unsigned cores = spirula::hardware_threads();
+        // libjxl's encoder is held by memory bandwidth, not cores: 97 photos of
+        // 33 MP took 33.6 s on 16 workers, 38.9 s on 8. About 1 GB each, at most.
+        const unsigned jxl_workers = (unsigned)std::clamp<size_t>(
+            spirula::availableRamBytes() / ((size_t)1 << 30), 8, 16);
         const int threads =
             convert || any_split || any_foreign
-                ? (int)std::clamp<unsigned>(cores ? cores : 1u, 1u, any_split ? 4u : 8u)
+                ? (int)std::clamp<unsigned>(cores ? cores : 1u, 1u,
+                                            any_split ? 4u : to_jxl ? jxl_workers : 8u)
                 : 1;
         encode_threads = std::max(1, (int)cores / threads);
         std::atomic<int> live{0};
