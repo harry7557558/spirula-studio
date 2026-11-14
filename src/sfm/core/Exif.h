@@ -23,6 +23,9 @@
 // exactly as before.
 #pragma once
 
+#include "core/AvifImage.h"
+#include "core/JxlImage.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -386,8 +389,17 @@ inline ExifData readTiffFileExif(const std::string& path) {
 // every caller treats as "no prior".
 inline ExifData readExif(const std::string& path) {
     const std::vector<uint8_t> seg = readExifSegment(path);
-    if (seg.size() <= 6) return readTiffFileExif(path);
-    return parseExifTiff(seg.data() + 6, seg.size() - 6);
+    if (seg.size() > 6) return parseExifTiff(seg.data() + 6, seg.size() - 6);
+    // A JPEG XL or AVIF is turned by its own header, which every decode
+    // applies, so the tag is dropped as a TIFF's is.
+    const bool jxl_file = jxl::is_jxl(path);
+    if (jxl_file || avif::is_avif(path)) {
+        const std::vector<uint8_t> box = jxl_file ? jxl::read_exif(path) : avif::read_exif(path);
+        ExifData out = box.size() > 6 ? parseExifTiff(box.data() + 6, box.size() - 6) : ExifData{};
+        out.orientation = 1;
+        return out;
+    }
+    return readTiffFileExif(path);
 }
 
 // Is `name`, a '/'-separated path under the image directory, under one of

@@ -7,6 +7,7 @@
 
 #include "app/FfmpegVideo.h"
 #include "app/FrameClip.h"
+#include "app/FrameFile.h"
 #include "app/FrameLook.h"
 #include "app/FrameMask.h"
 #include "app/FramePick.h"
@@ -233,8 +234,9 @@ enum class PhotoImport {
     Copy,          // into images/, unchanged
     Move,          // into images/, leaving nothing behind
     InPlace,       // read where they are; only a lone folder can
+    ConvertJxl,    // as ConvertJpeg, then a JPEG stored losslessly as JPEG XL
 };
-inline constexpr int kNumPhotoImports = 4;
+inline constexpr int kNumPhotoImports = 5;
 
 // Quality of the re-encode. High enough that the artefacts are below what the
 // photometric loss can tell from sensor noise.
@@ -301,6 +303,7 @@ struct PrepJob {
     bool  adaptive_fps = false;
     float adaptive_range = 4.0f;
     int   sharp_window = 3;          // keep the sharpest of N (1 = off)
+    app::FrameFile frame_file = app::FrameFile::Jpeg;
     // Which chosen frames are left out after all (pick_rule below): blurred
     // across more than `blur_px` pixels, or under `similar_bits` different
     // from the last one kept (0 = off). Photographs too.

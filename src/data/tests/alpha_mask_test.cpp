@@ -3,6 +3,7 @@
 // only the file. PNG and EXR. Host only; the images are written to a temp
 // directory.
 
+#include "core/JxlImage.h"
 #include "data/DataManager.h"
 #include "data/ImageProbe.h"
 
@@ -213,6 +214,61 @@ void run_cases(const std::string& rgba, const std::string& small_image,
     }
 }
 
+// The training pool over an RGBA JPEG XL, whose mask the RGB worker takes from
+// the colour's own decode: the same mask as fetch_one's, colour within the
+// encode's loss, plain and composited.
+void pool_cases(const fs::path& dir) {
+    if (!jxl::available()) {
+        std::printf("skip the pool over a JPEG XL: no libjxl in this build\n");
+        return;
+    }
+    const std::vector<uint8_t> src = rgba_image();
+    std::vector<uint8_t> bytes;
+    if (!jxl::encode_srgb8(src.data(), W, H, 4, 97, 4, {}, 1, bytes).empty()) {
+        check(false, "jxl: encode the RGBA test image");
+        return;
+    }
+    const std::string path = (dir / "rgba.jxl").string();
+    std::ofstream(path, std::ios::binary)
+        .write((const char*)bytes.data(), (std::streamsize)bytes.size());
+    const float grey[3] = {0.8f, 0.8f, 0.8f};
+    for (const float* over : {(const float*)nullptr, (const float*)grey}) {
+        DataManagerConfig cfg;
+        cfg.cache_mode = CacheMode::DISK;
+        cfg.load_depths = cfg.load_normals = false;
+        cfg.alpha_masks = {1};
+        if (over) {
+            cfg.composite_alpha = {1};
+            for (int c = 0; c < 3; c++) cfg.composite_color[c] = over[c];
+        }
+        std::vector<float> viewmat(16, 0.0f);
+        viewmat[0] = viewmat[5] = viewmat[10] = viewmat[15] = 1.0f;
+        DataManager dm(cfg, {0}, {0}, {path}, {}, {}, {}, {W}, {H}, {}, {}, viewmat,
+                       {10.0f, 10.0f, 4.0f, 3.0f}, std::vector<float>(8, 0.0f), {}, {}, {},
+                       {}, {}, {}, {}, {0}, {});
+        const DecodedBatch& b = dm.next_train_batch();
+        bool mask_ok = b.mask_width == W && b.mask_height == H;
+        for (int y = 0; y < H && mask_ok; y++)
+            for (int x = 0; x < W; x++)
+                mask_ok &= b.mask_buffer[(size_t)y * W + x] == (uint8_t)want_alpha(x);
+        // Against libjxl's own decode of the file: the colour must be exactly it.
+        jxl::Info info;
+        std::vector<uint8_t> dec;
+        bool rgb_ok = jxl::decode_srgb8(path, 4, 1, info, dec).empty() &&
+                      b.rgb_buffer.size() >= (size_t)W * H * 3;
+        for (int i = 0; i < W * H && rgb_ok; i++)
+            for (int c = 0; c < 3; c++) {
+                const double a = over ? dec[(size_t)i * 4 + 3] / 255.0 : 1.0;
+                const double want =
+                    dec[(size_t)i * 4 + c] * a + (over ? 0.8 * 255.0 * (1.0 - a) : 0.0);
+                rgb_ok &= std::abs((double)b.rgb_buffer[(size_t)i * 3 + c] - want) <= 0.5;
+            }
+        check(mask_ok, over ? "jxl, pool, composited: the mask from the colour's decode"
+                            : "jxl, pool: the mask from the colour's decode");
+        check(rgb_ok, over ? "jxl, pool, composited: its colour" : "jxl, pool: its colour");
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -248,6 +304,8 @@ int main() {
         std::printf("-- %s cache, EXR\n", mode == CacheMode::CPU ? "cpu" : "disk");
         run_cases(rgba_exr, small_image, large_image);
     }
+
+    pool_cases(dir);
 
     fs::remove_all(dir);
     std::printf("\n%s\n", g_failures ? "FAILURES" : "all passed");

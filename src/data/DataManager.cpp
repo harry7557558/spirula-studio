@@ -7,6 +7,9 @@
 #include "core/ExrImage.h"
 #include "core/HardwareThreads.h"
 #include "core/ImageOrient.h"
+#include "core/AvifImage.h"
+#include "core/ImageFile.h"
+#include "core/JxlImage.h"
 #include "core/TiffImage.h"
 #include "data/DownscaleCache.h"
 #include "data/ImageProbe.h"
@@ -468,17 +471,75 @@ void decode_stbi_rgb_into(const std::string& path, const std::vector<uint8_t>* m
     }
 }
 
-// `decode_threads` is what an EXR or TIFF may use: 1 on the worker pool, which
-// is already 16 wide, and every core for a lone image the viewer asked for.
-// `over`, when set, composites the file's alpha onto that colour.
+// The alpha plane a colour decode read on the way, as decoded (not turned).
+struct AlphaPlane {
+    std::vector<uint8_t> a;
+    int w = 0, h = 0;
+};
+
+// `decode_threads`: a JPEG XL, AVIF, EXR or TIFF's share of the cores (all of
+// them for a lone image). `over` composites the alpha onto that colour; `alpha`
+// gets an 8-bit JPEG XL's or AVIF's alpha from the same decode.
 void decode_rgb_into(const std::string& path,
                      int expected_h, int expected_w,
                      PixelDType dtype,
                      uint8_t* dst,
                      int turns_cw = 0,
                      int decode_threads = 1,
-                     const float* over = nullptr)
+                     const float* over = nullptr,
+                     AlphaPlane* alpha = nullptr)
 {
+    if (jxl::is_jxl(path) || avif::is_avif(path)) {
+        const bool is_avif = avif::is_avif(path);
+        jxl::Info info;
+        avif::Info ainfo;
+        if (dtype != PixelDType::UINT8) alpha = nullptr;
+        const int ch = over || alpha ? 4 : 3;
+        std::string err;
+        auto dec8 = [&](std::vector<uint8_t>& px) {
+            if (!is_avif) return jxl::decode_srgb8(path, ch, decode_threads, info, px);
+            std::string e = avif::decode_srgb8(path, ch, decode_threads, ainfo, px);
+            info.width = ainfo.width;
+            info.height = ainfo.height;
+            return e;
+        };
+        auto dec16 = [&](std::vector<uint16_t>& px) {
+            if (!is_avif) return jxl::decode_srgb16(path, ch, decode_threads, info, px);
+            std::string e = avif::decode_srgb16(path, ch, decode_threads, ainfo, px);
+            info.width = ainfo.width;
+            info.height = ainfo.height;
+            return e;
+        };
+        if (dtype == PixelDType::UINT16) {
+            std::vector<uint16_t> px;
+            err = dec16(px);
+            if (err.empty())
+                place_rgb_over(path, px.data(), info.width, info.height, over, turns_cw,
+                               expected_h, expected_w, dst);
+        } else if (dtype == PixelDType::UINT8) {
+            std::vector<uint8_t> px;
+            err = dec8(px);
+            if (err.empty() && alpha) {
+                const size_t n = (size_t)info.width * info.height;
+                alpha->w = info.width;
+                alpha->h = info.height;
+                alpha->a.resize(n);
+                for (size_t i = 0; i < n; ++i) alpha->a[i] = px[i * 4 + 3];
+                if (!over) {   // RGB in place for place_rgb
+                    for (size_t i = 0; i < n; ++i)
+                        for (int c = 0; c < 3; ++c) px[i * 3 + c] = px[i * 4 + c];
+                    px.resize(n * 3);
+                }
+            }
+            if (err.empty())
+                place_rgb_over(path, px.data(), info.width, info.height, over, turns_cw,
+                               expected_h, expected_w, dst);
+        } else {
+            err = "JPEG XL and AVIF are read as 8 or 16 bits";
+        }
+        if (!err.empty()) throw std::runtime_error(decode_failure(path) + " (" + err + ")");
+        return;
+    }
     if (tiff::is_tiff(path)) {
         tiff::Info info;
         tiff::Options opt;
@@ -638,30 +699,74 @@ bool decode_rgb_via_new_cache(const std::string& src, const std::string& cached,
                               PixelDType dtype, uint8_t* dst, int turns_cw,
                               const float* over)
 {
-    const dscache::Format fmt = dscache::format_of(src);
-    const bool sixteen = fmt == dscache::Format::Png && stbi_is_16_bit(src.c_str());
+    const bool modern = dscache::is_modern(src);
+    const dscache::Format fmt = dscache::cache_format(src);
     int w = 0, h = 0, n = 0;
-    void* px = sixteen ? (void*)stbi_load_16(src.c_str(), &w, &h, &n, 0)
-                       : (void*)stbi_load(src.c_str(), &w, &h, &n, 0);
-    if (!px) return false;
+    bool sixteen = false;
+    void* px = nullptr;
+    std::vector<uint8_t> m8;
+    std::vector<uint16_t> m16;
+    if (modern) {
+        // Decoded in full once, as the trainer would; a JPEG's quality from then on.
+        imagefile::Info info;
+        if (!imagefile::probe(src, info).empty()) return false;
+        n = info.channels >= 4 ? 4 : 3;
+        jxl::Info ji;
+        avif::Info ai;
+        const bool is_avif = avif::is_avif(src);
+        sixteen = dtype == PixelDType::UINT16;
+        const std::string err =
+            sixteen ? (is_avif ? avif::decode_srgb16(src, n, 1, ai, m16)
+                               : jxl::decode_srgb16(src, n, 1, ji, m16))
+                    : (is_avif ? avif::decode_srgb8(src, n, 1, ai, m8)
+                               : jxl::decode_srgb8(src, n, 1, ji, m8));
+        if (!err.empty()) return false;
+        w = is_avif ? ai.width : ji.width;
+        h = is_avif ? ai.height : ji.height;
+    } else {
+        sixteen = fmt == dscache::Format::Png && stbi_is_16_bit(src.c_str());
+        px = sixteen ? (void*)stbi_load_16(src.c_str(), &w, &h, &n, 0)
+                     : (void*)stbi_load(src.c_str(), &w, &h, &n, 0);
+        if (!px) return false;
+    }
+    const void* pixels = modern ? (sixteen ? (const void*)m16.data() : (const void*)m8.data())
+                                : px;
     const int tw = dscache::scaled_side(w, d, rounding), th = dscache::scaled_side(h, d, rounding);
     std::vector<uint8_t> bytes;
     if (sixteen) {
-        const std::vector<uint16_t> shrunk = shrink_native((const uint16_t*)px, h, w, n, th, tw);
+        const std::vector<uint16_t> shrunk =
+            shrink_native((const uint16_t*)pixels, h, w, n, th, tw);
         bytes = dscache::encode(fmt, shrunk.data(), tw, th, n, 16);
     } else {
-        const std::vector<uint8_t> shrunk = shrink_native((const uint8_t*)px, h, w, n, th, tw);
+        const std::vector<uint8_t> shrunk =
+            shrink_native((const uint8_t*)pixels, h, w, n, th, tw);
         bytes = dscache::encode(fmt, shrunk.data(), tw, th, n, 8);
     }
-    stbi_image_free(px);
+    if (px) stbi_image_free(px);
     if (bytes.empty()) return false;
     note_cache_dir_once(cached, dscache::store(cached, bytes));
     decode_stbi_rgb_into(cached, &bytes, expected_h, expected_w, dtype, dst, turns_cw, over);
     return true;
 }
 
-// An image's alpha as a 0/1 mask at dst_h x dst_w: area-resampled first, so a
-// shrunk mask keeps the pixels at least half covered, then gated at 128.
+// An alpha plane (w x h, as decoded) as a 0/1 mask at dst_h x dst_w: turned,
+// area-resampled first, so a shrunk mask keeps the pixels at least half
+// covered, then gated at 128.
+void alpha_plane_to_mask(const uint8_t* alpha, int w, int h, int dst_h, int dst_w,
+                         uint8_t* dst, int turns_cw) {
+    const stbi_uc* src = alpha;
+    std::vector<stbi_uc> turned, resized;
+    turn_decoded(src, w, h, 1, turns_cw, turned);
+    if (w != dst_w || h != dst_h) {
+        resized.resize((size_t)dst_h * dst_w);
+        cpu_resize<stbi_uc, 1>(src, h, w, resized.data(), dst_h, dst_w);
+        src = resized.data();
+    }
+    for (size_t i = 0; i < (size_t)dst_h * dst_w; ++i)
+        dst[i] = (uint8_t)(src[i] >= 128);
+}
+
+// An image's alpha as a 0/1 mask at dst_h x dst_w (alpha_plane_to_mask).
 void decode_alpha_mask_into(const std::string& path,
                             int dst_h, int dst_w,
                             uint8_t* dst,
@@ -683,6 +788,24 @@ void decode_alpha_mask_into(const std::string& path,
         alpha.resize((size_t)w * h);
         for (size_t i = 0; i < alpha.size(); ++i)
             alpha[i] = (stbi_uc)std::lround(std::clamp(px[i * 4 + 3], 0.0f, 1.0f) * 255.0f);
+    } else if (jxl::is_jxl(path) || avif::is_avif(path)) {
+        jxl::Info info;
+        avif::Info ainfo;
+        std::vector<uint8_t> px;
+        std::string err;
+        if (avif::is_avif(path)) {
+            err = avif::decode_srgb8(path, 4, 1, ainfo, px);
+            info.width = ainfo.width;
+            info.height = ainfo.height;
+        } else {
+            err = jxl::decode_srgb8(path, 4, 1, info, px);
+        }
+        if (!err.empty())
+            throw std::runtime_error(decode_failure(path) + " (" + err + ")");
+        w = info.width;
+        h = info.height;
+        alpha.resize((size_t)w * h);
+        for (size_t i = 0; i < alpha.size(); ++i) alpha[i] = px[i * 4 + 3];
     } else if (tiff::is_tiff(path)) {
         tiff::Info info;
         tiff::Options opt;
@@ -710,16 +833,7 @@ void decode_alpha_mask_into(const std::string& path,
         stbi_image_free(img);
     }
 
-    const stbi_uc* src = alpha.data();
-    std::vector<stbi_uc> turned, resized;
-    turn_decoded(src, w, h, 1, turns_cw, turned);
-    if (w != dst_w || h != dst_h) {
-        resized.resize((size_t)dst_h * dst_w);
-        cpu_resize<stbi_uc, 1>(src, h, w, resized.data(), dst_h, dst_w);
-        src = resized.data();
-    }
-    for (size_t i = 0; i < (size_t)dst_h * dst_w; ++i)
-        dst[i] = (uint8_t)(src[i] >= 128);
+    alpha_plane_to_mask(alpha.data(), w, h, dst_h, dst_w, dst, turns_cw);
 }
 
 void decode_depth_into(const std::string& path,
@@ -776,6 +890,16 @@ PixelDType probe_pixel_dtype(const std::string& path,
 {
     if (path.empty()) return fallback;
     if (exr::is_exr(path)) return PixelDType::FLOAT32;
+    if (jxl::is_jxl(path)) {
+        jxl::Info info;
+        if (!jxl::probe(path, info).empty()) return fallback;
+        return info.bits > 8 ? PixelDType::UINT16 : PixelDType::UINT8;
+    }
+    if (avif::is_avif(path)) {
+        avif::Info info;
+        if (!avif::probe(path, info).empty()) return fallback;
+        return info.bits > 8 ? PixelDType::UINT16 : PixelDType::UINT8;
+    }
     if (tiff::is_tiff(path)) {
         tiff::Info info;
         if (!tiff::probe(path, info).empty()) return fallback;
@@ -1061,6 +1185,8 @@ private:
     std::thread              _scheduler;
     std::atomic<bool>        _stop{false};
     std::atomic<int64_t>     _next_batch_id{0};
+    int                      _rgb_decode_threads = 1;   // each RGB worker's share of the cores
+    std::vector<char>        _alpha_rides_rgb;          // alpha_rides_rgb, set with the pool
 
     // A decode that threw. The worker parks here rather than letting the
     // exception escape its thread (which is std::terminate), so a dataset
@@ -1087,6 +1213,12 @@ private:
     }
     bool alpha_mask(int64_t i) const {
         return _has_alpha_masks && _cfg.alpha_masks[(size_t)i];
+    }
+    // Image i's mask is its alpha alone, from an 8-bit JPEG XL or AVIF read
+    // without the downscale cache: the RGB worker takes it from the colour
+    // decode, where a second decode would cost as much again.
+    bool alpha_rides_rgb(int64_t i) const {
+        return (size_t)i < _alpha_rides_rgb.size() && _alpha_rides_rgb[(size_t)i];
     }
     bool mask_present(int64_t i) const {
         return !_mask_filenames[(size_t)i].empty() || alpha_mask(i) ||
@@ -2226,6 +2358,16 @@ void DataManagerImpl::start_disk_pipeline() {
     _q_ready_val   = std::make_unique<BoundedQueue<std::shared_ptr<DecodedBatch>>>((size_t)prefetch);
 
     int n_rgb_workers = std::max(1, _cfg.workers_rgb);
+    _rgb_decode_threads = std::max(1, (int)spirula::hardware_threads() / n_rgb_workers);
+    _alpha_rides_rgb.assign(_image_filenames.size(), 0);
+    if (has_masks() && _cfg.downscale_cache_divisor <= 1)
+        for (size_t i = 0; i < _alpha_rides_rgb.size(); ++i) {
+            const std::string& f = _image_filenames[i];
+            _alpha_rides_rgb[i] = alpha_mask((int64_t)i) &&
+                                  (i >= _mask_filenames.size() || _mask_filenames[i].empty()) &&
+                                  _rgb_dtype[i] == PixelDType::UINT8 &&
+                                  (jxl::is_jxl(f) || avif::is_avif(f));
+        }
     for (int t = 0; t < n_rgb_workers; ++t)
         _workers.emplace_back(&DataManagerImpl::worker_loop_rgb, this);
 
@@ -2318,8 +2460,20 @@ void DataManagerImpl::worker_loop_rgb() {
         int H = b.input_height, W = b.input_width;
         size_t row = (size_t)H * W * 3 * pixel_dtype_size(b.rgb_dtype);
         uint8_t* dst = b.rgb_buffer.data() + (size_t)job.slot * row;
+        const int64_t i = job.ds_index;
         if (!decode_or_park([&]{
-                decode_rgb_of(job.ds_index, H, W, b.rgb_dtype, dst, 1); }))
+                if (!alpha_rides_rgb(i)) {
+                    decode_rgb_of(i, H, W, b.rgb_dtype, dst, _rgb_decode_threads);
+                    return;
+                }
+                AlphaPlane alpha;
+                decode_rgb_into(_image_filenames[(size_t)i], H, W, b.rgb_dtype, dst, turns_of(i),
+                                _rgb_decode_threads, composite_of(i), &alpha);
+                const int mh = b.mask_height, mw = b.mask_width;
+                uint8_t* mask = b.mask_buffer.data() + (size_t)job.slot * mh * mw;
+                alpha_plane_to_mask(alpha.a.data(), alpha.w, alpha.h, mh, mw, mask, turns_of(i));
+                apply_boundary_offset(mask, mh, mw, _cfg.mask_boundary_offset);
+            }))
             return;
         publish_if_done(job);
     }
@@ -2473,8 +2627,8 @@ void DataManagerImpl::enqueue_batch(
 
         rgb_jobs.push_back(jb);
         if (has_masks()) {
-            if (mask_present(i)) mask_jobs.push_back(jb);
-            else                 try_publish();  // truly absent
+            if (mask_present(i) && !alpha_rides_rgb(i)) mask_jobs.push_back(jb);
+            else try_publish();  // absent, or made by the RGB job
         }
         if (has_depths()) {
             if (!_depth_filenames[i].empty()) depth_jobs.push_back(jb);
@@ -2570,8 +2724,8 @@ void DataManagerImpl::enqueue_step(
 
             rgb_jobs.push_back(jb);
             if (has_masks()) {
-                if (mask_present(idx)) mask_jobs.push_back(jb);
-                else                   decrement_absent();
+                if (mask_present(idx) && !alpha_rides_rgb(idx)) mask_jobs.push_back(jb);
+                else decrement_absent();   // absent, or made by the RGB job
             }
             if (has_depths()) {
                 if (!_depth_filenames[idx].empty()) depth_jobs.push_back(jb);

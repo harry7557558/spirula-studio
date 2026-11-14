@@ -31,6 +31,7 @@ namespace {
     X("adaptive_fps",               sfm.prep.adaptive_fps)                    \
     X("adaptive_range",             sfm.prep.adaptive_range)                  \
     X("sharp_window",               sfm.prep.sharp_window)                    \
+    X("frame_file",                 sfm.prep.frame_file)                      \
     X("skip_blurry",                sfm.prep.skip_blurry)                     \
     X("blur_px",                 sfm.prep.blur_px)                      \
     X("blur_neighbour",             sfm.prep.blur_neighbour)                  \
@@ -226,6 +227,7 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     s.colmap.dense = s.sfm.dense;
     PrepJob& p = s.sfm.prep;
     clamp_enum(p.photo_import, 0, kNumPhotoImports - 1);
+    clamp_enum(p.frame_file, 0, (int)app::FrameFile::Avif);
     clamp_enum(p.pano.mode, 0, (int)app::Pano360Mode::Equirect);
     clamp_to(p.pano.size, 0, 16384);
     p.video_fps = std::clamp(p.video_fps, 0.0f, 240.0f);

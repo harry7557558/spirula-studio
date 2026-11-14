@@ -20,6 +20,10 @@ bool is_heif_path(const std::string& path);
 // HEIF, .jxl or .avif, by the name alone.
 bool is_foreign_photo_path(const std::string& path);
 
+// A foreign photo this build cannot train on as it is: HEIC always, JPEG XL and
+// AVIF without libjxl / libavif.
+bool photo_needs_jpeg(const std::string& path);
+
 // In-process: interleaved RGB and, when `exif` is given, the JPEG APP1 payload
 // ("Exif\0\0" + TIFF) or nothing. The device must already be frozen. False
 // with `error` in a build without the decoder.

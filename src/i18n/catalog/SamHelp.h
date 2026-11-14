@@ -883,6 +883,34 @@ SS_MSG(xh_quality,
     RU("качество JPEG; вне этого диапазона пишется PNG (по умолчанию 95)"),
     TR("JPEG kalitesi; bu aralığın dışında PNG yazar (varsayılan 95)"));
 
+SS_MSG(xh_format,
+    EN("jpg, jxl or avif: JPEG XL or AVIF at least as faithful as that JPEG, encoded "
+       "straight from the frame, smaller (default jpg)"),
+    JA("jpg、jxl、avif。JPEG XL と AVIF はフレームから直接エンコードし、その JPEG 以上の"
+       "忠実度でより小さい（既定 jpg）"),
+    ZH_HANS("jpg、jxl 或 avif：JPEG XL 与 AVIF 直接由帧编码，保真度不低于该 JPEG，体积更小"
+            "（默认 jpg）"),
+    ZH_HANT("jpg、jxl 或 avif：JPEG XL 與 AVIF 直接由影格編碼，保真度不低於該 JPEG，體積更小"
+            "（預設 jpg）"),
+    KO("jpg, jxl, avif. JPEG XL 과 AVIF 는 프레임에서 바로 인코딩하며 그 JPEG 이상의 "
+       "충실도로 더 작음(기본 jpg)"),
+    DE("jpg, jxl oder avif: JPEG XL oder AVIF mindestens so getreu wie dieses JPEG, direkt "
+       "aus dem Bild kodiert, kleiner (Vorgabe jpg)"),
+    FR("jpg, jxl ou avif : JPEG XL ou AVIF au moins aussi fidèle que ce JPEG, encodé "
+       "directement depuis l'image, plus petit (défaut jpg)"),
+    ES("jpg, jxl o avif: JPEG XL o AVIF al menos tan fiel como ese JPEG, codificado "
+       "directamente del fotograma, más pequeño (por defecto jpg)"),
+    PT("jpg, jxl ou avif: JPEG XL ou AVIF pelo menos tão fiel quanto esse JPEG, codificado "
+       "direto do quadro, menor (padrão jpg)"),
+    IT("jpg, jxl o avif: JPEG XL o AVIF almeno fedele quanto quel JPEG, codificato "
+       "direttamente dal fotogramma, più piccolo (predefinito jpg)"),
+    NL("jpg, jxl of avif: JPEG XL of AVIF minstens zo getrouw als die JPEG, direct uit "
+       "het beeld gecodeerd, kleiner (standaard jpg)"),
+    RU("jpg, jxl или avif: JPEG XL или AVIF не хуже этого JPEG по точности, кодируется "
+       "прямо из кадра, меньше по размеру (по умолчанию jpg)"),
+    TR("jpg, jxl ya da avif: JPEG XL ya da AVIF en az o JPEG kadar aslına uygun, doğrudan "
+       "kareden kodlanır, daha küçük (varsayılan jpg)"));
+
 SS_MSG(xh_rotate,
     EN("0, 90, 180 or 270, clockwise"),
     JA("0、90、180、270 度（時計回り）"),

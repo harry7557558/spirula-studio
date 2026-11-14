@@ -21,6 +21,7 @@ ss_collect_portable_sources(SS_PORTABLE_SOURCES)
 
 # An OBJECT library pulls the engine and embedded shaders into every host test.
 add_library(csrc_portable STATIC ${SS_PORTABLE_SOURCES})
+ss_link_jxl(csrc_portable)
 # Without this the whole portable engine builds at -O0 (CMAKE_BUILD_TYPE is
 # deliberately empty), which the CUDA path avoids by applying the same list.
 target_compile_options(csrc_portable PRIVATE

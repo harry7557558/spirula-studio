@@ -156,12 +156,15 @@ add_library(ss_sfm STATIC
     ${SS_SRC}/core/ExrImage.cpp
     ${SS_SRC}/core/IccProfile.cpp
     ${SS_SRC}/core/ImageFile.cpp
+    ${SS_SRC}/core/JxlImage.cpp
+    ${SS_SRC}/core/AvifImage.cpp
     ${SS_SRC}/core/MappedFile.cpp
     ${SS_SRC}/core/TiffImage.cpp
     ${SS_SRC}/core/SceneAlign.cpp
     ${SS_SRC}/external/miniz.c
 )
 target_include_directories(ss_sfm PUBLIC ${SS_SRC})
+ss_link_jxl(ss_sfm)
 target_link_libraries(ss_sfm PUBLIC ss_vulkan Threads::Threads ss_i18n)
 
 # The learned frontend (src/aliked/) is optional: it sits on the inference

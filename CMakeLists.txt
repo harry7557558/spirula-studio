@@ -34,6 +34,7 @@ include(SsSources)
 # A leaf everything else may link: the backends print device names, and their
 # test binaries link a backend without the engine.
 include(SsI18n)
+include(SsJxl)
 include(SsLicense)
 
 # The web viewer's browser client is compiled into the engine library

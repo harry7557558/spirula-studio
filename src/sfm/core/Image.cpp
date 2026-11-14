@@ -7,6 +7,7 @@
 #include "sfm/core/Image.h"
 
 #include "core/ColorSpace.h"
+#include "core/ExrImage.h"
 #include "core/ImageFile.h"
 #include "core/ImageOrient.h"
 
@@ -175,6 +176,33 @@ Mask loadAlpha(const std::string& path) {
     return m;
 }
 
+// RGBA in place to RGB (and `plain`, when it holds RGBA too), its alpha as
+// loadAlpha() would have read it.
+Mask splitAlpha(std::vector<uint8_t>& rgba, std::vector<uint8_t>& plain, int w, int h) {
+    const size_t n = (size_t)w * h;
+    Mask m;
+    m.width = w;
+    m.height = h;
+    m.bits.resize(n);
+    bool any = false;
+    for (size_t i = 0; i < n; i++) {
+        m.bits[i] = rgba[4 * i + 3] >= 128 ? 1 : 0;
+        any = any || !m.bits[i];
+    }
+    for (std::vector<uint8_t>* v : {&rgba, &plain}) {
+        if (v->size() != n * 4) continue;
+        uint8_t* d = v->data();
+        for (size_t i = 0; i < n; i++) {
+            d[3 * i] = d[4 * i];
+            d[3 * i + 1] = d[4 * i + 1];
+            d[3 * i + 2] = d[4 * i + 2];
+        }
+        v->resize(n * 3);
+    }
+    if (!any) m.bits.clear();
+    return m;
+}
+
 }  // namespace
 
 GrayImage loadGrayImage(const std::string& path, int max_image_size, bool want_color,
@@ -189,17 +217,25 @@ GrayImage loadGrayImage(const std::string& path, int max_image_size, bool want_c
     std::vector<uint8_t> own_rgb, plain;
     unsigned char* rgb = nullptr;
     GrayImage img;
+    Mask alpha;
+    bool alpha_read = false;
     if (imagefile::handles(path)) {
         imagefile::Info info;
         imagefile::Options opt;
         opt.threads = 1;
         opt.exposure = exposure;
+        // One decode for colour and alpha: a JPEG XL's is a third of its cost.
+        // Not an EXR, whose colour is premultiplied and read apart from it.
+        alpha_read = !exr::is_exr(path) && imagefile::probe(path, info).empty() &&
+                     (info.channels == 2 || info.channels == 4);
+        opt.channels = alpha_read ? 4 : 3;
         const std::string err = imagefile::decode_srgb8(path, opt, info, own_rgb, gamut,
                                                         is_linear, want_color ? &plain : nullptr);
         if (!err.empty())
             throw std::runtime_error("cannot decode image " + path + ": " + err);
         w = info.width;
         h = info.height;
+        if (alpha_read) alpha = splitAlpha(own_rgb, plain, w, h);
         rgb = own_rgb.data();
         img.gain = info.gain;
         img.peak = info.peak;
@@ -259,7 +295,8 @@ GrayImage loadGrayImage(const std::string& path, int max_image_size, bool want_c
     if (!feature_mask_path.empty() && (mask_path.empty() || !img.mask.empty()))
         intersectMask(img.mask, loadMask(feature_mask_path));
     // ANDed with the files, unflipped, as the trainer reads it (data/DataManager.h).
-    if (mask_path.empty() || !img.mask.empty()) intersectMask(img.mask, loadAlpha(path));
+    if (mask_path.empty() || !img.mask.empty())
+        intersectMask(img.mask, alpha_read ? std::move(alpha) : loadAlpha(path));
     img.exif = readExif(path);  // header bytes only; see sfm/core/Exif.h
     if (apply_exif_orientation) applyExifOrientation(img);
     return img;

@@ -5,6 +5,8 @@
 
 #include "app/FrameMask.h"
 #include "app/gui/Subprocess.h"
+#include "core/AvifImage.h"
+#include "core/JxlImage.h"
 #include "i18n/catalog/Log.h"
 #ifdef SS_HAVE_VIDEO
 #include "video/Video.h"
@@ -319,6 +321,13 @@ bool is_heif_path(const std::string& path) {
 bool is_foreign_photo_path(const std::string& path) {
     const std::string e = lower_ext(path);
     return e == ".jxl" || e == ".avif" || is_heif_path(path);
+}
+
+bool photo_needs_jpeg(const std::string& path) {
+    const std::string e = lower_ext(path);
+    if (e == ".jxl") return !jxl::available();
+    if (e == ".avif") return !avif::available();
+    return is_heif_path(path);
 }
 
 bool decode_heif_builtin(const std::string& path, int& w, int& h,

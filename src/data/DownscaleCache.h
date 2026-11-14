@@ -16,6 +16,13 @@ enum class Format { None, Jpeg, Png };
 // By the file's first bytes, not its name.
 Format format_of(const std::string& path);
 
+// A JPEG XL or AVIF: cached under its own name plus ".jpg", or ".png" when it
+// has alpha or more than 8 bits.
+bool is_modern(const std::string& path);
+
+// The format `image` caches as; None when it is not cached.
+Format cache_format(const std::string& image);
+
 // Where `image` caches at divisor `d`: its path under `image_dir` moved to
 // `<image_dir>_<d>`, or `<parent>_<d>/<name>` when it is not under `image_dir`.
 // "" when its format is not cached.

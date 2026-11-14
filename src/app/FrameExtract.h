@@ -12,6 +12,7 @@
 // decoder ran.
 
 #include "app/FrameClip.h"
+#include "app/FrameFile.h"
 #include "app/FrameLook.h"
 #include "app/FramePick.h"
 #include "app/FrameMotion.h"
@@ -54,6 +55,7 @@ struct FrameExtractJob : FrameLook {
     int   keep = -1;               // sharpest of the last n; -1 = round(skip/2)
     int   max_frames = 0;          // 0 = no cap
     int   quality = 95;            // JPEG quality; outside 0..100 writes PNG
+    FrameFile file = FrameFile::Jpeg;
     int   track = -1;              // -1 = every track
     int   threads = 0;             // encoder threads; 0 = cores - 1
     // A multi-track file decoded in lockstep, every track keeping the same
