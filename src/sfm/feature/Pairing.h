@@ -12,6 +12,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -62,6 +63,28 @@ inline std::vector<uint32_t> folderRuns(const std::vector<std::string>& names) {
         run[i] = ids.emplace(dir, (uint32_t)ids.size()).first->second;
     }
     return run;
+}
+
+// Each image's folder and its position within it, in the name order the
+// images are indexed in.
+struct FileOrder {
+    std::vector<uint32_t> run, pos;
+
+    // 1 + weight * exp(-gap / decay) for two images of one folder, else 1.
+    double boost(uint32_t a, uint32_t b, double weight, double decay) const {
+        if (weight <= 0 || a >= run.size() || b >= run.size() || run[a] != run[b]) return 1.0;
+        const double gap = pos[a] > pos[b] ? pos[a] - pos[b] : pos[b] - pos[a];
+        return 1.0 + weight * std::exp(-gap / std::max(decay, 1e-6));
+    }
+};
+
+inline FileOrder fileOrder(const std::vector<std::string>& names) {
+    FileOrder o;
+    o.run = folderRuns(names);
+    o.pos.resize(names.size());
+    std::map<uint32_t, uint32_t> next;
+    for (size_t i = 0; i < names.size(); i++) o.pos[i] = next[o.run[i]]++;
+    return o;
 }
 
 // The window along each sequence of a SequenceTable, one chain per member so

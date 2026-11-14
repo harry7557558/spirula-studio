@@ -542,6 +542,9 @@ struct VerificationOptions {
     const PriorSource* priors = nullptr;
     const std::vector<Camera>* cameras = nullptr;
     double prior_agree = 0.7;
+    // Off: no progress, events or live matches -- a re-verification during
+    // mapping is not the match stage, and a screen would show it as one.
+    bool report = true;
 };
 
 // What the rotation prior did over one verifyPairs call.
@@ -702,6 +705,7 @@ inline std::vector<TwoViewMatches> verifyPairs(
         const uint32_t i = pairs[p].first, j = pairs[p].second;
         // Failed attempts must remain distinguishable from untested pairs in the viewer.
         const uint32_t inl = verifyBody(p, m, i, j);
+        if (!opt.report) return;
         progress::pair(i, j, inl);
         if (inl) {
             const MatchList& kept = results[p].matches;
@@ -738,6 +742,7 @@ inline std::vector<TwoViewMatches> verifyPairs(
     const size_t step = std::max<size_t>(1, pairs.size() / 400);
     const size_t ptotal = opt.progress_total ? opt.progress_total : pairs.size();
     auto tick = [&](size_t p) {
+        if (!opt.report) return;
         if ((p + 1) % step == 0 || p + 1 == pairs.size())
             events::progress(Stage::Match, (int64_t)(opt.progress_done_base + p + 1),
                              (int64_t)ptotal);

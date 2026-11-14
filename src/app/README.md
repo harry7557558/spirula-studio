@@ -20,6 +20,8 @@ cmake -G Ninja -B build && cmake --build build --target spirula
   `-`/`_` interchangeable; bools take a value (`--warp-to-pinhole 1`);
   `--key=value` works (arity-1 only); `none` clears optionals; tuples take N
   values (`--bilagrid-shape 8 8 4`). `--help` shows preset-resolved defaults.
+- Every subcommand's flags: `docs/cli/` (the training flags in
+  `docs/cli/train-flags.md`).
 
 ### Building without Torch/Python
 

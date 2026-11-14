@@ -908,6 +908,420 @@ SS_MSG(pano360_unsupported_help,
     RU("Неподдерживаемая раскладка треков 360°. Читается как два обычных объектива; реконструкция вряд ли удастся."),
     TR("Desteklenmeyen 360° iz düzeni. İki normal mercek olarak okunur; yeniden oluşturma muhtemelen başarısız olur."));
 
+SS_MSG(view_images,
+    EN("Images"),
+    JA("画像"),
+    ZH_HANS("图像"),
+    ZH_HANT("影像"),
+    KO("이미지"),
+    DE("Bilder"),
+    FR("Images"),
+    ES("Imágenes"),
+    PT("Imagens"),
+    IT("Immagini"),
+    NL("Beelden"),
+    RU("Снимки"),
+    TR("Görüntüler"));
+
+SS_MSG(images_col_name,
+    EN("Image"),
+    JA("画像"),
+    ZH_HANS("图像"),
+    ZH_HANT("影像"),
+    KO("이미지"),
+    DE("Bild"),
+    FR("Image"),
+    ES("Imagen"),
+    PT("Imagem"),
+    IT("Immagine"),
+    NL("Beeld"),
+    RU("Снимок"),
+    TR("Görüntü"));
+
+SS_MSG(images_col_status,
+    EN("Status"),
+    JA("状態"),
+    ZH_HANS("状态"),
+    ZH_HANT("狀態"),
+    KO("상태"),
+    DE("Status"),
+    FR("État"),
+    ES("Estado"),
+    PT("Estado"),
+    IT("Stato"),
+    NL("Status"),
+    RU("Состояние"),
+    TR("Durum"));
+
+SS_MSG(images_placed,
+    EN("placed"),
+    JA("配置済み"),
+    ZH_HANS("已放置"),
+    ZH_HANT("已放置"),
+    KO("배치됨"),
+    DE("platziert"),
+    FR("placée"),
+    ES("colocada"),
+    PT("posicionada"),
+    IT("posizionata"),
+    NL("geplaatst"),
+    RU("размещён"),
+    TR("yerleşti"));
+
+SS_MSG(images_not_placed,
+    EN("not placed"),
+    JA("未配置"),
+    ZH_HANS("未放置"),
+    ZH_HANT("未放置"),
+    KO("배치 안 됨"),
+    DE("nicht platziert"),
+    FR("non placée"),
+    ES("sin colocar"),
+    PT("não posicionada"),
+    IT("non posizionata"),
+    NL("niet geplaatst"),
+    RU("не размещён"),
+    TR("yerleşmedi"));
+
+SS_MSG(images_col_points,
+    EN("3D points"),
+    JA("3D 点"),
+    ZH_HANS("3D 点"),
+    ZH_HANT("3D 點"),
+    KO("3D 점"),
+    DE("3D-Punkte"),
+    FR("Points 3D"),
+    ES("Puntos 3D"),
+    PT("Pontos 3D"),
+    IT("Punti 3D"),
+    NL("3D-punten"),
+    RU("3D-точки"),
+    TR("3B noktalar"));
+
+SS_MSG(images_col_keypoints,
+    EN("Features"),
+    JA("特徴点"),
+    ZH_HANS("特征点"),
+    ZH_HANT("特徵點"),
+    KO("특징점"),
+    DE("Merkmale"),
+    FR("Points clés"),
+    ES("Puntos clave"),
+    PT("Pontos-chave"),
+    IT("Punti chiave"),
+    NL("Kenmerken"),
+    RU("Признаки"),
+    TR("Öznitelikler"));
+
+SS_MSG(images_col_mean,
+    EN("Mean error (px)"),
+    JA("平均誤差 (px)"),
+    ZH_HANS("平均误差 (px)"),
+    ZH_HANT("平均誤差 (px)"),
+    KO("평균 오차 (px)"),
+    DE("Mittlerer Fehler (px)"),
+    FR("Erreur moyenne (px)"),
+    ES("Error medio (px)"),
+    PT("Erro médio (px)"),
+    IT("Errore medio (px)"),
+    NL("Gem. fout (px)"),
+    RU("Средняя ошибка (px)"),
+    TR("Ort. hata (px)"));
+
+SS_MSG(images_col_max,
+    EN("Max error (px)"),
+    JA("最大誤差 (px)"),
+    ZH_HANS("最大误差 (px)"),
+    ZH_HANT("最大誤差 (px)"),
+    KO("최대 오차 (px)"),
+    DE("Max. Fehler (px)"),
+    FR("Erreur max (px)"),
+    ES("Error máx. (px)"),
+    PT("Erro máx. (px)"),
+    IT("Errore max (px)"),
+    NL("Max. fout (px)"),
+    RU("Макс. ошибка (px)"),
+    TR("Maks. hata (px)"));
+
+SS_MSG(images_summary,
+    EN("{0} of {1} images placed"),
+    JA("{1} 枚中 {0} 枚を配置"),
+    ZH_HANS("已放置 {0}/{1} 张图像"),
+    ZH_HANT("已放置 {0}/{1} 張影像"),
+    KO("{1}장 중 {0}장 배치됨"),
+    DE("{0} von {1} Bildern platziert"),
+    FR("{0} images placées sur {1}"),
+    ES("{0} de {1} imágenes colocadas"),
+    PT("{0} de {1} imagens posicionadas"),
+    IT("{0} di {1} immagini posizionate"),
+    NL("{0} van {1} beelden geplaatst"),
+    RU("размещено {0} из {1} снимков"),
+    TR("{1} görüntünün {0} tanesi yerleşti"));
+
+SS_MSG(model_pick,
+    EN("Model"),
+    JA("モデル"),
+    ZH_HANS("模型"),
+    ZH_HANT("模型"),
+    KO("모델"),
+    DE("Modell"),
+    FR("Modèle"),
+    ES("Modelo"),
+    PT("Modelo"),
+    IT("Modello"),
+    NL("Model"),
+    RU("Модель"),
+    TR("Model"));
+
+SS_MSG(model_pick_item,
+    EN("{0}: images {1}"),
+    JA("{0}: 画像 {1}"),
+    ZH_HANS("{0}：图像 {1}"),
+    ZH_HANT("{0}：影像 {1}"),
+    KO("{0}: 이미지 {1}"),
+    DE("{0}: Bilder {1}"),
+    FR("{0} : images {1}"),
+    ES("{0}: imágenes {1}"),
+    PT("{0}: imagens {1}"),
+    IT("{0}: immagini {1}"),
+    NL("{0}: beelden {1}"),
+    RU("{0}: снимков {1}"),
+    TR("{0}: görüntü {1}"));
+
+SS_MSG(model_pick_help,
+    EN("Separate models appear when no images link their parts. 1 is the largest; merged or "
+       "dropped models leave the list."),
+    JA("画像でつながらない部分は別々のモデルになります。1 が最大で、統合または破棄されたモデルは"
+       "一覧から消えます。"),
+    ZH_HANS("没有图像相连的部分会成为独立的模型。1 是最大的；合并或被丢弃的模型会从列表中消失。"),
+    ZH_HANT("沒有影像相連的部分會成為獨立的模型。1 是最大的；合併或被捨棄的模型會從清單中消失。"),
+    KO("이미지로 이어지지 않는 부분은 별도 모델이 됩니다. 1이 가장 크며, 합쳐지거나 버려진 모델"
+       "은 목록에서 사라집니다."),
+    DE("Teile ohne Bildverbindung werden getrennte Modelle. 1 ist das größte; zusammengeführte "
+       "oder verworfene verlassen die Liste."),
+    FR("Les parties sans image de liaison forment des modèles séparés. 1 est le plus grand ; "
+       "fusionnés ou écartés, ils quittent la liste."),
+    ES("Las partes sin imágenes que las unan forman modelos separados. 1 es el mayor; los "
+       "fusionados o descartados salen de la lista."),
+    PT("Partes sem imagens que as liguem viram modelos separados. 1 é o maior; modelos fundidos "
+       "ou descartados saem da lista."),
+    IT("Le parti senza immagini che le colleghino formano modelli separati. 1 è il più grande; "
+       "quelli uniti o scartati escono dall'elenco."),
+    NL("Delen zonder verbindende beelden worden aparte modellen. 1 is het grootste; "
+       "samengevoegde of weggegooide verdwijnen."),
+    RU("Части без связывающих снимков становятся отдельными моделями. 1 — крупнейшая; "
+       "объединённые или отброшенные пропадают из списка."),
+    TR("Görüntülerle bağlanmayan parçalar ayrı model olur. 1 en büyüğüdür; birleşen ya da "
+       "atılan modeller listeden çıkar."));
+
+SS_MSG(camera_color,
+    EN("Camera colour"),
+    JA("カメラの色"),
+    ZH_HANS("相机颜色"),
+    ZH_HANT("相機顏色"),
+    KO("카메라 색상"),
+    DE("Kamerafarbe"),
+    FR("Couleur des caméras"),
+    ES("Color de las cámaras"),
+    PT("Cor das câmeras"),
+    IT("Colore delle fotocamere"),
+    NL("Camerakleur"),
+    RU("Цвет камер"),
+    TR("Kamera rengi"));
+
+SS_MSG(camera_color_plain,
+    EN("Plain"),
+    JA("単色"),
+    ZH_HANS("单色"),
+    ZH_HANT("單色"),
+    KO("단색"),
+    DE("Einfarbig"),
+    FR("Uni"),
+    ES("Uniforme"),
+    PT("Uniforme"),
+    IT("Uniforme"),
+    NL("Effen"),
+    RU("Обычный"),
+    TR("Düz"));
+
+SS_MSG(camera_color_error,
+    EN("By reprojection error"),
+    JA("再投影誤差で"),
+    ZH_HANS("按重投影误差"),
+    ZH_HANT("依重投影誤差"),
+    KO("재투영 오차별"),
+    DE("Nach Rückprojektionsfehler"),
+    FR("Selon l'erreur de reprojection"),
+    ES("Por error de reproyección"),
+    PT("Por erro de reprojeção"),
+    IT("Per errore di riproiezione"),
+    NL("Op herprojectiefout"),
+    RU("По ошибке перепроекции"),
+    TR("Yeniden izdüşüm hatasına göre"));
+
+SS_MSG(camera_color_points,
+    EN("By 3D points"),
+    JA("3D 点の数で"),
+    ZH_HANS("按 3D 点数"),
+    ZH_HANT("依 3D 點數"),
+    KO("3D 점 수별"),
+    DE("Nach 3D-Punkten"),
+    FR("Selon les points 3D"),
+    ES("Por puntos 3D"),
+    PT("Por pontos 3D"),
+    IT("Per punti 3D"),
+    NL("Op 3D-punten"),
+    RU("По числу 3D-точек"),
+    TR("3B nokta sayısına göre"));
+
+SS_MSG(camera_color_help,
+    EN("Colours each placed camera from red to green by how well it fits the model.\n"
+       "- Reprojection error: red at a third of the starting error, green at a third of the "
+       "final one.\n"
+       "- 3D points: features used vs. the folder's median; green at or above it, red at an "
+       "eighth or less."),
+    JA("配置済みの各カメラを、モデルへの当てはまりで赤から緑に色分けします。\n"
+       "- 再投影誤差: 画像の平均誤差。開始誤差の 3 分の 1 (赤) から最終誤差の 3 分の 1 (緑)。\n"
+       "- 3D 点: モデルが使う特徴点の数。同じフォルダーの中央値以上で緑、8 分の 1 以下で赤。"),
+    ZH_HANS("按与模型的吻合程度，将每台已放置相机从红到绿着色。\n"
+            "- 重投影误差：图像的平均误差，从起始误差的三分之一（红）到最终误差的三分之一（绿）"
+            "。\n"
+            "- 3D 点：模型用到的特征点数，与同一文件夹的中位数比较：达到中位数为绿，不足八分之一"
+            "为红。"),
+    ZH_HANT("依與模型的吻合程度，將每台已放置相機從紅到綠著色。\n"
+            "- 重投影誤差：影像的平均誤差，從起始誤差的三分之一（紅）到最終誤差的三分之一（綠）"
+            "。\n"
+            "- 3D 點：模型用到的特徵點數，與同一資料夾的中位數比較：達到中位數為綠，不足八分之一"
+            "為紅。"),
+    KO("배치된 각 카메라를 모델과 맞는 정도에 따라 빨강에서 초록으로 표시합니다.\n"
+       "- 재투영 오차: 이미지의 평균 오차로, 시작 오차의 3분의 1(빨강)부터 최종 오차의 3분의 1("
+       "초록)까지.\n"
+       "- 3D 점: 모델이 쓰는 특징점 수를 같은 폴더의 중앙값과 비교. 중앙값 이상이면 초록, 8분의 "
+       "1 이하면 빨강."),
+    DE("Färbt jede platzierte Kamera von Rot bis Grün danach, wie gut sie zum Modell passt.\n"
+       "- Rückprojektionsfehler: Rot bei einem Drittel des Startfehlers, Grün bei einem Drittel "
+       "des Endfehlers.\n"
+       "- 3D-Punkte: genutzte Merkmale gegenüber dem Ordner-Median; Grün ab Median, Rot bei "
+       "einem Achtel oder weniger."),
+    FR("Colore chaque caméra placée du rouge au vert selon son accord avec le modèle.\n"
+       "- Erreur de reprojection : rouge à un tiers de l'erreur de départ, vert à un tiers de "
+       "l'erreur finale.\n"
+       "- Points 3D : points clés utilisés vs médiane du dossier ; vert dès la médiane, rouge à "
+       "un huitième ou moins."),
+    ES("Colorea cada cámara colocada de rojo a verde según lo bien que encaja con el modelo.\n"
+       "- Error de reproyección: rojo a un tercio del error inicial, verde a un tercio del "
+       "final.\n"
+       "- Puntos 3D: puntos clave usados vs. mediana de la carpeta; verde desde la mediana, "
+       "rojo con un octavo o menos."),
+    PT("Colore cada câmera posicionada de vermelho a verde conforme o ajuste ao modelo.\n"
+       "- Erro de reprojeção: vermelho a um terço do erro inicial, verde a um terço do final.\n"
+       "- Pontos 3D: pontos-chave usados vs. mediana da pasta; verde desde a mediana, vermelho "
+       "com um oitavo ou menos."),
+    IT("Colora ogni fotocamera posizionata dal rosso al verde in base a quanto si accorda con "
+       "il modello.\n"
+       "- Errore di riproiezione: rosso a un terzo dell'errore iniziale, verde a un terzo di "
+       "quello finale.\n"
+       "- Punti 3D: punti chiave usati vs. mediana della cartella; verde dalla mediana, rosso a "
+       "un ottavo o meno."),
+    NL("Kleurt elke geplaatste camera van rood naar groen naar hoe goed die bij het model past.\n"
+       "- Herprojectiefout: rood bij een derde van de beginfout, groen bij een derde van de "
+       "eindfout.\n"
+       "- 3D-punten: gebruikte kenmerken vs. mediaan van de map; groen vanaf de mediaan, rood "
+       "bij een achtste of minder."),
+    RU("Окрашивает каждую размещённую камеру от красного к зелёному по тому, насколько она "
+       "согласуется с моделью.\n"
+       "- Ошибка перепроекции: красный при трети начальной ошибки, зелёный при трети конечной.\n"
+       "- 3D-точки: используемые признаки к медиане папки; зелёный от медианы, красный от "
+       "восьмой части и ниже."),
+    TR("Yerleşen her kamerayı modele ne kadar uyduğuna göre kırmızıdan yeşile renklendirir.\n"
+       "- Yeniden izdüşüm hatası: kırmızı başlangıç hatasının, yeşil son hatanın üçte biridir.\n"
+       "- 3B noktalar: kullanılan öznitelikler, klasör medyanına göre; medyan ve üstü yeşil, "
+       "sekizde biri ve altı kırmızı."));
+
+SS_MSG(images_help,
+    EN("Every image: placed or not, its 3D points and reprojection error. Click a column to "
+       "sort, an image to view it."),
+    JA("全画像の配置状況、3D 点の数、再投影誤差を表示します。列をクリックで並べ替え、画像をクリ"
+       "ックで表示します。"),
+    ZH_HANS("列出所有图像：是否已放置、3D 点数和重投影误差。点击列可排序，点击图像可查看。"),
+    ZH_HANT("列出所有影像：是否已放置、3D 點數和重投影誤差。點選欄位可排序，點選影像可檢視。"),
+    KO("모든 이미지의 배치 여부, 3D 점 수, 재투영 오차를 보여 줍니다. 열을 클릭하면 정렬되고, 이"
+       "미지를 클릭하면 표시됩니다."),
+    DE("Alle Bilder: platziert, 3D-Punkte, Rückprojektionsfehler. Spalte anklicken sortiert, "
+       "Bild anklicken zeigt es."),
+    FR("Toutes les images : placement, points 3D, erreur de reprojection. Cliquez une colonne "
+       "pour trier, une image pour la voir."),
+    ES("Todas las imágenes: colocación, puntos 3D, error de reproyección. Clic en una columna "
+       "para ordenar, en una imagen para verla."),
+    PT("Todas as imagens: posicionamento, pontos 3D, erro de reprojeção. Clique em uma coluna "
+       "para ordenar, em uma imagem para vê-la."),
+    IT("Tutte le immagini: posizionamento, punti 3D, errore di riproiezione. Clic su una "
+       "colonna per ordinare, su un'immagine per vederla."),
+    NL("Alle beelden: geplaatst, 3D-punten, herprojectiefout. Klik op een kolom om te sorteren, "
+       "op een beeld om het te zien."),
+    RU("Все снимки: размещение, 3D-точки, ошибка перепроекции. Щёлкните столбец для сортировки, "
+       "снимок — чтобы открыть."),
+    TR("Tüm görüntüler: yerleşme, 3B noktalar, yeniden izdüşüm hatası. Sıralamak için sütuna, "
+       "görmek için görüntüye tıklayın."));
+
+SS_MSG(images_view_from_camera,
+    EN("View from this camera"),
+    JA("このカメラから見る"),
+    ZH_HANS("从此相机查看"),
+    ZH_HANT("從此相機檢視"),
+    KO("이 카메라에서 보기"),
+    DE("Aus dieser Kamera ansehen"),
+    FR("Voir depuis cette caméra"),
+    ES("Ver desde esta cámara"),
+    PT("Ver desta câmera"),
+    IT("Guarda da questa fotocamera"),
+    NL("Bekijk vanuit deze camera"),
+    RU("Вид из этой камеры"),
+    TR("Bu kameradan bak"));
+
+SS_MSG(images_view_from_camera_help,
+    EN("Shows the model from this image's camera, to compare points with the photo. Only for a "
+       "placed image of the shown model."),
+    JA("このカメラの位置とレンズでモデルを表示し、点と写真を見比べます。表示中のモデルに配置され"
+       "た画像のみ。"),
+    ZH_HANS("从此图像的相机位置和镜头显示模型，便于将点与照片对照。仅适用于所显示模型中已放置的"
+            "图像。"),
+    ZH_HANT("從此影像的相機位置和鏡頭顯示模型，便於將點與照片對照。僅適用於所顯示模型中已放置的"
+            "影像。"),
+    KO("이 이미지의 카메라에서 모델을 보여 주어 점과 사진을 비교합니다. 표시된 모델에 배치된 이"
+       "미지에만 쓸 수 있습니다."),
+    DE("Zeigt das Modell aus der Kamera dieses Bildes, zum Vergleich von Punkten und Foto. Nur "
+       "für ein platziertes Bild des angezeigten Modells."),
+    FR("Montre le modèle depuis la caméra de cette image, pour comparer points et photo. "
+       "Seulement pour une image placée du modèle affiché."),
+    ES("Muestra el modelo desde la cámara de esta imagen, para comparar puntos y foto. Solo "
+       "para una imagen colocada del modelo mostrado."),
+    PT("Mostra o modelo da câmera desta imagem, para comparar pontos e foto. Apenas para uma "
+       "imagem posicionada do modelo exibido."),
+    IT("Mostra il modello dalla fotocamera di questa immagine, per confrontare punti e foto. "
+       "Solo per un'immagine posizionata del modello mostrato."),
+    NL("Toont het model vanuit de camera van dit beeld, om punten en foto te vergelijken. "
+       "Alleen voor een geplaatst beeld van het getoonde model."),
+    RU("Показывает модель из камеры этого снимка, для сравнения точек с фото. Только для "
+       "размещённого снимка показанной модели."),
+    TR("Modeli bu görüntünün kamerasından gösterir; noktalar fotoğrafla karşılaştırılır. "
+       "Yalnızca gösterilen modelde yerleşmiş görüntü için."));
+
+SS_MSG(images_no_file,
+    EN("The image file was not found in the dataset's image folder."),
+    JA("データセットの画像フォルダーに画像ファイルが見つかりませんでした。"),
+    ZH_HANS("在数据集的图像文件夹中找不到该图像文件。"),
+    ZH_HANT("在資料集的影像資料夾中找不到該影像檔。"),
+    KO("데이터셋의 이미지 폴더에서 이미지 파일을 찾지 못했습니다."),
+    DE("Die Bilddatei wurde im Bildordner des Datensatzes nicht gefunden."),
+    FR("Le fichier image est introuvable dans le dossier d'images du jeu de données."),
+    ES("No se encontró el archivo de imagen en la carpeta de imágenes del conjunto de datos."),
+    PT("O arquivo de imagem não foi encontrado na pasta de imagens do conjunto de dados."),
+    IT("Il file immagine non è stato trovato nella cartella delle immagini del dataset."),
+    NL("Het beeldbestand is niet gevonden in de beeldmap van de dataset."),
+    RU("Файл снимка не найден в папке снимков набора данных."),
+    TR("Görüntü dosyası veri kümesinin görüntü klasöründe bulunamadı."));
+
 SS_MSG(view_motion,
     EN("Motion"),
     JA("動き"),
@@ -6728,6 +7142,507 @@ SS_MSG(mapper_global,
     PT("Global (experimental)"), IT("Globale (sperimentale)"),
     NL("Globaal (experimenteel)"), RU("Глобальная (экспериментально)"),
     TR("Küresel (deneysel)"));
+
+SS_MSG(progressive_alignment,
+    EN("Progressive alignment"),
+    JA("段階的な位置合わせ"),
+    ZH_HANS("渐进对齐"),
+    ZH_HANT("漸進對齊"),
+    KO("단계적 정렬"),
+    DE("Schrittweise Ausrichtung"),
+    FR("Alignement progressif"),
+    ES("Alineación progresiva"),
+    PT("Alinhamento progressivo"),
+    IT("Allineamento progressivo"),
+    NL("Stapsgewijze uitlijning"),
+    RU("Постепенное выравнивание"),
+    TR("Kademeli hizalama"));
+
+SS_MSG(progressive_alignment_help,
+    EN("For captures where some images don't align, in two stages. Slower than a single "
+       "alignment.\n"
+       "- Stage 1: aligns at a loose pixel error, then tighter ones; finds no new matches.\n"
+       "- Stage 2: re-detects features of images still left out and matches them again."),
+    JA("一部の画像が位置合わせできない撮影向けに、2 段階で動きます。1 回の位置合わせより時間がか"
+       "かります。\n"
+       "- 段階 1: 緩いピクセル誤差から厳しい誤差へ位置合わせし直します。新しいマッチは見つけませ"
+       "ん。\n"
+       "- 段階 2: 外れている画像の特徴点を検出し直し、マッチし直します。"),
+    ZH_HANS("适用于部分图像无法对齐的拍摄，分两个阶段。比单次对齐更慢。\n"
+            "- 阶段 1：先用宽松的像素误差对齐，再逐步收紧；不会找到新的匹配。\n"
+            "- 阶段 2：对仍未对齐的图像重新检测特征并重新匹配。"),
+    ZH_HANT("適用於部分影像無法對齊的拍攝，分兩個階段。比單次對齊更慢。\n"
+            "- 階段 1：先用寬鬆的像素誤差對齊，再逐步收緊；不會找到新的匹配。\n"
+            "- 階段 2：對仍未對齊的影像重新偵測特徵並重新匹配。"),
+    KO("일부 이미지가 정렬되지 않는 촬영용으로, 두 단계로 진행합니다. 한 번의 정렬보다 느립니다.\n"
+       "- 1단계: 느슨한 픽셀 오차에서 엄격한 오차로 다시 정렬하며, 새 매칭은 찾지 않습니다.\n"
+       "- 2단계: 아직 빠진 이미지의 특징점을 다시 검출하고 다시 매칭합니다."),
+    DE("Für Aufnahmen, bei denen sich Bilder nicht ausrichten lassen; zwei Stufen. Langsamer "
+       "als eine einzelne Ausrichtung.\n"
+       "- Stufe 1: richtet mit großzügigem, dann engerem Pixelfehler aus; keine neuen "
+       "Zuordnungen.\n"
+       "- Stufe 2: erkennt Merkmale der noch fehlenden Bilder neu und ordnet sie erneut zu."),
+    FR("Pour les prises de vue dont des images ne s'alignent pas ; deux étapes. Plus lent qu'un "
+       "seul alignement.\n"
+       "- Étape 1 : aligne avec une erreur en pixels large, puis plus serrée ; aucune nouvelle "
+       "correspondance.\n"
+       "- Étape 2 : redétecte les points clés des images exclues et les remet en correspondance."),
+    ES("Para capturas donde algunas imágenes no se alinean; dos etapas. Más lento que una sola "
+       "alineación.\n"
+       "- Etapa 1: alinea con un error de píxel amplio y luego más estricto; sin "
+       "correspondencias nuevas.\n"
+       "- Etapa 2: vuelve a detectar los puntos clave de las imágenes excluidas y las empareja "
+       "de nuevo."),
+    PT("Para capturas em que algumas imagens não se alinham; duas etapas. Mais lento que um "
+       "único alinhamento.\n"
+       "- Etapa 1: alinha com erro de pixel amplo e depois mais rígido; sem correspondências "
+       "novas.\n"
+       "- Etapa 2: detecta de novo os pontos-chave das imagens ainda de fora e as corresponde "
+       "de novo."),
+    IT("Per riprese in cui alcune immagini non si allineano; due fasi. Più lento di un solo "
+       "allineamento.\n"
+       "- Fase 1: allinea con errore in pixel ampio, poi più stretto; nessuna nuova "
+       "corrispondenza.\n"
+       "- Fase 2: rileva di nuovo i punti chiave delle immagini escluse e le abbina di nuovo."),
+    NL("Voor opnames waarbij sommige beelden niet uitlijnen; twee fasen. Trager dan één "
+       "uitlijning.\n"
+       "- Fase 1: lijnt uit met een ruime, daarna strengere pixelfout; geen nieuwe "
+       "overeenkomsten.\n"
+       "- Fase 2: detecteert de kenmerken van buitenvallende beelden opnieuw en koppelt ze "
+       "opnieuw."),
+    RU("Для съёмок, где часть снимков не выравнивается; два этапа. Медленнее одного "
+       "выравнивания.\n"
+       "- Этап 1: выравнивает с широкой, затем более узкой ошибкой в пикселях; новых "
+       "сопоставлений не ищет.\n"
+       "- Этап 2: заново находит признаки оставшихся снимков и сопоставляет их снова."),
+    TR("Bazı görüntülerin hizalanmadığı çekimler için; iki aşama. Tek bir hizalamadan yavaştır.\n"
+       "- Aşama 1: önce gevşek, sonra daha sıkı piksel hatasıyla hizalar; yeni eşleşme bulmaz.\n"
+       "- Aşama 2: dışarıda kalan görüntülerin özniteliklerini yeniden algılar ve yeniden eşler."));
+
+SS_MSG(progressive_stage1,
+    EN("Stage 1: loosen, then tighten the pixel error"),
+    JA("段階 1: ピクセル誤差を緩めてから締める"),
+    ZH_HANS("阶段 1：先放宽、再收紧像素误差"),
+    ZH_HANT("階段 1：先放寬、再收緊像素誤差"),
+    KO("1단계: 픽셀 오차를 느슨하게 한 뒤 조이기"),
+    DE("Stufe 1: Pixelfehler erst lockern, dann verschärfen"),
+    FR("Étape 1 : élargir, puis resserrer l'erreur en pixels"),
+    ES("Etapa 1: aflojar y luego ajustar el error de píxel"),
+    PT("Etapa 1: afrouxar e depois apertar o erro de pixel"),
+    IT("Fase 1: allargare, poi stringere l'errore in pixel"),
+    NL("Fase 1: pixelfout eerst ruimer, dan strenger"),
+    RU("Этап 1: ослабить, затем ужесточить ошибку в пикселях"),
+    TR("Aşama 1: piksel hatasını gevşet, sonra sıkılaştır"));
+
+SS_MSG(progressive_stage1_help,
+    EN("Aligns from the starting error down to the final one using existing matches. Skips to "
+       "the final error once attempts add no new image."),
+    JA("既存のマッチだけで、開始誤差から最終誤差まで位置合わせします。新しい画像が入らなくなると"
+       "最終誤差へ飛びます。"),
+    ZH_HANS("仅用已有匹配，从起始误差逐级对齐到最终误差。尝试不再加入新图像时，直接跳到最终误差"
+            "。"),
+    ZH_HANT("僅用既有匹配，從起始誤差逐級對齊到最終誤差。嘗試不再加入新影像時，直接跳到最終誤差"
+            "。"),
+    KO("이미 있는 매칭만으로 시작 오차에서 최종 오차까지 정렬합니다. 시도가 새 이미지를 더하지 "
+       "못하면 바로 최종 오차로 넘어갑니다."),
+    DE("Richtet mit den vorhandenen Zuordnungen vom Start- bis zum Endfehler aus. Springt zum "
+       "Endfehler, sobald Versuche kein neues Bild mehr platzieren."),
+    FR("Aligne de l'erreur de départ à l'erreur finale avec les correspondances existantes. "
+       "Passe à l'erreur finale quand les tentatives ne placent plus d'image."),
+    ES("Alinea del error inicial al final con las correspondencias existentes. Salta al error "
+       "final cuando los intentos dejan de colocar imágenes nuevas."),
+    PT("Alinha do erro inicial ao final com as correspondências existentes. Pula para o erro "
+       "final quando as tentativas deixam de posicionar imagens novas."),
+    IT("Allinea dall'errore iniziale a quello finale con le corrispondenze esistenti. Passa "
+       "all'errore finale quando i tentativi non posizionano nuove immagini."),
+    NL("Lijnt uit van de beginfout tot de eindfout met de bestaande overeenkomsten. Springt "
+       "naar de eindfout zodra pogingen geen nieuwe beelden meer plaatsen."),
+    RU("Выравнивает от начальной до конечной ошибки по имеющимся сопоставлениям. Переходит к "
+       "конечной ошибке, когда попытки перестают размещать новые снимки."),
+    TR("Mevcut eşleşmelerle başlangıç hatasından son hataya kadar hizalar. Denemeler yeni "
+       "görüntü yerleştirmeyi bırakınca doğrudan son hataya geçer."));
+
+SS_MSG(progressive_error_start,
+    EN("Starting pixel error"),
+    JA("開始ピクセル誤差"),
+    ZH_HANS("起始像素误差"),
+    ZH_HANT("起始像素誤差"),
+    KO("시작 픽셀 오차"),
+    DE("Pixelfehler am Anfang"),
+    FR("Erreur en pixels de départ"),
+    ES("Error en píxeles inicial"),
+    PT("Erro em pixels inicial"),
+    IT("Errore in pixel iniziale"),
+    NL("Begin-pixelfout"),
+    RU("Начальная ошибка в пикселях"),
+    TR("Başlangıç piksel hatası"));
+
+SS_MSG(progressive_error_start_help,
+    EN("The first attempt's error, and the one the matches are checked "
+       "against. 20 is a good start; higher lets in more matches, wrong ones "
+       "included."),
+    JA("最初の試行の誤差で、マッチの検証にも使われます。20 が良い出発点です。"
+       "高くするとより多くのマッチが入りますが、誤ったものも入ります。"),
+    ZH_HANS("第一次尝试的误差，也是检验匹配所用的误差。20 是不错的起点；更高会放进更多"
+            "匹配，其中也有错误的。"),
+    ZH_HANT("第一次嘗試的誤差，也是檢驗匹配所用的誤差。20 是不錯的起點；更高會放進更多"
+            "匹配，其中也有錯誤的。"),
+    KO("첫 시도의 오차이며, 매치를 검증하는 기준이기도 합니다. 20 이 좋은 "
+       "출발점입니다. 높이면 매치가 더 들어오지만 틀린 것도 들어옵니다."),
+    DE("Der Fehler des ersten Versuchs, an dem auch die Zuordnungen geprüft "
+       "werden. 20 ist ein guter Anfang; höher lässt mehr Zuordnungen zu, "
+       "falsche eingeschlossen."),
+    FR("L'erreur du premier essai, celle aussi qui sert à vérifier les "
+       "correspondances. 20 est un bon départ ; plus haut en laisse entrer "
+       "davantage, fausses comprises."),
+    ES("El error del primer intento, y con el que se verifican las "
+       "correspondencias. 20 es un buen comienzo; más alto deja entrar más, "
+       "incluidas las erróneas."),
+    PT("O erro da primeira tentativa, e aquele com que as correspondências são "
+       "verificadas. 20 é um bom começo; mais alto deixa entrar mais, "
+       "incluindo as erradas."),
+    IT("L'errore del primo tentativo, e quello con cui si verificano le "
+       "corrispondenze. 20 è un buon inizio; più alto ne lascia entrare di "
+       "più, anche sbagliate."),
+    NL("De fout van de eerste poging, waarmee ook de overeenkomsten worden "
+       "gecontroleerd. 20 is een goed begin; hoger laat meer overeenkomsten "
+       "toe, ook foute."),
+    RU("Ошибка первой попытки; с ней же проверяются соответствия. 20 — хорошее "
+       "начало; больше пропускает больше соответствий, в том числе ошибочных."),
+    TR("İlk denemenin hatası; eşleşmeler de bununla doğrulanır. 20 iyi bir "
+       "başlangıçtır; daha yüksek değer yanlışlar dahil daha çok eşleşme alır."));
+
+SS_MSG(progressive_error_end,
+    EN("Final pixel error"),
+    JA("最終ピクセル誤差"),
+    ZH_HANS("最终像素误差"),
+    ZH_HANT("最終像素誤差"),
+    KO("최종 픽셀 오차"),
+    DE("Pixelfehler am Ende"),
+    FR("Erreur en pixels finale"),
+    ES("Error en píxeles final"),
+    PT("Erro em pixels final"),
+    IT("Errore in pixel finale"),
+    NL("Eind-pixelfout"),
+    RU("Конечная ошибка в пикселях"),
+    TR("Son piksel hatası"));
+
+SS_MSG(progressive_error_end_help,
+    EN("Error of the last attempt, which the written model must meet. 0 uses the "
+       "reconstruction's maximum error (3 by default)."),
+    JA("最後の試行の誤差で、書き出すモデルはこれを満たします。0 は再構成の最大誤差 (既定 3) を使"
+       "います。"),
+    ZH_HANS("最后一次尝试的误差，写出的模型须满足它。0 表示使用重建的最大误差（默认为 3）。"),
+    ZH_HANT("最後一次嘗試的誤差，寫出的模型須滿足它。0 表示使用重建的最大誤差（預設為 3）。"),
+    KO("마지막 시도의 오차로, 기록되는 모델이 이를 만족해야 합니다. 0 은 재구성의 최대 오차(기본"
+       "값 3)를 씁니다."),
+    DE("Fehler des letzten Versuchs, den das geschriebene Modell einhält. 0 nimmt den "
+       "Höchstfehler der Rekonstruktion (standardmäßig 3)."),
+    FR("Erreur du dernier essai, que respecte le modèle écrit. 0 prend l'erreur maximale de la "
+       "reconstruction (3 par défaut)."),
+    ES("Error del último intento, que cumple el modelo escrito. 0 usa el error máximo de la "
+       "reconstrucción (3 por defecto)."),
+    PT("Erro da última tentativa, que o modelo gravado cumpre. 0 usa o erro máximo da "
+       "reconstrução (3 por padrão)."),
+    IT("Errore dell'ultimo tentativo, che il modello scritto rispetta. 0 usa l'errore massimo "
+       "della ricostruzione (3 per impostazione predefinita)."),
+    NL("Fout van de laatste poging, waaraan het weggeschreven model voldoet. 0 neemt de "
+       "maximale fout van de reconstructie (standaard 3)."),
+    RU("Ошибка последней попытки, которой подчиняется записанная модель. 0 берёт максимальную "
+       "ошибку реконструкции (по умолчанию 3)."),
+    TR("Son denemenin hatası; yazılan model buna uyar. 0, yeniden yapılandırmanın en büyük "
+       "hatasını kullanır (varsayılan 3)."));
+
+SS_MSG(progressive_attempts,
+    EN("Attempts"),
+    JA("試行回数"),
+    ZH_HANS("尝试次数"),
+    ZH_HANT("嘗試次數"),
+    KO("시도 횟수"),
+    DE("Versuche"),
+    FR("Essais"),
+    ES("Intentos"),
+    PT("Tentativas"),
+    IT("Tentativi"),
+    NL("Pogingen"),
+    RU("Попытки"),
+    TR("Denemeler"));
+
+SS_MSG(progressive_attempts_help,
+    EN("Number of alignments from the starting error to the final one, both included; each step "
+       "shrinks the error by the same ratio."),
+    JA("開始誤差から最終誤差まで (両端を含む) の位置合わせ回数です。各段階で誤差は同じ比率で減り"
+       "ます。"),
+    ZH_HANS("从起始误差到最终误差（含两端）的对齐次数。每一步按相同比例缩小误差。"),
+    ZH_HANT("從起始誤差到最終誤差（含兩端）的對齊次數。每一步按相同比例縮小誤差。"),
+    KO("시작 오차부터 최종 오차까지(양끝 포함) 정렬하는 횟수입니다. 단계마다 같은 비율로 오차가 "
+       "줄어듭니다."),
+    DE("Anzahl der Ausrichtungen vom Start- bis zum Endfehler, beide eingeschlossen; jede Stufe "
+       "senkt den Fehler um dasselbe Verhältnis."),
+    FR("Nombre d'alignements de l'erreur de départ à l'erreur finale, les deux incluses ; "
+       "chaque palier réduit l'erreur du même rapport."),
+    ES("Número de alineaciones del error inicial al final, ambos incluidos; cada paso reduce el "
+       "error en la misma proporción."),
+    PT("Número de alinhamentos do erro inicial ao final, ambos incluídos; cada passo reduz o "
+       "erro na mesma proporção."),
+    IT("Numero di allineamenti dall'errore iniziale a quello finale, entrambi inclusi; ogni "
+       "passo riduce l'errore dello stesso rapporto."),
+    NL("Aantal uitlijningen van de beginfout tot de eindfout, beide inbegrepen; elke stap "
+       "verkleint de fout met dezelfde verhouding."),
+    RU("Число выравниваний от начальной до конечной ошибки включительно; каждый шаг уменьшает "
+       "ошибку в одно и то же число раз."),
+    TR("Başlangıç hatasından son hataya (ikisi dahil) kaç hizalama yapılacağı; her adım hatayı "
+       "aynı oranda azaltır."));
+
+SS_MSG(progressive_redetect,
+    EN("Stage 2: detect features again on the images left out"),
+    JA("段階 2: 外れた画像の特徴点を検出し直す"),
+    ZH_HANS("阶段 2：对未对齐的图像重新检测特征"),
+    ZH_HANT("階段 2：對未對齊的影像重新偵測特徵"),
+    KO("2단계: 빠진 이미지의 특징점 다시 검출"),
+    DE("Stufe 2: Merkmale der fehlenden Bilder neu erkennen"),
+    FR("Étape 2 : redétecter les points clés des images exclues"),
+    ES("Etapa 2: volver a detectar puntos clave en las imágenes que quedan fuera"),
+    PT("Etapa 2: detectar de novo os pontos-chave das imagens de fora"),
+    IT("Fase 2: rilevare di nuovo i punti chiave delle immagini escluse"),
+    NL("Fase 2: kenmerken opnieuw detecteren op de buitengesloten beelden"),
+    RU("Этап 2: заново найти признаки у не вошедших снимков"),
+    TR("Aşama 2: dışarıda kalan görüntülerde öznitelikleri yeniden algıla"));
+
+SS_MSG(progressive_redetect_help,
+    EN("Re-detects features of images left out, larger and denser, then re-matches them. A pass "
+       "is kept only if more images align."),
+    JA("外れている画像の特徴点をより大きなサイズで、より多く検出し直し、マッチし直します。より多"
+       "くの画像が位置合わせできたパスだけを残します。"),
+    ZH_HANS("对仍被排除的图像以更大尺寸、更多特征重新检测并重新匹配。只有对齐了更多图像的那一遍"
+            "才会保留。"),
+    ZH_HANT("對仍被排除的影像以更大尺寸、更多特徵重新偵測並重新匹配。只有對齊了更多影像的那一遍"
+            "才會保留。"),
+    KO("빠진 이미지의 특징점을 더 큰 크기로 더 많이 다시 검출하고 다시 매칭합니다. 더 많은 이미"
+       "지가 정렬된 패스만 남깁니다."),
+    DE("Erkennt Merkmale ausgeschlossener Bilder größer und dichter neu und ordnet sie erneut "
+       "zu. Ein Durchgang bleibt nur, wenn sich mehr Bilder ausrichten."),
+    FR("Redétecte les points clés des images exclues, plus grands et plus nombreux, puis les "
+       "remet en correspondance. Une passe n'est gardée que si plus d'images s'alignent."),
+    ES("Vuelve a detectar y emparejar los puntos clave de las imágenes excluidas, con mayor "
+       "tamaño y densidad. Una pasada se conserva solo si se alinean más imágenes."),
+    PT("Detecta de novo os pontos-chave das imagens de fora, em tamanho maior e mais numerosos, "
+       "e as corresponde de novo. Uma passagem só é mantida se mais imagens se alinharem."),
+    IT("Rileva di nuovo i punti chiave delle immagini escluse, più grandi e numerosi, e le "
+       "abbina di nuovo. Un passaggio resta solo se si allineano più immagini."),
+    NL("Detecteert de kenmerken van buitengesloten beelden opnieuw, groter en talrijker, en "
+       "koppelt ze opnieuw. Een ronde blijft alleen als meer beelden uitlijnen."),
+    RU("Заново находит признаки исключённых снимков в большем размере и числе и сопоставляет "
+       "снова. Проход сохраняется, только если выравнивается больше снимков."),
+    TR("Dışarıda kalan görüntülerin özniteliklerini daha büyük boyutta ve daha çok algılayıp "
+       "yeniden eşler. Bir geçiş yalnızca daha çok görüntü hizalanırsa korunur."));
+
+SS_MSG(progressive_features_end,
+    EN("Feature limit at the end"),
+    JA("最後の特徴点上限"),
+    ZH_HANS("最终特征上限"),
+    ZH_HANT("最終特徵上限"),
+    KO("마지막 특징점 한도"),
+    DE("Merkmalsgrenze am Ende"),
+    FR("Limite de points à la fin"),
+    ES("Límite de rasgos al final"),
+    PT("Limite de traços no fim"),
+    IT("Limite di punti alla fine"),
+    NL("Kenmerkgrens aan het eind"),
+    RU("Предел признаков в конце"),
+    TR("Sondaki öznitelik sınırı"));
+
+SS_MSG(progressive_features_end_help,
+    EN("Features per image on the last pass; the first uses the reconstruction's "
+       "own limit. 0 is four times that."),
+    JA("最後のパスでの画像あたりの特徴点数。最初のパスは再構成自体の上限を使います。"
+       "0 はその 4 倍です。"),
+    ZH_HANS("最后一遍每张图像的特征数；第一遍使用重建本身的上限。0 为其 4 倍。"),
+    ZH_HANT("最後一遍每張影像的特徵數；第一遍使用重建本身的上限。0 為其 4 倍。"),
+    KO("마지막 패스의 이미지당 특징점 수. 첫 패스는 재구성 자체의 한도를 씁니다. "
+       "0 은 그 4 배입니다."),
+    DE("Merkmale je Bild im letzten Durchgang; der erste nimmt die Grenze der "
+       "Rekonstruktion. 0 ist das Vierfache davon."),
+    FR("Points par image à la dernière passe ; la première prend la limite de la "
+       "reconstruction. 0 vaut quatre fois celle-ci."),
+    ES("Rasgos por imagen en la última pasada; la primera usa el límite de la "
+       "reconstrucción. 0 es cuatro veces ese."),
+    PT("Traços por imagem na última passagem; a primeira usa o limite da "
+       "reconstrução. 0 é quatro vezes esse."),
+    IT("Punti per immagine all'ultimo passaggio; il primo usa il limite della "
+       "ricostruzione. 0 è quattro volte quello."),
+    NL("Kenmerken per beeld in de laatste ronde; de eerste neemt de grens van de "
+       "reconstructie. 0 is vier keer die."),
+    RU("Признаков на снимок в последнем проходе; первый берёт предел "
+       "реконструкции. 0 — в четыре раза больше."),
+    TR("Son geçişte görüntü başına öznitelik; ilki yeniden yapılandırmanın "
+       "sınırını kullanır. 0, bunun dört katıdır."));
+
+SS_MSG(progressive_size_end,
+    EN("Image size at the end"),
+    JA("最後の画像サイズ"),
+    ZH_HANS("最终图像尺寸"),
+    ZH_HANT("最終影像尺寸"),
+    KO("마지막 이미지 크기"),
+    DE("Bildgröße am Ende"),
+    FR("Taille d'image à la fin"),
+    ES("Tamaño de imagen al final"),
+    PT("Tamanho de imagem no fim"),
+    IT("Dimensione dell'immagine alla fine"),
+    NL("Beeldgrootte aan het eind"),
+    RU("Размер снимка в конце"),
+    TR("Sondaki görüntü boyutu"));
+
+SS_MSG(progressive_size_end_help,
+    EN("Longest edge, in pixels, the last pass detects at; the first uses the "
+       "reconstruction's own. 0 is the images' full size."),
+    JA("最後のパスで検出に使う長辺のピクセル数。最初のパスは再構成自体の値を使います。"
+       "0 は画像の元のサイズです。"),
+    ZH_HANS("最后一遍检测时长边的像素数；第一遍使用重建本身的值。0 为图像原始尺寸。"),
+    ZH_HANT("最後一遍偵測時長邊的像素數；第一遍使用重建本身的值。0 為影像原始尺寸。"),
+    KO("마지막 패스가 검출에 쓰는 긴 변의 픽셀 수. 첫 패스는 재구성 자체의 값을 씁니다. "
+       "0 은 이미지 원래 크기입니다."),
+    DE("Längste Kante in Pixeln, mit der der letzte Durchgang erkennt; der erste "
+       "nimmt die der Rekonstruktion. 0 ist die volle Bildgröße."),
+    FR("Plus grand côté, en pixels, de la dernière passe ; la première prend celui "
+       "de la reconstruction. 0 est la taille complète des images."),
+    ES("Lado más largo, en píxeles, de la última pasada; la primera usa el de la "
+       "reconstrucción. 0 es el tamaño completo de las imágenes."),
+    PT("Lado maior, em pixels, da última passagem; a primeira usa o da "
+       "reconstrução. 0 é o tamanho completo das imagens."),
+    IT("Lato più lungo, in pixel, dell'ultimo passaggio; il primo usa quello della "
+       "ricostruzione. 0 è la dimensione piena delle immagini."),
+    NL("Langste kant in pixels van de laatste ronde; de eerste neemt die van de "
+       "reconstructie. 0 is de volle beeldgrootte."),
+    RU("Длинная сторона в пикселях для последнего прохода; первый берёт значение "
+       "реконструкции. 0 — полный размер снимков."),
+    TR("Son geçişin piksel cinsinden en uzun kenarı; ilki yeniden yapılandırmanınkini "
+       "kullanır. 0, görüntülerin tam boyutudur."));
+
+SS_MSG(progressive_passes,
+    EN("Feature passes"),
+    JA("特徴点パス数"),
+    ZH_HANS("特征检测遍数"),
+    ZH_HANT("特徵偵測遍數"),
+    KO("특징점 패스 수"),
+    DE("Merkmalsdurchgänge"),
+    FR("Passes de détection"),
+    ES("Pasadas de detección"),
+    PT("Passagens de detecção"),
+    IT("Passaggi di rilevamento"),
+    NL("Detectierondes"),
+    RU("Проходы поиска признаков"),
+    TR("Öznitelik geçişleri"));
+
+SS_MSG(progressive_passes_help,
+    EN("How many passes go from the reconstruction's settings to the ends above. "
+       "The last one also looks into flatter, darker texture."),
+    JA("再構成の設定から上の上限まで何回のパスで進むかです。最後のパスはより平坦で暗い"
+       "模様も探します。"),
+    ZH_HANS("从重建的设置到上述上限分几遍进行。最后一遍还会在更平坦、更暗的纹理中查找。"),
+    ZH_HANT("從重建的設定到上述上限分幾遍進行。最後一遍還會在更平坦、更暗的紋理中尋找。"),
+    KO("재구성의 설정에서 위의 한도까지 몇 번의 패스로 갈지입니다. 마지막 패스는 더 "
+       "평평하고 어두운 질감도 살핍니다."),
+    DE("Wie viele Durchgänge von den Einstellungen der Rekonstruktion bis zu den "
+       "obigen Grenzen gehen. Der letzte sucht auch in flacherer, dunklerer Textur."),
+    FR("Combien de passes vont des réglages de la reconstruction aux limites "
+       "ci-dessus. La dernière cherche aussi dans les textures plus plates et "
+       "sombres."),
+    ES("Cuántas pasadas van de los ajustes de la reconstrucción a los límites de "
+       "arriba. La última busca también en texturas más planas y oscuras."),
+    PT("Quantas passagens vão dos ajustes da reconstrução aos limites acima. A "
+       "última procura também em texturas mais planas e escuras."),
+    IT("Quanti passaggi vanno dalle impostazioni della ricostruzione ai limiti qui "
+       "sopra. L'ultimo cerca anche nelle texture più piatte e scure."),
+    NL("Hoeveel rondes gaan van de instellingen van de reconstructie naar de "
+       "grenzen hierboven. De laatste zoekt ook in vlakkere, donkerdere textuur."),
+    RU("Сколько проходов идёт от настроек реконструкции до пределов выше. "
+       "Последний ищет и в более гладкой и тёмной текстуре."),
+    TR("Yeniden yapılandırmanın ayarlarından yukarıdaki sınırlara kaç geçişle "
+       "gidileceği. Sonuncusu daha düz ve koyu dokulara da bakar."));
+
+SS_MSG(progressive_patience,
+    EN("Stop a stage after"),
+    JA("段階を止めるまで"),
+    ZH_HANS("阶段停止于"),
+    ZH_HANT("階段停止於"),
+    KO("단계 중지 조건"),
+    DE("Stufe beenden nach"),
+    FR("Arrêter une étape après"),
+    ES("Detener una etapa tras"),
+    PT("Parar uma etapa após"),
+    IT("Fermare una fase dopo"),
+    NL("Fase stoppen na"),
+    RU("Остановить этап после"),
+    TR("Aşamayı durdur"));
+
+SS_MSG(progressive_patience_help,
+    EN("Tries in a row that align no new image before a stage gives up: stage 1 skips to "
+       "its final error, and stage 2 stops its passes."),
+    JA("新しい画像が位置合わせできない試行がこの回数続くと、その段階を打ち切ります。段階 1 は最終誤差に飛び、段階 2 はパスを止めます。"),
+    ZH_HANS("连续这么多次都没有对齐新图像时，该阶段就此结束：阶段 1 直接跳到最终误差，阶段 2 停止后续各遍。"),
+    ZH_HANT("連續這麼多次都沒有對齊新影像時，該階段就此結束：階段 1 直接跳到最終誤差，階段 2 停止後續各遍。"),
+    KO("새 이미지를 정렬하지 못한 시도가 이만큼 이어지면 그 단계를 끝냅니다. 1단계는 최종 오차로 건너뛰고, 2단계는 패스를 멈춥니다."),
+    DE("So viele Versuche in Folge ohne neu ausgerichtetes Bild, bis eine Stufe aufgibt: "
+       "Stufe 1 springt zu ihrem Endfehler, Stufe 2 beendet ihre Durchgänge."),
+    FR("Nombre d'essais d'affilée sans nouvelle image alignée avant qu'une étape abandonne "
+       ": l'étape 1 saute à son erreur finale, l'étape 2 arrête ses passes."),
+    ES("Intentos seguidos sin alinear ninguna imagen nueva antes de que una etapa se rinda: "
+       "la etapa 1 salta a su error final y la etapa 2 detiene sus pasadas."),
+    PT("Tentativas seguidas sem alinhar nenhuma imagem nova antes que uma etapa desista: a "
+       "etapa 1 pula para o erro final e a etapa 2 encerra as passagens."),
+    IT("Tentativi di fila senza nuove immagini allineate prima che una fase si arrenda: la "
+       "fase 1 salta all'errore finale e la fase 2 interrompe i passaggi."),
+    NL("Pogingen op rij zonder nieuw uitgelijnd beeld voordat een fase opgeeft: fase 1 "
+       "springt naar haar eindfout en fase 2 stopt haar rondes."),
+    RU("Сколько попыток подряд без новых выровненных снимков, прежде чем этап сдаётся: этап "
+       "1 переходит к конечной ошибке, этап 2 прекращает проходы."),
+    TR("Bir aşama vazgeçmeden önce yeni görüntü hizalamayan ardışık deneme sayısı: Aşama 1 "
+       "son hatasına atlar, Aşama 2 geçişlerini durdurur."));
+
+SS_MSG(progressive_time_limit,
+    EN("Time limit (minutes)"),
+    JA("制限時間（分）"),
+    ZH_HANS("时间上限（分钟）"),
+    ZH_HANT("時間上限（分鐘）"),
+    KO("시간 한도(분)"),
+    DE("Zeitgrenze (Minuten)"),
+    FR("Limite de temps (minutes)"),
+    ES("Límite de tiempo (minutos)"),
+    PT("Limite de tempo (minutos)"),
+    IT("Limite di tempo (minuti)"),
+    NL("Tijdgrens (minuten)"),
+    RU("Предел времени (минуты)"),
+    TR("Süre sınırı (dakika)"));
+
+SS_MSG(progressive_time_limit_help,
+    EN("No further feature pass starts once progressive alignment has run this "
+       "long. The pixel error steps always finish. 0 is no limit."),
+    JA("段階的な位置合わせがこの時間を過ぎたら、次の特徴点パスは始めません。"
+       "ピクセル誤差の段階は必ず最後まで行います。0 で無制限。"),
+    ZH_HANS("渐进对齐运行超过这么久后，不再开始新的特征检测。像素误差各步总会完成。"
+            "0 为不限。"),
+    ZH_HANT("漸進對齊執行超過這麼久後，不再開始新的特徵偵測。像素誤差各步總會完成。"
+            "0 為不限。"),
+    KO("단계적 정렬이 이만큼 진행되면 다음 특징점 패스는 시작하지 않습니다. 픽셀 오차 "
+       "단계는 항상 끝까지 합니다. 0 은 제한 없음."),
+    DE("Ist die schrittweise Ausrichtung so lange gelaufen, beginnt kein weiterer "
+       "Merkmalsdurchgang. Die Pixelfehlerstufen laufen immer zu Ende. 0 ist ohne "
+       "Grenze."),
+    FR("Une fois l'alignement progressif arrivé à cette durée, aucune nouvelle passe "
+       "ne démarre. Les paliers d'erreur vont toujours au bout. 0 est sans limite."),
+    ES("Cuando la alineación progresiva lleva este tiempo, no empieza otra pasada. "
+       "Los pasos de error siempre terminan. 0 es sin límite."),
+    PT("Quando o alinhamento progressivo chega a esse tempo, nenhuma passagem nova "
+       "começa. Os passos de erro sempre terminam. 0 é sem limite."),
+    IT("Quando l'allineamento progressivo arriva a questa durata, non parte altro "
+       "passaggio. I passi di errore arrivano sempre in fondo. 0 è senza limite."),
+    NL("Heeft de stapsgewijze uitlijning zo lang gelopen, dan begint geen nieuwe "
+       "ronde. De foutstappen lopen altijd af. 0 is zonder grens."),
+    RU("Когда постепенное выравнивание идёт столько времени, новый проход не "
+       "начинается. Шаги ошибки всегда доходят до конца. 0 — без ограничения."),
+    TR("Kademeli hizalama bu kadar sürdüğünde yeni geçiş başlamaz. Piksel hatası "
+       "adımları her zaman biter. 0 sınırsızdır."));
 
 SS_MSG(mapper_schedule_help,
     EN("- Flat: default, adds cameras one by one.\n- Bottom-up: reconstructs small groups and merges them.\n- Global: solves camera rotations and positions together; experimental."),
