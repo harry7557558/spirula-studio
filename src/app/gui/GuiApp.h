@@ -173,11 +173,11 @@ private:
     // ---- actions ----
 
     // By value: callers pass paths out of _recent, which remember() reorders.
-    // Clears the log unless `keep_log`, which the reconstruction handoff
-    // passes: there the log is this dataset's own build log.
+    // `keep_log` keeps a reconstruction handoff's build log; `seed` is the
+    // cloud the editor just wrote, which the run then starts from.
     void open_dataset(std::string dir, std::string image_dir = "",
                       std::string mask_dir = "", bool mask_flipped = false,
-                      bool keep_log = false);
+                      bool keep_log = false, std::string seed = "");
     // Route for user-initiated opens: confirms first when training.
     void request_open_dataset(std::string dir);
 
@@ -711,21 +711,20 @@ private:
         bool mask_flipped = false;
     };
     DatasetFolders _sparse_edit_src;
-    bool _force_dense_seed = false;
     // Progressive splat budget: the mode and one box per resolution stage.
     void draw_splat_budget(float w);
     int64_t starting_points();
     std::string _seed_count_path;
     int64_t _seed_count = -1;
-    std::filesystem::file_time_type _seed_count_time{};   // the next open trains from the dense cloud just edited
+    std::filesystem::file_time_type _seed_count_time{};
     // A dataset already in the output folder, read the way a run would read it.
     DatasetFolders workspace_folders(const WorkspaceState& prior) const;
     // Open in trainer / edit reconstruction / correct masks, for one dataset.
     void draw_dataset_open_buttons(const DatasetFolders& f, bool model);
-    // A saved sparse edit on its way to the trainer: the dataset to open and
-    // the one it was edited from. Taken up at the top of the next frame,
-    // outside the edit session that asked for it.
-    std::string _edit_train_dataset, _edit_train_source;
+    // A saved edit on its way to the trainer: the dataset to open, the one it
+    // was edited from, and the cloud to start from. Taken up at the top of the
+    // next frame, outside the edit session that asked for it.
+    std::string _edit_train_dataset, _edit_train_source, _edit_train_seed;
     void open_edited_dataset();
     // The same, for a model opened in order to render it.
     bool _render_after_open = false;
@@ -1101,12 +1100,21 @@ private:
     GeometryJob _geometry;
     DenseJob _dense;
     FileDownload _dense_download;
-    std::string _dense_selected_seed;
+    // Starting points the app chose for one dataset rather than the user:
+    // dropped again when another dataset opens.
+    std::string _app_seed;
     std::string _dense_config_error;   // why the last advanced edit is invalid
     void draw_dense_options();
     void draw_dense_advanced();
     void draw_train_mask_mode(float width);
     void draw_seed_cloud(TrainRunner::Phase ph);
+    // Edited copies beside the dataset's own clouds, for Starting points: the
+    // other models in sparse/ and the other PLY files in dense/.
+    struct SeedFile { std::string label, seed; bool dense = false; };
+    const std::vector<SeedFile>& dataset_seed_files();
+    std::vector<SeedFile> _seed_files;
+    std::string _seed_files_data;
+    double _seed_files_time = -1.0;
     void draw_dataset_aux(float width);
     bool dense_cloud_present();
     std::string _dense_probe_data;     // dense_cloud_present()'s cache

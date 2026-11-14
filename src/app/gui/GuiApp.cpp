@@ -264,13 +264,14 @@ GuiApp::GuiApp() {
         return std::vector<std::string>{};
     });
     _compare.edit().set_to_trainer(
-        [this](const std::string& dataset, const std::string& source) {
+        [this](const std::string& dataset, const std::string& source, const std::string& seed) {
             _edit_train_dataset = dataset;
             _edit_train_source = source;
+            _edit_train_seed = seed;
         });
     _compare.edit().set_pick_save(
         [this](int target, const std::string& ext, bool folder,
-               const std::string& suggested) {
+               const std::string& suggested, const std::string& start_dir) {
             _edit_save_target = target;
             open_pick(folder ? PickAction::EditSaveFolder
                              : PickAction::EditSaveFile,
@@ -278,7 +279,7 @@ GuiApp::GuiApp() {
                       folder ? FileDialog::Mode::Folder : FileDialog::Mode::Save,
                       ext.empty() ? std::vector<std::string>{}
                                   : std::vector<std::string>{ext},
-                      "", false, suggested);
+                      start_dir, false, suggested);
         });
     using RPick = gui::render::RenderSession::Pick;
     _compare.render().set_pick(
@@ -1161,7 +1162,7 @@ void GuiApp::load_mesh_preset_file(const std::string& path) {
 
 void GuiApp::open_dataset(std::string dir, std::string image_dir,
                           std::string mask_dir, bool mask_flipped,
-                          bool keep_log) {
+                          bool keep_log, std::string seed) {
     if (dir.empty() || native_work_busy()) return;
     app::set_crash_note("opening dataset " + dir);
     close_native_previews();
@@ -1181,14 +1182,18 @@ void GuiApp::open_dataset(std::string dir, std::string image_dir,
     _cfg.data = dir;
     // The trainer picks a dense cloud up by itself; only the dense step's
     // "not for training" needs saying, and only for the dataset it made.
-    if (!_dense_selected_seed.empty() && _cfg.seed_pointcloud == _dense_selected_seed) {
-        _cfg.seed_pointcloud.clear(); _dense_selected_seed.clear();
+    if (!_app_seed.empty() && _cfg.seed_pointcloud == _app_seed) {
+        _cfg.seed_pointcloud.clear(); _app_seed.clear();
     }
-    const bool force_dense = std::exchange(_force_dense_seed, false);
-    if (dir == _workspace && !force_dense && _dense.enable && !_dense.use_for_training &&
-        !_cfg_ui.touched.count("seed_pointcloud") && _cfg.seed_pointcloud.empty()) {
-        _dense_selected_seed = spirula::dense::kSparseSeed;
-        _cfg.seed_pointcloud = _dense_selected_seed;
+    // An edit sent here from the editor starts from what was just edited,
+    // whatever the dense options say.
+    if (!seed.empty()) {
+        _app_seed = seed;
+        _cfg.seed_pointcloud = seed;
+    } else if (dir == _workspace && _dense.enable && !_dense.use_for_training &&
+               !_cfg_ui.touched.count("seed_pointcloud") && _cfg.seed_pointcloud.empty()) {
+        _app_seed = spirula::dense::kSparseSeed;
+        _cfg.seed_pointcloud = _app_seed;
     }
     // image_dir / mask_dir: the runner hands its (possibly external) folders
     // over in-memory right after a run -- photos indexed where they are keep
@@ -1226,14 +1231,12 @@ void GuiApp::open_dataset(std::string dir, std::string image_dir,
 void GuiApp::open_edited_dataset() {
     const std::string dataset = std::exchange(_edit_train_dataset, {});
     const std::string source = std::exchange(_edit_train_source, {});
+    const std::string seed = std::exchange(_edit_train_seed, {});
     if (native_work_busy()) return;
     auto same = [](const std::string& a, const std::string& b) {
         std::error_code ec;
         return !a.empty() && !b.empty() && fs::equivalent(a, b, ec);
     };
-    // An edited dense cloud trains as the seed, whatever the dense options say.
-    _force_dense_seed = same(dataset, source) && same(source, _sparse_edit_src.dir) &&
-                        dense_completed(source);
     DatasetFolders from;
     if (same(source, _sparse_edit_src.dir) ||
         same(source, spirula::resolve_sparse_dir(_sparse_edit_src.dir)))
@@ -1253,7 +1256,7 @@ void GuiApp::open_edited_dataset() {
         from.image_dir = absolute(from.image_dir, stock.image_dir);
         from.mask_dir = absolute(from.mask_dir, stock.mask_dir);
     }
-    open_dataset(dataset, from.image_dir, from.mask_dir, from.mask_flipped);
+    open_dataset(dataset, from.image_dir, from.mask_dir, from.mask_flipped, false, seed);
 }
 
 void GuiApp::request_open_dataset(std::string dir) {
@@ -7775,9 +7778,16 @@ int64_t GuiApp::starting_points() {
             _seed_count_path = p.string();
             _seed_count_time = time;
             _seed_count = -1;
-            std::ifstream in(p, std::ios::binary);
-            for (std::string line; std::getline(in, line) && line.rfind("end_header", 0) != 0;)
-                if (line.rfind("element vertex ", 0) == 0) _seed_count = std::atoll(line.c_str() + 15);
+            if (fs::is_directory(p, ec)) {
+                // A model folder: points3D.bin opens with its point count.
+                std::ifstream in(p / "points3D.bin", std::ios::binary);
+                uint64_t n = 0;
+                if (in.read(reinterpret_cast<char*>(&n), sizeof n)) _seed_count = (int64_t)n;
+            } else {
+                std::ifstream in(p, std::ios::binary);
+                for (std::string line; std::getline(in, line) && line.rfind("end_header", 0) != 0;)
+                    if (line.rfind("element vertex ", 0) == 0) _seed_count = std::atoll(line.c_str() + 15);
+            }
         }
         return _seed_count;
     }
@@ -12006,25 +12016,78 @@ bool GuiApp::dense_cloud_present() {
     return _dense_probe_found;
 }
 
+// Probed at most once a second, as dense_cloud_present() is: the editor saves
+// these while the trainer shows the dataset.
+const std::vector<GuiApp::SeedFile>& GuiApp::dataset_seed_files() {
+    const double now = ImGui::GetTime();
+    if (_cfg.data == _seed_files_data && now - _seed_files_time <= 1.0) return _seed_files;
+    _seed_files_data = _cfg.data;
+    _seed_files_time = now;
+    _seed_files.clear();
+    if (_cfg.data.empty()) return _seed_files;
+    std::error_code ec;
+    const fs::path root(_cfg.data);
+    auto entries = [&](const fs::path& dir, bool folders) {
+        std::vector<fs::path> out;
+        for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
+            if (folders ? it->is_directory(ec) : it->is_regular_file(ec)) out.push_back(it->path());
+        std::sort(out.begin(), out.end());
+        return out;
+    };
+    for (const fs::path& f : entries(root / "dense", false)) {
+        const std::string name = f.filename().string();
+        if (f.extension() != ".ply" || name == "roma.ply" || name == "roma.original.ply") continue;
+        _seed_files.push_back({i18n::format(msg::seed_choice_dense_file, {f.stem().string()}),
+                               "dense/" + name, true});
+    }
+    // The model the dataset itself loads is "Sparse points" already.
+    const std::string loaded = find_colmap_model(_cfg.data, _cfg.colmap_recon_dir);
+    for (const fs::path& m : entries(root / "sparse", true)) {
+        const bool points = fs::is_regular_file(m / "points3D.bin", ec) ||
+                            fs::is_regular_file(m / "points3D.txt", ec);
+        if (!points || (!loaded.empty() && fs::equivalent(m, loaded, ec))) continue;
+        const std::string name = m.filename().string();
+        _seed_files.push_back({i18n::format(msg::seed_choice_sparse_model, {name}),
+                               "sparse/" + name, false});
+    }
+    return _seed_files;
+}
+
 void GuiApp::draw_seed_cloud(TrainRunner::Phase ph) {
-    enum { Dense, Sparse, Other };
+    enum { Dense, Sparse, Other, File };   // File + i is dataset_seed_files()[i]
     const bool dense = dense_cloud_present();
+    const std::vector<SeedFile>& files = dataset_seed_files();
     std::vector<int> ids;
-    std::vector<const Msg*> items;
-    if (dense) { ids.push_back(Dense); items.push_back(&msg::seed_choice_dense); }
-    ids.push_back(Sparse); items.push_back(&msg::seed_choice_sparse);
-    ids.push_back(Other); items.push_back(&msg::seed_choice_other);
+    std::vector<std::string> labels;
+    auto add = [&](int id, const std::string& label) { ids.push_back(id); labels.push_back(label); };
+    auto add_files = [&](bool of_dense) {
+        for (size_t i = 0; i < files.size(); i++)
+            if (files[i].dense == of_dense) add(File + (int)i, files[i].label);
+    };
+    if (dense) add(Dense, msg::seed_choice_dense.get());
+    add_files(true);
+    add(Sparse, msg::seed_choice_sparse.get());
+    add_files(false);
+    add(Other, msg::seed_choice_other.get());
     const std::string& seed = _cfg.seed_pointcloud;
+    const std::string listed = fs::path(seed).lexically_normal().generic_string();
+    int file = -1;
+    for (size_t i = 0; i < files.size() && file < 0; i++)
+        if (files[i].seed == listed) file = File + (int)i;
     const int choice = _seed_other && seed.empty() ? Other
         : seed.empty() ? (dense ? Dense : Sparse)
         : seed == spirula::dense::kSparseSeed ? Sparse
+        : file >= 0 ? file
         : spirula::dense::is_dense_seed(_cfg.data, seed) ? Dense : Other;
     int at = (int)(std::find(ids.begin(), ids.end(), choice) - ids.begin());
     if (at == (int)ids.size()) at = (int)ids.size() - 1;
+    std::vector<const char*> items;
+    for (const std::string& l : labels) items.push_back(l.c_str());
     ImGui::SetNextItemWidth(px(170.0f));
-    if (ui::ComboRaw(ui::detail::label(msg::seed_choice), &at, items)) {
+    if (ui::ComboRaw(ui::detail::label(msg::seed_choice), &at, items.data(), (int)items.size())) {
         _seed_other = ids[at] == Other;
         if (ids[at] == Sparse) _cfg.seed_pointcloud = spirula::dense::kSparseSeed;
+        else if (ids[at] >= File) _cfg.seed_pointcloud = files[(size_t)(ids[at] - File)].seed;
         else if (ids[at] == Dense || choice != Other) _cfg.seed_pointcloud.clear();
         _cfg_ui.touched.insert("seed_pointcloud");
     }

@@ -33,7 +33,13 @@ namespace dsparse {
 ColmapPoints3D read_seed_pointcloud(const std::string& dataset_dir,
                                    const std::string& path) {
     const std::string resolved = (fs::path(dataset_dir) / fs::path(path)).string();
-    ColmapPoints3D points = read_ply_points(resolved);
+    // A model folder seeds with its own points: an edited copy of the
+    // reconstruction saved beside the original in sparse/.
+    std::error_code ec;
+    ColmapPoints3D points =
+        !fs::is_directory(resolved, ec)                              ? read_ply_points(resolved)
+        : fs::is_regular_file(fs::path(resolved) / "points3D.bin", ec) ? read_points3D_binary(resolved)
+                                                                       : read_points3D_text(resolved);
     if (points.num() == 0)
         throw std::runtime_error(spirula::i18n::format(
             spirula::i18n::msg::data::seed_cloud_empty, {resolved}));

@@ -240,6 +240,8 @@ public:
     // What "Save" (as opposed to "Save a copy") would overwrite in this
     // target's format, "" when there is no such file to write back to.
     virtual std::string default_save_path(int target) const { (void)target; return {}; }
+    // Where "Save a copy" opens, "" for wherever the picker was last.
+    virtual std::string copy_dir(int target) const { (void)target; return {}; }
 
     const std::string& source_path() const { return _source; }
 
