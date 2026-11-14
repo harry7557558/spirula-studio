@@ -150,6 +150,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(int, roi_splat_samples, 4, "dataset", "advanced", "")                  \
     X(bool, roi_mask_pixels, true, "dataset", "advanced", "")                \
     X(int, sampling_seed, 0, "dataset", "expert", "")                         \
+    X(int, max_resolution, 0, "dataset", "basic", "")                         \
     X(float, train_resolution_divisor, 0.0f, "dataset", "basic", "")         \
     X(std::string, downscale_rounding_mode, "floor", "dataset", "advanced", "floor|ceil|round") \
     X(bool, cache_downscaled_images, true, "dataset", "advanced", "")        \
@@ -429,7 +430,7 @@ struct TrainConfig {
 #define SS_DATASET_PARSE_FIELDS(X) \
     X(data) X(data_format) X(colmap_recon_dir) X(seed_pointcloud) X(image_dir) X(mask_dir) \
     X(depth_dir) X(normal_dir) X(metashape_xml) X(metashape_ply) \
-    X(metashape_psx) X(train_resolution_divisor) X(downscale_rounding_mode) \
+    X(metashape_psx) X(train_resolution_divisor) X(max_resolution) X(downscale_rounding_mode) \
     X(exif_orientation) X(orientation_method) X(center_method) X(auto_scale_poses) \
     X(outlier_threshold) X(scene_center) X(scene_center_threshold) X(eval_mode) \
     X(train_split_fraction) \

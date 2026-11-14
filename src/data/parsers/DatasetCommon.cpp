@@ -1154,6 +1154,17 @@ void fit_camera_resolution(const DatasetParserConfig& cfg,
         tw = std::max(1.0, round_dim(tw));
         th = std::max(1.0, round_dim(th));
     }
+    if (cfg.max_resolution > 0 && std::max(tw, th) > cfg.max_resolution) {
+        const double k = cfg.max_resolution / std::max(tw, th);
+        auto capped_dim = [&](double v) {
+            v *= k;
+            if (cfg.downscale_rounding_mode == "ceil") return std::ceil(v);
+            if (cfg.downscale_rounding_mode == "round") return std::round(v);
+            return std::floor(v);
+        };
+        tw = std::clamp(capped_dim(tw), 1.0, (double)cfg.max_resolution);
+        th = std::clamp(capped_dim(th), 1.0, (double)cfg.max_resolution);
+    }
     if (tw == W && th == H) return;
 
     if (iw > 0 && (iw != (int)W || ih != (int)H) && first_time(1, iw, ih, W, H))

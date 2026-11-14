@@ -162,3 +162,19 @@ are built by `DataManager` (`src/data/DataManager.cpp`), and the plan is logged
 by `TrainerSession` (`src/app/TrainerCore.cpp`). The engine applies the
 ceilings through `densify_cap_at` in `src/engine/EngineConfig.h`, which the
 forecast in `src/app/TrainForecast.h` replays.
+
+## Absolute image size limit
+
+`--max-resolution 3840` limits each image's longest side to 3840 pixels;
+`0` (default) leaves it unlimited. Smaller images are never enlarged.
+For mixed 7680 × 4320 and 3840 × 2160 input, both train at 3840 × 2160.
+
+The resolution divisor is applied first, then the cap, each using
+`downscale_rounding_mode`. Progressive stages further divide those fitted
+dimensions with floor rounding. Intrinsics follow the realized dimensions.
+The cap also applies to evaluation and mesh cameras. Forecasts use these
+fitted images as their base; their pixel ratios describe progressive stages.
+
+The integer-divisor disk cache is bypassed when a cap is enabled, because
+its directory names and validation describe divisor-only dimensions.
+In-memory caching and progressive image loading remain available.
