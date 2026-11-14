@@ -2154,16 +2154,12 @@ static bool is_image_ext(const fs::path& p) {
 // Is this folder a finished model rather than a dataset -- a run directory, or
 // one of its checkpoints? Then it belongs in the viewer.
 static bool looks_like_model(const fs::path& p) {
-    std::error_code ec;
-    if (fs::is_regular_file(p / "splat.ply", ec)) return true;
-    for (fs::directory_iterator it(p, ec), end; !ec && it != end; it.increment(ec)) {
-        const std::string b = it->path().filename().string();
-        if (it->is_directory(ec) &&
-            (b.rfind("step-", 0) == 0 || b.find(".ckpt") != std::string::npos) &&
-            fs::is_regular_file(it->path() / "splat.ply", ec))
-            return true;
+    try {
+        spirula::find_splat_ply(p.string());
+        return true;
+    } catch (const std::exception&) {
+        return false;
     }
-    return false;
 }
 
 // What the viewer will find in a recent model, asked of the file the way the

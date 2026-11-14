@@ -376,21 +376,10 @@ void read_splat_ply_chunks(
 }
 
 
-void write_splat_ply(const SplatCloud& c, const std::string& path,
-                     const uint8_t* keep, const SplatTransform* moved) {
+static void write_splat_rows(const SplatCloud& c, std::ostream& ply,
+                              const uint8_t* keep, const SplatTransform* moved) {
     const ColorBasis basis = c.basis();
     const int64_t K = c.coeffs();
-    int64_t kept = c.num;
-    if (keep) {
-        kept = 0;
-        for (int64_t i = 0; i < c.num; i++) kept += keep[i] ? 1 : 0;
-    }
-    std::error_code ec;
-    fs::create_directories(fs::path(path).parent_path(), ec);
-    std::ofstream ply(path, std::ios::binary);
-    if (!ply) throw std::runtime_error("cannot open for writing: " + path);
-    ply << splat_ply_header(kept, basis, c.primitive);
-
     const int row_floats = splat_ply_row_floats(basis);
     const int kRowsPerFlush = (int)std::max<size_t>(1, kFileBufferBytes / (row_floats * sizeof(float)));
     std::vector<float> buf((size_t)row_floats * kRowsPerFlush);
@@ -428,18 +417,73 @@ void write_splat_ply(const SplatCloud& c, const std::string& path,
         if (++rows == kRowsPerFlush) flush();
     }
     flush();
-    ply.flush();
+    if (!ply) throw std::runtime_error("failed to write splat PLY rows");
+}
+
+void write_splat_ply(const SplatCloud& c, const std::string& path,
+                     const uint8_t* keep, const SplatTransform* moved) {
+    int64_t kept = c.num;
+    if (keep) {
+        kept = 0;
+        for (int64_t i = 0; i < c.num; i++) kept += keep[i] ? 1 : 0;
+    }
+    std::error_code ec;
+    fs::create_directories(fs::path(path).parent_path(), ec);
+    std::ofstream ply(path, std::ios::binary);
+    if (!ply) throw std::runtime_error("cannot open for writing: " + path);
+    ply << splat_ply_header(kept, c.basis(), c.primitive);
+    write_splat_rows(c, ply, keep, moved);
+    ply.close();
     if (!ply) throw std::runtime_error("write failed: " + path);
+}
+
+void transform_splat_ply(const std::string& source, const std::string& destination,
+                          const Sim3& transform) {
+    std::error_code ec;
+    if (fs::equivalent(source, destination, ec))
+        throw std::runtime_error("splat PLY transform requires a separate output");
+    SplatRowReader reader(source, true);
+    SplatCloud chunk = reader.shape();
+    const int64_t total = chunk.num;
+    const int64_t chunk_rows = 65536;
+    const SplatTransform moved(transform, chunk.basis());
+    std::ofstream ply(destination, std::ios::binary);
+    if (!ply) throw std::runtime_error("cannot open for writing: " + destination);
+    ply << splat_ply_header(total, chunk.basis(), chunk.primitive);
+    for (int64_t first = 0; first < total; first += chunk_rows) {
+        chunk.num = std::min(chunk_rows, total - first);
+        reader.size(chunk, chunk.num);
+        reader.read(chunk, 0, chunk.num);
+        write_splat_rows(chunk, ply, nullptr, &moved);
+    }
+    ply.close();
+    if (!ply) throw std::runtime_error("write failed: " + destination);
 }
 
 
 std::pair<std::string, std::string> find_splat_ply(const std::string& path) {
     const fs::path p(path);
     std::error_code ec;
-    if (fs::is_regular_file(p, ec) && p.extension() == ".ply")
-        return {p.string(), p.parent_path().parent_path().string()};
+    if (fs::is_regular_file(p, ec) && p.extension() == ".ply") {
+        const fs::path parent = p.parent_path();
+        return {p.string(), parent.extension() == ".ckpt"
+                                ? parent.parent_path().string() : parent.string()};
+    }
+    auto ply_in = [&](const fs::path& dir) -> fs::path {
+        if (fs::is_regular_file(dir / "splat.ply", ec)) return dir / "splat.ply";
+        fs::path candidate;
+        for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->is_regular_file(ec) && it->path().extension() == ".ply" &&
+                is_splat_ply(it->path().string())) {
+                if (!candidate.empty()) return {};
+                candidate = it->path();
+            }
+        }
+        return ec ? fs::path{} : candidate;
+    };
     if (fs::is_regular_file(p / "splat.ply", ec))
-        return {(p / "splat.ply").string(), p.parent_path().string()};
+        return {(p / "splat.ply").string(), p.extension() == ".ckpt"
+                                                ? p.parent_path().string() : p.string()};
     if (fs::is_directory(p, ec)) {
         // A run directory: the newest checkpoint under it that has one.
         std::vector<fs::path> ckpts;
@@ -451,8 +495,14 @@ std::pair<std::string, std::string> find_splat_ply(const std::string& path) {
         }
         std::sort(ckpts.begin(), ckpts.end());
         for (auto it = ckpts.rbegin(); it != ckpts.rend(); ++it)
-            if (fs::is_regular_file(*it / "splat.ply", ec))
-                return {(*it / "splat.ply").string(), p.string()};
+            if (const fs::path ply = ply_in(*it); !ply.empty())
+                return {ply.string(), p.string()};
+        const fs::path named = p / (p.filename().string() + ".ply");
+        if (fs::is_regular_file(named, ec) && is_splat_ply(named.string()))
+            return {named.string(), p.string()};
+        if (const fs::path ply = ply_in(p); !ply.empty())
+            return {ply.string(), p.extension() == ".ckpt"
+                                      ? p.parent_path().string() : p.string()};
     }
     throw std::runtime_error("no splat.ply found under " + path);
 }
