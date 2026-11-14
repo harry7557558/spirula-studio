@@ -17,14 +17,34 @@ nothing extrapolates the count or the degree -- only what they cost.
 
 ## ETA
 
-A step costs `a + (b0 + b1 * k) * N^gamma`: `N` in millions of splats, `k`
-the SH coefficients the step trains (0, 3, 8, 15), `a` everything that does
-not scale with the model (loss, bilateral grids, PPISP, data loading, host
-overhead). Per window of `refine_every` steps -- so every window holds the
-same share of densify steps -- a Kalman filter updates `[a, b0, b1, c]` from:
+Two models of what a step costs, both updated once per window of
+`refine_every` steps -- so every window holds the same share of densify
+steps -- from the window's wall time per step, outliers past 3x the median
+dropped (the pipeline builds when the SH degree steps up are one-offs).
 
-- the window's wall time per step, outliers past 3x the median dropped (the
-  pipeline builds when the SH degree steps up are one-offs);
+### With the step breakdown: one term per column
+
+Where the backend times every kernel (Vulkan; docs/notes/step-timing.md) the
+breakdown already says how much of a step follows the splats, how much the
+splats and the pixels together, and how much neither:
+
+    a + (b0 + b1 * k) * N + exp(s0 + s1 * ln N)
+
+`N` in millions of splats, `k` the SH coefficients the step trains (0, 3, 8,
+15). Each term is filtered on its own measurement: `[b0, b1]` on the splats
+column, which is linear in `N`; `[s0, s1]` on the log of the splat x pixel
+column; `a` on what the wall time has beyond the two. `s1` -- how splat x
+pixel work grows with the count -- starts at 0.45 +- 0.15 and is learned as
+the count moves (garden ended at 0.40 with floater suppression strong, 0.42
+without). Nothing here is a guess at how a lump splits, which is what the
+model below has to make before the count has moved.
+
+### Without it: a power law
+
+A step costs `a + (b0 + b1 * k) * N^gamma`, `a` everything that does not
+scale with the model (loss, bilateral grids, PPISP, data loading, host
+overhead). A Kalman filter updates `[a, b0, b1, c]` from the wall time and:
+
 - the GPU time of the splat stages, `c + (b0 + b1 * k) * N^gamma`.
   `SplatStageTimer` (`engine/EngineStepTiming.cpp`) brackets the forward, the
   raster / projection backward, the optimizer and densify with timestamp
@@ -45,9 +65,27 @@ each scored on how well it predicted each window before seeing it
 are gated at 2 sigma with a 10% floor: the laptop GPU these were measured on
 ran whole 100-step windows 40-60% slow, four times in one run.
 
-The ETA also adds the checkpoint saves still to come, at the seconds per
-million splats the saves so far took; a save is excluded from its step's
-wall time for that reason.
+The lump cannot follow a mix of a linear and a square-root-like term: garden
+with floater suppression strong goes from 0.5 + 2.4 ms of the two columns at
+139k splats to 3.4 + 4.6 at 1M, an effective exponent of 0.53, under the
+smallest `gamma` here. Its ETA there was 53% of the run over at step 1000,
+where the column model is 21-25% over.
+
+### What both add
+
+The checkpoint saves still to come, at the seconds per million splats the
+saves so far took; a save is excluded from its step's wall time for that
+reason.
+
+A regularizer that starts mid-run (`ForecastSetup::reg_start_step`, the PCA
+regularizer's `--pca-reg-start-iter`): its seconds per million splats are
+measured apart (`add_regularizer`, the median of the last nine), taken out of
+the wall time and the splats column of the steps that run it, and charged to
+every step from the start step on. Before the start step the engine times a
+probe pass every 50 steps (docs/notes/pca-reg.md), on either backend, so the
+ETA carries the regularizer from step 60 and does not move when it starts: on
+garden it used to rise by 14% of the run over the 500 steps around step 4500.
+A probe at 139k splats reads the cost per splat about 25% high, 0 by 450k.
 
 ### The image size
 
@@ -67,19 +105,26 @@ Without progressive resolution `r = 1` and the model is the one above. On a
 synthetic run of 1/4, 1/2 then full size the ETA at step 1000 (1/4 size) was
 6% over the truth where the last 100 steps' rate said half of it.
 
-Replayed on three recorded runs, error in the time left:
+Replayed on recorded runs (`train_forecast_replay`, Vulkan, RTX 5070, 1M
+cap, 30k steps unless said), error in the time left as a share of the whole
+run, every 500 steps to step 5000 -- the count reaches the cap by 4600:
 
-| step | 300 | 1000 | 2000 | 3000 | 4000 | 5000 |
-|---|---|---|---|---|---|---|
-| bonsai 1/4, naive (last 100 steps) | -66% | -65% | -59% | -50% | -29% | +3% |
-| bonsai 1/4, model | -25% | -14% | -10% | -12% | -4% | +4% |
-| bonsai 1/2, naive | -62% | -63% | -61% | -54% | -43% | -36% |
-| bonsai 1/2, model | +27% | +55% | +16% | -10% | -3% | -1% |
-| garden 1/4, naive | -23% | -25% | -23% | -30% | -15% | -24% |
-| garden 1/4, model | +34% | +22% | +23% | +30% | 0% | -3% |
+| run | power law, mean abs | columns, mean abs | columns at 500 / 1000 / 2000 / 3000 / 5000 |
+|---|---|---|---|
+| garden 1/4 | 15% | 5% | +8 / +8 / +7 / +4 / +3 |
+| garden 1/4, floater suppression strong | 27% | 13% | +21 / +25 / +16 / +12 / +4 |
+| bonsai 1/2 | 7% | 4% | -7 / -2 / +5 / +4 / +2 |
+| bonsai 1/2, strong | | 11% | +2 / +9 / +18 / +14 / +7 |
+| 360 preset, 5650 views, 10k steps | 3.5% | 2% | -8 / -6 / -1 / 0 / +1 |
+| 360 preset, strong | | 3.5% | -5 / -1 / +5 / +4 / +2 |
 
-The naive estimate is biased low everywhere the count still grows; the model
-is not biased, and its early error is what the prior cannot know.
+What is left is what no step so far can say. `s1`, before the count has
+moved: 0.5 +- 0.2 against garden's 0.40, bonsai's 0.62 and the 360 preset's
+0.92 over its short early growth. And, with floater suppression strong, the
+splat x pixel column falling by a quarter between the cap and the end of the
+run as splats shrink (4.7 to 3.5 ms on garden; 6% without it), which the
+filter follows but does not anticipate. A step's last-100-steps rate, the
+naive estimate, read 23% to 66% low on these runs while the count still grew.
 
 ## VRAM
 
@@ -97,11 +142,29 @@ projected. It is projected from what its buffers hold, not from its total:
   most of the pairs its refined self will (london: 1.5M splats, 8 MP), and
   the count per splat falls as splats shrink. This is the one thing fitted.
 - **The arena** is as large as its largest phase, and
-  `DevicePool::arena_phases()` says what each asked for, split into per-pixel
-  slices (the loss pyramid, sized by the image alone) and per-splat ones. The
-  tile phase is recomputed with the intersector's own rule
-  (`intersect_bands_for`) at the projected pairs; the densify lists are bytes
-  per live splat (28 before a relocate has measured them).
+  `DevicePool::arena_phases()` says what each asked for, split three ways:
+  per-pixel slices (the loss pyramid, sized by the image alone), per-pair
+  ones, and per-splat ones -- which the pool carves for `cap_max` from their
+  first use, so they are a constant here. The tile phase is recomputed with
+  the intersector's own rule (`intersect_bands_for`) at the projected pairs;
+  the densify lists are 28 bytes a splat of `cap_max` before a relocate has
+  carved them.
+
+One thing can still raise the pairs without the count or the views moving:
+the engine's search for the binning tile size trying, or adopting, a finer
+bin (docs/notes/binning-tile-size.md) -- bonsai went from 2.5M to 4.9M pairs
+at step 5200, 1100 steps after its cap, 3.8 sigma above what the forecast
+held. `engine_bin_finer_isects` says what the peak would be at the finest
+size the search may still try -- two sizes down while neither is ruled out,
+since a size that is adopted has the next tried at once -- or 0; the
+projection carries a quarter of the difference, +- half. A rejected trial's
+memory is handed back, so what this covers is mostly a transient of a dozen
+steps, and one the search only takes when it fits a tenth of the free device
+memory.
+
+Nothing else is added at a later step: what a schedule turns on mid-run (the
+PCA regularizer, the calibration warp) reserves its memory from step 0
+(docs/notes/vram-splat-x-img.md), so the forecast has no start steps to know.
 
 `engine_get_isect_peaks` supplies the two pair counts and the last forward's
 splat-tile pairs. Without them (`SS_POOL_ALIAS=0`, which leaves the arena
@@ -153,11 +216,11 @@ top. The first densify step allocates scratch of its own, so the fit starts
 after it; before that the forecast is provisional -- growth all per splat,
 +-70% -- and the band says so by its width.
 
-`SS_FORECAST_DUMP=<file>` records everything the model is fed
-(`app/ForecastTrace.h`) and `train_forecast_replay <file> [every]` runs the
-model over it again: projected peak, sigma and error against the peak the run
-reached. That is how a change here is checked against real runs without
-training them.
+`SS_FORECAST_DUMP=<file>` records everything both models are fed
+(`app/ForecastTrace.h`) and `train_forecast_replay <file> [every]` runs them
+over it again: projected peak, sigma and error against the peak the run
+reached, then the ETA against the wall time the rest of the run took. That is
+how a change here is checked against real runs without training them.
 
 Replayed on three recorded runs (Vulkan, RTX 5070), error in the projected
 peak against the peak the run reached, before this model and with it:

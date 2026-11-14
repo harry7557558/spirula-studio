@@ -136,6 +136,10 @@ tiles -- and splat x img bytes as `N^0.3-0.5`. Hence
 `kSplatPixelTimeExp = 0.45`, `kSplatPixelSplatExp = 0.5` and
 `kSplatXImgVramExp = 0.35` (`app/TrainForecast.h`). The splats x pixels
 column falls toward `r^0.4` as a run goes on; the constant is the run's mean.
+The ETA does not use the constant for the count: it filters the two splat
+columns themselves and fits the exponent as the count moves
+(docs/notes/train-forecast.md), since it ranged from 0.40 (garden) to 0.92
+(the 360 preset's short early growth) across runs.
 
 At the 1M cap, per step:
 

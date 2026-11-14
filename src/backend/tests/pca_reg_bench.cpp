@@ -93,25 +93,32 @@ int main(int argc, char** argv) {
                                     0.001f * w, 0.1f * w, surfel * w, erank * w, transparency * w, sums);
     };
     auto kept = dev<int32_t>(n);
-    double order = 0, tree = 0, gather = 0;
+    auto scratch = dev<int32_t>(6 * n);
+    sorted = dev<float4>(n);
+    double order = 0, order_only = 0, tree = 0, gather = 0;
     for (int i = 0; i <= iters; i++) {
         pool_begin_phase(PoolPhase::RasterBwd);
         t.start();
-        std::tie(perm, sorted, box) = pca_reg_order_tensor(n, means, kept);
+        std::tie(perm, box) = pca_reg_order_tensor(n, means, scratch, sorted, kept);
         order += i > 0 ? t.stop() : 0.0;
         t.start();
         std::tie(nodes, meta, ranges) = pca_reg_tree_tensor(n, sorted, box);
         tree += i > 0 ? t.stop() : 0.0;
         pool_begin_phase(PoolPhase::RasterBwd);
         t.start();
-        pca_reg_gather_tensor(n, means, kept);
+        pca_reg_gather_tensor(n, means, kept, sorted);
         gather += i > 0 ? t.stop() : 0.0;
+        pool_begin_phase(PoolPhase::RasterBwd);
+        t.start();
+        pca_reg_order_tensor(n, means, scratch, DeviceVector<float4>(), DeviceVector<int32_t>());
+        order_only += i > 0 ? t.stop() : 0.0;
     }
     pool_begin_phase(PoolPhase::RasterBwd);
-    std::tie(perm, sorted, box) = pca_reg_order_tensor(n, means, DeviceVector<int32_t>());
+    std::tie(perm, box) = pca_reg_order_tensor(n, means, scratch, sorted, DeviceVector<int32_t>());
     std::tie(nodes, meta, ranges) = pca_reg_tree_tensor(n, sorted, box);
-    std::printf("order %.3f ms, tree %.3f ms, gather by stored order %.3f ms\n",
-                order / iters, tree / iters, gather / iters);
+    std::printf("order %.3f ms (%.3f without the centres), tree %.3f ms, gather by stored "
+                "order %.3f ms\n",
+                order / iters, order_only / iters, tree / iters, gather / iters);
     const struct {
         const char* name;
         PcaRegMode mode;

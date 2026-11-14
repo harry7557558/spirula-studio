@@ -124,7 +124,7 @@ inline int intersect_band_count(int64_t n_isects, int64_t pairs, int64_t rows) {
     size_t other = 0;
     for (size_t p = 0; p < ph.peak.size(); ++p)
         if (p != (size_t)PoolPhase::TileIsect)
-            other = std::max(other, ph.peak[p].pixels + ph.peak[p].splats);
+            other = std::max(other, ph.peak[p].pixels + ph.peak[p].splats + ph.peak[p].capped);
     return (int)std::min<int64_t>(
         rows, intersect_bands_for(n_isects, pairs, (int64_t)other,
                                   (int64_t)ph.peak[(size_t)PoolPhase::TileIsect].pixels));

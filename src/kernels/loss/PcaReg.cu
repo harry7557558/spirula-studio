@@ -162,7 +162,7 @@ __global__ void pca_reg_owner_kernel(
 template <int K, bool SA>
 __global__ void pca_reg_slab_kernel(
     uint32_t n, uint32_t k, uint32_t window, float* quats, float* scales, float* opacities,
-    uint32_t covariance, uint32_t terms, int32_t* perm, float4* sorted, int32_t* nbrs,
+    uint32_t covariance, uint32_t terms, int32_t* perm, float* means, int32_t* nbrs,
     uint32_t store_list, float* radii, uint32_t gate_means, float* v_means, float* v_quats,
     float* v_scales, float* v_opacities, float w_plane, float w_tangent, float w_normal,
     float w_surfel, float w_erank, float* __restrict__ loss_sums) {
@@ -170,7 +170,7 @@ __global__ void pca_reg_slab_kernel(
     float2 extra;
 #define SS_PCA_REG_PASS                                                                      \
     threadIdx.x, blockIdx.x * blockDim.x, n, k, window, quats, scales, opacities, covariance, \
-        terms, perm, sorted, nbrs, store_list, radii, gate_means, v_means, v_quats, v_scales, \
+        terms, perm, means, nbrs, store_list, radii, gate_means, v_means, v_quats, v_scales, \
         v_opacities, w_plane, w_tangent, w_normal, w_surfel, w_erank, &extra
     float3 l;
     if constexpr (SA) {
@@ -189,16 +189,17 @@ __global__ void pca_reg_slab_kernel(
 }  // namespace
 
 /*[AutoHeaderGeneratorExport]*/
-std::tuple<DeviceVector<int32_t>, DeviceVector<float4>, DeviceVector<uint32_t>>
-pca_reg_order_tensor(
+std::tuple<DeviceVector<int32_t>, DeviceVector<uint32_t>> pca_reg_order_tensor(
     int64_t num_splats,
     DeviceVector<float3> means,     // [N]
+    DeviceVector<int32_t> scratch,  // pca_reg_sort_bytes(N); the order is left at its head
+    DeviceVector<float4> sorted,    // [N] or empty: centres by rank, anywhere past the order
     DeviceVector<int32_t> keep      // [N] or empty: also receives the order
 ) {
     if (num_splats <= 0) return {};
     const uint32_t n = (uint32_t)num_splats;
     DeviceVector<uint32_t> box;
-    box.resize(PoolSlot::PcaRegBox, 6);
+    box.resize_reused(PoolSlot::PcaRegBox, 6);   // a probe orders twice in one phase
     backend::memset_async(box.data_ptr(), 0xff, 3 * sizeof(uint32_t), backend::kDefaultStream);
     backend::memset_async(box.data_ptr() + 3, 0, 3 * sizeof(uint32_t), backend::kDefaultStream);
     const int box_blocks = (int)std::min<int64_t>(_CEIL_DIV(num_splats, kBoxBlock), 1024);
@@ -206,43 +207,49 @@ pca_reg_order_tensor(
                                                   box.data_ptr());
     CHECK_DEVICE_ERROR(cudaGetLastError());
 
-    // The sorted centres take the two key buffers' place once the sort is done.
-    DeviceVector<int64_t> keys;
-    DeviceVector<int32_t> vals;
-    keys.resize(PoolSlot::PcaRegKeys, 2 * num_splats);
-    vals.resize(PoolSlot::PcaRegVals, 2 * num_splats);
+    // Both index buffers, then both key buffers. CUB swaps them once per pass:
+    // start where the last sort says the order lands at the head, else copy.
+    static bool odd = false;
+    int32_t* vals = scratch.data_ptr();
+    int64_t* keys = (int64_t*)(vals + 2 * num_splats);
+    cub::DoubleBuffer<int64_t> d_keys(keys, keys + num_splats);
+    cub::DoubleBuffer<int32_t> d_vals(odd ? vals + num_splats : vals,
+                                      odd ? vals : vals + num_splats);
     pca_reg_keys_kernel<<<_LAUNCH_ARGS_1D(num_splats, 256)>>>(
-        n, (float*)means.data_ptr(), box.data_ptr(), keys.data_ptr(), vals.data_ptr());
+        n, (float*)means.data_ptr(), box.data_ptr(), d_keys.Current(), d_vals.Current());
     CHECK_DEVICE_ERROR(cudaGetLastError());
-    cub::DoubleBuffer<int64_t> d_keys(keys.data_ptr(), keys.data_ptr() + num_splats);
-    cub::DoubleBuffer<int32_t> d_vals(vals.data_ptr(), vals.data_ptr() + num_splats);
     CUB_WRAPPER(cub::DeviceRadixSort::SortPairs, d_keys, d_vals, (int)num_splats, 0, 63);
     CHECK_DEVICE_ERROR(cudaGetLastError());
+    if (d_vals.Current() != vals) {
+        cudaMemcpyAsync(vals, d_vals.Current(), (size_t)num_splats * sizeof(int32_t),
+                        cudaMemcpyDeviceToDevice, 0);
+        odd = !odd;
+    }
 
-    float4* sorted = (float4*)keys.data_ptr();
-    pca_reg_gather_kernel<<<_LAUNCH_ARGS_1D(num_splats, 256)>>>(
-        n, d_vals.Current(), (float*)means.data_ptr(), sorted,
-        keep.data_ptr() ? keep.data_ptr() : d_vals.Current(), keep.data_ptr() ? 1u : 0u);
-    CHECK_DEVICE_ERROR(cudaGetLastError());
-    return {DeviceVector<int32_t>(TorchTensorView((uint64_t)d_vals.Current(), 4, {num_splats, 1})),
-            DeviceVector<float4>(TorchTensorView((uint64_t)sorted, 16, {num_splats, 1})), box};
+    if (sorted.data_ptr()) {
+        pca_reg_gather_kernel<<<_LAUNCH_ARGS_1D(num_splats, 256)>>>(
+            n, vals, (float*)means.data_ptr(), sorted.data_ptr(),
+            keep.data_ptr() ? keep.data_ptr() : vals, keep.data_ptr() ? 1u : 0u);
+        CHECK_DEVICE_ERROR(cudaGetLastError());
+    } else if (keep.data_ptr()) {
+        cudaMemcpyAsync(keep.data_ptr(), vals, (size_t)num_splats * sizeof(int32_t),
+                        cudaMemcpyDeviceToDevice, 0);
+    }
+    return {DeviceVector<int32_t>(TorchTensorView((uint64_t)vals, 4, {num_splats, 1})), box};
 }
 
 /*[AutoHeaderGeneratorExport]*/
-DeviceVector<float4> pca_reg_gather_tensor(
+void pca_reg_gather_tensor(
     int64_t num_splats,
     DeviceVector<float3> means,     // [N]
-    DeviceVector<int32_t> perm      // [N] rank -> splat
+    DeviceVector<int32_t> perm,     // [N] rank -> splat
+    DeviceVector<float4> sorted     // [N] the centres by rank
 ) {
-    if (num_splats <= 0) return {};
-    DeviceVector<int64_t> keys;
-    keys.resize(PoolSlot::PcaRegKeys, 2 * num_splats);
-    float4* sorted = (float4*)keys.data_ptr();
+    if (num_splats <= 0) return;
     pca_reg_gather_kernel<<<_LAUNCH_ARGS_1D(num_splats, 256)>>>(
-        (uint32_t)num_splats, perm.data_ptr(), (float*)means.data_ptr(), sorted,
+        (uint32_t)num_splats, perm.data_ptr(), (float*)means.data_ptr(), sorted.data_ptr(),
         perm.data_ptr(), 0u);
     CHECK_DEVICE_ERROR(cudaGetLastError());
-    return DeviceVector<float4>(TorchTensorView((uint64_t)sorted, 16, {num_splats, 1}));
 }
 
 /*[AutoHeaderGeneratorExport]*/
@@ -279,7 +286,7 @@ void pca_reg_neighborhood_tensor(
     DeviceVector<float> opacities,
     int covariance,                // PcaRegCovariance
     DeviceVector<int32_t> perm,     // [N] rank -> splat
-    DeviceVector<float4> sorted,    // [N] by rank; unused by List
+    DeviceVector<float4> sorted,    // [N] by rank; unused by List and the slab
     DeviceVector<float4> nodes,     // Tree only: pca_reg_tree_tensor's
     DeviceVector<int4> meta,
     DeviceVector<int32_t> ranges,
@@ -312,7 +319,7 @@ void pca_reg_neighborhood_tensor(
         slab<<<_LAUNCH_ARGS_1D(num_splats, kOwnerBlock)>>>(
             (uint32_t)num_splats, (uint32_t)k, (uint32_t)window, (float*)quats.data_ptr(),
             (float*)scales.data_ptr(), opacities.data_ptr(), (uint32_t)covariance, terms,
-            perm.data_ptr(), sorted.data_ptr(), nbrs.data_ptr(), store_list ? 1u : 0u,
+            perm.data_ptr(), (float*)means.data_ptr(), nbrs.data_ptr(), store_list ? 1u : 0u,
             radii.data_ptr(), gate_means && radii.data_ptr() ? 1u : 0u, (float*)v_means.data_ptr(),
             (float*)v_quats.data_ptr(), (float*)v_scales.data_ptr(), v_opacities.data_ptr(),
             w_plane, w_tangent, w_normal, w_surfel, w_erank, loss_sums.data_ptr());

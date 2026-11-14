@@ -1,9 +1,9 @@
 #pragma once
 
-// ForecastTrace -- everything TrainForecast's VRAM model is fed, as text: the
-// setup, then one line per step. SS_FORECAST_DUMP=<file> records a run and
-// train_forecast_replay runs the model over it again, so a change to the model
-// is checked against real runs without training them (docs/notes/train-forecast.md).
+// ForecastTrace -- everything TrainForecast is fed, as text: the setup, then a
+// memory and a time line per step. SS_FORECAST_DUMP=<file> records a run and
+// train_forecast_replay runs the models over it again, so a change to them is
+// checked against real runs without training them (docs/notes/train-forecast.md).
 
 #include "app/TrainForecast.h"
 
@@ -22,12 +22,12 @@ inline void forecast_trace_setup(std::FILE* f, const ForecastSetup& s) {
                  s.schedule.total_steps(), s.schedule.cap(), s.start_step, s.steps_per_save,
                  s.distinct_batches, s.sh_degree, s.sh_degree_every, d.refine_every,
                  d.refine_start_iter, d.refine_stop_iter, d.refine_stop_num_iter,
-                 (double)d.growth_factor, s.deferred_bytes, s.deferred_step);
+                 (double)d.growth_factor, (uint64_t)0, 0);  // two fields no longer used
     std::fprintf(f, " %zu", d.growth_caps.size());
     for (const auto& [first, n] : d.growth_caps) std::fprintf(f, " %d %" PRId64, first, (int64_t)n);
     std::fprintf(f, " %zu", s.resolution_stages.size());
     for (const auto& [first, div] : s.resolution_stages) std::fprintf(f, " %d %d", first, div);
-    std::fprintf(f, "\n");
+    std::fprintf(f, "\nreg %d\n", s.reg_start_step);
 }
 
 inline void forecast_trace_sample(std::FILE* f, const MemorySample& m) {
@@ -40,13 +40,36 @@ inline void forecast_trace_sample(std::FILE* f, const MemorySample& m) {
                  m.arena_cap);
     for (size_t v : m.phase_pixels) std::fprintf(f, " %zu", v);
     for (size_t v : m.phase_splats) std::fprintf(f, " %zu", v);
-    std::fprintf(f, " %" PRId64 " %" PRId64 " %" PRId64 "\n", m.isect_pairs, m.isect_count,
+    std::fprintf(f, " %" PRId64 " %" PRId64 " %" PRId64, m.isect_pairs, m.isect_count,
                  m.isect_step);
+    for (size_t v : m.phase_capped) std::fprintf(f, " %zu", v);
+    std::fprintf(f, " %" PRId64 "\n", m.isect_finer);
+}
+
+// A step as the time model saw it: add_step's arguments (wall < 0: left out),
+// add_regularizer's (kind 1 a probe, 2 a pass, 0 none) and the breakdown's sample.
+struct ForecastTraceStep {
+    double wall = 0.0, gpu = -1.0, reg = 0.0;
+    int64_t splats = 0, reg_splats = 0;
+    int reg_kind = 0;
+    StepSample sample;
+};
+
+inline void forecast_trace_step(std::FILE* f, const ForecastTraceStep& t) {
+    const StepSample& s = t.sample;
+    std::fprintf(f, "t %d %.9g %.9g %" PRId64 " %.9g %d %.9g %.9g %.9g %d %d", s.step, t.wall,
+                 t.gpu, t.splats, t.reg, t.reg_kind, s.wall_s, s.save_s, s.data_wait_s,
+                 (int)s.densify, (int)s.timed);
+    if (s.timed)
+        for (const auto& row : s.gpu.s)
+            for (double v : row) std::fprintf(f, " %.6g", v);
+    std::fprintf(f, " %" PRId64 "\n", t.reg_splats);
 }
 
 struct ForecastTrace {
     ForecastSetup setup;
     std::vector<MemorySample> samples;
+    std::vector<ForecastTraceStep> steps;
 };
 
 // A line's numbers in order; a field the line ends before reads as 0.
@@ -90,8 +113,8 @@ inline bool forecast_trace_read(const std::string& path, ForecastTrace& out) {
             d.refine_stop_iter = (int)l.next();
             d.refine_stop_num_iter = (int)std::strtol(l.at, const_cast<char**>(&l.at), 10);
             d.growth_factor = (float)l.real();
-            s.deferred_bytes = l.next();
-            s.deferred_step = (int)l.next();
+            l.next();
+            l.next();
             for (size_t n = (size_t)l.next(); n > 0; --n) {
                 const int first = (int)l.next();
                 d.growth_caps.push_back({first, (int64_t)l.next()});
@@ -125,7 +148,32 @@ inline bool forecast_trace_read(const std::string& path, ForecastTrace& out) {
             m.isect_pairs = (int64_t)l.next();
             m.isect_count = (int64_t)l.next();
             m.isect_step = (int64_t)l.next();
+            for (size_t& v : m.phase_capped) v = (size_t)l.next();
+            m.isect_finer = (int64_t)l.next();
             out.samples.push_back(m);
+        } else if (!std::strncmp(buf.data(), "reg ", 4)) {
+            out.setup.reg_start_step = std::atoi(buf.data() + 4);
+        } else if (!std::strncmp(buf.data(), "t ", 2)) {
+            ForecastTraceLine l{buf.data() + 2};
+            ForecastTraceStep t;
+            StepSample& ss = t.sample;
+            ss.step = (int)l.real();
+            t.wall = l.real();
+            t.gpu = l.real();
+            t.splats = (int64_t)l.real();
+            t.reg = l.real();
+            t.reg_kind = (int)l.real();
+            ss.wall_s = l.real();
+            ss.save_s = l.real();
+            ss.data_wait_s = l.real();
+            ss.densify = l.real() != 0.0;
+            ss.timed = l.real() != 0.0;
+            if (ss.timed)
+                for (auto& row : ss.gpu.s)
+                    for (double& v : row) v = l.real();
+            t.reg_splats = (int64_t)l.real();
+            if (t.reg_splats <= 0) t.reg_splats = t.splats;
+            out.steps.push_back(t);
         }
     }
     std::fclose(f);

@@ -476,9 +476,9 @@ use the benchmark tools, which fix the workload:
 ```
 
 `train_forecast_replay <trace> [every_steps]` is not a test either: it runs
-the trainer's VRAM forecast over a run recorded with `SS_FORECAST_DUMP=<file>`
-and prints what it projected against the peak the run reached
-(docs/notes/train-forecast.md).
+the trainer's VRAM forecast and its ETA over a run recorded with
+`SS_FORECAST_DUMP=<file>` and prints what each projected against the peak the
+run reached and the time the rest of it took (docs/notes/train-forecast.md).
 
 `fpbo_bench` defaults to fused projection backward and Adam. `qgrad` measures
 the separate quantized projection backward, including gradient clears and

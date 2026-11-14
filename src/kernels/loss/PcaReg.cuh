@@ -1,8 +1,8 @@
 #pragma once
 
 // The local-PCA regularizer's launchers (shaders/pca_reg.slang). The engine
-// picks the method and orders the calls: engine/EnginePcaReg.cpp. What they
-// return is in the RasterBwd arena (POOL_ALIAS_TABLE), valid until it closes.
+// picks the method, lays out the scratch and orders the calls
+// (engine/EnginePcaReg.cpp); all of it is RasterBwd arena, valid until it closes.
 
 #include <core/Tensor.h>
 
@@ -29,23 +29,29 @@ inline bool pca_reg_uses_slab(int mode, int k, int window, float w_transparency)
            w_transparency == 0;
 }
 
+// pca_reg_order_tensor's scratch for n splats: two int32 index buffers, then
+// two int64 key buffers.
+inline size_t pca_reg_sort_bytes(int64_t n) { return (size_t)n * 24; }
+
 
 /* == AUTO HEADER GENERATOR - DO NOT EDIT THIS LINE OR ANYTHING BELOW THIS LINE == */
 
 
 
-std::tuple<DeviceVector<int32_t>, DeviceVector<float4>, DeviceVector<uint32_t>>
-pca_reg_order_tensor(
+std::tuple<DeviceVector<int32_t>, DeviceVector<uint32_t>> pca_reg_order_tensor(
     int64_t num_splats,
     DeviceVector<float3> means,     // [N]
+    DeviceVector<int32_t> scratch,  // pca_reg_sort_bytes(N); the order is left at its head
+    DeviceVector<float4> sorted,    // [N] or empty: centres by rank, anywhere past the order
     DeviceVector<int32_t> keep      // [N] or empty: also receives the order
 );
 
 
-DeviceVector<float4> pca_reg_gather_tensor(
+void pca_reg_gather_tensor(
     int64_t num_splats,
     DeviceVector<float3> means,     // [N]
-    DeviceVector<int32_t> perm      // [N] rank -> splat
+    DeviceVector<int32_t> perm,     // [N] rank -> splat
+    DeviceVector<float4> sorted     // [N] the centres by rank
 );
 
 
@@ -67,7 +73,7 @@ void pca_reg_neighborhood_tensor(
     DeviceVector<float> opacities,
     int covariance,                // PcaRegCovariance
     DeviceVector<int32_t> perm,     // [N] rank -> splat
-    DeviceVector<float4> sorted,    // [N] by rank; unused by List
+    DeviceVector<float4> sorted,    // [N] by rank; unused by List and the slab
     DeviceVector<float4> nodes,     // Tree only: pca_reg_tree_tensor's
     DeviceVector<int4> meta,
     DeviceVector<int32_t> ranges,

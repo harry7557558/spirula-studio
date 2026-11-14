@@ -577,7 +577,7 @@ void engine_viewer_init(
         PoolSlot::ViewerC2w,
         TorchTensorView(std::get<0>(camera_to_worlds), 4, {N * 12LL}));
 
-    constexpr int S = VIEWER_THUMBNAIL_SIZE;
+    const int S = v.thumb_size = viewer_thumbnail_size(N);
     v.thumbnails.resize(PoolSlot::ViewerThumb, (int64_t)N * S * S * 4);
     backend::memset_sync(v.thumbnails.data_ptr(), 0,
                          (size_t)N * S * S * 4);
@@ -680,7 +680,7 @@ void engine_viewer_capture_thumbnails(TorchTensorView cam_indices_tv) {
     p.W_rgb = (int)W;
     p.B_post = (int)B_post;
     p.N = v.N_post;
-    p.S = VIEWER_THUMBNAIL_SIZE;
+    p.S = v.thumb_size;
     p.H_alpha = H_alpha;
     p.W_alpha = W_alpha;
     p.has_alpha = d_alpha_mask ? 1 : 0;
@@ -756,8 +756,7 @@ void engine_blit_view(
     run_blit(render_buffer, render_depth, render_alpha, alpha_is_transmittance,
              view_camera_model,
              dist_spec, view_intrins, view_viewmat, view_dist_coeffs, geom,
-             v.thumbnails.data_ptr(), VIEWER_THUMBNAIL_SIZE,
-             VIEWER_THUMBNAIL_SIZE, min_max, out_rgb);
+             v.thumbnails.data_ptr(), v.thumb_size, v.thumb_size, min_max, out_rgb);
 }
 
 /*[AutoHeaderGeneratorExport]*/

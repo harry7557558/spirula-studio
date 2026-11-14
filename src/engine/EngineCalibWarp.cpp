@@ -152,14 +152,21 @@ bool engine_calib_warp_wants_depth() {
     return engine().calib_warp.enabled && engine().calib_warp.D == 4;
 }
 
+// The buffer a per-view map is warped into, or null when the map is not this batch's.
 template <typename T>
-static void warp_aux(DeviceTensor3D<T>& map, const char* key, bool cut_by_source = false) {
+static void* warp_aux_buffer(const DeviceTensor3D<T>& map, const char* key) {
     if (map.data_ptr() == nullptr || map.numel() == 0 ||
         map.template size<0>() != engine().camera.num)
-        return;
+        return nullptr;
+    return DevicePool::global().acquire_dynamic(VramCategory::Image, key,
+                                                (size_t)map.numel() * sizeof(T));
+}
+
+template <typename T>
+static void warp_aux(DeviceTensor3D<T>& map, const char* key, bool cut_by_source = false) {
+    void* out = warp_aux_buffer(map, key);
+    if (!out) return;
     const TorchTensorView src = _dt3d_tv(map);
-    void* out = DevicePool::global().acquire_dynamic(VramCategory::Image, key,
-                                                     (size_t)map.numel() * sizeof(T));
     auto& cw = engine().calib_warp;
     calib_warp_aux_forward(src, depth_tv(), ts_tv(), table_tv(cw.params), intrins_tv(), cam_tv(),
                            cw.grid_n, cw.D, (int)engine().camera.height,
@@ -168,20 +175,31 @@ static void warp_aux(DeviceTensor3D<T>& map, const char* key, bool cut_by_source
     map = DeviceTensor3D<T>(TorchTensorView((uint64_t)out, std::get<1>(src), std::get<2>(src)));
 }
 
+// Whether the batch's ground truth is one the warp applies to, and its
+// warped copy's buffer: float16, half of float32 and finer than an 8-bit source.
+static bool _warped_gt_applies() {
+    auto& cw = engine().calib_warp;
+    if (!cw.enabled || !engine().gt.has_gt || !_tv_valid(engine().gt.rgb)) return false;
+    const auto& gs = std::get<2>(engine().gt.rgb);
+    return gs.size() >= 3 && gs[0] == engine().camera.num && gs[1] == engine().camera.height &&
+           gs[2] == engine().camera.width;
+}
+static void* _warped_gt_buffer() {
+    const int64_t pixels = (int64_t)engine().camera.num * engine().camera.height * engine().camera.width;
+    return DevicePool::global().acquire_dynamic(
+        VramCategory::Image, "eng.calib_warp.gt", pixel_buffer_bytes(PixelFormat::F16, pixels, 3));
+}
+
 // Point gt.rgb, and the depth, normal and mask beside it, at the ground truth
 // warped through the installed cameras' rows;
 // _engine_calib_warp_restore_gt() points it back. False when it cannot apply.
 static bool _swap_in_warped_gt(bool tiles_skipped) {
     auto& cw = engine().calib_warp;
-    if (!cw.enabled || !engine().gt.has_gt || !_tv_valid(engine().gt.rgb)) return false;
+    if (!_warped_gt_applies()) return false;
     const int64_t C = engine().camera.num, H = engine().camera.height,
                   W = engine().camera.width;
-    const auto& gs = std::get<2>(engine().gt.rgb);
-    if (gs.size() < 3 || gs[0] != C || gs[1] != H || gs[2] != W) return false;
     const TorchTensorView gt = engine().gt.rgb;
-    // float16: half the bytes of float32 and still finer than the 8-bit source.
-    void* out = DevicePool::global().acquire_dynamic(
-        VramCategory::Image, "eng.calib_warp.gt", pixel_buffer_bytes(PixelFormat::F16, C * H * W, 3));
+    void* out = _warped_gt_buffer();
     const TorchTensorView out_tv((uint64_t)out, 2, {C, H, W, 3});
     calib_warp_gt_forward(gt, render_tv(), depth_tv(), ts_tv(), table_tv(cw.params), intrins_tv(),
                           cam_tv(), cw.grid_n, cw.D, out_tv);
@@ -200,7 +218,16 @@ static bool _swap_in_warped_gt(bool tiles_skipped) {
 void _engine_calib_warp_before_loss(int step, bool tiles_skipped) {
     auto& cw = engine().calib_warp;
     cw.active_this_step = false;
-    if (!cw.enabled || step < cw.start_step) return;
+    if (!cw.enabled) return;
+    if (step < cw.start_step) {
+        // The warped copies a later step fills, so the start step adds no memory.
+        if (!_warped_gt_applies()) return;
+        _warped_gt_buffer();
+        warp_aux_buffer(engine().gt.depth, "eng.calib_warp.depth");
+        warp_aux_buffer(engine().gt.normal, "eng.calib_warp.normal");
+        if (engine().gt.has_mask) warp_aux_buffer(engine().gt.alpha, "eng.calib_warp.mask");
+        return;
+    }
     static const int log_every = [] {
         const char* v = spirula::env("CALIB_WARP_LOG");
         return v && *v ? std::atoi(v) : 0;

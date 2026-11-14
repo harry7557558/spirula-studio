@@ -362,6 +362,12 @@ struct PcaRegState {
     int      cache_step  = 0;
     uint64_t cache_epoch = 0;
     uint64_t splat_epoch = 0;
+    // A pass's device seconds over `timed_splats` (0: none to report), from a
+    // probe's slope or a real pass: engine_pca_reg_take_timing.
+    double   timed_seconds = 0.0;
+    int64_t  timed_splats = 0;
+    bool     timed_probe = false;
+    bool     probed = false;        // a probe has run, so its pipelines exist
     // Arena slices the fused optim step adds for 3dgs / mip; empty otherwise.
     DeviceVector<float3> v_means;
     DeviceVector<float4> v_quats;
@@ -579,6 +585,14 @@ struct AppearanceState {
 #define VIEWER_THUMBNAIL_SIZE 64
 #endif
 
+// The thumbnails' side for n cameras: the full size while they all fit 64 MiB,
+// then smaller. 16 KiB a camera was 350 MiB of a 22k-image capture.
+inline int viewer_thumbnail_size(int64_t n) {
+    int s = VIEWER_THUMBNAIL_SIZE;
+    while (s > 16 && n * s * s * 4 > ((int64_t)64 << 20)) s -= 8;
+    return s;
+}
+
 
 // Viewer state: device-side per-post-camera thumbnail cache, BVH cache for
 // the training-camera frustum visualization, and a copy of the static
@@ -600,10 +614,10 @@ struct EngineViewerState {
     DeviceVector<float>   d_camera_to_worlds; // [N_post, 3, 4] (y/z-flipped form)
     float  camera_size = 0.0f;                // frustum render scale, world units
 
-    // Thumbnail cache: [N_post, S, S, 4] uint8, S = VIEWER_THUMBNAIL_SIZE.
-    // done_mask[i] = 1 once cam i's thumbnail has been written. Host fast-path
-    // counter `pending_thumb` is decremented as new ids first appear in
-    // training batches; once 0, the hook short-circuits.
+    // Thumbnail cache: [N_post, S, S, 4] uint8, S = thumb_size. done_mask[i]
+    // = 1 once cam i's is written; `pending_thumb` counts the ids no batch
+    // has brought yet, and at 0 the hook short-circuits.
+    int    thumb_size = VIEWER_THUMBNAIL_SIZE; // viewer_thumbnail_size(N_post)
     DeviceVector<uint8_t> thumbnails;         // [N_post * S * S * 4]
     DeviceVector<uint8_t> thumbnail_done_mask;// [N_post]
     std::vector<uint8_t>  host_seen_mask;     // [N_post], 1 if id was ever passed
@@ -697,11 +711,26 @@ struct EngineState {
         int have       = 0;
         int wait       = 1;                // windows before the next probe
         double sum     = 0.0;
+        double slowest = 0.0;              // of the window's steps: left out of its cost
         double base    = 0.0;              // bracketing cost at `from`
         double trial   = 0.0;              // cost measured at `from + dir`
         // Splat-tile pairs per visible splat at `macro_log2`, last measured
         // outside a trial; gates the coarser probes.
         double pairs_per_splat = 0.0;
+        // The same averaged over the forwards at `typical_at`: one view's is
+        // noise (a masked face makes under one pair a splat).
+        double pairs_typical = 0.0;
+        int    typical_at = -1;
+        // Per size: the finer trials from it that lost by twice the margin, in
+        // a row, and the pairs per splat at the last. And the baseline windows'
+        // mean splat-tile pairs a step: what a trial would ask of the pool.
+        int    finer_losses[kMacroLog2Max + 1] = {};
+        double finer_loss_pairs[kMacroLog2Max + 1] = {};
+        double pairs_sum = 0.0, step_pairs = 0.0;
+        // The pool and the pair peak as a finer trial found them: what a
+        // rejected one hands back (DevicePool::arena_release).
+        DevicePool::ArenaMark mark;
+        int64_t mark_isects = 0;
         // A training step bins at this size, so the search owns it; until
         // then renders use kMacroLog2Render.
         bool searched = false;

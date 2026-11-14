@@ -1,5 +1,5 @@
-// TrainForecast's VRAM model run again over a recorded run (SS_FORECAST_DUMP):
-// what it projected at each checkpoint against the peak the run reached.
+// TrainForecast run again over a recorded run (SS_FORECAST_DUMP): the peak and
+// the time left it projected at each checkpoint against what the run came to.
 //   train_forecast_replay <trace> [every_steps]
 
 #include "app/ForecastTrace.h"
@@ -66,5 +66,29 @@ int main(int argc, char** argv) {
     }
     std::printf("projected peak vs truth: %+.1f%% .. %+.1f%%\n", 100.0 * worst_under,
                 100.0 * worst_over);
+    if (tr.steps.empty()) return 0;
+
+    // The time model: its ETA at each checkpoint against the wall time the
+    // rest of the run took, as a share of the whole run.
+    std::vector<double> left(tr.steps.size() + 1, 0.0);
+    for (size_t i = tr.steps.size(); i-- > 0;) left[i] = left[i + 1] + tr.steps[i].sample.wall_s;
+    const double total = left[0];
+    std::printf("\n%.1f s over %zu steps\n%8s %10s %8s %8s %8s %8s %7s\n", total,
+                tr.steps.size(), "step", "splats", "eta", "sigma", "reg", "truth", "err%");
+    TrainForecast tc;
+    tc.reset(tr.setup);
+    for (size_t i = 0; i < tr.steps.size(); ++i) {
+        const ForecastTraceStep& t = tr.steps[i];
+        if (t.reg_kind) tc.add_regularizer(t.reg, t.reg_splats, t.reg_kind == 1);
+        if (t.wall >= 0.0) tc.add_step(t.sample.step, t.wall, t.splats, t.gpu);
+        tc.add_breakdown(t.sample);
+        if (t.sample.save_s > 0.0) tc.add_save(t.sample.save_s, t.splats);
+        if ((t.sample.step + 1) % every != 0 || i + 1 >= tr.steps.size()) continue;
+        const EtaForecast e = tc.eta(t.sample.step + 1, tr.steps[i + 1].splats);
+        if (e.seconds < 0.0) continue;
+        std::printf("%8d %10lld %8.1f %8.1f %8.1f %8.1f %+7.1f\n", t.sample.step + 1,
+                    (long long)tr.steps[i + 1].splats, e.seconds, e.sigma, e.regularizer,
+                    left[i + 1], 100.0 * (e.seconds - left[i + 1]) / total);
+    }
     return 0;
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -157,6 +158,7 @@ class DevicePool {
         bool      owns       = true;  // false: ptr is a slice of _arena
         uint32_t  epoch      = 0;     // phase instance this slice came from
         size_t    slice_bytes = 0;    // the slice's length, for acquire_reused
+        size_t    trim_to    = 0;     // the next acquire shrinks the buffer to this
     };
     struct DynSlot {
         Slot         slot;
@@ -173,6 +175,7 @@ class DevicePool {
         size_t cursor  = 0;
         size_t want    = 0;
         size_t reserve = 0;
+        bool   trim    = false;   // shrink to `want` at the next phase switch
     };
     static constexpr size_t kArenaAlign = 256;
 
@@ -183,13 +186,14 @@ class DevicePool {
     // later reservation of that phase must leave room for.
     std::array<size_t, (size_t)PoolPhase::Count> _tail{};
     // Per phase, the most its slices came to: `pixels` in the per-image
-    // categories, `splats` in Splat and SplatXImg. Their sizes follow different
-    // things, which the training VRAM forecast projects apart.
+    // categories, `splats` in SplatXImg, `capped` in Splat -- those at what
+    // cap_max makes them, which is what the arena holds for them (_arena_bump).
 public:
-    struct PhaseBytes { size_t pixels = 0, splats = 0; };
+    struct PhaseBytes { size_t pixels = 0, splats = 0, capped = 0; };
 private:
     std::array<PhaseBytes, (size_t)PoolPhase::Count> _phase_peak{};
     PhaseBytes _phase_now;
+    size_t _phase_live = 0;   // of _phase_now.capped, the bytes carved
     PoolPhase _phase = PoolPhase::None;
     uint32_t  _epoch = 0;   // bumped per begin_phase; 0 never matches a Slot
     int64_t   _live_splats = 0;
@@ -231,6 +235,17 @@ private:
         return on;
     }
 
+    // Host seconds spent in the device allocator, for a caller that times
+    // its own work and must not count a buffer growing as that work.
+    static inline double s_alloc_seconds = 0.0;
+    struct AllocClock {
+        std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+        ~AllocClock() {
+            s_alloc_seconds +=
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        }
+    };
+
     // Grow-if-needed on a Slot already selected by the caller (mutex held).
     // `reserve` > n allocates room for that many elements up front.
     template<typename T>
@@ -238,13 +253,17 @@ private:
         size_t bytes = n * sizeof(T);
         // An arena slice is not capacity this slot may reuse; drop it first.
         if (!slot.owns) { slot.ptr = nullptr; slot.cap_bytes = 0; slot.owns = true; }
-        if (bytes > slot.cap_bytes) {
+        const size_t keep = std::max(bytes, slot.trim_to);
+        const bool trim = slot.trim_to > 0 && keep < slot.cap_bytes;
+        slot.trim_to = 0;
+        if (bytes > slot.cap_bytes || trim) {
+            AllocClock clock;
             if (slot.ptr && slot.owns) backend::device_free(slot.ptr);
             // Reset before the (throwing) allocation so an OOM leaves the slot
             // in a consistent empty state rather than {null ptr, stale cap}.
             slot.ptr = nullptr;
             slot.cap_bytes = 0;
-            const size_t alloc = std::max(bytes, reserve * sizeof(T));
+            const size_t alloc = std::max(trim ? keep : bytes, reserve * sizeof(T));
             slot.ptr = backend::device_malloc_checked(alloc, what);
             slot.cap_bytes = alloc;
             // SS_POISON_POOL=1: fresh device memory holds whatever the
@@ -278,19 +297,7 @@ private:
                 "resize it once, or split the phase");
         }
         slot.epoch = _epoch;
-        {
-            const bool splats = cat == VramCategory::Splat || cat == VramCategory::SplatXImg;
-            size_t& now = splats ? _phase_now.splats : _phase_now.pixels;
-            now += (bytes + kArenaAlign - 1) & ~(kArenaAlign - 1);
-            PhaseBytes& peak = _phase_peak[(size_t)_phase];
-            peak.pixels = std::max(peak.pixels, _phase_now.pixels);
-            peak.splats = std::max(peak.splats, _phase_now.splats);
-        }
-        const size_t off = (_arena.cursor + kArenaAlign - 1) & ~(kArenaAlign - 1);
-        // The cursor advances even when the slice does not fit, or `want`
-        // would come out one buffer wide instead of one phase wide.
-        _arena.cursor = off + bytes;
-        if (_arena.want < _arena.cursor) _arena.want = _arena.cursor;
+        const size_t off = _arena_bump(cat, bytes);
         if (!_arena.ptr || off + bytes > _arena.cap)
             return _acquire_into<T>(slot, n, what);
         if (slot.ptr && slot.owns) backend::device_free(slot.ptr);
@@ -301,6 +308,29 @@ private:
         slot.dtype_tag  = (uint8_t)npy_scalar_tag<T>();
         slot.owns       = false;
         return static_cast<T*>(slot.ptr);
+    }
+
+    // Advance the cursor by one slice of `cat` and return its offset (mutex
+    // held). It advances even when the slice does not fit, or `want` would come
+    // out one buffer wide; a Splat slice asks for cap_max's worth from the start.
+    size_t _arena_bump(VramCategory cat, size_t bytes) {
+        const size_t span = (bytes + kArenaAlign - 1) & ~(kArenaAlign - 1);
+        if (cat == VramCategory::Splat) {
+            const double grow = _live_splats > 0 && _cap_splats > _live_splats
+                ? (double)_cap_splats / (double)_live_splats : 1.0;
+            _phase_now.capped += std::max(span, (size_t)((double)bytes * grow));
+            _phase_live += span;
+        } else {
+            (cat == VramCategory::SplatXImg ? _phase_now.splats : _phase_now.pixels) += span;
+        }
+        PhaseBytes& peak = _phase_peak[(size_t)_phase];
+        peak.pixels = std::max(peak.pixels, _phase_now.pixels);
+        peak.splats = std::max(peak.splats, _phase_now.splats);
+        peak.capped = std::max(peak.capped, _phase_now.capped);
+        const size_t off = (_arena.cursor + kArenaAlign - 1) & ~(kArenaAlign - 1);
+        _arena.cursor = off + bytes;
+        _arena.want = std::max(_arena.want, _arena.cursor + _phase_now.capped - _phase_live);
+        return off;
     }
 
     // The one place the phase rule is enforced (mutex held). `what` names the
@@ -343,16 +373,18 @@ public:
         _phase = p;
         ++_epoch;
         _phase_now = PhaseBytes{};
+        _phase_live = 0;
         _arena.reserve = 0;
         if (!_alias_enabled() || p == PoolPhase::None) return;
         if (reserve > 0) {
             _arena.reserve = reserve;
             _arena.want = std::max(_arena.want, reserve + _tail[(size_t)p]);
         }
-        if (_arena.want > _arena.cap) {
+        if (_arena.want > _arena.cap || (_arena.trim && _arena.want < _arena.cap)) {
             // The overflow buffers of the call that raised `want` are as dead as
             // its slices; held, they sat beside the new arena -- a transient as
             // large as the overflow that the end-of-step VRAM sample never saw.
+            AllocClock clock;
             auto drop = [](Slot& s, PoolPhase ph) {
                 if (!s.owns) { s.ptr = nullptr; s.owns = true; }
                 else if (s.ptr && ph != PoolPhase::None) {
@@ -369,6 +401,7 @@ public:
             _arena.ptr = backend::device_malloc_checked(_arena.want, "alias arena");
             _arena.cap = _arena.want;
         }
+        _arena.trim = false;
         _arena.cursor = 0;
         if (_poison_arena() && _arena.ptr)
             backend::memset_sync(_arena.ptr, 0xff, _arena.cap);
@@ -384,9 +417,41 @@ public:
         return _arena.reserve + _tail[(size_t)_phase] <= _arena.cap;
     }
 
+    // Count `bytes` of `cat` against the open phase without carving them:
+    // what a later step will carve there, so the arena holds it from this one.
+    void arena_expect(VramCategory cat, size_t bytes) {
+        std::lock_guard<std::mutex> lock(_mu);
+        if (_alias_enabled() && _phase != PoolPhase::None) _arena_bump(cat, bytes);
+    }
+
+    // What a trial of something larger may grow, to be handed back if the
+    // trial is dropped: the arena's size, one phase's books, one slot's size.
+    struct ArenaMark { size_t want = 0, tail = 0, slot_bytes = 0; PhaseBytes peak; };
+    ArenaMark arena_mark(PoolPhase p, PoolSlot slot) const {
+        std::lock_guard<std::mutex> lock(_mu);
+        return { _arena.want, _tail[(size_t)p], _slots[pool_key(slot, kSubMain)].cap_bytes,
+                 _phase_peak[(size_t)p] };
+    }
+    // Back to `m`, exactly, so nothing has to grow its way up again: the arena
+    // at the next phase switch, `slot` at its next acquire.
+    void arena_release(PoolPhase p, const ArenaMark& m, PoolSlot slot) {
+        std::lock_guard<std::mutex> lock(_mu);
+        _tail[(size_t)p] = m.tail;
+        _phase_peak[(size_t)p] = m.peak;
+        _slots[pool_key(slot, kSubMain)].trim_to = std::max<size_t>(m.slot_bytes, 1);
+        if (m.want >= _arena.want) return;
+        _arena.want = m.want;
+        _arena.trim = true;
+    }
+
     PoolPhase phase() const {
         std::lock_guard<std::mutex> lock(_mu);
         return _phase;
+    }
+
+    double alloc_seconds() const {
+        std::lock_guard<std::mutex> lock(_mu);
+        return s_alloc_seconds;
     }
 
     struct ArenaStats { size_t cap_bytes; size_t want_bytes; size_t slots; };
@@ -499,6 +564,7 @@ public:
         _tail.fill(0);
         _phase_peak.fill(PhaseBytes{});
         _phase_now = PhaseBytes{};
+        _phase_live = 0;
         _phase = PoolPhase::None;
         _live_splats = _cap_splats = 0;
     }

@@ -248,6 +248,53 @@ step. It adds to that phase, so the arena grows by whatever the phase now
 exceeds the largest other one by. Only the cached methods own memory, booked
 for `cap_max`.
 
+### One work buffer
+
+The sort's scratch is dead once the order exists, and the gradients are not
+written until then, so they share one slice, `pca_reg.work`
+(`make_plan` in `engine/EnginePcaReg.cpp`):
+
+| bytes a splat | while sorting | after |
+|---|---|---|
+| 0 - 4 | index buffer A | the order (rank -> splat) |
+| 4 - 24 | index buffer B, both key buffers | centres by rank (16, not the slab), then the gradients |
+| past 24 | - | what of the gradients did not fit |
+
+`pca_reg_order_tensor` takes the scratch and leaves the order at its head: the
+Vulkan sort's eight passes end where they started, CUB's pass count is learned
+on the first call and a miss costs one 4-byte-a-splat copy. The slab reads a
+centre by splat id instead of from a rank-ordered copy: the copy cost a
+gather pass and 16 bytes a splat, and reading by id costs the slab the same
+0.6 ms at 5M splats that dropping the pass saves.
+
+With the default method and terms on the fused path that is 32 bytes a splat
+(the order, and 12 + 16 of mean and quaternion gradients) where separate
+buffers took 52; on the split path, whose gradients go to `engine().grad`, 24.
+
+### Before the start step
+
+A step before `--pca-reg-start-iter` runs `engine_pca_reg_step` with
+`PcaRegConfig::wait`: it counts the work buffer against the phase without
+carving it (`DevicePool::arena_expect`) and allocates the cached methods'
+lists, so the arena and the Splat category are already what the first real
+pass needs -- the run fails at its first steps if it cannot hold them, not at
+the start step. On garden at 1/4 with `--floater-suppression strong` the
+process grew 12 MiB at step 4500 with a 25 MiB transient beside it; it now
+does not move.
+
+One waiting step in 50 also runs a probe (`PcaRegConfig::probe`): the real
+pass over the first `min(n, 2^20)` splats and again over half of them, into
+scratch nothing reads, bracketed by timestamp events. One pass over few
+splats is mostly its launches' fixed cost -- at 139k splats it read 41% over
+the cost per splat at 1M -- and the slope between the two sizes misses what
+larger arrays cost the gathers (23% under), so the estimate is their mean
+times the splat count: what the ETA charges the steps past the start
+(`engine_pca_reg_take_timing`, docs/notes/train-forecast.md). The first probe
+builds the pipelines and is not timed; the forecast takes the median of the
+last nine, since a host stall between two timestamps reads as device time.
+After the start the pass of one step in ten is timed the same way. Only the uncached Morton
+methods probe; the exact and the cached ones are first timed when they start.
+
 ## One workgroup over the window
 
 Best-of-window (`morton-best`, the default) with `pca_reg_uses_slab` true runs
@@ -307,9 +354,9 @@ lane of a warp must agree to skip.
 
 All of them start from one ordering: the centres' bounding cube, a 63-bit
 Morton code (21 bits an axis, written as two 32-bit words so the Vulkan
-shaders need no 64-bit integers), and a radix sort of `(code, index)`. The
-sort's two key buffers then hold the Morton-ordered centres, and one of its
-value buffers is the order, so the ordering costs 24 bytes a splat of arena.
+shaders need no 64-bit integers), and a radix sort of `(code, index)`: 24
+bytes a splat of arena, which the order, the Morton-ordered centres (when the
+method reads them) and the gradients then take over ("One work buffer").
 
 | method | per step | owned memory per splat |
 |---|---|---|

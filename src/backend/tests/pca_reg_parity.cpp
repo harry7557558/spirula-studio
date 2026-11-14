@@ -395,10 +395,10 @@ void test_cloud(bool messy, int k) {
     Dev<float4> sorted(n);
     Tree tr;
     {
-        auto [p, srt, box] = pca_reg_order_tensor(n, d.means.v(), kept.v());
-        std::tie(tr.nodes, tr.meta, tr.ranges) = pca_reg_tree_tensor(n, srt, box);
+        Dev<int32_t> scratch(6 * n);
+        auto [p, box] = pca_reg_order_tensor(n, d.means.v(), scratch.v(), sorted.v(), kept.v());
+        std::tie(tr.nodes, tr.meta, tr.ranges) = pca_reg_tree_tensor(n, sorted.v(), box);
         backend::memcpy_sync(perm.p, p.data_ptr(), n * sizeof(int32_t), MemcpyKind::DeviceToDevice);
-        backend::memcpy_sync(sorted.p, srt.data_ptr(), n * sizeof(float4), MemcpyKind::DeviceToDevice);
     }
     backend::device_synchronize();
     check(kept.host() == perm.host(), tag + "the kept copy of the order matches it");
@@ -546,8 +546,9 @@ void test_cloud(bool messy, int k) {
         const auto hs = sorted.host();
         std::vector<float4> ha((size_t)n);
         pool_begin_phase(PoolPhase::RasterBwd);
-        const DeviceVector<float4> again = pca_reg_gather_tensor(n, d.means.v(), perm.v());
-        backend::memcpy_sync(ha.data(), again.data_ptr(), n * sizeof(float4), MemcpyKind::DeviceToHost);
+        Dev<float4> again(n);
+        pca_reg_gather_tensor(n, d.means.v(), perm.v(), again.v());
+        backend::memcpy_sync(ha.data(), again.p, n * sizeof(float4), MemcpyKind::DeviceToHost);
         bool same = true;
         for (int64_t r = 0; r < n; r++)
             same = same && ha[r].x == hs[r].x && ha[r].y == hs[r].y && ha[r].z == hs[r].z;
@@ -572,10 +573,11 @@ std::vector<int32_t> exact_lists(const DeviceCloud& d, int64_t n, int k, const W
     pool_begin_phase(PoolPhase::RasterBwd);
     Dev<int32_t> nbrs(n * k);
     Tree tr;
-    auto [p, srt, box] = pca_reg_order_tensor(n, d.means.v(), DeviceVector<int32_t>());
-    std::tie(tr.nodes, tr.meta, tr.ranges) = pca_reg_tree_tensor(n, srt, box);
+    Dev<int32_t> scratch(6 * n);
+    auto [p, box] = pca_reg_order_tensor(n, d.means.v(), scratch.v(), sorted.v(),
+                                         DeviceVector<int32_t>());
+    std::tie(tr.nodes, tr.meta, tr.ranges) = pca_reg_tree_tensor(n, sorted.v(), box);
     backend::memcpy_sync(perm.p, p.data_ptr(), n * sizeof(int32_t), MemcpyKind::DeviceToDevice);
-    backend::memcpy_sync(sorted.p, srt.data_ptr(), n * sizeof(float4), MemcpyKind::DeviceToDevice);
     return run_mode(d, n, PcaRegMode::Tree, k, 4 * (k + 1), perm, sorted, tr, nbrs, true, w).nbrs;
 }
 
@@ -876,9 +878,10 @@ void test_slab_matches_list(bool messy, int k) {
     Dev<float4> sorted(n);
     {
         pool_begin_phase(PoolPhase::RasterBwd);
-        auto [p, srt, box] = pca_reg_order_tensor(n, d.means.v(), DeviceVector<int32_t>());
+        Dev<int32_t> scratch(6 * n);
+        auto [p, box] = pca_reg_order_tensor(n, d.means.v(), scratch.v(), sorted.v(),
+                                             DeviceVector<int32_t>());
         backend::memcpy_sync(perm.p, p.data_ptr(), n * sizeof(int32_t), MemcpyKind::DeviceToDevice);
-        backend::memcpy_sync(sorted.p, srt.data_ptr(), n * sizeof(float4), MemcpyKind::DeviceToDevice);
     }
     Dev<int32_t> nbrs(n * k);
     const int window = 4 * (k + 1);

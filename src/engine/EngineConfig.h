@@ -392,6 +392,12 @@ struct PcaRegConfig {
     // The scale-agnostic mean step cannot take a gradient on a splat this step
     // did not project (OptimConfig::use_scale_agnostic_mean).
     bool      rendered_means_only = false;
+    // Before the start step: reserve the scratch a pass will take and add no
+    // gradient. `probe` also times a pass on a prefix of the splats, `timed`
+    // a real one (engine_pca_reg_take_timing).
+    bool      wait  = false;
+    bool      probe = false;
+    bool      timed = false;
 };
 
 // Bundle passed to engine_train_step covering all per-step config groups.

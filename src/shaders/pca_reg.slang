@@ -656,12 +656,12 @@ groupshared float4 g_pca_ho[kPcaGroup];     // G / total xy, xz, yz
 groupshared float4 g_pca_mn[kPcaGroup];     // weighted mean, from the owner's centre
 groupshared uint g_pca_who[kPcaSlabMax * 4]; // per target: which owners chose it, a bit each
 
-void pca_slab_fill(uint s, uint rank, uint covariance, int* perm, float4* sorted, float* quats,
+void pca_slab_fill(uint s, uint rank, uint covariance, int* perm, float* means, float* quats,
                    float* scales, float* opacities) {
     uint id = uint(perm[rank]);
     g_pca_id[s] = id;
     for (uint w = 0; w < 4; w++) g_pca_who[4 * s + w] = 0u;
-    g_pca_pos[s] = float4(sorted[rank].xyz, covariance == 0u ? 1.0 : pca_opacity(opacities[id]));
+    g_pca_pos[s] = float4(pca_load3(means, id), covariance == 0u ? 1.0 : pca_opacity(opacities[id]));
     if (covariance == 2u) {
         float3x3 S = pca_sigma(pca_load4(quats, id), pca_load3(scales, id));
         g_pca_sd[s] = float4(S[0][0], S[1][1], S[2][2], 0.0);
@@ -905,7 +905,7 @@ void pca_slab_target(uint s, uint first_owner_slot, uint covariance, float* quat
 
 float3 pca_reg_slab<let K : int, let SA : bool>(
     uint tid, uint group_base, uint n, uint k, uint window, float* quats, float* scales,
-    float* opacities, uint covariance, uint terms, int* perm, float4* sorted, int* nbrs,
+    float* opacities, uint covariance, uint terms, int* perm, float* means, int* nbrs,
     uint store_list, float* radii, uint gate_means, float* v_means, float* v_quats,
     float* v_scales, float* v_opacities, float w_plane, float w_tangent, float w_normal,
     float w_surfel, float w_erank, out float2 extra) {
@@ -918,7 +918,7 @@ float3 pca_reg_slab<let K : int, let SA : bool>(
     for (int i = 0; i < 2; i++) {
         uint rank = lo + 2 * tid + uint(i);
         if (rank < hi)
-            pca_slab_fill(rank - lo, rank, covariance, perm, sorted, quats, scales, opacities);
+            pca_slab_fill(rank - lo, rank, covariance, perm, means, quats, scales, opacities);
     }
     GroupMemoryBarrierWithGroupSync();
     float3 l = float3(0.0);
@@ -942,12 +942,12 @@ float3 pca_reg_slab<let K : int, let SA : bool>(
     [CudaDeviceExport]                                                                 \
     float3 NAME(uint tid, uint group_base, uint n, uint k, uint window, float* quats,  \
                 float* scales, float* opacities, uint covariance, uint terms, int* perm, \
-                float4* sorted, int* nbrs, uint store_list, float* radii, uint gate_means, \
+                float* means, int* nbrs, uint store_list, float* radii, uint gate_means, \
                 float* v_means, float* v_quats, float* v_scales, float* v_opacities,   \
                 float w_plane, float w_tangent, float w_normal, float w_surfel,        \
                 float w_erank, out float2 extra) {                                     \
         return pca_reg_slab<K, SA>(tid, group_base, n, k, window, quats, scales, opacities, \
-                                   covariance, terms, perm, sorted, nbrs, store_list, radii, \
+                                   covariance, terms, perm, means, nbrs, store_list, radii, \
                                    gate_means, v_means, v_quats, v_scales, v_opacities, w_plane, \
                                    w_tangent, w_normal, w_surfel, w_erank, extra);     \
     }

@@ -30,6 +30,51 @@ at 1/4 resolution, 228k -> 666k splats: splat stays at 1042.6 MiB (revised) /
 in that table, or the forecast under-reads the peak -- unless it dies inside
 one call, in which case it belongs in the arena (the densify scratch below).
 
+The arena follows the same rule for its per-splat slices: one carved in the
+Splat category asks the arena for cap / live times its bytes
+(`DevicePool::_arena_bump`), so a phase's per-splat part is `cap_max`-sized
+from the first step that carves it and only the per-pair slices (SplatXImg)
+grow. `arena_phases()` reports the three apart -- `pixels`, `splats` (per
+pair) and `capped` -- which is what the forecast projects from.
+
+**Nothing a schedule turns on later allocates later.** A feature with a start
+step reserves from step 0: the PCA regularizer counts its work buffer against
+the raster-backward phase with `DevicePool::arena_expect` and allocates its
+caches (docs/notes/pca-reg.md), and the calibration warp acquires the warped
+ground truth's buffers before `--calib-warp-start-iter` (6 bytes a pixel that
+used to appear at step 1000). A run that cannot hold them fails in its first
+steps. A new feature with a start step does the same.
+
+**A trial of something larger gives back what it took.** The pool only
+grows, so the binning-tile search's rejected finer trials used to leave the
+pair list and the tile phase sized for a bin the run never adopted -- 2.5-3x
+a step's pairs. It now marks the pool before such a trial and releases to the
+mark when the trial is rejected (`DevicePool::arena_mark` /
+`arena_release`; docs/notes/binning-tile-size.md).
+
+What those three rules and the regularizer's work buffer came to (Vulkan,
+RTX 5070, 1M cap, process memory in MiB: held at the end of the run, and the
+most at any step -- the difference is the search's finer trials, a dozen
+steps each):
+
+| run | before, end / most | after, end / most |
+|---|---|---|
+| garden 1/4, 30k | 500 / 504 | 457 / 487-504 |
+| garden 1/4, floater suppression strong | 541 / 547 | 518 / 521-529 |
+| bonsai 1/2, 30k | 605 / 608 | 518 / 582 |
+| bonsai 1/2, strong | 659 / 663 | 575 / 583 |
+| 360 preset, 5650 views, 10k | 1112 / 1112 | 1055 / 1106 |
+| 360 preset, strong | 1259 / 1259 | 1202 / 1244 |
+
+Time and held-out PSNR did not move: garden 5:10, 5:11 before and 5:12, 5:06,
+5:11 after (26.97, 26.92 dB against 26.84, 26.97, 26.99); with strong 6:09,
+6:06 against 6:14, 6:06 (26.15, 26.15 against 26.23, 26.14); bonsai 7:26
+against 7:15 (29.88, 29.92) and 8:17 against 8:24, 8:29 with strong (28.81,
+28.86). The bonsai times differ by which of 16 and 32 px the search settled
+on, a tie it resolves either way in either build. london resumed at 15M
+splats for 300 steps: 336-349 ms a step before, 334-338 after; with strong
+386-393 and 388-396, the pool 9490 MiB before and 9364 after.
+
 ## What each buffer costs
 
 Per element, after the 2026-08-30 pass:
@@ -235,9 +280,8 @@ hands a later scale back the first slice -- scale 0's, the largest.
 `Densify` holds what a densify launcher allocates and drops before it returns:
 the relocation mask and destination list, the draw's sort keys and index
 buffers, the MCMC probabilities. Each launcher opens its own instance (they
-run one after another, and each re-acquires the same draw buffers). It is
-sized by the LIVE count, not the cap -- the arena is what grows, which is
-what the forecast already models. 28 bytes a live splat on Vulkan.
+run one after another, and each re-acquires the same draw buffers). 28 bytes
+a splat on Vulkan, of `cap_max` from the first densify step on.
 
 Bicycle at 1/4, `--cap-max 13000000`, RTX 3070, the step trained to the cap
 (`SS_VRAM_TRACE` for the peak):
@@ -321,6 +365,10 @@ Together, bonsai at `--cap-max 2000000`: the Splat category went from 172 to
 160 bytes a splat at SH degree 0 and 356 to 344 at 3 on the fused path, 204 to
 196 at degree 0 on the split one.
 
+The PCA regularizer's scratch (`--floater-suppression strong`) is one slice,
+`pca_reg.work`, in which the gradients take the sort's place: 32 bytes a splat
+on the fused path where six slices took 52 (docs/notes/pca-reg.md).
+
 ## The packed AABB
 
 `proj.aabb` is 8 bytes per visible pair instead of 16: 16 bits per edge, two
@@ -358,17 +406,36 @@ center, since 3DGUT stores none of its own).
 
 ## Remaining opportunities, largest first
 
-1. **Packed screen rows** (up to 230 MiB). `opac` and `rgb` would survive fp16
+1. **The bilateral grids of a capture with thousands of views** (55 KiB a
+   view: 37 of 16-bit cells, 18 of optimizer state; 298 of the 1105 MiB the
+   360-camera preset holds at 5650 views and 1M splats). A step touches the
+   grids of its own views only, so the table can live on the host with a
+   device cache of a few hundred slots: the kernels already index it through
+   the batch's camera indices, and a slot index goes in their place. What it
+   needs: write-back of a step's slots (an asynchronous read, one step late),
+   the checkpoint writing and reading host rows under the same names, and the
+   TV readout taken over the cached slots. Lossless; not done.
+2. **Packed screen rows** (up to 230 MiB). `opac` and `rgb` would survive fp16
    comfortably; `xy`, `conic` and `depth` would not. The blocker is
    `raster_bwd.v_screen`, which is accumulated with float atomics -- fp16
    atomic add is not portable to the Vulkan baseline, so only the forward row
    could shrink, and then the two buffers stop sharing a layout.
-2. **The split path's gradient accumulators** (73 bytes a splat at SH 3, 28
+3. **The split path's gradient accumulators** (73 bytes a splat at SH 3, 28
    at SH 0, for `cap_max`). A step over several passes cannot use the fused
    optimizer, so it accumulates quantized world gradients. The SH part is
    rank-limited -- one RGB gradient per camera centre times that centre's
-   basis -- so storing the RGB gradients per pass would be 12 bytes a pass
-   instead of 45; not done.
-3. **Rasterizing in the sort's bands.** The bands bound the sort's scratch;
+   basis -- so storing the RGB gradients per pass would be 6 bytes a pass
+   instead of 45: 33 bytes a splat saved at two passes, nothing past seven,
+   and only where every pass has one camera centre. At SH 0 there is no such
+   structure: the 28 bytes are five 16-bit accumulators. Not done.
+4. **Rasterizing in the sort's bands.** The bands bound the sort's scratch;
    the 4-byte list still holds every pair. Rasterizing band by band would
    bound that too, at the cost of every raster kernel learning a row range.
+
+What does not pay: moving more per-pixel buffers into the arena. At high
+resolution the loss is the arena's largest phase, and the buffers still owned
+(the rendered maps, the normals from depth and their gradients, the loss map)
+are all live across it, so they can only join the phase that sizes the arena.
+The viewer's camera thumbnails are sized by the camera count now
+(`viewer_thumbnail_size`: 64 px up to 4096 cameras, down to 16 px so that all
+of them fit 64 MiB; they were 350 MiB at 22k images).

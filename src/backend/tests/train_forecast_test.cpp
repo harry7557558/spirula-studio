@@ -307,6 +307,17 @@ static void breakdown_adds_up() {
         ss.densify = dens;
         ss.timed = s % 10 == 0 || dens;
         fc.add_breakdown(ss);
+        if (s == 400 || s == 1500) {
+            // The columns say how the step splits before the count has moved.
+            double truth = 0.0;
+            StepCells unused;
+            for (int t = s + 1; t < T; ++t)
+                truth += cost(unused, n_at[t] / 1e6, 1.0, t % 100 == 0) + data + idle;
+            const double eta = fc.eta(s + 1, n_at[s + 1]).seconds;
+            std::printf("  eta @%d from the columns: %.0f s, truth %.0f s\n", s, eta, truth);
+            CHECK(std::fabs(eta / truth - 1.0) < 0.05, "eta off by %.1f%% at %d",
+                  100.0 * (eta / truth - 1.0), s);
+        }
         if (s != 2500 && s != 8000) continue;
         const TimeBreakdown now = fc.time_measured();
         const double dens_truth = 0.050 * m / 100.0;
@@ -372,6 +383,44 @@ static void eta_follows_resolution() {
     }
 }
 
+// A per-splat regularizer that starts mid-run, probed before it does: the ETA
+// carries it from the first probe on, and does not move when it starts.
+static void eta_counts_regularizer() {
+    const int T = 20000, start = 6000;
+    const SplatSchedule sch(densify(500, 15000, 100, 1.05f), T, 2000000);
+    ForecastSetup fs;
+    fs.schedule = sch;
+    fs.reg_start_step = start;
+    TrainForecast fc;
+    fc.reset(fs);
+    std::mt19937 rng(3);
+    std::normal_distribution<double> noise(1.0, 0.05);
+    const double a = 0.010, b = 0.020, reg = 0.012;
+    std::vector<int64_t> n_at(T);
+    sch.segments(0, 300000, [&](int f, int e, int64_t n) {
+        for (int s = f; s < e; ++s) n_at[s] = n;
+    });
+    auto cost = [&](int s) {
+        const double m = (double)n_at[s] / 1e6;
+        return a + b * m + (s >= start ? reg * m : 0.0);
+    };
+    for (int s = 0; s < T; ++s) {
+        const double m = (double)n_at[s] / 1e6;
+        // A probe's prefix runs 10% fast; a real pass is what it is.
+        if (s < start && s % 50 == 10) fc.add_regularizer(0.9 * reg * m * noise(rng), n_at[s], true);
+        if (s >= start && s % 10 == 0) fc.add_regularizer(reg * m * noise(rng), n_at[s], false);
+        fc.add_step(s, cost(s) * noise(rng), n_at[s], -1.0);
+        if (s != 3000 && s != 5900 && s != 6100 && s != 9000) continue;
+        double truth = 0.0;
+        for (int t = s + 1; t < T; ++t) truth += cost(t);
+        const EtaForecast e = fc.eta(s + 1, n_at[s + 1]);
+        std::printf("  eta @%d (regularizer from %d): model %.0f s (sigma %.0f), truth %.0f s\n", s,
+                    start, e.seconds, e.sigma, truth);
+        CHECK(std::fabs(e.seconds / truth - 1.0) < 0.08, "eta off by %.1f%% at %d",
+              100.0 * (e.seconds / truth - 1.0), s);
+    }
+}
+
 int main() {
     schedule_matches_engine_rule();
     eta_tracks_growth();
@@ -380,6 +429,7 @@ int main() {
     vram_bounded_views(0.5);
     breakdown_adds_up();
     eta_follows_resolution();
+    eta_counts_regularizer();
     if (g_fail) {
         std::printf("train_forecast_test: %d failure(s)\n", g_fail);
         return 1;

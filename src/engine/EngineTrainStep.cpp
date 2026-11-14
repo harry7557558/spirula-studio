@@ -152,6 +152,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     // this returns are read back from the device, so the call already ends on
     // a sync and the wall time here is the step's device time.
     const auto step_t0 = std::chrono::steady_clock::now();
+    const double alloc_t0 = DevicePool::global().alloc_seconds();
     engine_bin_tile_claim();
     engine().optim.use_fused_proj_bwd_optim = cfg.optim.use_fused_proj_bwd_optim;
     // Block-wise quantized gradient accumulation: only on the non-FPBO path
@@ -249,8 +250,11 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
         cfg.loss.color_shift_reg_beta);
     _engine_calib_warp_restore_gt();
     engine().fwd.kernel_cut = 0.0f;
-    engine_bin_tile_observe(std::chrono::duration<double>(
-        std::chrono::steady_clock::now() - step_t0).count());
+    // Less the allocator's time: a buffer growing under a finer trial is not
+    // what that bin size costs, and counted against it the search flips.
+    engine_bin_tile_observe(
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - step_t0).count() -
+        (DevicePool::global().alloc_seconds() - alloc_t0));
     _visit_accumulate_camera_stats(primitive);
     return losses;
 }

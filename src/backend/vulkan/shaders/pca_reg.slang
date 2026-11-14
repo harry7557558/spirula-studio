@@ -217,7 +217,7 @@ void pca_slab<let K : int, let SA : bool>(uint3 wg, uint tid, PcaOwnerParams p) 
     float2 extra;
     float3 l = pca_reg_slab<K, SA>(tid, (wg.y * p.wgs_per_row + wg.x) * kOwnerGroup, p.n, p.k,
                                    p.window, p.quats, p.scales, p.opacities, kCovariance, kTerms,
-                                   p.perm, p.sorted, p.nbrs, p.store_list, p.radii, p.gate_means,
+                                   p.perm, p.means, p.nbrs, p.store_list, p.radii, p.gate_means,
                                    p.v_means, p.v_quats, p.v_scales, p.v_opacities,
                                    (kTerms & 16u) != 0u ? p.w_plane : 0.0,
                                    (kTerms & 16u) != 0u ? p.w_tangent : 0.0,

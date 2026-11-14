@@ -502,6 +502,9 @@ DeadCriterion dead_criterion_enum(const std::string& c) {
     throw std::runtime_error("unknown dead_criterion: " + c);
 }
 
+// Steps between two probes of the PCA regularizer before it starts.
+constexpr int kPcaRegProbeEvery = 50;
+
 PcaRegKnn pca_reg_knn_enum(const std::string& m) {
     if (m == "exact")              return PcaRegKnn::Exact;
     if (m == "exact-cached")       return PcaRegKnn::ExactCached;
@@ -705,7 +708,12 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.densify.growth_caps = st.growth_caps;
 
     // ---- local-PCA regularizer ------------------------------------------
-    if (c.pca_reg_neighbors > 0 && step >= c.pca_reg_start_iter) {
+    if (c.pca_reg_neighbors > 0) {
+        // Before the start step the engine only reserves, and now and then
+        // times a pass for the ETA; after it, the pass of one step in ten.
+        cfg.pca_reg.wait = step < c.pca_reg_start_iter;
+        cfg.pca_reg.probe = cfg.pca_reg.wait && step % kPcaRegProbeEvery == 10;
+        cfg.pca_reg.timed = !cfg.pca_reg.wait && step % 10 == 0;
         cfg.pca_reg.neighbors = c.pca_reg_neighbors;
         cfg.pca_reg.knn = pca_reg_knn_enum(c.pca_reg_knn);
         cfg.pca_reg.window = c.pca_reg_window;
@@ -1844,8 +1852,10 @@ void TrainerSession::observe_memory(int step, int64_t splats_ran) {
     for (int p = 0; p < (int)PoolPhase::Count; ++p) {
         m.phase_pixels[p] = arena.peak[p].pixels;
         m.phase_splats[p] = arena.peak[p].splats;
+        m.phase_capped[p] = arena.peak[p].capped;
     }
     engine_get_isect_peaks(m.isect_pairs, m.isect_count, m.isect_step);
+    m.isect_finer = engine_bin_finer_isects();
     const backend::MemoryUsage mu = backend::memory_usage();
     m.has_process = mu.has_process;
     m.has_used = mu.has_used;
@@ -1909,13 +1919,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         fs.sh_degree = cfg.sh_degree;
         fs.sh_degree_every = cfg.sh_degree_warmup_every;
         fs.resolution_stages = _resolution_stages;
-        if (cfg.pca_reg_neighbors > 0 && cfg.pca_reg_knn.find("-cached") != std::string::npos) {
-            const uint64_t k = (uint64_t)std::min(cfg.pca_reg_neighbors, kPcaRegMaxNeighbors - 1);
-            const bool lists = cfg.pca_reg_knn != "morton-cached";
-            fs.deferred_bytes =
-                (uint64_t)engine_get_max_num_splats() * 4u * (1u + (lists ? k : 0u));
-            fs.deferred_step = std::max(cfg.pca_reg_start_iter, start_step);
-        }
+        if (cfg.pca_reg_neighbors > 0) fs.reg_start_step = cfg.pca_reg_start_iter;
         _forecast.reset(fs);
         // SS_FORECAST_DUMP=<file>: the run's memory samples, for train_forecast_replay.
         if (const char* dump = spirula::env("FORECAST_DUMP"); dump && *dump && !_forecast_dump) {
@@ -1961,7 +1965,9 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         std::map<std::string, float> losses;
         std::string data_error;
         double save_s = 0.0, splat_gpu_s = -1.0, data_wait_s = 0.0;
-        int64_t splats_ran = 0;
+        int64_t splats_ran = 0, reg_splats = 0;
+        bool reg_probed = false;
+        ForecastTraceStep traced;
         StepSample sample;
         {
             std::lock_guard<std::mutex> lk(engine_mutex);
@@ -1982,6 +1988,8 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
             }
             if (timed) splat_gpu_s = engine_step_timing_read();
             if (kernels_timed) sample.timed = engine_dispatch_timing_read(sample.gpu);
+            traced.reg_kind = engine_pca_reg_take_timing(traced.reg, reg_splats, reg_probed)
+                                  ? (reg_probed ? 1 : 2) : 0;
             _live_splats = engine_get_cur_num_splats();
             data_wait_s = engine_take_data_wait_seconds();
         }
@@ -2009,13 +2017,27 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
             _step_latencies.push_back(latency);
             if (_step_latencies.size() > 100) _step_latencies.pop_front();
         }
-        _forecast.add_step(step, latency - save_s, splats_ran, splat_gpu_s);
+        // The regularizer's own time, a step or more after the pass it is of.
+        // A step that probed is not what a step costs: it stays out of the ETA.
+        if (traced.reg_kind) _forecast.add_regularizer(traced.reg, reg_splats, reg_probed);
+        const bool probe_step = cfg.pca_reg_neighbors > 0 && step < cfg.pca_reg_start_iter &&
+                                step % kPcaRegProbeEvery == 10;
+        if (probe_step) sample.gpu.at(StepPart::Regularizer, StepScale::Splats) = 0.0;
+        else _forecast.add_step(step, latency - save_s, splats_ran, splat_gpu_s);
         sample.step = step;
         sample.wall_s = latency;
         sample.save_s = save_s;
         sample.data_wait_s = data_wait_s;
         sample.densify = densify_step;
         _forecast.add_breakdown(sample);
+        if (_forecast_dump) {
+            traced.wall = probe_step ? -1.0 : latency - save_s;
+            traced.gpu = splat_gpu_s;
+            traced.splats = splats_ran;
+            traced.reg_splats = reg_splats;
+            traced.sample = sample;
+            forecast_trace_step(_forecast_dump.get(), traced);
+        }
         if (_perf.enabled()) {
             _perf.add_step(latency, data_wait_s, splat_gpu_s, save_s);
             _perf.tick(step + 1, engine_train_resolution_divisor(), _live_splats.load(), paused.load(), [this] {
@@ -2074,9 +2096,9 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
             const VramForecast v = _forecast.vram(false);
             const double gib = 1024.0 * 1024.0 * 1024.0;
             std::fprintf(stderr,
-                "[forecast] step %d  eta %.1f +- %.1f s  ours %.3f GiB  peak %.3f +- %.3f GiB"
-                "  others %.3f  total %.3f  limit %.3f%s  p_oom %.3f\n",
-                step + 1, e.seconds, e.sigma,
+                "[forecast] step %d  eta %.1f +- %.1f s (regularizer %.1f)  ours %.3f GiB"
+                "  peak %.3f +- %.3f GiB  others %.3f  total %.3f  limit %.3f%s  p_oom %.3f\n",
+                step + 1, e.seconds, e.sigma, e.regularizer,
                 v.ours / gib,
                 v.peak_mean / gib, v.peak_sigma / gib, v.others / gib,
                 v.capacity / gib, v.limit / gib,

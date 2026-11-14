@@ -62425,7 +62425,7 @@ inline __device__ float3  pca_slab_owner_5(uint o_6, uint r_21, uint lo_9, uint 
     return _S5667;
 }
 
-inline __device__ void pca_slab_fill_0(uint s_229, uint rank_1, uint covariance_18, int * perm_13, float4  * sorted_21, float * quats_20, float * scales_20, float * opacities_12)
+inline __device__ void pca_slab_fill_0(uint s_229, uint rank_1, uint covariance_18, int * perm_13, float * means_13, float * quats_20, float * scales_20, float * opacities_12)
 {
     uint id_16 = uint(*(perm_13 + rank_1));
     (*&g_pca_id_0)[s_229] = id_16;
@@ -62442,7 +62442,7 @@ inline __device__ void pca_slab_fill_0(uint s_229, uint rank_1, uint covariance_
         (*&g_pca_who_0)[4U * s_229 + w_3] = 0U;
         w_3 = w_3 + 1U;
     }
-    float3  _S5668 = float3 {(*(sorted_21 + rank_1)).x, (*(sorted_21 + rank_1)).y, (*(sorted_21 + rank_1)).z};
+    float3  _S5668 = pca_load3_0(means_13, id_16);
     float _S5669;
     if(covariance_18 == 0U)
     {
@@ -62684,7 +62684,7 @@ inline __device__ void pca_slab_target_0(uint s_230, uint first_owner_slot_0, ui
     return;
 }
 
-inline __device__ float3  pca_reg_slab_0(uint tid_0, uint group_base_0, uint n_23, uint k_30, uint window_12, float * quats_22, float * scales_22, float * opacities_13, uint covariance_20, uint terms_21, int * perm_14, float4  * sorted_22, int * nbrs_18, uint store_list_18, float * radii_13, uint gate_means_13, float * v_means_13, float * v_quats_21, float * v_scales_21, float * v_opacities_13, float w_plane_20, float w_tangent_20, float w_normal_20, float w_surfel_20, float w_erank_20, float2  * extra_20)
+inline __device__ float3  pca_reg_slab_0(uint tid_0, uint group_base_0, uint n_23, uint k_30, uint window_12, float * quats_22, float * scales_22, float * opacities_13, uint covariance_20, uint terms_21, int * perm_14, float * means_14, int * nbrs_18, uint store_list_18, float * radii_13, uint gate_means_13, float * v_means_13, float * v_quats_21, float * v_scales_21, float * v_opacities_13, float w_plane_20, float w_tangent_20, float w_normal_20, float w_surfel_20, float w_erank_20, float2  * extra_20)
 {
     *extra_20 = make_float2 (0.0f);
     uint half_12 = (U32_max((window_12), (k_30 + 1U))) / 2U;
@@ -62704,13 +62704,13 @@ inline __device__ float3  pca_reg_slab_0(uint tid_0, uint group_base_0, uint n_2
     bool _S5712 = _S5711 < _S5709;
     if(_S5712)
     {
-        pca_slab_fill_0(_S5711 - lo_10, _S5711, covariance_20, perm_14, sorted_22, quats_22, scales_22, opacities_13);
+        pca_slab_fill_0(_S5711 - lo_10, _S5711, covariance_20, perm_14, means_14, quats_22, scales_22, opacities_13);
     }
     uint rank_2 = _S5711 + 1U;
     bool _S5713 = rank_2 < _S5709;
     if(_S5713)
     {
-        pca_slab_fill_0(rank_2 - lo_10, rank_2, covariance_20, perm_14, sorted_22, quats_22, scales_22, opacities_13);
+        pca_slab_fill_0(rank_2 - lo_10, rank_2, covariance_20, perm_14, means_14, quats_22, scales_22, opacities_13);
     }
     __syncthreads();
     float3  _S5714 = make_float3 (0.0f);
@@ -62737,7 +62737,7 @@ inline __device__ float3  pca_reg_slab_0(uint tid_0, uint group_base_0, uint n_2
     return l_1;
 }
 
-inline __device__ float3  pca_reg_slab_1(uint tid_1, uint group_base_1, uint n_24, uint k_31, uint window_13, float * quats_23, float * scales_23, float * opacities_14, uint covariance_21, uint terms_22, int * perm_15, float4  * sorted_23, int * nbrs_19, uint store_list_19, float * radii_14, uint gate_means_14, float * v_means_14, float * v_quats_22, float * v_scales_22, float * v_opacities_14, float w_plane_21, float w_tangent_21, float w_normal_21, float w_surfel_21, float w_erank_21, float2  * extra_21)
+inline __device__ float3  pca_reg_slab_1(uint tid_1, uint group_base_1, uint n_24, uint k_31, uint window_13, float * quats_23, float * scales_23, float * opacities_14, uint covariance_21, uint terms_22, int * perm_15, float * means_15, int * nbrs_19, uint store_list_19, float * radii_14, uint gate_means_14, float * v_means_14, float * v_quats_22, float * v_scales_22, float * v_opacities_14, float w_plane_21, float w_tangent_21, float w_normal_21, float w_surfel_21, float w_erank_21, float2  * extra_21)
 {
     *extra_21 = make_float2 (0.0f);
     uint half_13 = (U32_max((window_13), (k_31 + 1U))) / 2U;
@@ -62757,13 +62757,13 @@ inline __device__ float3  pca_reg_slab_1(uint tid_1, uint group_base_1, uint n_2
     bool _S5720 = _S5719 < _S5717;
     if(_S5720)
     {
-        pca_slab_fill_0(_S5719 - lo_11, _S5719, covariance_21, perm_15, sorted_23, quats_23, scales_23, opacities_14);
+        pca_slab_fill_0(_S5719 - lo_11, _S5719, covariance_21, perm_15, means_15, quats_23, scales_23, opacities_14);
     }
     uint rank_3 = _S5719 + 1U;
     bool _S5721 = rank_3 < _S5717;
     if(_S5721)
     {
-        pca_slab_fill_0(rank_3 - lo_11, rank_3, covariance_21, perm_15, sorted_23, quats_23, scales_23, opacities_14);
+        pca_slab_fill_0(rank_3 - lo_11, rank_3, covariance_21, perm_15, means_15, quats_23, scales_23, opacities_14);
     }
     __syncthreads();
     float3  _S5722 = make_float3 (0.0f);
@@ -62790,7 +62790,7 @@ inline __device__ float3  pca_reg_slab_1(uint tid_1, uint group_base_1, uint n_2
     return l_2;
 }
 
-inline __device__ float3  pca_reg_slab_2(uint tid_2, uint group_base_2, uint n_25, uint k_32, uint window_14, float * quats_24, float * scales_24, float * opacities_15, uint covariance_22, uint terms_23, int * perm_16, float4  * sorted_24, int * nbrs_20, uint store_list_20, float * radii_15, uint gate_means_15, float * v_means_15, float * v_quats_23, float * v_scales_23, float * v_opacities_15, float w_plane_22, float w_tangent_22, float w_normal_22, float w_surfel_22, float w_erank_22, float2  * extra_22)
+inline __device__ float3  pca_reg_slab_2(uint tid_2, uint group_base_2, uint n_25, uint k_32, uint window_14, float * quats_24, float * scales_24, float * opacities_15, uint covariance_22, uint terms_23, int * perm_16, float * means_16, int * nbrs_20, uint store_list_20, float * radii_15, uint gate_means_15, float * v_means_15, float * v_quats_23, float * v_scales_23, float * v_opacities_15, float w_plane_22, float w_tangent_22, float w_normal_22, float w_surfel_22, float w_erank_22, float2  * extra_22)
 {
     *extra_22 = make_float2 (0.0f);
     uint half_14 = (U32_max((window_14), (k_32 + 1U))) / 2U;
@@ -62810,13 +62810,13 @@ inline __device__ float3  pca_reg_slab_2(uint tid_2, uint group_base_2, uint n_2
     bool _S5728 = _S5727 < _S5725;
     if(_S5728)
     {
-        pca_slab_fill_0(_S5727 - lo_12, _S5727, covariance_22, perm_16, sorted_24, quats_24, scales_24, opacities_15);
+        pca_slab_fill_0(_S5727 - lo_12, _S5727, covariance_22, perm_16, means_16, quats_24, scales_24, opacities_15);
     }
     uint rank_4 = _S5727 + 1U;
     bool _S5729 = rank_4 < _S5725;
     if(_S5729)
     {
-        pca_slab_fill_0(rank_4 - lo_12, rank_4, covariance_22, perm_16, sorted_24, quats_24, scales_24, opacities_15);
+        pca_slab_fill_0(rank_4 - lo_12, rank_4, covariance_22, perm_16, means_16, quats_24, scales_24, opacities_15);
     }
     __syncthreads();
     float3  _S5730 = make_float3 (0.0f);
@@ -62843,7 +62843,7 @@ inline __device__ float3  pca_reg_slab_2(uint tid_2, uint group_base_2, uint n_2
     return l_3;
 }
 
-inline __device__ float3  pca_reg_slab_3(uint tid_3, uint group_base_3, uint n_26, uint k_33, uint window_15, float * quats_25, float * scales_25, float * opacities_16, uint covariance_23, uint terms_24, int * perm_17, float4  * sorted_25, int * nbrs_21, uint store_list_21, float * radii_16, uint gate_means_16, float * v_means_16, float * v_quats_24, float * v_scales_24, float * v_opacities_16, float w_plane_23, float w_tangent_23, float w_normal_23, float w_surfel_23, float w_erank_23, float2  * extra_23)
+inline __device__ float3  pca_reg_slab_3(uint tid_3, uint group_base_3, uint n_26, uint k_33, uint window_15, float * quats_25, float * scales_25, float * opacities_16, uint covariance_23, uint terms_24, int * perm_17, float * means_17, int * nbrs_21, uint store_list_21, float * radii_16, uint gate_means_16, float * v_means_16, float * v_quats_24, float * v_scales_24, float * v_opacities_16, float w_plane_23, float w_tangent_23, float w_normal_23, float w_surfel_23, float w_erank_23, float2  * extra_23)
 {
     *extra_23 = make_float2 (0.0f);
     uint half_15 = (U32_max((window_15), (k_33 + 1U))) / 2U;
@@ -62863,13 +62863,13 @@ inline __device__ float3  pca_reg_slab_3(uint tid_3, uint group_base_3, uint n_2
     bool _S5736 = _S5735 < _S5733;
     if(_S5736)
     {
-        pca_slab_fill_0(_S5735 - lo_13, _S5735, covariance_23, perm_17, sorted_25, quats_25, scales_25, opacities_16);
+        pca_slab_fill_0(_S5735 - lo_13, _S5735, covariance_23, perm_17, means_17, quats_25, scales_25, opacities_16);
     }
     uint rank_5 = _S5735 + 1U;
     bool _S5737 = rank_5 < _S5733;
     if(_S5737)
     {
-        pca_slab_fill_0(rank_5 - lo_13, rank_5, covariance_23, perm_17, sorted_25, quats_25, scales_25, opacities_16);
+        pca_slab_fill_0(rank_5 - lo_13, rank_5, covariance_23, perm_17, means_17, quats_25, scales_25, opacities_16);
     }
     __syncthreads();
     float3  _S5738 = make_float3 (0.0f);
@@ -62896,7 +62896,7 @@ inline __device__ float3  pca_reg_slab_3(uint tid_3, uint group_base_3, uint n_2
     return l_4;
 }
 
-inline __device__ float3  pca_reg_slab_4(uint tid_4, uint group_base_4, uint n_27, uint k_34, uint window_16, float * quats_26, float * scales_26, float * opacities_17, uint covariance_24, uint terms_25, int * perm_18, float4  * sorted_26, int * nbrs_22, uint store_list_22, float * radii_17, uint gate_means_17, float * v_means_17, float * v_quats_25, float * v_scales_25, float * v_opacities_17, float w_plane_24, float w_tangent_24, float w_normal_24, float w_surfel_24, float w_erank_24, float2  * extra_24)
+inline __device__ float3  pca_reg_slab_4(uint tid_4, uint group_base_4, uint n_27, uint k_34, uint window_16, float * quats_26, float * scales_26, float * opacities_17, uint covariance_24, uint terms_25, int * perm_18, float * means_18, int * nbrs_22, uint store_list_22, float * radii_17, uint gate_means_17, float * v_means_17, float * v_quats_25, float * v_scales_25, float * v_opacities_17, float w_plane_24, float w_tangent_24, float w_normal_24, float w_surfel_24, float w_erank_24, float2  * extra_24)
 {
     *extra_24 = make_float2 (0.0f);
     uint half_16 = (U32_max((window_16), (k_34 + 1U))) / 2U;
@@ -62916,13 +62916,13 @@ inline __device__ float3  pca_reg_slab_4(uint tid_4, uint group_base_4, uint n_2
     bool _S5744 = _S5743 < _S5741;
     if(_S5744)
     {
-        pca_slab_fill_0(_S5743 - lo_14, _S5743, covariance_24, perm_18, sorted_26, quats_26, scales_26, opacities_17);
+        pca_slab_fill_0(_S5743 - lo_14, _S5743, covariance_24, perm_18, means_18, quats_26, scales_26, opacities_17);
     }
     uint rank_6 = _S5743 + 1U;
     bool _S5745 = rank_6 < _S5741;
     if(_S5745)
     {
-        pca_slab_fill_0(rank_6 - lo_14, rank_6, covariance_24, perm_18, sorted_26, quats_26, scales_26, opacities_17);
+        pca_slab_fill_0(rank_6 - lo_14, rank_6, covariance_24, perm_18, means_18, quats_26, scales_26, opacities_17);
     }
     __syncthreads();
     float3  _S5746 = make_float3 (0.0f);
@@ -62949,7 +62949,7 @@ inline __device__ float3  pca_reg_slab_4(uint tid_4, uint group_base_4, uint n_2
     return l_5;
 }
 
-inline __device__ float3  pca_reg_slab_5(uint tid_5, uint group_base_5, uint n_28, uint k_35, uint window_17, float * quats_27, float * scales_27, float * opacities_18, uint covariance_25, uint terms_26, int * perm_19, float4  * sorted_27, int * nbrs_23, uint store_list_23, float * radii_18, uint gate_means_18, float * v_means_18, float * v_quats_26, float * v_scales_26, float * v_opacities_18, float w_plane_25, float w_tangent_25, float w_normal_25, float w_surfel_25, float w_erank_25, float2  * extra_25)
+inline __device__ float3  pca_reg_slab_5(uint tid_5, uint group_base_5, uint n_28, uint k_35, uint window_17, float * quats_27, float * scales_27, float * opacities_18, uint covariance_25, uint terms_26, int * perm_19, float * means_19, int * nbrs_23, uint store_list_23, float * radii_18, uint gate_means_18, float * v_means_18, float * v_quats_26, float * v_scales_26, float * v_opacities_18, float w_plane_25, float w_tangent_25, float w_normal_25, float w_surfel_25, float w_erank_25, float2  * extra_25)
 {
     *extra_25 = make_float2 (0.0f);
     uint half_17 = (U32_max((window_17), (k_35 + 1U))) / 2U;
@@ -62969,13 +62969,13 @@ inline __device__ float3  pca_reg_slab_5(uint tid_5, uint group_base_5, uint n_2
     bool _S5752 = _S5751 < _S5749;
     if(_S5752)
     {
-        pca_slab_fill_0(_S5751 - lo_15, _S5751, covariance_25, perm_19, sorted_27, quats_27, scales_27, opacities_18);
+        pca_slab_fill_0(_S5751 - lo_15, _S5751, covariance_25, perm_19, means_19, quats_27, scales_27, opacities_18);
     }
     uint rank_7 = _S5751 + 1U;
     bool _S5753 = rank_7 < _S5749;
     if(_S5753)
     {
-        pca_slab_fill_0(rank_7 - lo_15, rank_7, covariance_25, perm_19, sorted_27, quats_27, scales_27, opacities_18);
+        pca_slab_fill_0(rank_7 - lo_15, rank_7, covariance_25, perm_19, means_19, quats_27, scales_27, opacities_18);
     }
     __syncthreads();
     float3  _S5754 = make_float3 (0.0f);
@@ -63002,39 +63002,39 @@ inline __device__ float3  pca_reg_slab_5(uint tid_5, uint group_base_5, uint n_2
     return l_6;
 }
 
-inline __device__ float3  pca_reg_slab_k8(uint tid_6, uint group_base_6, uint n_29, uint k_36, uint window_18, float * quats_28, float * scales_28, float * opacities_19, uint covariance_26, uint terms_27, int * perm_20, float4  * sorted_28, int * nbrs_24, uint store_list_24, float * radii_19, uint gate_means_19, float * v_means_19, float * v_quats_27, float * v_scales_27, float * v_opacities_19, float w_plane_26, float w_tangent_26, float w_normal_26, float w_surfel_26, float w_erank_26, float2  * extra_26)
+inline __device__ float3  pca_reg_slab_k8(uint tid_6, uint group_base_6, uint n_29, uint k_36, uint window_18, float * quats_28, float * scales_28, float * opacities_19, uint covariance_26, uint terms_27, int * perm_20, float * means_20, int * nbrs_24, uint store_list_24, float * radii_19, uint gate_means_19, float * v_means_19, float * v_quats_27, float * v_scales_27, float * v_opacities_19, float w_plane_26, float w_tangent_26, float w_normal_26, float w_surfel_26, float w_erank_26, float2  * extra_26)
 {
-    float3  _S5756 = pca_reg_slab_0(tid_6, group_base_6, n_29, k_36, window_18, quats_28, scales_28, opacities_19, covariance_26, terms_27, perm_20, sorted_28, nbrs_24, store_list_24, radii_19, gate_means_19, v_means_19, v_quats_27, v_scales_27, v_opacities_19, w_plane_26, w_tangent_26, w_normal_26, w_surfel_26, w_erank_26, extra_26);
+    float3  _S5756 = pca_reg_slab_0(tid_6, group_base_6, n_29, k_36, window_18, quats_28, scales_28, opacities_19, covariance_26, terms_27, perm_20, means_20, nbrs_24, store_list_24, radii_19, gate_means_19, v_means_19, v_quats_27, v_scales_27, v_opacities_19, w_plane_26, w_tangent_26, w_normal_26, w_surfel_26, w_erank_26, extra_26);
     return _S5756;
 }
 
-inline __device__ float3  pca_reg_slab_k16(uint tid_7, uint group_base_7, uint n_30, uint k_37, uint window_19, float * quats_29, float * scales_29, float * opacities_20, uint covariance_27, uint terms_28, int * perm_21, float4  * sorted_29, int * nbrs_25, uint store_list_25, float * radii_20, uint gate_means_20, float * v_means_20, float * v_quats_28, float * v_scales_28, float * v_opacities_20, float w_plane_27, float w_tangent_27, float w_normal_27, float w_surfel_27, float w_erank_27, float2  * extra_27)
+inline __device__ float3  pca_reg_slab_k16(uint tid_7, uint group_base_7, uint n_30, uint k_37, uint window_19, float * quats_29, float * scales_29, float * opacities_20, uint covariance_27, uint terms_28, int * perm_21, float * means_21, int * nbrs_25, uint store_list_25, float * radii_20, uint gate_means_20, float * v_means_20, float * v_quats_28, float * v_scales_28, float * v_opacities_20, float w_plane_27, float w_tangent_27, float w_normal_27, float w_surfel_27, float w_erank_27, float2  * extra_27)
 {
-    float3  _S5757 = pca_reg_slab_1(tid_7, group_base_7, n_30, k_37, window_19, quats_29, scales_29, opacities_20, covariance_27, terms_28, perm_21, sorted_29, nbrs_25, store_list_25, radii_20, gate_means_20, v_means_20, v_quats_28, v_scales_28, v_opacities_20, w_plane_27, w_tangent_27, w_normal_27, w_surfel_27, w_erank_27, extra_27);
+    float3  _S5757 = pca_reg_slab_1(tid_7, group_base_7, n_30, k_37, window_19, quats_29, scales_29, opacities_20, covariance_27, terms_28, perm_21, means_21, nbrs_25, store_list_25, radii_20, gate_means_20, v_means_20, v_quats_28, v_scales_28, v_opacities_20, w_plane_27, w_tangent_27, w_normal_27, w_surfel_27, w_erank_27, extra_27);
     return _S5757;
 }
 
-inline __device__ float3  pca_reg_slab_k32(uint tid_8, uint group_base_8, uint n_31, uint k_38, uint window_20, float * quats_30, float * scales_30, float * opacities_21, uint covariance_28, uint terms_29, int * perm_22, float4  * sorted_30, int * nbrs_26, uint store_list_26, float * radii_21, uint gate_means_21, float * v_means_21, float * v_quats_29, float * v_scales_29, float * v_opacities_21, float w_plane_28, float w_tangent_28, float w_normal_28, float w_surfel_28, float w_erank_28, float2  * extra_28)
+inline __device__ float3  pca_reg_slab_k32(uint tid_8, uint group_base_8, uint n_31, uint k_38, uint window_20, float * quats_30, float * scales_30, float * opacities_21, uint covariance_28, uint terms_29, int * perm_22, float * means_22, int * nbrs_26, uint store_list_26, float * radii_21, uint gate_means_21, float * v_means_21, float * v_quats_29, float * v_scales_29, float * v_opacities_21, float w_plane_28, float w_tangent_28, float w_normal_28, float w_surfel_28, float w_erank_28, float2  * extra_28)
 {
-    float3  _S5758 = pca_reg_slab_2(tid_8, group_base_8, n_31, k_38, window_20, quats_30, scales_30, opacities_21, covariance_28, terms_29, perm_22, sorted_30, nbrs_26, store_list_26, radii_21, gate_means_21, v_means_21, v_quats_29, v_scales_29, v_opacities_21, w_plane_28, w_tangent_28, w_normal_28, w_surfel_28, w_erank_28, extra_28);
+    float3  _S5758 = pca_reg_slab_2(tid_8, group_base_8, n_31, k_38, window_20, quats_30, scales_30, opacities_21, covariance_28, terms_29, perm_22, means_22, nbrs_26, store_list_26, radii_21, gate_means_21, v_means_21, v_quats_29, v_scales_29, v_opacities_21, w_plane_28, w_tangent_28, w_normal_28, w_surfel_28, w_erank_28, extra_28);
     return _S5758;
 }
 
-inline __device__ float3  pca_reg_slab_k8_sa(uint tid_9, uint group_base_9, uint n_32, uint k_39, uint window_21, float * quats_31, float * scales_31, float * opacities_22, uint covariance_29, uint terms_30, int * perm_23, float4  * sorted_31, int * nbrs_27, uint store_list_27, float * radii_22, uint gate_means_22, float * v_means_22, float * v_quats_30, float * v_scales_30, float * v_opacities_22, float w_plane_29, float w_tangent_29, float w_normal_29, float w_surfel_29, float w_erank_29, float2  * extra_29)
+inline __device__ float3  pca_reg_slab_k8_sa(uint tid_9, uint group_base_9, uint n_32, uint k_39, uint window_21, float * quats_31, float * scales_31, float * opacities_22, uint covariance_29, uint terms_30, int * perm_23, float * means_23, int * nbrs_27, uint store_list_27, float * radii_22, uint gate_means_22, float * v_means_22, float * v_quats_30, float * v_scales_30, float * v_opacities_22, float w_plane_29, float w_tangent_29, float w_normal_29, float w_surfel_29, float w_erank_29, float2  * extra_29)
 {
-    float3  _S5759 = pca_reg_slab_3(tid_9, group_base_9, n_32, k_39, window_21, quats_31, scales_31, opacities_22, covariance_29, terms_30, perm_23, sorted_31, nbrs_27, store_list_27, radii_22, gate_means_22, v_means_22, v_quats_30, v_scales_30, v_opacities_22, w_plane_29, w_tangent_29, w_normal_29, w_surfel_29, w_erank_29, extra_29);
+    float3  _S5759 = pca_reg_slab_3(tid_9, group_base_9, n_32, k_39, window_21, quats_31, scales_31, opacities_22, covariance_29, terms_30, perm_23, means_23, nbrs_27, store_list_27, radii_22, gate_means_22, v_means_22, v_quats_30, v_scales_30, v_opacities_22, w_plane_29, w_tangent_29, w_normal_29, w_surfel_29, w_erank_29, extra_29);
     return _S5759;
 }
 
-inline __device__ float3  pca_reg_slab_k16_sa(uint tid_10, uint group_base_10, uint n_33, uint k_40, uint window_22, float * quats_32, float * scales_32, float * opacities_23, uint covariance_30, uint terms_31, int * perm_24, float4  * sorted_32, int * nbrs_28, uint store_list_28, float * radii_23, uint gate_means_23, float * v_means_23, float * v_quats_31, float * v_scales_31, float * v_opacities_23, float w_plane_30, float w_tangent_30, float w_normal_30, float w_surfel_30, float w_erank_30, float2  * extra_30)
+inline __device__ float3  pca_reg_slab_k16_sa(uint tid_10, uint group_base_10, uint n_33, uint k_40, uint window_22, float * quats_32, float * scales_32, float * opacities_23, uint covariance_30, uint terms_31, int * perm_24, float * means_24, int * nbrs_28, uint store_list_28, float * radii_23, uint gate_means_23, float * v_means_23, float * v_quats_31, float * v_scales_31, float * v_opacities_23, float w_plane_30, float w_tangent_30, float w_normal_30, float w_surfel_30, float w_erank_30, float2  * extra_30)
 {
-    float3  _S5760 = pca_reg_slab_4(tid_10, group_base_10, n_33, k_40, window_22, quats_32, scales_32, opacities_23, covariance_30, terms_31, perm_24, sorted_32, nbrs_28, store_list_28, radii_23, gate_means_23, v_means_23, v_quats_31, v_scales_31, v_opacities_23, w_plane_30, w_tangent_30, w_normal_30, w_surfel_30, w_erank_30, extra_30);
+    float3  _S5760 = pca_reg_slab_4(tid_10, group_base_10, n_33, k_40, window_22, quats_32, scales_32, opacities_23, covariance_30, terms_31, perm_24, means_24, nbrs_28, store_list_28, radii_23, gate_means_23, v_means_23, v_quats_31, v_scales_31, v_opacities_23, w_plane_30, w_tangent_30, w_normal_30, w_surfel_30, w_erank_30, extra_30);
     return _S5760;
 }
 
-inline __device__ float3  pca_reg_slab_k32_sa(uint tid_11, uint group_base_11, uint n_34, uint k_41, uint window_23, float * quats_33, float * scales_33, float * opacities_24, uint covariance_31, uint terms_32, int * perm_25, float4  * sorted_33, int * nbrs_29, uint store_list_29, float * radii_24, uint gate_means_24, float * v_means_24, float * v_quats_32, float * v_scales_32, float * v_opacities_24, float w_plane_31, float w_tangent_31, float w_normal_31, float w_surfel_31, float w_erank_31, float2  * extra_31)
+inline __device__ float3  pca_reg_slab_k32_sa(uint tid_11, uint group_base_11, uint n_34, uint k_41, uint window_23, float * quats_33, float * scales_33, float * opacities_24, uint covariance_31, uint terms_32, int * perm_25, float * means_25, int * nbrs_29, uint store_list_29, float * radii_24, uint gate_means_24, float * v_means_24, float * v_quats_32, float * v_scales_32, float * v_opacities_24, float w_plane_31, float w_tangent_31, float w_normal_31, float w_surfel_31, float w_erank_31, float2  * extra_31)
 {
-    float3  _S5761 = pca_reg_slab_5(tid_11, group_base_11, n_34, k_41, window_23, quats_33, scales_33, opacities_24, covariance_31, terms_32, perm_25, sorted_33, nbrs_29, store_list_29, radii_24, gate_means_24, v_means_24, v_quats_32, v_scales_32, v_opacities_24, w_plane_31, w_tangent_31, w_normal_31, w_surfel_31, w_erank_31, extra_31);
+    float3  _S5761 = pca_reg_slab_5(tid_11, group_base_11, n_34, k_41, window_23, quats_33, scales_33, opacities_24, covariance_31, terms_32, perm_25, means_25, nbrs_29, store_list_29, radii_24, gate_means_24, v_means_24, v_quats_32, v_scales_32, v_opacities_24, w_plane_31, w_tangent_31, w_normal_31, w_surfel_31, w_erank_31, extra_31);
     return _S5761;
 }
 

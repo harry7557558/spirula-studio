@@ -51,6 +51,7 @@ private:
 struct EtaForecast {
     double seconds = -1.0;   // < 0 while unknown
     double sigma = -1.0;
+    double regularizer = 0.0;   // of `seconds`, a regularizer on its own schedule
 };
 
 // Device memory, with x the training step. "Ours" is this process; "others" is
@@ -77,10 +78,9 @@ struct ForecastSetup {
     int sh_degree_every = 0;       //   min(step / sh_degree_every, sh_degree)
     // Progressive resolution: (first step, image divisor), ascending.
     std::vector<std::pair<int, int>> resolution_stages;
-    // Splat memory first allocated, for cap_max, at a later step: the
-    // local-PCA regularizer's neighbour caches.
-    uint64_t deferred_bytes = 0;
-    int deferred_step = 0;
+    // A per-splat regularizer that runs from this step on (-1: none): its
+    // time is measured apart (add_regularizer) and forecast on its schedule.
+    int reg_start_step = -1;
 };
 
 struct MemorySample {
@@ -96,13 +96,17 @@ struct MemorySample {
     uint64_t commit_free_bytes = 0;
     size_t sh_bytes = 0;         // the splats' SH rows, part of the Splat category
     // Of pool_cap[SplatXImg], the alias arena; and per PoolPhase the most its
-    // per-pixel and its per-splat slices came to (DevicePool::arena_phases).
+    // per-pixel, its per-pair and (as sized for cap_max) its per-splat slices
+    // came to (DevicePool::arena_phases).
     size_t arena_cap = 0;
-    std::array<size_t, (int)PoolPhase::Count> phase_pixels{}, phase_splats{};
+    std::array<size_t, (int)PoolPhase::Count> phase_pixels{}, phase_splats{}, phase_capped{};
     // The most visible and splat-tile pairs one forward has made
     // (engine_get_isect_peaks): what the tile phase's bands are cut from.
     int64_t isect_pairs = 0, isect_count = 0;
     int64_t isect_step = 0;      // the step's last forward's splat-tile pairs
+    // isect_count at the finest binning tile the engine's search may still
+    // try, 0 when it cannot go finer (engine_bin_finer_isects).
+    int64_t isect_finer = 0;
 };
 
 // One finished step for the time breakdown: its wall clock with the host
@@ -145,6 +149,9 @@ public:
     // (< 0 when not timed).
     void add_step(int step, double wall_s, int64_t splats, double splat_gpu_s);
     void add_save(double seconds, int64_t splats);
+    // One pass of the regularizer over `splats`: its GPU seconds, measured on
+    // a step that ran it or scaled up from a probe before it starts.
+    void add_regularizer(double seconds, int64_t splats, bool probed);
     void add_memory(const MemorySample& m);
     void add_breakdown(const StepSample& s);
 
@@ -166,14 +173,23 @@ private:
         std::vector<double> pixels;        // pixel_ratio
         std::vector<int> coeffs;
     };
-    // Step time = a ra + (b0 + b1 * sh_coeffs) * msplats^gamma * rb, the splat
-    // stages' GPU time = c ra + the same term (ra, rb: fixed_load, splat_load):
-    // a Kalman filter over [a, b0, b1, c] per exponent, weighted by prediction.
+    // Step time less reg_seconds = a ra + (b0 + b1 * sh_coeffs) * msplats^gamma
+    // * rb, the splat stages' GPU time = c ra + the same (ra, rb: fixed_load,
+    // splat_load): a Kalman filter over [a, b0, b1, c] per exponent.
     struct TimeModel {
         double gamma = 1.0;
         double x[4] = {0, 0, 0, 0};
         double P[4][4] = {};
         double score = 0.0;              // discounted log-likelihood
+    };
+    // The same time once the breakdown has measured its columns: a ra + (b0 +
+    // b1 * sh_coeffs) * msplats + exp(s0 + s1 ln msplats) * r^0.45, each term
+    // filtered on its own measurement -- s1 is how splat x pixel work grows.
+    struct ColumnModel {
+        bool init = false;
+        double a = 0.0, a_var = 0.0;
+        double b[2] = {0, 0}, B[2][2] = {};
+        double s[2] = {0, 0}, S[2][2] = {};
     };
     struct MemWindow {
         int steps = 0;
@@ -192,6 +208,7 @@ private:
     struct Remaining {
         double seconds = -1.0, sigma = -1.0;
         double saves = 0.0;      // of `seconds`, the checkpoint saves
+        double reg = 0.0;        // and the regularizer, when it is measured
         double steps = 0.0;
         // Steps left in units of the next step's cost, for the cells that
         // scale with the splats, with splats and pixels, and with pixels.
@@ -209,6 +226,11 @@ private:
     };
 
     int sh_coeffs(int step) const;
+    // The regularizer's seconds in a step of `msplats`, once measured.
+    double reg_seconds(int step, double msplats) const {
+        const int first = _setup.reg_start_step;
+        return _reg_n > 0 && first >= 0 && step >= first ? _reg_per_msplat * msplats : 0.0;
+    }
     double fixed_load(double r) const { return _px_share * r + 1.0 - _px_share; }
     double splat_load(double r) const {
         return _sp_share * std::pow(r, kSplatPixelTimeExp) + 1.0 - _sp_share;
@@ -225,6 +247,7 @@ private:
     void close_time_window();
     void update_time_model(TimeModel& t, const Window& w, double y, double var_y,
                            double g, double var_g, bool timed, bool first);
+    void update_column_model(const Window& w, double y, double var_y, const StepCells& cells);
     void close_mem_window(const MemorySample& m);
     void refresh_vram(const MemorySample& m);
 
@@ -236,10 +259,15 @@ private:
     Window _tw;
     bool _time_init = false;
     std::array<TimeModel, 3> _tm;
+    ColumnModel _cm;
     double _fallback_wall = 0.0;
     int _fallback_n = 0;
     double _save_per_msplat = 0.0;
     int _saves = 0;
+    double _reg_per_msplat = 0.0;        // seconds a step per million splats
+    std::deque<double> _reg_recent;      // its last measurements: it is their median
+    int _reg_n = 0;
+    bool _reg_ran = false;               // measured on a real pass, not a probe
 
     // Started once the first densify step has run.
     MemWindow _mw;
@@ -253,8 +281,6 @@ private:
     double _transient = 0.0;             // the most a step's peak stood above its end
     int64_t _held_count = 0;             // the count the last steps ran with,
     int _held_steps = 0;                 //   and how many of them
-    double _densify_per_splat = 0.0;     // the Densify phase's bytes per live splat
-    double _densify_seen = 0.0;
 
     std::vector<VramForecast::Sample> _history;
     std::vector<VramForecast::Band> _projection;

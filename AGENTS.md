@@ -750,7 +750,16 @@ small default buffer is not enough for these bulk paths.
   end-of-step VRAM sample sees. A buffer whose length follows the LIVE splat
   count and outlives a call goes in `POOL_LIVE_SPLAT_TABLE`, so it is sized
   for `cap_max` once: the trainer's VRAM forecast assumes only `splat x img`
-  grows during a run.
+  grows during a run. An arena slice in the Splat category gets the same
+  treatment by itself (the arena is sized as if it were `cap_max` long), so
+  give a per-splat arena slot that category and nothing else.
+- **A feature that starts at a later step takes its memory at step 0.** The
+  PCA regularizer counts its scratch against the arena from the first step
+  (`DevicePool::arena_expect`) and the calibration warp acquires its warped
+  ground truth before its start step, so a run that cannot hold them fails
+  at once and the VRAM forecast has no start steps to model. A per-splat
+  cost that starts mid-run also tells the ETA: `ForecastSetup::reg_start_step`
+  and `TrainForecast::add_regularizer` (docs/notes/train-forecast.md).
 - **A new Vulkan kernel needs a row in `engine/StepTimingTable.h`**: what it
   is for and what its time grows with, for the step-time breakdown the GUI
   shows. The SPIR-V embed fails without it; a shared utility says `Scope` and

@@ -60,11 +60,12 @@ void gather(int64_t n, const int32_t* perm, const float3* means, float4* sorted,
 
 }  // namespace
 
-std::tuple<DeviceVector<int32_t>, DeviceVector<float4>, DeviceVector<uint32_t>>
-pca_reg_order_tensor(int64_t num_splats, DeviceVector<float3> means, DeviceVector<int32_t> keep) {
+std::tuple<DeviceVector<int32_t>, DeviceVector<uint32_t>> pca_reg_order_tensor(
+    int64_t num_splats, DeviceVector<float3> means, DeviceVector<int32_t> scratch,
+    DeviceVector<float4> sorted, DeviceVector<int32_t> keep) {
     if (num_splats <= 0) return {};
     DeviceVector<uint32_t> box;
-    box.resize(PoolSlot::PcaRegBox, 6);
+    box.resize_reused(PoolSlot::PcaRegBox, 6);   // a probe orders twice in one phase
     backend::memset_async(box.data_ptr(), 0xff, 3 * sizeof(uint32_t), backend::kDefaultStream);
     backend::memset_async(box.data_ptr() + 3, 0, 3 * sizeof(uint32_t), backend::kDefaultStream);
     {
@@ -78,38 +79,38 @@ pca_reg_order_tensor(int64_t num_splats, DeviceVector<float3> means, DeviceVecto
         vkk::dispatch("pca_reg.pca_box", {}, groups, 1, 1, &p, sizeof(p));
     }
 
-    // The sorted centres take the two key buffers' place once the sort is done.
-    DeviceVector<int64_t> keys;
-    DeviceVector<int32_t> vals;
-    keys.resize(PoolSlot::PcaRegKeys, 2 * num_splats);
-    vals.resize(PoolSlot::PcaRegVals, 2 * num_splats);
+    // Both index buffers, then both key buffers: the sort's eight passes leave
+    // the order where it started, at the head of the scratch.
+    int32_t* vals = scratch.data_ptr();
+    int64_t* keys = (int64_t*)(vals + 2 * num_splats);
     {
         PcaKeysParams p{};
         p.means = (uint64_t)means.data_ptr();
         p.box = (uint64_t)box.data_ptr();
-        p.keys = (uint64_t)keys.data_ptr();
-        p.vals = (uint64_t)vals.data_ptr();
+        p.keys = (uint64_t)keys;
+        p.vals = (uint64_t)vals;
         p.n = (uint32_t)num_splats;
         vkk::dispatch_flat("pca_reg.pca_keys", {}, num_splats, 256, &p, sizeof(p),
                            &p.wgs_per_row);
     }
-    backend::DoubleBuffer<int64_t> d_keys(keys.data_ptr(), keys.data_ptr() + num_splats);
-    backend::DoubleBuffer<int32_t> d_vals(vals.data_ptr(), vals.data_ptr() + num_splats);
+    backend::DoubleBuffer<int64_t> d_keys(keys, keys + num_splats);
+    backend::DoubleBuffer<int32_t> d_vals(vals, vals + num_splats);
     backend::sort_pairs<int64_t, int32_t>(d_keys, d_vals, num_splats, 0, 63);
-    float4* sorted = (float4*)keys.data_ptr();
-    gather(num_splats, d_vals.current(), means.data_ptr(), sorted, keep.data_ptr());
-    return {DeviceVector<int32_t>(TorchTensorView((uint64_t)d_vals.current(), 4, {num_splats, 1})),
-            DeviceVector<float4>(TorchTensorView((uint64_t)sorted, 16, {num_splats, 1})), box};
+    if (d_vals.current() != vals)
+        backend::memcpy_async(vals, d_vals.current(), (size_t)num_splats * sizeof(int32_t),
+                              backend::MemcpyKind::DeviceToDevice);
+    if (sorted.data_ptr())
+        gather(num_splats, vals, means.data_ptr(), sorted.data_ptr(), keep.data_ptr());
+    else if (keep.data_ptr())
+        backend::memcpy_async(keep.data_ptr(), vals, (size_t)num_splats * sizeof(int32_t),
+                              backend::MemcpyKind::DeviceToDevice);
+    return {DeviceVector<int32_t>(TorchTensorView((uint64_t)vals, 4, {num_splats, 1})), box};
 }
 
-DeviceVector<float4> pca_reg_gather_tensor(int64_t num_splats, DeviceVector<float3> means,
-                                           DeviceVector<int32_t> perm) {
-    if (num_splats <= 0) return {};
-    DeviceVector<int64_t> keys;
-    keys.resize(PoolSlot::PcaRegKeys, 2 * num_splats);
-    float4* sorted = (float4*)keys.data_ptr();
-    gather(num_splats, perm.data_ptr(), means.data_ptr(), sorted, nullptr);
-    return DeviceVector<float4>(TorchTensorView((uint64_t)sorted, 16, {num_splats, 1}));
+void pca_reg_gather_tensor(int64_t num_splats, DeviceVector<float3> means,
+                           DeviceVector<int32_t> perm, DeviceVector<float4> sorted) {
+    if (num_splats <= 0) return;
+    gather(num_splats, perm.data_ptr(), means.data_ptr(), sorted.data_ptr(), nullptr);
 }
 
 std::tuple<DeviceVector<float4>, DeviceVector<int4>, DeviceVector<int32_t>> pca_reg_tree_tensor(

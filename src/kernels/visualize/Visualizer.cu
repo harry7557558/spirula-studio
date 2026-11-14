@@ -1244,7 +1244,7 @@ void engine_viewer_init(
 
     // Allocate thumbnail cache (N * S * S * 4 bytes; zero-initialized so
     // unfilled cells render as transparent black).
-    constexpr int S = VIEWER_THUMBNAIL_SIZE;
+    const int S = v.thumb_size = viewer_thumbnail_size(N);
     v.thumbnails.resize(PoolSlot::ViewerThumb, (int64_t)N * S * S * 4);
     cudaMemset(v.thumbnails.data_ptr(), 0,
                (size_t)N * S * S * 4 * sizeof(uint8_t));
@@ -1522,7 +1522,7 @@ void engine_viewer_capture_thumbnails(TorchTensorView cam_indices_tv) {
     update_thumbnails_kernel<<<(uint32_t)B_post, 128, 0, viewer_stream()>>>(
         (const void*)std::get<0>(gt_rgb), pixel_format(gt_rgb),
         (int)H, (int)W,
-        d_ci, (int)B_post, v.N_post, VIEWER_THUMBNAIL_SIZE,
+        d_ci, (int)B_post, v.N_post, v.thumb_size,
         v.thumbnails.data_ptr(),
         v.thumbnail_done_mask.data_ptr(),
         d_alpha_mask, H_alpha, W_alpha
@@ -1693,13 +1693,13 @@ void engine_blit_view(
     TensorView<uint8_t, 4> thumb_view;
     thumb_view.data = v.thumbnails.data_ptr();
     thumb_view.shape[0] = (long)v.N_post;
-    thumb_view.shape[1] = (long)VIEWER_THUMBNAIL_SIZE;
-    thumb_view.shape[2] = (long)VIEWER_THUMBNAIL_SIZE;
+    thumb_view.shape[1] = (long)v.thumb_size;
+    thumb_view.shape[2] = (long)v.thumb_size;
     thumb_view.shape[3] = 4L;
     thumb_view.strides[3] = 1L;
     thumb_view.strides[2] = 4L;
-    thumb_view.strides[1] = (long)(VIEWER_THUMBNAIL_SIZE * 4);
-    thumb_view.strides[0] = (long)(VIEWER_THUMBNAIL_SIZE * VIEWER_THUMBNAIL_SIZE * 4);
+    thumb_view.strides[1] = (long)(v.thumb_size * 4);
+    thumb_view.strides[0] = (long)(v.thumb_size * v.thumb_size * 4);
 
     const float4* lss_buffer = nullptr;
     const int2*   lss_nodes  = nullptr;
