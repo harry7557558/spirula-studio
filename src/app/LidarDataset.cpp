@@ -1,6 +1,10 @@
 #include "core/BufferedFile.h"
 #include "app/LidarDataset.h"
 
+#ifdef SS_TOOL_SFM
+#include "app/AnchorRefine.h"
+#endif
+
 #include "app/DepthPng.h"
 #include "app/E57Dataset.h"
 #include "app/ScanDepth.h"
@@ -448,6 +452,11 @@ std::string signature(const DatasetOptions& opt, const std::string& anchors_path
          ";flip:" + std::to_string(opt.flip_masks) + ";images:" + opt.image_dir +
          ";masks:" + opt.mask_dir + ";frames:" + std::to_string((int)opt.frames) +
          ";scanner:" + std::to_string(opt.scanner_poses_only);
+    if (opt.refine_capture) {
+        const fs::path m = fs::path(opt.dataset) / "matches.bin";
+        s += ";refine:" + std::to_string(fs::file_size(m, ec)) + ":" +
+             std::to_string((long long)fs::last_write_time(m, ec).time_since_epoch().count());
+    }
     return hex(fnv1a(s));
 }
 
@@ -882,6 +891,21 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     if (!anchors.empty()) log(format(lmsg::anchors_read, {(long long)anchors.size()}));
     bool placeable = false;
     for (const Anchor& a : anchors) placeable = placeable || (a.camera_model >= 0 && !a.rendered);
+    if (opt.refine_capture && placeable) {
+#ifdef SS_TOOL_SFM
+        const RefineResult r = refine_anchors_in(anchors, ds.string(), RefineOptions{});
+        if (r.points == 0) {
+            log(format(lmsg::refine_none, {ds.string()}));
+        } else {
+            log(format(lmsg::refine_head, {(long long)r.matched, (long long)r.photos,
+                                           (long long)r.moments}));
+            log(format(lmsg::refine_done, {(long long)r.points, fixed(r.error_px, 2),
+                                           fixed(r.moved_m, 3), fixed(r.turned_deg, 2)}));
+        }
+#else
+        throw std::runtime_error(lmsg::err_refine_unbuilt.get());
+#endif
+    }
 
     // Nothing moves until the result is complete in sparse.lidar_tmp/: a run
     // killed half way leaves the dataset as it was. sparse/0 is ours only
@@ -910,7 +934,7 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     else if (flat) sources = {sparse};
     else if (!ours && fs::exists(sparse, ec) && holds_files(sparse))
         throw std::runtime_error(format(lmsg::err_unreadable_model, {sparse.string()}));
-    if (opt.scanner_poses_only) sources.clear();
+    if (opt.scanner_poses_only || opt.refine_capture) sources.clear();
     const std::string sig = signature(opt, anchors_path);
     if (ours && fresh.empty() && !opt.overwrite) {
         const JsonValue* last_sig = last.find("signature");

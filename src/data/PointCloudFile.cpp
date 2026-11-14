@@ -1,6 +1,8 @@
 #include "core/BufferedFile.h"
 #include "data/PointCloudFile.h"
 
+#include "data/XbinReader.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -34,7 +36,7 @@ template <class T> T rd(const uint8_t* p) { T v; std::memcpy(&v, p, sizeof v); r
 
 bool is_cloud_path(const std::string& path) {
     const std::string e = lower_ext(path);
-    return e == ".e57" || e == ".las" || e == ".ply";
+    return e == ".e57" || e == ".las" || e == ".ply" || e == ".xbin";
 }
 
 bool is_laz_path(const std::string& path) { return lower_ext(path) == ".laz"; }
@@ -159,6 +161,12 @@ Reader::Reader(const std::string& path) : _path(path) {
                                   st.origin[2] == 0 && s.pose.q[0] == 1;
             if ((several || !identity) && s.count > 0) _info.stations.push_back(st);
         }
+        return;
+    }
+    if (ext == ".xbin") {
+        _info.format = Format::Xbin;
+        _xbin = std::make_unique<xbin::Reader>(path);
+        _info.points = _xbin->points_estimate();
         return;
     }
     if (ext == ".las") {
@@ -314,7 +322,7 @@ Reader::Reader(const std::string& path) : _path(path) {
         }
         return;
     }
-    fail(path, "not a point cloud this reads (.e57, .las or .ply)");
+    fail(path, "not a point cloud this reads (.e57, .las, .ply or .xbin)");
 }
 
 Reader::~Reader() = default;
@@ -326,6 +334,7 @@ bool Reader::read(const std::function<void(const e57::Point*, size_t)>& sink,
             if (!_e57->read_points(s, sink, cancel)) return false;
         return true;
     }
+    if (_xbin) return _xbin->read_points(sink, cancel);
     std::vector<e57::Point> batch;
     batch.reserve(kBatch);
     if (_las) {

@@ -3,11 +3,14 @@
 // child process and reads its progress lines back, so every line is a Msg.
 
 #include "app/LidarDataset.h"
+#include "app/XbinAnchors.h"
 #include "app/Tools.h"
 #include "data/PointCloudFile.h"
+#include "data/XbinReader.h"
 #include "i18n/Message.h"
 #include "i18n/catalog/Data.h"
 #include "i18n/catalog/Lidar.h"
+#include "i18n/catalog/SamHelp.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -41,7 +44,8 @@ void usage() {
     const std::string prog = app::program_name();
     std::fprintf(stderr, "%s -- %s\n\n", prog.c_str(), L::tagline.get());
     std::fprintf(stderr, "    %s <dataset folder> --cloud <scan> [options]\n", prog.c_str());
-    std::fprintf(stderr, "    %s --extract <scan.e57> <dataset folder> [<subfolder>]\n",
+    std::fprintf(stderr,
+                 "    %s [--ffmpeg <exe>] --extract <scan.e57|scan.xbin> <dataset folder> [<subfolder>]\n",
                  prog.c_str());
     std::fprintf(stderr, "    %s --info <scan>\n\n", prog.c_str());
     for (const std::string& l : spirula::i18n::wrap(L::usage_about.get(), 80))
@@ -63,8 +67,10 @@ void usage() {
     help_row("--flip-masks", L::opt_flip_masks.get());
     help_row("--overwrite", L::opt_overwrite.get());
     help_row("--scanner-poses", L::opt_scanner_poses.get());
+    help_row("--refine", L::opt_refine.get());
     help_row("--render-anchors", L::opt_render.get());
     help_row("--info <file>", L::opt_info.get());
+    help_row("--ffmpeg <exe>", spirula::i18n::msg::samhelp::xh_ffmpeg.get());
 }
 
 void say(const std::string& line) {
@@ -74,7 +80,7 @@ void say(const std::string& line) {
 
 int info(const std::string& path) {
     spirula::cloud::Reader r(path);
-    static const char* kFormat[] = {"E57", "LAS", "PLY"};
+    static const char* kFormat[] = {"E57", "LAS", "PLY", "XGRIDS"};
     say(format(L::info_cloud, {path, kFormat[(int)r.info().format], (long long)r.info().points,
                                r.info().has_color ? L::word_yes.get() : L::word_no.get(),
                                (long long)r.info().stations.size()}));
@@ -93,16 +99,29 @@ int spirula_lidar_main(int argc, char** argv) {
         std::fprintf(stderr, "%s\n", format(L::err_bad_value, {flag, v}).c_str());
         return 2;
     };
+    app::lidar::XbinDecoder decoder;
     try {
         for (int i = 1; i < argc; ++i) {
             const std::string a = argv[i];
             const bool has_value = i + 1 < argc;
             if (a == "--help" || a == "-h") { usage(); return 0; }
             if (a == "--info" && has_value) return info(argv[i + 1]);
+            // Before --extract: it runs at once and takes the arguments after it.
+            if (a == "--ffmpeg" && has_value) { decoder.ffmpeg_exe = argv[++i]; continue; }
             if (a == "--extract" && i + 2 < argc) {
                 const std::string ds = argv[i + 2];
                 const std::string sub = i + 3 < argc
                     ? argv[i + 3] : std::filesystem::path(argv[i + 1]).stem().string();
+                if (spirula::xbin::is_xbin_path(argv[i + 1])) {
+                    long long pinhole = 0, fisheye = 0;
+                    for (const app::lidar::XbinCameraFolder& f : app::lidar::extract_xbin_anchors(
+                             argv[i + 1], (std::filesystem::path(ds) / "images").string(), sub,
+                             (std::filesystem::path(ds) / "lidar" / "anchors.json").string(), {},
+                             false, decoder))
+                        (f.fisheye ? fisheye : pinhole) += f.frames;
+                    say(format(L::extracted_xbin, {pinhole + fisheye, pinhole, fisheye}));
+                    return 0;
+                }
                 const app::lidar::ExtractedPhotos x = app::lidar::extract_e57_anchors(
                     argv[i + 1], (std::filesystem::path(ds) / "images").string(), sub,
                     (std::filesystem::path(ds) / "lidar" / "anchors.json").string());
@@ -141,6 +160,7 @@ int spirula_lidar_main(int argc, char** argv) {
             else if (a == "--flip-masks") opt.flip_masks = true;
             else if (a == "--overwrite") opt.overwrite = true;
             else if (a == "--scanner-poses") opt.scanner_poses_only = true;
+            else if (a == "--refine") opt.refine_capture = true;
             else if (a == "--mode" && has_value) {
                 const std::string v = argv[++i];
                 if (v == "auto") opt.mode = app::lidar::AlignMode::Auto;

@@ -805,8 +805,17 @@ StepFields model_fields(const SfmJob& job) {
     add_sensors(f, p);
     // The scans' photographs are inputs only once the run has taken them out,
     // so the plan before it names them by scan; how they go in is the scan's.
-    if (job.lidar.enabled() && job.lidar.scan_photos && !job.lidar.in_frame)
-        for (const std::string& c : job.lidar.with_photos) add(f, "scan_photos", norm_path(c), "on");
+    for (const std::string& c : job.lidar.with_photos)
+        if (job.lidar.takes_photos(c)) {
+            // A capture's photographs are those of each camera taken, at its rate.
+            const auto cams = job.lidar.xbin_cameras.find(c);
+            std::string v = "on";
+            if (cams != job.lidar.xbin_cameras.end())
+                for (const app::lidar::XbinCameraPick& k : cams->second)
+                    v += k.taken ? " " + num(k.fps) : std::string(" off");
+            if (job.lidar.xbin_place_only.count(c)) v += " place";
+            add(f, "scan_photos", norm_path(c), v);
+        }
     add(f, "masks_for_features", "", onoff(masks_reach_features(p, job.mask_features)));
     add(f, "feature_only_masks", "",
         onoff(p.mask_enable && !p.mask_feature_prompt.empty()));
