@@ -9,6 +9,7 @@
 // sequence header in av1C and at every key frame. A 360 video is tagged the
 // two ways players look for: Spherical Video V1 (an XMP uuid box) and V2.
 
+#include "core/BufferedFile.h"
 #include "video/VideoEncoder.h"
 
 #include <cstdint>
@@ -32,6 +33,7 @@ public:
     bool close(std::string& error);
 
 private:
+    std::unique_ptr<char[]> _io_buffer;
     std::FILE* _f = nullptr;
     Codec _codec = Codec::H264;
     bool _h265 = false, _av1 = false, _spherical = false;

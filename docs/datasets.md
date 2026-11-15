@@ -55,6 +55,95 @@ takes seconds an image and an 11 GB install built from 45 GB streamed once
 (`spirula geometry --install marigold-v2`, or the GUI's download button).
 `src/marigold/README.md` has its numbers.
 
+### Primary GPU and Additional GPUs
+
+Dataset settings use **Primary GPU** for reconstruction, training and previews.
+Its **Auto** choice prefers usable discrete GPUs over integrated GPUs, then the
+GPU with the most memory. Between identical GPUs it takes the one other programs
+use less memory on, measured when the application first lists its GPUs (on
+Windows the adapter's dedicated memory in use, as Task Manager shows it;
+elsewhere the `VK_EXT_memory_budget` budget). A difference under 256 MiB counts
+as a tie, so idle cards keep their usual order. The primary choice freezes at
+the first GPU operation in a session; changing it afterwards requires
+restarting the application.
+
+**Additional GPUs** shares masking and depth & normals across the primary and
+selected extra GPUs, with one isolated process per GPU. **Auto** (the default)
+adds all other supported GPUs of the best kind present: discrete if available,
+otherwise integrated. Choose **None** for in-process serial inference on the
+primary, or select individual GPUs. With no extra GPU selected, inference is
+also serial. Reconstruction, training and previews stay on the primary GPU.
+Only usable discrete and integrated GPUs with UUIDs support workers.
+The additional selection is saved locally in `gui.conf` as `additional_gpus`;
+portable dataset presets do not carry it.
+
+`SS_WORKERS_PER_GPU` opts into multiple isolated inference processes per
+selected GPU. It must be an integer >= 1 and defaults to 1. For example,
+`SS_WORKERS_PER_GPU=2` runs two mask workers and two geometry workers per
+selected GPU, in their respective stages. With **None** or no extra GPU
+available, it instead runs two workers on the primary GPU. Each process
+loads its own models; the shared host-memory admission budget does not grow,
+and this setting does not impose a VRAM cap. Tracking sequences remain owned
+by one worker, so a single sequence cannot use all requested processes.
+
+Workers share a host-memory admission budget of half the machine's physical
+RAM, with a minimum of 4 GiB. This is not a per-process allowance, a strict
+runtime RAM cap or a VRAM limit. Model residency, tasks and geometry warp plans
+are charged against it; insufficient admission memory is an error, not a
+silent reduction in workers. A worker decodes its next image while the current
+one runs, and encodes finished outputs on a `WriterPool` before the parent
+accepts them, in the original order. Independent images go to workers in
+pairs; a tracked sequence stays one task, in frame order. Each worker's CPU
+loops and writers use `max(1, hardware_threads / workers)` threads. A mask
+task reserves two frames of the budget, a tracked sequence's included, and the
+step fails when that does not fit; a geometry pair that does not fit is sent
+as two single images.
+
+The geometry CLI can explicitly select worker UUIDs and override the shared
+budget: `spirula geometry <dataset> --worker-devices <uuid,...> --worker-memory-mb 8192`.
+The list includes every worker GPU, including the primary when desired; an
+empty list uses serial inference unless `SS_WORKERS_PER_GPU` is greater than 1,
+in which case it uses that many workers on the resolved primary GPU.
+Obtain UUIDs with `spirula sam devices`.
+Geometry output ownership, reuse and `--overwrite` rules are unchanged.
+
+### Reusing generated frames and geometry
+
+The GUI records the sources that made a workspace's frames, not just their
+paths. Replacing a video or an imported photo in place, changing the photo
+inventory, or editing a file-backed video LUT invalidates frame reuse.
+Runners check content hashes before planning and verify them again during
+preparation (after transfer for **Move** photo imports, before final frame
+completion otherwise); a same-size, same-timestamp replacement is still a
+change. Existing external-source frames without matching identities also
+need an explicit rebuild. **Keep them, run the rest** cannot bypass this guard:
+confirm **Redo them** on the dataset screen or choose a fresh workspace.
+Dataset images and photographs read in place are already the frames and are
+exempt from this external-source identity check. See
+[dataset reruns](notes/dataset-rerun.md#frame-source-identity) for details.
+
+When `spirula geometry` runs, it reuses a depth or normal map only if the
+map's sibling `<map filename>.geometry-complete` marker matches the request
+and its SHA-256 checksum matches the map. The request binds source image
+content, camera/face planning, model and inference options, colour/exposure,
+and output kind/encoding. Missing or empty maps and stale or damaged marked
+maps are regenerated; depth and normals are checked independently.
+
+**Nonempty outputs without a recognized completion marker are preserved,
+not silently adopted or replaced.** This includes older generated maps.
+To replace them intentionally, run:
+
+```sh
+spirula geometry <dataset> --overwrite
+```
+
+The GUI's geometry overwrite option also permits replacement. Keep markers
+with their maps when copying a dataset. The GUI plan's step-level reuse
+decision still uses the dataset record; per-map validation occurs when the
+geometry tool actually runs. See
+[completion and overwrite rules](notes/dataset-rerun.md#depth-and-normal-map-completion).
+
+
 ## Masks
 
 A training image's mask comes from up to two places:
@@ -608,6 +697,18 @@ images' own size. This is the "train smaller to go faster" knob — the GUI's
 Image resolution combo writes it — and it is relative to the images, not to the
 reconstruction.
 
+When the divisor is a whole number above 1, `cache_downscaled_images` (on by
+default) keeps the shrunk colour images beside the originals, at
+`<image_dir>_<d>/<same relative path>` (`data/DownscaleCache.h`), and later
+loads decode those, so a run over large images stops being bound by decoding
+them. JPEG and PNG only (8/16-bit, grey, RGB, RGBA; RGBA is filtered with
+premultiplied alpha), each in its own format, JPEG at quality 95. A file
+already there is used when its size is the original's divided by `d` under any
+rounding mode and it ends like a whole file; otherwise the original loads, and
+that file is never overwritten. Masks, depths and normals are not affected:
+they load at their own size whatever the divisor. On 60 MP JPEGs at divisor 8,
+500 steps took 49 s uncached, 10 s on the run that writes the cache, 5 s after.
+
 A caller with no image decoders leaves `probe_image_size` null and gets the
 reconstruction's resolution unchanged; the WebAssembly viewer does exactly that.
 
@@ -848,6 +949,35 @@ consent: they fail without changing the existing frames or dataset record, so
 rebuild interactively first or choose a fresh output folder for the batch.
 Changing the clip also re-extracts.
 See docs/notes/source-preview.md and docs/notes/dataset-rerun.md.
+
+### The exposure each frame records
+
+Several cameras log their exposure per frame beside their IMU
+(`sfm/core/Telemetry.h`): a GoPro's `SHUT` and `ISOE`, the Insta360 trailer's
+shutter record, a DJI Avata 360's ISO and shutter, a QooCam's `EXP`. Shared
+extraction writes the one nearest each frame into that frame's JPEG as EXIF
+`ExposureTime` / `ISOSpeedRatings`, timed `index / fps` exactly as SfM times
+the frame, so the `hdr` preset's `--ppisp-exposure-from-exif` seeds PPISP from
+video as it does from photos. Nothing else goes into the block: no focal, no
+orientation, no GPS (SfM reads a video's GPS from the video itself). It needs
+the telemetry reader and shared extraction, so a build without `SS_BUILD_SFM`
+or `SS_BUILD_SAM` writes none, and a PNG frame carries none.
+
+No video logs an aperture, and only some log an ISO, so the trainer compares
+images across sources only when each records shutter, aperture **and** ISO.
+An image missing any is compared only with its own folder's images that record
+the same factors, and each such group starts at its own mean. A night video
+locked at 1/500 s with an unlogged auto ISO is as bright as photos taken at
+1/50 s; compared on shutter alone, the photos would count as over three
+stops brighter.
+
+A 360 photograph -- an Insta360 `.insp`, cut into one JPEG per lens -- keeps
+its own EXIF through the cut: exposure and GPS as written, the focal cleared
+because it describes the whole frame, not one lens.
+
+The input preview's Sensors tab plots what a video logged or a folder's EXIF
+records, in stops about its mean, before anything is extracted
+(`docs/notes/source-preview.md`); so does `viewer/telemetry.html`.
 
 ### Colour LUTs
 

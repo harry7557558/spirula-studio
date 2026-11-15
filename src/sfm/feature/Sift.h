@@ -1,15 +1,4 @@
-// GPU SIFT extractor: host-side orchestration of sfm/shaders/sift/sift.slang.
-//
-// Owns a VkContext, builds the Gaussian scale-space layout (offsets, per-octave
-// dimensions, per-step blur kernels) on the host, uploads the image, and drives
-// the pyramid -> DoG -> extrema -> orientation -> descriptor dispatches. The
-// GPU stages append into device-side lists behind atomic counters; the host
-// reads a count back between stages to size the next dispatch (fine for a batch
-// extractor -- these are not the latency-critical local-BA solves of phase 4).
-//
-// Parameters mirror COLMAP's SiftExtractionOptions defaults (docs/porting-
-// colmap.md). The compile-time pyramid constants here MUST match the
-// static const block at the top of sift.slang.
+// GPU SIFT orchestration; pyramid constants must match sfm/shaders/sift/sift.slang.
 #pragma once
 
 #include <algorithm>
@@ -28,12 +17,15 @@
 #include "i18n/catalog/Sfm.h"
 #include "sfm/core/Features.h"
 #include "sfm/core/Image.h"
+#include "sfm/core/Experiment.h"
+#include "sfm/feature/SpatialSelection.h"
 #include "sfm/vk/EmbeddedSpirv.h"
 #include "sfm/vk/VkContext.h"
 
 namespace sfm {
 
 struct SiftOptions {
+    int spatial_grid = 0;
     int max_num_features = 8192;      // top-K by scale kept (COLMAP semantics)
     int num_octaves = 4;
     int max_num_orientations = 2;
@@ -69,6 +61,7 @@ public:
     static constexpr uint32_t kDescBox = 20;      // sift.slang's descriptor loop extent
 
     explicit SiftExtractor(const SiftOptions& opt) : opt_(opt) {
+        opt_.spatial_grid = experimentInt("SFM_SIFT_GRID", opt_.spatial_grid, 16);
         VkContextOptions vo;
         vo.selector = opt.device_selector;
         vo.deviceIndex = opt.device;
@@ -413,13 +406,12 @@ private:
         return n;
     }
 
-    // GPU top-K by scale: histogram-select a scale threshold that keeps ~K of
-    // the largest-scale oriented keypoints, then compact the survivors into
-    // `fokp` so only they are described.  Returns the survivor count (>= K by a
-    // small, single-bin overshoot; the host applies the exact cut later).
+    // Histogram selection can overshoot by one bin; readback applies the exact feature budget.
     uint32_t runSelect(uint32_t nokp) {
         if (nokp == 0) return 0;
         uint32_t K = (uint32_t)opt_.max_num_features;
+        if (opt_.spatial_grid && opt_.max_num_features > 0)
+            K = static_cast<uint32_t>(std::min<uint64_t>(nokp, uint64_t(K) * 4));
         float threshold = 0.0f;  // keep all (scales are strictly positive)
 
         if (opt_.max_num_features > 0 && nokp > K) {
@@ -533,20 +525,8 @@ private:
             kps[i] = {p[0], p[1], p[2], p[3], 0.0f};
         }
 
-        // Exact top-K cut on the (already small) survivor list, by scale, then a
-        // canonical output order.
-        //
-        // Both need a *total* order, because the GPU appends keypoints through
-        // atomics and the device order varies run to run. Leaving ties to that
-        // order made features.bin -- and so match indices, the seed pair and
-        // the whole reconstruction -- irreproducible (D16).
-        //
-        // The emitted order is by *position*, deliberately not by scale.
-        // Downstream tie-breaks are index-ordered (the matcher's max_num_matches
-        // cap, the mapper taking the first 3D point a feature corresponds to),
-        // so a scale-sorted index would quietly bias all of them toward
-        // large-scale, poorly-localized features. Position is uncorrelated with
-        // feature quality, which is what a canonical order should be.
+        // Total ordering removes nondeterministic GPU append order (D16).
+        // Position ordering avoids biasing downstream index ties toward large-scale features.
         auto byScale = [&](uint32_t a, uint32_t b) {
             const Keypoint& p = kps[a];
             const Keypoint& q = kps[b];
@@ -568,8 +548,13 @@ private:
         uint32_t keep = nsel;
         if (opt_.max_num_features > 0 && nsel > (uint32_t)opt_.max_num_features) {
             keep = (uint32_t)opt_.max_num_features;
-            std::partial_sort(idx.begin(), idx.begin() + keep, idx.end(), byScale);
-            idx.resize(keep);
+            if (opt_.spatial_grid) {
+                std::sort(idx.begin(), idx.end(), byScale);
+                idx = spatiallyBalancedFeatures(kps, idx, w0, h0, opt_.spatial_grid, keep);
+            } else {
+                std::partial_sort(idx.begin(), idx.begin() + keep, idx.end(), byScale);
+                idx.resize(keep);
+            }
         }
         std::sort(idx.begin(), idx.end(), byPosition);
 

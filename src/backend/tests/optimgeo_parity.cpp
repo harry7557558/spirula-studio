@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
                 /*max_screen_size=*/0.3f, /*max_screen_size_penalty=*/1.5f,
                 c.sam, ct, nq, visit, gq, {},
                 /*step=*/7 + step_i, steps, /*grad_scale=*/0.5f,
-                c.zero_grad);
+                c.zero_grad, {});
             backend::device_synchronize();
         }
 

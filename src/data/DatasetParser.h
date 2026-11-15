@@ -179,6 +179,7 @@ struct DatasetParserConfig {
     // Divide the training resolution by this factor, on top of that fit. 0 or
     // 1 trains at the images' own size.
     float       train_resolution_divisor = 0.0f;
+    int         max_resolution = 0;
     std::string downscale_rounding_mode = "floor";   // floor | ceil | round
 
     // Metashape inputs, relative to the dataset dir; empty = its unique
@@ -192,6 +193,13 @@ struct DatasetParserConfig {
     // is levelled by it, pixels untouched) or "apply" (images are loaded turned
     // and the reconstruction already describes that frame). docs/datasets.md.
     std::string exif_orientation = "none";
+
+    // How the dataset's cameras are oriented and centered in the normalized
+    // frame: orientation_method in {"up", "pca", "vertical", "none", "gsplat"},
+    // center_method in {"poses", "focus", "none", "gsplat"}.
+    std::string orientation_method = "up";
+    std::string center_method = "poses";
+    bool        auto_scale_poses = true;
 
     // Which <component> group to use when a Metashape export contains several.
     // -1 (default) keeps the historical behavior: train on the largest group.
@@ -255,6 +263,10 @@ struct ParsedDataset {
     // 1 / scale_factor of the would-be normalized frame. Computed over ALL
     // frames, before the eval_mode subset is dropped.
     float                    train_frame_scale = 1.0f;
+
+    // orientation_method / center_method `gsplat` needed seed points and had
+    // none usable, so `up` / `poses` were used for the normalized frame.
+    bool                     pose_normalization_fell_back = false;
 
     // inv(T_n_from_train), row-major 4x4: normalized frame -> training frame,
     // what the viewers remap their c2w through. A train_frame_scale of 1 does
@@ -395,14 +407,20 @@ ColmapPoints3D read_seed_pointcloud(const std::string& dataset_dir,
 // kStrayOverMedian in data/FrustumSize.h.
 constexpr float kStrayCameraThreshold = 20.0f;
 
-// T_n_from_camera = scale * [R_align | -R_align @ center] (row-major 4x4)
-// over c2w [N,3,4], orient="up" / center="poses"; returns scale_factor. The
-// viewer remap is inv(that @ applied); `R_out` is R_align alone.
+// T_n_from_camera = scale * [R_align | -R_align @ center]; returns scale_factor.
+// `gsplat` reads seed points in the `c2w` frame; without usable points it falls
+// back to up/poses with *gsplat_fell_back set (docs/notes/pose-normalization.md).
 double compute_normalized_transform(const double* c2w, int64_t n,
                                     double T_out[16], double R_out[9] = nullptr,
                                     // [N]: level by the up each image's EXIF
                                     // names, not by the image's own.
-                                    const uint8_t* exif_orientation = nullptr);
+                                    const uint8_t* exif_orientation = nullptr,
+                                    const std::string& orientation_method = "up",
+                                    const std::string& center_method = "poses",
+                                    bool auto_scale_poses = true,
+                                    const double* points_xyz = nullptr,
+                                    int64_t n_points = 0,
+                                    bool* gsplat_fell_back = nullptr);
 
 // Each image's EXIF Orientation, 1 where the file carries none. Empty when
 // `mode` is "none" or nothing in the set asks for a turn, which is the test
@@ -443,6 +461,11 @@ void read_gauge(const std::string& dir, ParsedDataset& ds);
 std::string find_aux_file(const std::string& aux_dir, const std::string& rel_name,
                           const char* suffix_tag);
 
+// find_aux_file of each name, in parallel; "" names cost nothing.
+std::vector<std::string> find_aux_files(const std::string& aux_dir,
+                                        const std::vector<std::string>& rel_names,
+                                        const char* suffix_tag);
+
 // `path` relative to `dir`, both folded lexically; "" when it is not under `dir`.
 std::string relative_under(const std::string& path, const std::string& dir);
 
@@ -451,11 +474,18 @@ std::string relative_under(const std::string& path, const std::string& dir);
 std::vector<char> outlier_keep_mask(const std::vector<double>& positions,
                                     int64_t n, float threshold);
 
-// The resolution one camera trains at: its image file's size when cfg probes
-// for one, divided by train_resolution_divisor. W/H and the intrinsics come in
-// as the reconstruction's and leave scaled to that; `src` (may be null) too.
+struct ImageSize { int w = 0, h = 0; };
+
+// cfg.probe_image_size of each path, in parallel: on a cold disk the opens are
+// the wait. {0, 0} where there is no probe or it fails.
+std::vector<ImageSize> probe_image_sizes(const DatasetParserConfig& cfg,
+                                         const std::vector<std::string>& paths);
+
+// The resolution one camera trains at: `probed` (probe_image_sizes) divided
+// by train_resolution_divisor. W/H and the intrinsics come in as the
+// reconstruction's and leave scaled to that; `src` (may be null) too.
 void fit_camera_resolution(const DatasetParserConfig& cfg,
-                           const std::string& image_path,
+                           const std::string& image_path, ImageSize probed,
                            double& W, double& H,
                            double& fx, double& fy, double& cx, double& cy,
                            RedistortSource* src, int turns_cw = 0);

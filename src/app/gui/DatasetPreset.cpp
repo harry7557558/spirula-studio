@@ -262,7 +262,7 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     clamp_to(j.distortion_refine, 0, 2);
     clamp_index(j.mapper, kSfmMapper);
     clamp_index(j.features, kSfmFeatures);
-    clamp_to(j.matcher, 0, 1);
+    clamp_to(j.matcher, 0, 2);
     clamp_index(j.metric_gps, kSfmMetricGps);
     clamp_index(j.sensor_gauge, kSfmSensorGauge);
     clamp_index(j.exif_attitude, kSfmExifAttitude);
@@ -272,7 +272,7 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     clamp_choice(j.camera_model, kSfmCameraModels, kNumSfmCameraModels);
     // LightGlue only means something with a learned frontend, and the CLI
     // refuses the combination rather than quietly ignoring it.
-    if (j.features == 0) j.matcher = 0;
+    if (j.features == 0 && j.matcher == 1) j.matcher = 0;
 
     ColmapJob& c = s.colmap;
     clamp_choice(c.camera_model, kColmapCameraModels, kNumColmapCameraModels);

@@ -27,6 +27,7 @@
 #include "app/gui/PickSheetView.h"
 #include "app/gui/PairPreview.h"
 #include "app/gui/SfmProgress.h"
+#include "app/gui/StepTimingView.h"
 #include "app/gui/Layout.h"
 #include "app/gui/LidarStep.h"
 #include "app/gui/MeshRunner.h"
@@ -39,11 +40,15 @@
 #include "app/gui/SourceList.h"
 #include "app/gui/SourceProbe.h"
 #include "app/gui/SourcePreview.h"
+#include "app/gui/StencilRows.h"
 #include "app/gui/TelemetryProbe.h"
 #include "app/gui/TrainPreset.h"
 #include "app/gui/TrainRunner.h"
 #include "app/gui/ViewportPanel.h"
 #include "data/PointCloudFile.h"
+#ifdef SS_BUILD_SAM
+#include "nn/Device.h"
+#endif
 
 #include <cstddef>
 #include <atomic>
@@ -53,6 +58,7 @@
 #include <functional>
 #include <future>
 #include <map>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -92,7 +98,7 @@ public:
     void frame();
     // Something is moving without the user touching anything -- a render
     // playing back or being written -- so frames must keep coming.
-    bool animating() const { return _compare.animating() || _mask_editor.animating() || _source_view.animating(); }
+    bool animating() const { return _compare.animating() || _images.animating() || _mask_editor.animating() || _source_view.animating(); }
 
     // What a script needs to know that is not on screen as a widget: the
     // screen, what is running, what is open. A JSON object body without the
@@ -271,8 +277,8 @@ private:
     void add_batch_source_row(const std::vector<std::string>& sources);
     void add_batch_mesh_row(const std::string& model);
     // The training run a new row (or a new run on one) starts with: whatever
-    // the trainer screen is on.
-    BatchRun batch_run_on_screen() const;
+    // the trainer screen is on, its region too when `dataset` is open there.
+    BatchRun batch_run_on_screen(const std::string& dataset = {}) const;
     void batch_edited();                    // persist, and re-check
     // Pre-flight every row. Cheap enough (a few stats and a small JSON per
     // preset) that nothing waits for a button: check_batch_if_stale() runs it
@@ -435,9 +441,17 @@ private:
         std::function<void()> open_preview;
     };
     MaskingPanel dataset_masking_panel();
+    // The checkpoint picker of the dataset screen, also offered in the panel.
+    void draw_dataset_model_picker();
+    void open_segment(const PreviewSource& src,
+                      std::optional<PreviewFrame> initial = std::nullopt);
     void draw_masking_options(const MaskingPanel& p);
     // The job's mask_* fields from the shared settings; `mask_enable` excepted.
     void fill_masking(PrepJob& prep) const;
+    std::string resolved_worker_devices() const;
+#ifdef SS_BUILD_SAM
+    void draw_additional_gpus();
+#endif
     void draw_geometry_options();
     // Opens the geometry preview on the output folder when it already holds a
     // reconstruction -- the only case where the real cameras are known -- and
@@ -515,6 +529,8 @@ private:
     // How a panel must read one input's frames: the decoder the run will use,
     // and the FrameLook it will write them with.
     PreviewSource preview_source(size_t input) const;
+    // The same for any input, `lut` the one its frames go through.
+    PreviewSource preview_source_for(const PrepInput& in, const std::string& lut) const;
     // Opens "Try the mask" on the input the combo points at, which is also the
     // input whose clicks and stencil it edits.
     void open_mask_preview();
@@ -578,7 +594,12 @@ private:
     // The built-in / saved picker one stage of one row uses. True when the
     // choice moved.
     bool draw_batch_train_preset(BatchPreset& p, const char* id, int row, int slot);
-    bool draw_batch_run(BatchRun& run, int row, int slot, bool meshing);
+    // A non-empty `roi_dataset` adds the region column, choosing among `roi_files`.
+    bool draw_batch_run(BatchRun& run, int row, int slot, bool meshing,
+                        const std::string& roi_dataset = {},
+                        const std::vector<std::string>& roi_files = {});
+    bool draw_batch_run_roi(BatchRun& run, const std::string& dataset,
+                            const std::vector<std::string>& files, float width);
     // The colour and format sets a row writes, over what its preset says.
     bool draw_batch_mesh_outputs(BatchMeshOptions& mesh);
     void draw_batch_issues();
@@ -600,10 +621,13 @@ private:
     // `_batch_current` indexes the TASKS, which outnumber the rows.
     const BatchRow* batch_running_row() const;
     // The command the queue runs when it is over: the field and its Test
-    // button, starting it with a message, and reporting how it went.
+    // button, and starting it with a message.
     void draw_batch_command();
     void run_batch_command(const std::string& message);
-    void poll_batch_command();
+    // A finished queue's command or a run's --finish-command, one at a time,
+    // and what it printed and how it ended.
+    void run_finish_command(const std::string& command, const std::string& message);
+    void poll_finish_command();
     const spirula::i18n::Msg& batch_stage_name(BatchStage s) const;
     void draw_train_settings();      // left panel
     void draw_device_issue_banner();
@@ -620,7 +644,7 @@ private:
     // one choice reaches the dataset, mask/geometry previews, reconstruction,
     // geometry child and mesh child. Called from the freeze point.
     void propagate_frozen_device();
-    void draw_preset_picker();       // built-in + saved presets, save / load
+    bool draw_preset_picker();       // built-in + saved presets; true once one applies
     void draw_preset_save_modal();
     void draw_preset_delete_modal();
     void draw_basic_options();
@@ -630,6 +654,9 @@ private:
     // Right-aligned VRAM readout on the status strip; x0/avail describe the
     // strip's content region (window-local left edge and width).
     void draw_vram_readout(float x0, float avail);
+    // "details" beside the step rate: where the time goes, on hover and pinned.
+    void draw_timing_link();
+    SavingsContext savings_context(const spirula::TrainerSession& session) const;
 
     // ---- layout ----
     // The height the log panel gets when `avail` vertical pixels are shared
@@ -744,11 +771,15 @@ private:
     // What the picker lists: the native Vulkan records when the build has one,
     // backend rows otherwise. Cached: enumeration spins up a throwaway
     // instance, and the machine's device set does not change under a session.
+#ifdef SS_BUILD_SAM
+    using NativeDeviceRow = nn::DeviceInfo;
+#else
     struct NativeDeviceRow {
         std::string name, type, uuid;   // uuid canonical, "" when unreported
         uint64_t vram_bytes = 0;
         bool usable = false;
     };
+#endif
     std::vector<NativeDeviceRow> _native_devices;
     bool _native_devices_loaded = false;
 
@@ -824,6 +855,9 @@ private:
         int64_t points = 0;           // as the header declares
         int64_t photos = 0;           // images an E57 carries with poses
         std::vector<spirula::cloud::Station> stations;
+        // Drawn areas for its photographs, apart from every input's (issue #99).
+        app::FrameStencil stencil;
+        std::map<std::string, StencilFollow> stencil_follow;
     };
     bool read_lidar_input(const std::string& path, LidarInput& in);
     std::vector<LidarInput> _lidar;
@@ -1001,14 +1035,50 @@ private:
     bool _mask_memory = false;
     int  _mask_detect_every = 1;
     int  _mask_memory_frames = 0;
+    std::string _additional_gpus = "auto";
     // The static stencils are kept on the inputs themselves (PrepInput::
     // stencil); this only says whether the run is given them, so that turning
     // the option off and on again does not throw away what was drawn.
     bool _border_enable = false;
-    // A saved stencil drawn on every input, by name (StencilPreset.h); cleared
-    // once the panel edits what it drew, since the name no longer says what is.
+    // The saved stencil every input draws, by name (StencilPreset.h), which a
+    // dataset preset keeps; recomputed after every edit (common_set).
     std::string _frame_shapes;
-    std::vector<StencilPreset> _frame_shapes_list;   // read when the picker opens
+    // The saved sets, loaded, for naming what a row draws. Reloaded after the
+    // panel, which saves them, has closed.
+    std::vector<StencilPreset> _stencil_sets;
+    std::vector<app::MaskSet> _stencil_set_shapes;
+    bool _stencil_sets_stale = true;
+    bool _segment_was_open = false;
+    StencilSetMenu _stencil_set_menu;
+    void draw_stencil_set_dialogs();
+    // The panel a scan's Edit opens only once its photographs are out.
+    std::optional<SegmentPanel::EditRequest> _scan_edit;
+    void load_stencil_sets();
+    std::vector<StencilRow> stencil_table_rows(const std::vector<PrepInput>& inputs) const;
+    // The table as drawn: the inputs' rows, then those of each scan whose
+    // photographs join the run, which start a chain of their own.
+    struct StencilTable {
+        StencilOwners owners;
+        std::vector<StencilRow> rows;
+        std::vector<std::string> names, paths;   // per owner
+        size_t inputs = 0;           // owners [0, inputs) are _sources
+        std::vector<size_t> scans;   // the _lidar row of each owner past them
+    };
+    StencilTable stencil_table();
+    // The owner the open panel edits, or -1.
+    int panel_owner(const StencilTable& t) const;
+    void refresh_frame_shapes(const std::vector<PrepInput>& inputs, std::string& frame_shapes);
+    void draw_stencil_rows(const MaskingPanel& p);
+    // Try the mask on a scan's photographs, extracted first on a worker.
+    void open_scan_mask_preview(size_t scan);
+    void pump_scan_photos();
+    bool scan_photos_busy() const;
+    std::future<std::pair<std::string, std::string>> _scan_photos;   // folder, error
+    size_t _scan_photos_for = 0;
+    int _mask_preview_scan = -1;                // the _lidar row the panel shows, or -1
+    int _mask_try_scan = -1;                    // the one "Try the mask" opens, or -1
+    // Rows past a removed scan move up; the panel on that scan closes.
+    void forget_scan(size_t scan);
     void apply_frame_shapes(std::vector<PrepInput>& inputs, std::string& preset,
                             size_t first_input = 0);
     void save_run_stencils();
@@ -1163,7 +1233,7 @@ private:
     // "run nothing", and it is kept in gui.conf rather than in the list: it
     // belongs to this machine, not to the rows.
     std::string _batch_cmd;
-    CommandRunner _batch_cmd_run;
+    CommandRunner _finish_cmd_run;
 
     FileDialog _dialog;
     PickAction _pick = PickAction::None;
@@ -1180,7 +1250,8 @@ private:
     // Settings (persisted).
     RecentList _recent;
     double _recent_probed_at = -1.0;
-    // Last frame's phase: a run is recorded as it reaches Done.
+    // Last frame's phase: a run is recorded, and its --finish-command started,
+    // as it ends.
     TrainRunner::Phase _seen_phase = TrainRunner::Phase::Idle;
     // Where a pick of each kind last landed, so a session opens where the last
     // one left off rather than at the home directory.
@@ -1269,6 +1340,7 @@ private:
 
     // VRAM readout on the status strip, polled from the backend at ~2 Hz.
     backend::MemoryUsage _vram;
+    StepTimingViewState _timing_view;
     double _vram_polled_at = -1.0;
 };
 

@@ -239,6 +239,7 @@ bool _rb_pixel_grad(int pix_id, float alpha, float4 color,
 // 2D backward (Vanilla3DGS / MipSplatting)
 // ---------------------------------------------------------------------------
 
+#ifndef SS_RASTER_NODEPTH
 struct Raster2dBwdParams {  // via params ring
     float* s_screen;    // [.., SCR2_STRIDE]
     int* gaussian_ids;   // kPacked only (fallback-backed otherwise)
@@ -354,7 +355,6 @@ void _rb2_step(int pix_id, int splat_idx, bool active,
     }
 }
 
-#ifndef SS_RASTER_NODEPTH
 [shader("compute")]
 [numthreads(32, 1, 1)]
 void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,

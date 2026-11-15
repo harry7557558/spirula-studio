@@ -1,5 +1,4 @@
-# The source lints every build runs: the comment-length gate (AGENTS.md,
-# "Comments -- write fewer, and shorter") and the names <windows.h> takes.
+# Source lints for comment length, interface copy, and Windows macro names.
 #
 # Include LAST from a project: it makes every target defined so far in the
 # including directory depend on the checks, so `--target spirula` fails as
@@ -8,6 +7,7 @@
 # ---------------------------------------------------------------------------
 
 option(SS_CHECK_COMMENTS "Fail the build on an over-budget comment block in an uncommitted change" ON)
+option(SS_CHECK_UI_TEXT "Fail the build on over-budget UI copy or unsupported English CLI characters" ON)
 
 get_filename_component(ss_checks_root ${CMAKE_CURRENT_LIST_DIR} DIRECTORY)
 
@@ -34,6 +34,15 @@ if(SS_CHECK_COMMENTS)
         COMMAND ${SS_PYTHON} ${ss_checks_root}/tools/check_comment_length.py --quiet
         WORKING_DIRECTORY ${ss_checks_root}
         COMMENT "Checking comment lengths in uncommitted changes"
+        VERBATIM USES_TERMINAL)
+endif()
+
+if(SS_CHECK_UI_TEXT)
+    list(APPEND ss_checks ss_check_ui_text)
+    add_custom_target(ss_check_ui_text ALL
+        COMMAND ${SS_PYTHON} ${ss_checks_root}/tools/check_ui_text.py --quiet
+        WORKING_DIRECTORY ${ss_checks_root}
+        COMMENT "Checking UI copy lengths and English CLI characters"
         VERBATIM USES_TERMINAL)
 endif()
 

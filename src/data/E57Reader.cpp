@@ -1,5 +1,6 @@
 #include "data/E57Reader.h"
 
+#include "core/BufferedFile.h"
 #include "data/Xml.h"
 
 #include <algorithm>
@@ -352,24 +353,27 @@ void Reader::read_logical(uint64_t physical, void* dst, size_t n) {
     const uint64_t payload = _page - kCrcBytes;
     if (physical % _page >= payload) fail("an offset points into a page checksum");
     if (n == 0) return;
-    // One physical read for the whole span; the checksums are skipped in memory.
     const uint64_t last = to_physical(to_logical(physical) + n - 1);
     if (last >= _length) fail("a section runs past the end of " + _path);
-    _scratch.resize(last - physical + 1);
-    _file.clear();
-    _file.seekg((std::streamoff)physical);
-    if (!_file.read(reinterpret_cast<char*>(_scratch.data()),
-                    (std::streamsize)_scratch.size()))
-        fail("read failed in " + _path);
     uint8_t* out = static_cast<uint8_t*>(dst);
-    size_t got = 0, at = 0;
-    uint64_t in_page = physical % _page;
+    size_t got = 0;
     while (got < n) {
-        const size_t take = (size_t)std::min<uint64_t>(payload - in_page, n - got);
+        if (physical < _scratch_offset || physical - _scratch_offset >= _scratch_size) {
+            _scratch.resize(kFileBufferBytes);
+            _scratch_offset = physical;
+            _scratch_size = (size_t)std::min<uint64_t>(kFileBufferBytes, _length - physical);
+            _file.clear();
+            _file.seekg((std::streamoff)physical);
+            if (!_file.read(reinterpret_cast<char*>(_scratch.data()), (std::streamsize)_scratch_size))
+                fail("read failed in " + _path);
+        }
+        const size_t at = (size_t)(physical - _scratch_offset);
+        const size_t take = (size_t)std::min<uint64_t>(payload - physical % _page,
+            std::min(n - got, _scratch_size - at));
         std::memcpy(out + got, _scratch.data() + at, take);
         got += take;
-        at += take + kCrcBytes;
-        in_page = 0;
+        physical += take;
+        if (physical % _page == payload) physical += kCrcBytes;
     }
 }
 

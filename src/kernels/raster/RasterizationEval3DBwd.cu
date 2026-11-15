@@ -205,8 +205,11 @@ inline std::tuple<
 ) {
     // Opens the raster-backward phase: the screen-gradient buffer below shares
     // the tile intersector's arena (POOL_ALIAS_TABLE, core/PoolSlots.h).
+    const size_t aw_span = accum_any(accum_mode)
+        ? DevicePool::arena_span({(size_t)num_splats * accum_lanes(accum_mode) * sizeof(float)})
+        : 0;
     pool_begin_phase(PoolPhase::RasterBwd,
-                     v_splats_s.has_value() ? 0 : pool_arena_span_like(splats_s));
+                     (v_splats_s.has_value() ? 0 : pool_arena_span_like(splats_s)) + aw_span);
     if (!v_splats_w.has_value())
         v_splats_w = SplatPrimitive::WorldBuffer::zeros_pool(splats_w, PoolSlot::RasterBwdVWorld);
     if (!v_splats_s.has_value())
@@ -231,8 +234,8 @@ inline std::tuple<
     // Avg takes a second lane, planar after the first (see RasterizationBwd.cu).
     DeviceVector<float> o_accum_weight;
     if (accum_any(accum_mode)) {
-        o_accum_weight.resize(PoolSlot::RasterBwdAccumWeight,
-                              num_splats * accum_lanes(accum_mode));
+        o_accum_weight.resize_reused(PoolSlot::RasterBwdAccumWeight,
+                                     num_splats * accum_lanes(accum_mode));
         o_accum_weight.zero();
     }
     float* aw = o_accum_weight.data_ptr();

@@ -1,4 +1,5 @@
 #include "nn/core/Error.h"
+#include "nn/OpMetal.h"
 #include "nn/Ops.h"
 #include "nn/vk/Stream.h"
 
@@ -201,6 +202,7 @@ void attention_one(const Tensor& out, const Tensor& q, const Tensor& k, const Te
 void attention(const Tensor& out, const Tensor& q, const Tensor& k, const Tensor& v,
                int64_t nq, int64_t nk, const AttnOpts& o) {
     NN_CHECK(o.head_dim > 0 && o.n_heads > 0, "attention: head_dim/n_heads unset");
+    if (metal_attention(out, q, k, v, nq, nk, o)) return;
     const AttnKernel kn = attention_kernel(q, k, o, key_split(nq, o.batch, nk, o).splits);
     const double cap = vk::Stream::get().workCap(kn.entry, kn.espec);
     const double work = attention_work(nq, nk, o);

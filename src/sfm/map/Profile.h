@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include "core/Env.h"
 #include "sfm/core/Log.h"
@@ -54,6 +55,11 @@ struct MapProf {
     std::atomic<long> n_ba{0}, n_ba_iters{0}, n_choose{0}, n_reg_try{0}, n_reg_ok{0};
     std::atomic<long> n_seed_geom{0};  // two-view RANSACs run (cache misses)
     std::atomic<long> n_merged{0};  // observations absorbed by track merging
+    std::atomic<uint64_t> track_completed{0}, track_created{0}, track_removed{0};
+    std::atomic<uint64_t> fusion_cap{0}, fusion_clash{0}, fusion_error{0}, fusion_angle{0};
+    std::atomic<uint64_t> association_features{0}, association_ambiguous{0};
+    std::atomic<uint64_t> association_changed{0}, association_deferred{0};
+    std::atomic<uint64_t> association_duplicates{0};
 
     static bool enabled() {
         static bool e = spirula::env("SFM_MAP_PROF") != nullptr;
@@ -96,6 +102,22 @@ struct MapProf {
                    n_reg_ok, tri, retri, merge,
                    n_merged, filter, snapshot, audit_check + audit_fix, audit_check, audit_fix,
                    ba, n_ba, n_ba_iters, ba_build, ba_init, ba_solve, ba_write);
+        slog::diag(slog::Tag::Map,
+                   "[tracks] completed %llu created %llu removed %llu | fusion refusals "
+                   "cap %llu clash %llu reprojection %llu angle %llu | associations "
+                   "features %llu ambiguous %llu changed %llu deferred %llu duplicates %llu",
+                   (unsigned long long)track_completed.load(),
+                   (unsigned long long)track_created.load(),
+                   (unsigned long long)track_removed.load(),
+                   (unsigned long long)fusion_cap.load(),
+                   (unsigned long long)fusion_clash.load(),
+                   (unsigned long long)fusion_error.load(),
+                   (unsigned long long)fusion_angle.load(),
+                   (unsigned long long)association_features.load(),
+                   (unsigned long long)association_ambiguous.load(),
+                   (unsigned long long)association_changed.load(),
+                   (unsigned long long)association_deferred.load(),
+                   (unsigned long long)association_duplicates.load());
     }
 };
 

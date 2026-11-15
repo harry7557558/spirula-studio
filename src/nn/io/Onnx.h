@@ -73,6 +73,9 @@ struct OnnxFile {
     std::vector<OnnxNode>   nodes;
     std::vector<OnnxValueInfo> inputs;
     std::vector<OnnxValueInfo> outputs;
+    // Unique external initializer files, resolved exactly as the loader opens them.
+    // Populated by read_onnx_structure without reading their payloads.
+    std::vector<std::string> external_files;
     // Keyed by the *scale* initializer's name -- BatchNormalization's input 1,
     // which is the only name a caller folding BN into a conv already knows.
     // Absent means the node did not spell epsilon out, i.e. the ONNX default.

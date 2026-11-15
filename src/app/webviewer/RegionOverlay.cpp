@@ -15,13 +15,14 @@ constexpr float kFillFront = 0.25f, kFillHidden = 0.05f;
 constexpr float kLineFront = 0.9f, kLineHidden = 0.12f;
 constexpr int kDashOn = 7, kDashPeriod = 12;
 
-bool faces_toward(const RegionOverlay::Layer& l, int32_t t, const float eye[3]) {
+bool faces_toward(const RegionOverlay::Layer& l, int32_t t, const float eye[3], const float* to_eye) {
     const float* a = &l.xyz[l.tri[(size_t)t * 3] * 3];
     const float* b = &l.xyz[l.tri[(size_t)t * 3 + 1] * 3];
     const float* c = &l.xyz[l.tri[(size_t)t * 3 + 2] * 3];
     const float u[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
     const float v[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
     const float n[3] = {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
+    if (to_eye) return n[0]*to_eye[0] + n[1]*to_eye[1] + n[2]*to_eye[2] > 0;
     return n[0] * (eye[0] - a[0]) + n[1] * (eye[1] - a[1]) + n[2] * (eye[2] - a[2]) > 0;
 }
 
@@ -85,11 +86,12 @@ void RegionOverlay::add(const RegionMesh& m, const float rgb[3], const float to_
     layers.push_back(std::move(l));
 }
 
-void region_outline(const RegionOverlay::Layer& l, const float eye[3], std::vector<float>& out) {
+void region_outline(const RegionOverlay::Layer& l, const float eye[3], std::vector<float>& out,
+                    const float* to_eye) {
     out.clear();
     const size_t n_tri = l.tri.size() / 3;
     std::vector<uint8_t> toward(n_tri);
-    for (size_t t = 0; t < n_tri; t++) toward[t] = faces_toward(l, (int32_t)t, eye);
+    for (size_t t = 0; t < n_tri; t++) toward[t] = faces_toward(l, (int32_t)t, eye, to_eye);
     for (size_t e = 0; e < l.edge.size() / 2; e++) {
         const int32_t f0 = l.face[e * 2], f1 = l.face[e * 2 + 1];
         if (f1 >= 0 && toward[(size_t)f0] == toward[(size_t)f1]) continue;
@@ -101,7 +103,8 @@ void region_outline(const RegionOverlay::Layer& l, const float eye[3], std::vect
 }
 
 void draw_region_overlay(const RegionOverlay& ov, uint8_t* rgb, int W, int H, const float* ray_depth,
-                         const float c2w[12], float fx, float fy, float cx, float cy) {
+                         const float c2w[12], float fx, float fy, float cx, float cy,
+                         bool orthographic) {
     if (ov.empty() || W <= 0 || H <= 0) return;
     // CV camera axes are the OpenGL ones with y and z negated.
     float R[3][3];
@@ -122,7 +125,7 @@ void draw_region_overlay(const RegionOverlay& ov, uint8_t* rgb, int W, int H, co
         for (int x = 0; x < W; x++) {
             const size_t i = (size_t)y * W + x;
             const float u = (x + 0.5f - cx) / fx, v = (y + 0.5f - cy) / fy;
-            ray_scale[i] = std::sqrt(1.0f + u * u + v * v);
+            ray_scale[i] = orthographic ? 1.0f : std::sqrt(1.0f + u * u + v * v);
             const float d = ray_depth ? ray_depth[i] : 0.0f;
             scene_z[i] = d > 0 && std::isfinite(d) ? d / ray_scale[i] : std::numeric_limits<float>::infinity();
         }
@@ -140,7 +143,8 @@ void draw_region_overlay(const RegionOverlay& ov, uint8_t* rgb, int W, int H, co
                 const int x = std::min(W - 1, gx * kStep + kStep / 2), y = std::min(H - 1, gy * kStep + kStep / 2);
                 const float z = scene_z[(size_t)y * W + x];
                 if (!std::isfinite(z)) continue;
-                const float cvx = (x + 0.5f - cx) / fx * z, cvy = (y + 0.5f - cy) / fy * z;
+                const float scale = orthographic ? 1.0f : z;
+                const float cvx = (x + 0.5f - cx) / fx * scale, cvy = (y + 0.5f - cy) / fy * scale;
                 double p[3];
                 for (int r = 0; r < 3; r++)
                     p[r] = eye[r] + R[0][r] * cvx + R[1][r] * cvy + R[2][r] * z + ov.shift[r];
@@ -168,9 +172,10 @@ void draw_region_overlay(const RegionOverlay& ov, uint8_t* rgb, int W, int H, co
                 const float* c = &cam[l.tri[t * 3 + k] * 3];
                 ok = c[2] > kNear;
                 if (!ok) break;
-                iz[k] = 1.0f / c[2];
-                sx[k] = fx * c[0] * iz[k] + cx;
-                sy[k] = fy * c[1] * iz[k] + cy;
+                iz[k] = orthographic ? c[2] : 1.0f / c[2];
+                const float scale = orthographic ? 1.0f : iz[k];
+                sx[k] = fx * c[0] * scale + cx;
+                sy[k] = fy * c[1] * scale + cy;
             }
             if (!ok) continue;
             const float area = (sx[1] - sx[0]) * (sy[2] - sy[0]) - (sx[2] - sx[0]) * (sy[1] - sy[0]);
@@ -190,7 +195,7 @@ void draw_region_overlay(const RegionOverlay& ov, uint8_t* rgb, int W, int H, co
                     if (w[0] < 0 || w[1] < 0 || w[2] < 0) continue;
                     const float z = w[0] * iz[0] + w[1] * iz[1] + w[2] * iz[2];
                     float& dst = inv_z[(size_t)y * W + x];
-                    dst = std::max(dst, z);
+                    dst = std::max(dst, orthographic ? 1.0f / z : z);
                 }
         }
         for (size_t i = 0; i < npx; i++) {
@@ -200,14 +205,15 @@ void draw_region_overlay(const RegionOverlay& ov, uint8_t* rgb, int W, int H, co
         }
 
         std::vector<float> seg;
-        region_outline(l, eye, seg);
+        const float to_eye[3] = {c2w[2], c2w[6], c2w[10]};
+        region_outline(l, eye, seg, orthographic ? to_eye : nullptr);
         for (size_t s = 0; s + 6 <= seg.size(); s += 6) {
             float a[3], b[3];
             to_cam(&seg[s], a);
             to_cam(&seg[s + 3], b);
             if (a[2] <= kNear || b[2] <= kNear) continue;
-            const float ax = fx * a[0] / a[2] + cx, ay = fy * a[1] / a[2] + cy;
-            const float bx = fx * b[0] / b[2] + cx, by = fy * b[1] / b[2] + cy;
+            const float ax = fx * a[0] / (orthographic ? 1.0f : a[2]) + cx, ay = fy * a[1] / (orthographic ? 1.0f : a[2]) + cy;
+            const float bx = fx * b[0] / (orthographic ? 1.0f : b[2]) + cx, by = fy * b[1] / (orthographic ? 1.0f : b[2]) + cy;
             const int steps = (int)std::ceil(std::max(std::fabs(bx - ax), std::fabs(by - ay)));
             if (steps <= 0 || steps > 4 * (W + H)) continue;
             for (int k = 0; k <= steps; k++) {
@@ -215,7 +221,8 @@ void draw_region_overlay(const RegionOverlay& ov, uint8_t* rgb, int W, int H, co
                 const float f = (float)k / (float)steps;
                 const int x = (int)(ax + f * (bx - ax)), y = (int)(ay + f * (by - ay));
                 if (x < 0 || y < 0 || x >= W || y >= H) continue;
-                const float z = 1.0f / ((1 - f) / a[2] + f / b[2]);
+                const float z = orthographic ? (1-f)*a[2] + f*b[2]
+                                             : 1.0f / ((1-f)/a[2] + f/b[2]);
                 const size_t i = (size_t)y * W + x;
                 blend(&rgb[i * 3], l.rgb, z <= scene_z[i] * 1.01f ? kLineFront : kLineHidden);
                 if (x + 1 < W) blend(&rgb[(i + 1) * 3], l.rgb, 0.5f * (z <= scene_z[i] * 1.01f ? kLineFront : kLineHidden));

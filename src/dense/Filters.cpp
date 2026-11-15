@@ -108,7 +108,7 @@ double external_median(const std::filesystem::path& values, uint64_t count, uint
     if (!count) return -1;
     auto sorted = values; sorted += ".sorted";
     external_sort<double>(values, sorted, budget, std::less<double>{}, check);
-    std::ifstream input(sorted, std::ios::binary);
+    BufferedInputFile input(sorted, std::ios::binary, disk_io_buffer_bytes(budget));
     input.seekg((std::streamoff)((count / 2) * sizeof(double)));
     double median = -1;
     const bool read = read_disk_record(input, median);
@@ -291,7 +291,7 @@ ReprojectionSummary reproject_written(const std::filesystem::path& ply, const st
                                       const std::vector<View>& views, const std::array<double,16>& m,
                                       const std::array<double,3>& center, int grid_width, int grid_height,
                                       uint64_t budget, const std::function<void()>& check) {
-    std::ifstream input(ply, std::ios::binary), ids(ids_path, std::ios::binary);
+    BufferedInputFile input(ply, std::ios::binary, disk_io_buffer_bytes(budget)), ids(ids_path, std::ios::binary, disk_io_buffer_bytes(budget));
     std::string line, header;
     uint64_t count = 0;
     while (std::getline(input, line) && line != "end_header") {

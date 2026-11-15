@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "sfm/core/Log.h"
+#include "sfm/core/Matches.h"
 #include "sfm/core/PriorSource.h"
 #include "sfm/core/SensorTimeline.h"
 #include "sfm/map/ImuExtrinsic.h"
@@ -57,11 +58,6 @@ struct SensorPriorOptions {
     bool verbose = false;
 };
 
-// A verified pair's relative rotation, R_j = R_ji R_i over world -> camera.
-struct PairRotationObs {
-    uint32_t i = 0, j = 0;
-    Mat3 R_ji;
-};
 
 struct SensorGroupState {
     int capture = -1;
@@ -321,6 +317,25 @@ public:
     const std::vector<SensorGroupState>& groups() const { return groups_; }
     const std::vector<TimeOffsetFit>& timeOffsets() const { return offset_; }
     const SensorFactorStats& lastFactors() const { return stats_; }
+
+    uint64_t calibrationFingerprint() const {
+        Fingerprint h;
+        h.add(opt_.max_dt);
+        h.add(t_.size());
+        for (size_t i = 0; i < t_.size(); i++) {
+            h.add(cap_[i]);
+            h.add(grp_[i]);
+            h.add(t_[i]);
+        }
+        for (const auto& g : groups_) h.add(g.camera);
+        for (const auto& c : caps_) {
+            h.add(c.fps);
+            h.add(c.time_offset);
+            h.add(c.readout);
+            h.add(c.timeline ? c.timeline->rotationFingerprint() : uint64_t{0});
+        }
+        return h.value;
+    }
     size_t timedImages() const {
         size_t k = 0;
         for (int c : cap_) k += c >= 0 ? 1 : 0;

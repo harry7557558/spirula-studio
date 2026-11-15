@@ -153,11 +153,13 @@ bool Mp4Writer::open(const std::string& path, Codec codec, int width, int height
         _timescale = (uint32_t)std::lround(fps * 1000.0);
         _delta = 1000;
     }
+    if (!_io_buffer) _io_buffer.reset(new char[spirula::kFileBufferBytes]);
     _f = std::fopen(path.c_str(), "wb");
     if (!_f) {
         error = "cannot create " + path;
         return false;
     }
+    std::setvbuf(_f, _io_buffer.get(), _IOFBF, spirula::kFileBufferBytes);
     Box ftyp("ftyp");
     ftyp.bytes("isom", 4);
     ftyp.u32(0x200);

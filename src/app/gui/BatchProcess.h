@@ -63,6 +63,9 @@ struct BatchRun {
     std::string sh_degree;
     std::string iterations;
     std::string floater_suppression;
+    // --roi-region's spelling: "" the dataset's first region, "off" none,
+    // "roi/<name>.json" that one.
+    std::string roi_region;
     // Does the row's Mesh stage cover this run? Off for the big appearance
     // run that would run out of memory meshing, on for the cheap one trained
     // beside it for exactly that purpose.
@@ -166,11 +169,6 @@ struct BatchProgress {
 };
 BatchProgress batch_progress(const std::vector<BatchTask>& tasks, int current,
                              double frac, double elapsed);
-
-// What stands for the summary line inside the command a finished queue runs.
-// Braces because the alternatives are punctuation a shell would eat: `<>` is
-// redirection, `%..%` and `$..` are variables. gui::command_argv() fills it.
-inline constexpr char kBatchMessageToken[] = "{message}";
 
 // What this build and this machine can do, asked once and handed to every
 // row's check so that no two rows can get different answers.

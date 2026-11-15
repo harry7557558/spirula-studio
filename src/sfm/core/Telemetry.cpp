@@ -563,7 +563,7 @@ void gpmf_walk(const uint8_t* p, size_t n, GpmfStream* strm,
                 s.gpsu_unix = gpsu_to_unix(k.data, k.len());
             } else if (k.key == fourcc("ACCL") || k.key == fourcc("GYRO") || k.key == fourcc("MAGN") ||
                        k.key == fourcc("GRAV") || k.key == fourcc("CORI") || k.key == fourcc("GPS5") ||
-                       k.key == fourcc("GPS9")) {
+                       k.key == fourcc("GPS9") || k.key == fourcc("SHUT") || k.key == fourcc("ISOE")) {
                 s.data = k;
                 s.has_data = true;
             }
@@ -747,6 +747,26 @@ bool read_gpmf(const Source& src, const Track& tk, Telemetry& out, std::string& 
         }
         out.notes.push_back(std::string(key == fourcc("GPS5") ? "GPS5" : "GPS9") +
                             ": one fix flag per payload; unix time from GPSU");
+    }
+
+    // SHUT (seconds) and ISOE, one per frame each, in streams of their own.
+    if (auto sh = acc.find(fourcc("SHUT")); sh != acc.end()) {
+        const auto iso = acc.find(fourcc("ISOE"));
+        std::vector<double> ts, ti;
+        spread_times(sh->second.starts, sh->second.counts, ts);
+        if (iso != acc.end()) spread_times(iso->second.starts, iso->second.counts, ti);
+        size_t j = 0;
+        for (size_t i = 0; i < sh->second.rows.size() && i < ts.size(); i++) {
+            TelemetryExposure e;
+            e.t = ts[i];
+            e.shutter = sh->second.rows[i].empty() ? -1 : sh->second.rows[i][0];
+            if (!(e.shutter > 0)) continue;
+            while (j + 1 < ti.size() && std::fabs(ti[j + 1] - e.t) <= std::fabs(ti[j] - e.t)) j++;
+            if (j < ti.size() && j < iso->second.rows.size() && !iso->second.rows[j].empty() &&
+                std::fabs(ti[j] - e.t) < 0.5)
+                e.iso = iso->second.rows[j][0];
+            out.exposure.push_back(e);
+        }
     }
     return true;
 }
@@ -1278,6 +1298,19 @@ bool read_insta360(const Source& own, const Movie* mv, Telemetry& out, std::stri
                 out.gps.push_back(g);
             }
             any = any || n > 0;
+        } else if (r.id == 4) {
+            // One (time, shutter in seconds) pair per frame, on the gyro's clock.
+            // Unreadable, it is skipped: the IMU and GPS do not depend on it.
+            if (r.size > (256u << 20) || !src.readVec(r.offset, (size_t)r.size, buf)) continue;
+            const size_t n = buf.size() / 16;
+            for (size_t i = 0; i < n; i++) {
+                const uint8_t* p = buf.data() + i * 16;
+                TelemetryExposure e;
+                e.t = fix_time((double)le64(p));
+                e.shutter = lef64(p + 8);
+                if (e.shutter > 0 && e.shutter < 60) out.exposure.push_back(e);
+            }
+            any = any || !out.exposure.empty();
         }
     }
     if (!any) return true;

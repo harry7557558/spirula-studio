@@ -1614,19 +1614,19 @@ SS_MSG(sparse_edit_help,
     TR("Eğitimin başladığı seyrek bulutu temizleyin. Kaydetmek, yeniden yapımı eğiticinin okuduğu bir biçimde geri yazar."));
 
 SS_MSG(sparse_metashape_note,
-    EN("A Metashape export is not written back. The edited reconstruction is saved beside it as a Nerfstudio dataset, which is read first from then on."),
-    JA("Metashape のエクスポートには書き戻しません。編集した再構成は Nerfstudio データセットとして隣に保存され、以後はそちらが先に読まれます。"),
+    EN("A Metashape export is not written back.\nThe edited reconstruction is saved beside it as a Nerfstudio dataset, which is read first from then on."),
+    JA("Metashape のエクスポートには書き戻しません。\n編集した再構成は Nerfstudio データセットとして隣に保存され、以後はそちらが先に読まれます。"),
     ZH_HANS("不会写回 Metashape 导出。编辑后的重建会以 Nerfstudio 数据集保存在旁边，之后会优先读取它。"),
     ZH_HANT("不會寫回 Metashape 匯出。編輯後的重建會以 Nerfstudio 資料集儲存在旁邊，之後會優先讀取它。"),
-    KO("Metashape 내보내기에는 다시 쓰지 않습니다. 편집한 복원은 옆에 Nerfstudio 데이터셋으로 저장되고, 이후에는 그쪽을 먼저 읽습니다."),
-    DE("Ein Metashape-Export wird nicht zurückgeschrieben. Die bearbeitete Rekonstruktion wird daneben als Nerfstudio-Datensatz gespeichert und von da an zuerst gelesen."),
-    FR("Un export Metashape n'est pas réécrit. La reconstruction modifiée est enregistrée à côté comme jeu de données Nerfstudio, lu en priorité ensuite."),
-    ES("Una exportación de Metashape no se reescribe. La reconstrucción editada se guarda al lado como conjunto Nerfstudio, que a partir de entonces se lee primero."),
-    PT("Uma exportação do Metashape não é reescrita. A reconstrução editada é salva ao lado como conjunto Nerfstudio, que passa a ser lido primeiro."),
-    IT("Un export di Metashape non viene riscritto. La ricostruzione modificata è salvata accanto come insieme Nerfstudio, letto per primo da allora."),
-    NL("Een Metashape-export wordt niet teruggeschreven. De bewerkte reconstructie komt ernaast te staan als Nerfstudio-gegevensset, die daarna eerst wordt gelezen."),
-    RU("Экспорт Metashape не переписывается. Изменённая реконструкция сохраняется рядом как набор данных Nerfstudio, который затем читается первым."),
-    TR("Metashape dışa aktarımı geri yazılmaz. Düzenlenen yeniden yapım yanına Nerfstudio veri kümesi olarak kaydedilir ve bundan sonra önce o okunur."));
+    KO("Metashape 내보내기에는 다시 쓰지 않습니다.\n편집한 복원은 옆에 Nerfstudio 데이터셋으로 저장되고, 이후에는 그쪽을 먼저 읽습니다."),
+    DE("Metashape bleibt unverändert. Änderungen werden daneben als Nerfstudio-Datensatz gespeichert, der danach Vorrang beim Lesen hat."),
+    FR("Un export Metashape n'est pas réécrit.\nLa reconstruction modifiée est enregistrée à côté comme jeu de données Nerfstudio, lu en priorité ensuite."),
+    ES("Una exportación de Metashape no se reescribe.\nLa reconstrucción editada se guarda al lado como conjunto Nerfstudio, que a partir de entonces se lee primero."),
+    PT("Uma exportação do Metashape não é reescrita.\nA reconstrução editada é salva ao lado como conjunto Nerfstudio, que passa a ser lido primeiro."),
+    IT("Un export di Metashape non viene riscritto.\nLa ricostruzione modificata è salvata accanto come insieme Nerfstudio, letto per primo da allora."),
+    NL("Een Metashape-export wordt niet teruggeschreven.\nDe bewerkte reconstructie komt ernaast te staan als Nerfstudio-gegevensset, die daarna eerst wordt gelezen."),
+    RU("Экспорт Metashape не переписывается.\nИзменённая реконструкция сохраняется рядом как набор данных Nerfstudio, который затем читается первым."),
+    TR("Metashape dışa aktarımı geri yazılmaz.\nDüzenlenen yeniden yapım yanına Nerfstudio veri kümesi olarak kaydedilir ve bundan sonra önce o okunur."));
 
 SS_MSG(sparse_no_source,
     EN("This point cloud has no reconstruction behind it, so it is written as a PLY."),
@@ -1801,42 +1801,19 @@ SS_MSG(to_trainer_title,
     TR("Eğitimden önce kaydedilsin mi?"));
 
 SS_MSG(to_trainer_body,
-    EN("The trainer reads the reconstruction from disk, so the edits have to "
-       "be saved first: over {0}, or as a copy in a new folder that trains "
-       "from the same images."),
-    JA("トレーナーは再構成をディスクから読むので、編集を先に保存する必要があります。"
-       "{0} に上書きするか、同じ画像で学習する新しいフォルダにコピーとして保存します。"),
-    ZH_HANS("训练器从磁盘读取重建，所以要先保存编辑：覆盖 {0}，或另存为新文件夹中"
-            "的副本，使用同样的图像训练。"),
-    ZH_HANT("訓練器從磁碟讀取重建，所以要先儲存編輯：覆寫 {0}，或另存為新資料夾中"
-            "的副本，使用同樣的影像訓練。"),
-    KO("트레이너는 디스크에서 재구성을 읽으므로 편집을 먼저 저장해야 합니다. {0} 에 "
-       "덮어쓰거나, 같은 이미지로 학습하는 새 폴더에 사본으로 저장합니다."),
-    DE("Der Trainer liest die Rekonstruktion von der Festplatte, also müssen "
-       "die Änderungen zuerst gespeichert werden: über {0} oder als Kopie in "
-       "einem neuen Ordner, der mit denselben Bildern trainiert."),
-    FR("L'entraîneur lit la reconstruction sur le disque, les modifications "
-       "doivent donc d'abord être enregistrées : par-dessus {0}, ou dans une "
-       "copie placée dans un nouveau dossier qui s'entraîne sur les mêmes "
-       "images."),
-    ES("El entrenador lee la reconstrucción del disco, así que hay que guardar "
-       "antes las ediciones: sobre {0}, o como copia en una carpeta nueva que "
-       "entrena con las mismas imágenes."),
-    PT("O treinador lê a reconstrução do disco, então as edições precisam ser "
-       "salvas antes: sobre {0}, ou como cópia numa pasta nova que treina com "
-       "as mesmas imagens."),
-    IT("L'addestratore legge la ricostruzione dal disco, quindi le modifiche "
-       "vanno salvate prima: sopra {0}, o come copia in una nuova cartella che "
-       "si addestra sulle stesse immagini."),
-    NL("De trainer leest de reconstructie van schijf, dus de bewerkingen "
-       "moeten eerst worden opgeslagen: over {0}, of als kopie in een nieuwe "
-       "map die met dezelfde beelden traint."),
-    RU("Тренер читает реконструкцию с диска, поэтому правки нужно сначала "
-       "сохранить: поверх {0} или копией в новой папке, которая обучается на "
-       "тех же изображениях."),
-    TR("Eğitici yeniden yapılandırmayı diskten okur, bu yüzden düzenlemeler "
-       "önce kaydedilmeli: {0} üzerine ya da aynı görüntülerle eğitilen yeni "
-       "bir klasöre kopya olarak."));
+    EN("The trainer reads the reconstruction from disk, so the edits have to be saved first: over {0}, or as a copy in a new folder that trains from the same images."),
+    JA("トレーナーは再構成をディスクから読むので、編集を先に保存する必要があります。\n{0} に上書きするか、同じ画像で学習する新しいフォルダにコピーとして保存します。"),
+    ZH_HANS("训练器从磁盘读取重建，所以要先保存编辑：覆盖 {0}，或另存为新文件夹中的副本，使用同样的图像训练。"),
+    ZH_HANT("訓練器從磁碟讀取重建，所以要先儲存編輯：覆寫 {0}，或另存為新資料夾中的副本，使用同樣的影像訓練。"),
+    KO("트레이너는 디스크에서 재구성을 읽으므로 편집을 먼저 저장해야 합니다.\n{0} 에 덮어쓰거나, 같은 이미지로 학습하는 새 폴더에 사본으로 저장합니다."),
+    DE("Vor dem Training Änderungen speichern: {0} überschreiben oder eine Kopie in einem neuen Ordner anlegen. Die Bilder bleiben dieselben."),
+    FR("Enregistrez avant l’entraînement : écrasez {0} ou créez une copie dans un nouveau dossier. Les images restent les mêmes."),
+    ES("El entrenador lee la reconstrucción del disco, así que hay que guardar antes las ediciones: sobre {0}, o como copia en una carpeta nueva que entrena con las mismas imágenes."),
+    PT("O treinador lê a reconstrução do disco, então as edições precisam ser salvas antes: sobre {0}, ou como cópia numa pasta nova que treina com as mesmas imagens."),
+    IT("L'addestratore legge la ricostruzione dal disco, quindi le modifiche vanno salvate prima: sopra {0}, o come copia in una nuova cartella che si addestra sulle stesse immagini."),
+    NL("De trainer leest de reconstructie van schijf, dus de bewerkingen moeten eerst worden opgeslagen: over {0}, of als kopie in een nieuwe map die met dezelfde beelden traint."),
+    RU("Тренер читает реконструкцию с диска, поэтому правки нужно сначала сохранить: поверх {0} или копией в новой папке, которая обучается на тех же изображениях."),
+    TR("Eğitici yeniden yapılandırmayı diskten okur, bu yüzden düzenlemeler önce kaydedilmeli: {0} üzerine ya da aynı görüntülerle eğitilen yeni bir klasöre kopya olarak."));
 
 SS_MSG(save_confirm_title,
     EN("Overwrite it?"),
@@ -2087,19 +2064,19 @@ SS_MSG(mesh_link_edits,
     TR("Tüm çıktıları birlikte düzenle"));
 
 SS_MSG(mesh_link_edits_help,
-    EN("One run's outputs are the same surface in several formats, so a face deleted in one is deleted in all of them. Matched by face order at save, or by position when a file no longer lines up."),
-    JA("一回の出力は同じ面を複数の形式で書いたものなので、一つで削除した面はすべてで削除されます。保存時は面の順序で照合し、合わないファイルは位置で照合します。"),
-    ZH_HANS("一次运行的输出是同一个曲面的多种格式，所以在一个里删掉的面会在全部里删掉。保存时按面的顺序匹配，文件对不上时改用位置匹配。"),
-    ZH_HANT("一次執行的輸出是同一個曲面的多種格式，所以在一個裡刪掉的面會在全部裡刪掉。儲存時按面的順序匹配，檔案對不上時改用位置匹配。"),
-    KO("한 번의 출력은 같은 면을 여러 형식으로 쓴 것이므로, 하나에서 지운 면은 모두에서 지워집니다. 저장할 때 면 순서로 맞추고, 맞지 않는 파일은 위치로 맞춥니다."),
-    DE("Die Ausgaben eines Laufs sind dieselbe Fläche in mehreren Formaten, also wird eine in einer gelöschte Facette in allen gelöscht. Beim Speichern über die Reihenfolge der Facetten zugeordnet, sonst über die Position."),
-    FR("Les sorties d'une exécution sont la même surface en plusieurs formats : une facette supprimée dans l'une l'est dans toutes. Appariées par l'ordre des facettes à l'enregistrement, ou par position si un fichier ne correspond plus."),
-    ES("Las salidas de una ejecución son la misma superficie en varios formatos, así que una cara borrada en una se borra en todas. Se emparejan por el orden de las caras al guardar, o por posición si un archivo ya no coincide."),
-    PT("As saídas de uma execução são a mesma superfície em vários formatos, então uma face apagada numa é apagada em todas. Correspondidas pela ordem das faces ao salvar, ou por posição se um arquivo já não coincidir."),
-    IT("Gli output di un'esecuzione sono la stessa superficie in più formati, quindi una faccia eliminata in uno lo è in tutti. Abbinate per ordine delle facce al salvataggio, o per posizione se un file non corrisponde più."),
-    NL("De uitvoer van één run is hetzelfde oppervlak in meerdere formaten, dus een vlak dat in één verdwijnt verdwijnt in alle. Bij het opslaan op volgorde van de vlakken gekoppeld, of op positie als een bestand niet meer klopt."),
-    RU("Выходы одного запуска — это одна и та же поверхность в нескольких форматах, поэтому удалённая в одном грань удаляется во всех. Сопоставляются по порядку граней при сохранении или по положению, если файл больше не совпадает."),
-    TR("Bir çalışmanın çıktıları aynı yüzeyin birkaç biçimidir; birinde silinen bir yüz hepsinde silinir. Kaydederken yüz sırasına göre, dosya artık uymuyorsa konuma göre eşleştirilir."));
+    EN("One run's outputs are the same surface in several formats, so a face deleted in one is deleted in all of them.\nMatched by face order at save, or by position when a file no longer lines up."),
+    JA("一回の出力は同じ面を複数の形式で書いたものなので、一つで削除した面はすべてで削除されます。\n保存時は面の順序で照合し、合わないファイルは位置で照合します。"),
+    ZH_HANS("一次运行的输出是同一个曲面的多种格式，所以在一个里删掉的面会在全部里删掉。\n保存时按面的顺序匹配，文件对不上时改用位置匹配。"),
+    ZH_HANT("一次執行的輸出是同一個曲面的多種格式，所以在一個裡刪掉的面會在全部裡刪掉。\n儲存時按面的順序匹配，檔案對不上時改用位置匹配。"),
+    KO("한 번의 출력은 같은 면을 여러 형식으로 쓴 것이므로, 하나에서 지운 면은 모두에서 지워집니다.\n저장할 때 면 순서로 맞추고, 맞지 않는 파일은 위치로 맞춥니다."),
+    DE("Eine gelöschte Facette wird aus allen Ausgabeformaten desselben Laufs gelöscht.\nZuordnung beim Speichern nach Facettenfolge, bei abweichenden Dateien nach Position."),
+    FR("Une face supprimée l’est dans tous les formats du même traitement.\nAppariement par ordre des faces à la sauvegarde, sinon par position si le fichier ne correspond plus."),
+    ES("Una cara borrada se borra en todos los formatos de la misma ejecución.\nSe empareja por orden al guardar, o por posición si el archivo ya no coincide."),
+    PT("As saídas de uma execução são a mesma superfície em vários formatos, então uma face apagada numa é apagada em todas.\nCorrespondidas pela ordem das faces ao salvar, ou por posição se um arquivo já não coincidir."),
+    IT("Una faccia eliminata lo è in tutti i formati della stessa esecuzione.\nAbbinamento per ordine al salvataggio, o per posizione se il file non corrisponde più."),
+    NL("Een verwijderd vlak verdwijnt uit alle uitvoerformaten van dezelfde run.\nKoppeling bij opslaan op vlakvolgorde, anders op positie als het bestand niet meer overeenkomt."),
+    RU("Удалённая грань удаляется во всех форматах одного запуска.\nСопоставление при сохранении по порядку граней; если файл не совпадает — по положению."),
+    TR("Bir çalışmanın çıktıları aynı yüzeyin birkaç biçimidir; birinde silinen bir yüz hepsinde silinir.\nKaydederken yüz sırasına göre, dosya artık uymuyorsa konuma göre eşleştirilir."));
 
 SS_MSG(working,
     EN("Working..."),

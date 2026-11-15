@@ -643,6 +643,187 @@ void bilagrid_ppisp_bwd_v1_rgb(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 }
 
 // ---------------------------------------------------------------------------
+// backward, tile-reduced: v1's per-pixel work once per pixel, then the tile's
+// grid gradient summed by one thread a (cell, level) row over a 32-pixel
+// chunk, so the cost does not depend on how many levels the tile spans.
+// ---------------------------------------------------------------------------
+
+static const int kBptTile = 16;
+static const int kBptRows = 32;     // rows a pass; 256 / 32 chunks of 32 pixels
+
+groupshared uint _bpt_xy[256];      // kx0 | kx1 << 8 | ky0 << 16 | ky1 << 24, tile-relative
+groupshared uint _bpt_z[256];       // z0 | z1 << 16
+groupshared float _bpt_f[256 * 12]; // fx, fy, fz, then the 9 parameter gradients
+groupshared float _bpt_part[256 * kBpChans];
+
+struct BpTileParams {
+    float* fp32;
+    uint* q16;
+    float2* vbounds;
+    uint* rgb;
+    float* v_output;
+    float* v_bilagrid;
+    float* v_rgb;
+    int* grid_indices;
+    int N, L, H, W, h, w;
+    int has_grid_indices;
+    int _pad0;
+};
+
+[ForceInline]
+float _bpt_axis_w(int k, uint k0, uint k1, float f) {
+    return (uint(k) == k0 ? 1.0f - f : 0.0f) + (uint(k) == k1 ? f : 0.0f);
+}
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void bilagrid_ppisp_bwd_tile(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                             uniform BpTileParams p) {
+    const int ni = int(wg.z);
+    const int tx0 = int(wg.x) * kBptTile, ty0 = int(wg.y) * kBptTile;
+    const int wi = tx0 + int(tid) % kBptTile, hi = ty0 + int(tid) / kBptTile;
+    // The per-pixel cell expression is monotonic in the pixel, so the tile's
+    // cells run from its first pixel's to one past its last pixel's.
+    const int bx = int(floor(float(tx0) / float(p.w - 1) * float(p.W - 1)));
+    const int by = int(floor(float(ty0) / float(p.h - 1) * float(p.H - 1)));
+    const int ex = int(floor(float(min(tx0 + kBptTile - 1, p.w - 1)) / float(p.w - 1) * float(p.W - 1)));
+    const int ey = int(floor(float(min(ty0 + kBptTile - 1, p.h - 1)) / float(p.h - 1) * float(p.H - 1)));
+    const int npx = min(ex - bx + 2, p.W - bx), npy = min(ey - by + 2, p.H - by);
+
+    const bool inside = wi < p.w && hi < p.h;
+    const int g_id = p.has_grid_indices != 0 ? p.grid_indices[ni] : ni;
+    const int g_off3 = inside ? ((ni * p.h + hi) * p.w + wi) * 3 : 0;
+    BgReader r = {p.fp32, p.q16, p.vbounds};
+
+    float gw[kBpChans];
+    [ForceUnroll]
+    for (int ci = 0; ci < kBpChans; ci++) gw[ci] = 0.0f;
+    uint code_xy = 0u, code_z = 0u;
+    float3 frac = float3(0.0f);
+    if (inside) {
+        float sr = rgb_load1(p.rgb, g_off3 + 0, uint(kRgbFmt));
+        float sg = rgb_load1(p.rgb, g_off3 + 1, uint(kRgbFmt));
+        float sb = rgb_load1(p.rgb, g_off3 + 2, uint(kRgbFmt));
+        float3 v_out = float3(p.v_output[g_off3 + 0], p.v_output[g_off3 + 1],
+                              p.v_output[g_off3 + 2]);
+        float vr = 0.0f, vg = 0.0f, vb = 0.0f;
+        if (any(v_out != float3(0.0f))) {
+            float x = float(wi) / float(p.w - 1) * float(p.W - 1);
+            float y = float(hi) / float(p.h - 1) * float(p.H - 1);
+            float gz_raw = kC2G_r * sr + kC2G_g * sg + kC2G_b * sb;
+            float gz = min(max(gz_raw, 0.0f), 1.0f);
+            bool gz_in_range = (gz_raw >= 0.0f && gz_raw <= 1.0f);
+            float z = gz * float(p.L - 1);
+            int base = g_id * p.L * p.H * p.W * 9;
+            BgCells c = bg_cells_uniform(base, p.L, p.H, p.W, 9, x, y, z);
+
+            float exposure = 0.0f;
+            ColorPPISPParams cp = {float2(0.0f, 0.0f), float2(0.0f, 0.0f), float2(0.0f, 0.0f), float2(0.0f, 0.0f)};
+            float corners[8][9];
+            [ForceUnroll]
+            for (int corner = 0; corner < 8; corner++) {
+                [ForceUnroll]
+                for (int ci = 0; ci < 9; ci++)
+                    corners[corner][ci] = bg_read(kValueQuant != 0, r, c.o[corner] + ci);
+            }
+            [ForceUnroll]
+            for (int ci = 0; ci < 9; ci++) {
+                float c00 = corners[0][ci] * (1.0f - c.fx) + corners[1][ci] * c.fx;
+                float c01 = corners[2][ci] * (1.0f - c.fx) + corners[3][ci] * c.fx;
+                float c10 = corners[4][ci] * (1.0f - c.fx) + corners[5][ci] * c.fx;
+                float c11 = corners[6][ci] * (1.0f - c.fx) + corners[7][ci] * c.fx;
+                float c0 = c00 * (1.0f - c.fy) + c01 * c.fy;
+                float c1 = c10 * (1.0f - c.fy) + c11 * c.fy;
+                _bp_set_param(exposure, cp, ci, c0 * (1.0f - c.fz) + c1 * c.fz);
+            }
+
+            float3 v_rgb;
+            float v_e;
+            ColorPPISPParams v_cp;
+            _bp_transform_bwd(float3(sr, sg, sb), exposure, cp, v_out, v_rgb, v_e,
+                              v_cp);
+
+            float d8[8];
+            bg_dwdz(c, d8);
+            float gz_grad = 0.0f;
+            [ForceUnroll]
+            for (int corner = 0; corner < 8; corner++) {
+                float trilerp = 0.0f;
+                [ForceUnroll]
+                for (int ci = 0; ci < 9; ci++)
+                    trilerp += corners[corner][ci] * _bp_get_param(v_e, v_cp, ci);
+                gz_grad += d8[corner] * float(p.L - 1) * trilerp;
+            }
+            if (!gz_in_range) gz_grad = 0.0f;
+            vr = v_rgb.x + kC2G_r * gz_grad;
+            vg = v_rgb.y + kC2G_g * gz_grad;
+            vb = v_rgb.z + kC2G_b * gz_grad;
+            [ForceUnroll]
+            for (int ci = 0; ci < kBpChans; ci++) {
+                float g = _bp_get_param(v_e, v_cp, ci);
+                gw[ci] = bg_finite(g) ? g : 0.0f;
+            }
+            code_xy = uint(c.x0 - bx) | uint(c.x1 - bx) << 8 | uint(c.y0 - by) << 16 |
+                      uint(c.y1 - by) << 24;
+            code_z = uint(c.z0) | uint(c.z1) << 16;
+            frac = float3(c.fx, c.fy, c.fz);
+        }
+        // In place: v_output and v_rgb may be the same buffer, and only this
+        // thread reads this pixel.
+        p.v_rgb[g_off3 + 0] = bg_finite(vr) ? vr : 0.0f;
+        p.v_rgb[g_off3 + 1] = bg_finite(vg) ? vg : 0.0f;
+        p.v_rgb[g_off3 + 2] = bg_finite(vb) ? vb : 0.0f;
+    }
+    _bpt_xy[tid] = code_xy;
+    _bpt_z[tid] = code_z;
+    _bpt_f[tid * 12 + 0] = frac.x;
+    _bpt_f[tid * 12 + 1] = frac.y;
+    _bpt_f[tid * 12 + 2] = frac.z;
+    [ForceUnroll]
+    for (int ci = 0; ci < kBpChans; ci++) _bpt_f[tid * 12 + 3 + uint(ci)] = gw[ci];
+
+    // Row = (cell column, cell row, level); a pixel with no gradient adds 0.
+    const int rows = npx * npy * p.L;
+    const int lane = int(tid) % kBptRows, chunk = int(tid) / kBptRows;
+    const int out_base = ni * p.L * p.H * p.W * kBpChans;
+    for (int r0 = 0; r0 < rows; r0 += kBptRows) {
+        GroupMemoryBarrierWithGroupSync();
+        const int row = r0 + lane;
+        const int l = row % p.L, pos = row / p.L;
+        const int kx = pos % npx, ky = pos / npx;
+        float acc[kBpChans];
+        [ForceUnroll]
+        for (int ci = 0; ci < kBpChans; ci++) acc[ci] = 0.0f;
+        if (row < rows) {
+            for (int i = 0; i < kBptRows; i++) {
+                const uint q = uint(chunk * kBptRows + i);
+                const uint xy = _bpt_xy[q], zz = _bpt_z[q];
+                float wgt = _bpt_axis_w(kx, xy & 255u, (xy >> 8) & 255u, _bpt_f[q * 12 + 0]) *
+                            _bpt_axis_w(ky, (xy >> 16) & 255u, xy >> 24, _bpt_f[q * 12 + 1]) *
+                            _bpt_axis_w(l, zz & 0xffffu, zz >> 16, _bpt_f[q * 12 + 2]);
+                [ForceUnroll]
+                for (int ci = 0; ci < kBpChans; ci++) acc[ci] += wgt * _bpt_f[q * 12 + 3 + uint(ci)];
+            }
+        }
+        [ForceUnroll]
+        for (int ci = 0; ci < kBpChans; ci++) _bpt_part[tid * uint(kBpChans) + uint(ci)] = acc[ci];
+        GroupMemoryBarrierWithGroupSync();
+        for (int b = int(tid); b < kBptRows * kBpChans; b += 256) {
+            const int rr = b / kBpChans, ci = b % kBpChans;
+            const int orow = r0 + rr;
+            if (orow >= rows) continue;
+            float tot = 0.0f;
+            for (int ch = 0; ch < 256 / kBptRows; ch++)
+                tot += _bpt_part[(ch * kBptRows + rr) * kBpChans + ci];
+            if (tot == 0.0f || !bg_finite(tot)) continue;
+            const int ol = orow % p.L, opos = orow / p.L;
+            const int xi = bx + opos % npx, yi = by + opos / npx;
+            atomic_add_f32(&p.v_bilagrid[out_base + ((ol * p.H + yi) * p.W + xi) * kBpChans + ci], tot);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // backward v2: fused SCATTER (thread per pixel) -- alternative arm to the
 // v1 grid+rgb split. Reuses the v1 `_rgb` per-pixel transform-backward and
 // additionally scatters w_corner * grad_weight to the 8 corners (atomicAdd),

@@ -118,6 +118,7 @@ __global__ void fused_bilagrid_tv_adam_kernel(
     int L, int H, int W,
     float lr,
     float tv_weight,
+    float grad_scale,
     int32_t adam_step
 ) {
     static constexpr float eps   = 1e-15f;
@@ -202,7 +203,7 @@ __global__ void fused_bilagrid_tv_adam_kernel(
         if (l < L - 1) tv_g += (val - br[cam_base + self_off + sz_step]) * sz;
     }
 
-    float v = image_g + tv_g;
+    float v = image_g * grad_scale + tv_g;
     if (!isfinite(v)) v = 0.0f;
 
     // ---- Adam update ------------------------------------------------------
@@ -310,6 +311,7 @@ void fused_bilagrid_tv_adam(
     int L, int H, int W,
     float lr,
     float tv_weight,
+    float grad_scale,
     int32_t adam_step,
     bool quantize,
     int  quant_bits,                           // 4 or 8 -- only used when quantize=true
@@ -329,7 +331,7 @@ void fused_bilagrid_tv_adam(
                 g1_f, g2_f, packed, quant_bounds, \
                 image_grad, cam_indices, \
                 N_grids, C_batch, L, H, W, \
-                lr, tv_weight, adam_step)
+                lr, tv_weight, grad_scale, adam_step)
     #define LAUNCH_C(CC, QQ, BB, VQ) \
         do { switch (CC) { \
             case 12: LAUNCH(12, QQ, BB, VQ); break; \
@@ -387,7 +389,8 @@ __global__ void fused_bilagrid_tv_adagrad_kernel(
     int N_grids, int C_batch,
     int L, int H, int W,
     float lr,
-    float tv_weight
+    float tv_weight,
+    float grad_scale
 ) {
     static constexpr float eps = 1e-15f;
 
@@ -454,7 +457,7 @@ __global__ void fused_bilagrid_tv_adagrad_kernel(
         if (l < L - 1) tv_g += (val - br[cam_base + self_off + sz_step]) * sz;
     }
 
-    float v = image_g + tv_g;
+    float v = image_g * grad_scale + tv_g;
     if (!isfinite(v)) v = 0.0f;
 
     // ---- AdaGrad update --------------------------------------------------
@@ -543,6 +546,7 @@ void fused_bilagrid_tv_adagrad(
     int L, int H, int W,
     float lr,
     float tv_weight,
+    float grad_scale,
     bool quantize,
     int  quant_bits,                           // 4 or 8 -- only used when quantize=true
     bool value_quantize,
@@ -561,7 +565,7 @@ void fused_bilagrid_tv_adagrad(
                 accum_f, packed, quant_bounds, \
                 image_grad, cam_indices, \
                 N_grids, C_batch, L, H, W, \
-                lr, tv_weight)
+                lr, tv_weight, grad_scale)
     #define LAUNCH_C(CC, QQ, BB, VQ) \
         do { switch (CC) { \
             case 12: LAUNCH(12, QQ, BB, VQ); break; \

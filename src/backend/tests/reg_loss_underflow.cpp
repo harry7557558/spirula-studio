@@ -120,7 +120,7 @@ static bool run_case(const Case& c) {
             /*max_screen_size=*/0.3f, /*max_screen_size_penalty=*/0.f,
             /*scale_agnostic_mean=*/false, ColorTrustState{}, nq, SplatVisitState{}, gq, {},
             step, DeviceVector<int32_t>(), /*grad_scale=*/1.f,
-            /*zero_grad=*/false);
+            /*zero_grad=*/false, {});
         backend::device_synchronize();
     }
 

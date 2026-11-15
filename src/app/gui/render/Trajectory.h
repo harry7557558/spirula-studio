@@ -49,8 +49,8 @@ private:
     std::vector<int> _src;               // the key each knot is
     std::vector<double> _t;              // output time at each knot
     // Per knot: every channel's value and slope (per unit of parameter).
-    std::vector<double> _pos, _rot, _tgt, _roll, _logf;
-    std::vector<double> _dpos, _drot, _dtgt, _droll, _dfocal;
+    std::vector<double> _pos, _rot, _tgt, _roll, _logf, _log_ortho_distance;
+    std::vector<double> _dpos, _drot, _dtgt, _droll, _dfocal, _dortho_distance;
     std::vector<double> _cum_u, _cum_len;    // arc-length table
     std::vector<double> _visit;
     std::vector<Lens> _lens;             // per key

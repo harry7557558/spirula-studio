@@ -209,6 +209,7 @@ void engine_set_background_step_params(uint32_t seed, float randomize_weight,
 void _engine_background_forward() {
     auto& bg = engine().background;
     if (!bg.enabled || bg.mode == EngineBackground::Mode::None) return;
+    StepTimingScope timing(StepPart::Background, StepScale::Pixels);
 
     int C_batch = (int)engine().camera.num;
     int H       = engine().camera.height;
@@ -457,6 +458,7 @@ void _engine_background_backward_hook(
 void engine_background_optim_step(int step, const BackgroundStepConfig& cfg) {
     auto& bg = engine().background;
     if (!bg.enabled) return;
+    StepTimingScope timing(StepPart::Background, StepScale::Fixed);
     if (bg.mode != EngineBackground::Mode::Sh) return;
 
     _ensure_bg_sh_optim_state();
@@ -561,4 +563,13 @@ int engine_copy_background_to_host(TorchTensorView out_image) {
         0.5f, (colorspace::Transfer)bg.splat_transfer, bg.splat_is_linear);
     for (int64_t i = 0; i < n; ++i) h[i] = fill;
     return 1;
+}
+
+
+bool engine_has_background_sh(int* out_degree) {
+    if (engine().background.enabled && engine().background.mode == EngineBackground::Mode::Sh) {
+        if (out_degree) *out_degree = engine().background.sh_degree;
+        return true;
+    }
+    return false;
 }

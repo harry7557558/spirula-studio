@@ -133,7 +133,12 @@ taken for it. Every case above was exercised on the FJD workspace
   the scanner's position; NavVis writes one at the origin, which is where its
   walk began. Dropped on the dataset screen, or together with
   photos, videos or other scans, a PLY whose header is neither a splat's nor
-  a mesh's is a scan; alone anywhere else it opens in the viewer.
+  a mesh's is a scan; alone anywhere else it opens in the viewer. A splat's
+  PLY is refused as a scan from "Add LiDAR scan..." and the path box too, with
+  the reason: it is a finished reconstruction, with its colour in `f_dc_*`
+  and no scanner position, so no view of it is rendered and the run would
+  end in "No model could be aligned" (an LCC Studio `ply-result` export is
+  one).
 - **XGRIDS** (LCC Studio `developer_data/`): `raw/` (the original fisheye and
   OpenCV lenses) and `perspective/` (pinhole crops) are COLMAP datasets in the
   LAS's frame. `nCore_data/` holds the same two under `colmap/`, with the LAS

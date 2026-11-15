@@ -20,8 +20,8 @@ namespace gui::render {
 namespace {
 
 constexpr float kDeadOpacity = -30.0f;
-const char* const kModelNames[4] = {"PINHOLE", "FISHEYE", "EQUISOLID",
-                                    "EQUIRECTANGULAR"};
+const char* const kModelNames[kNumProjections] = {"PINHOLE", "FISHEYE", "EQUISOLID",
+                                                 "EQUIRECTANGULAR", "ORTHOGRAPHIC"};
 const char* const kTierNames[3] = {"NONE", "OPENCV", "THIN_PRISM"};
 
 TorchTensorView tv(std::vector<float>& v, std::vector<int64_t> shape) {
@@ -271,7 +271,7 @@ struct FrameRenderer::Slot {
     spirula::Sim3 pts_at;
     bool pts_valid = false;
     SceneCore core;
-    double q_key[21] = {};
+    double q_key[22] = {};
     FxGeo q;
     bool q_valid = false;
 
@@ -439,13 +439,14 @@ bool FrameRenderer::scene_quantiles(int source, const double centre[3], const do
     SceneCore core;
     if (!scene_core(source, core)) return false;
     Slot& s = *_slots[(size_t)source];
-    double key[21] = {centre[0], centre[1], centre[2], up[0], up[1], up[2],
+    double key[22] = {centre[0], centre[1], centre[2], up[0], up[1], up[2],
                       e1[0], e1[1], e1[2], e2[0], e2[1], e2[2]};
     if (view) {
         for (int k = 0; k < 3; k++) { key[12 + k] = view->pos[k]; key[15 + k] = view->fwd[k]; }
         key[18] = view->tx;
         key[19] = view->ty;
         key[20] = view->cone + 1.0;
+        key[21] = view->orthographic ? 1.0 : 0.0;
     }
     if (s.q_valid && std::memcmp(key, s.q_key, sizeof key) == 0) {
         std::memcpy(q.qh, s.q.qh, sizeof q.qh);
@@ -470,7 +471,8 @@ bool FrameRenderer::scene_quantiles(int source, const double centre[3], const do
             if (z <= 0.0) continue;
             const double x = d[0]*view->right[0] + d[1]*view->right[1] + d[2]*view->right[2];
             const double y = d[0]*view->up[0] + d[1]*view->up[1] + d[2]*view->up[2];
-            if (std::fabs(x) <= view->tx * z && std::fabs(y) <= view->ty * z) seen.push_back(i);
+            const double scale = view->orthographic ? 1.0 : z;
+            if (std::fabs(x) <= view->tx * scale && std::fabs(y) <= view->ty * scale) seen.push_back(i);
         }
     }
     const bool subset = seen.size() >= 64;
@@ -542,13 +544,13 @@ void FrameRenderer::submit(Pass& p) {
     ViewRequest q;
     camera_in(c, s.view.norm_to_world, q.c2w);
     float intr[4];
-    lens_intrinsics(c.lens, _spec.width, _spec.height, intr);
+    lens_intrinsics(c.lens, _spec.width, _spec.height, intr, s.view.norm_to_world.s);
     q.fx = intr[0]; q.fy = intr[1]; q.cx = intr[2]; q.cy = intr[3];
     q.W = _spec.width;
     q.H = _spec.height;
-    const int proj = std::clamp((int)c.lens.projection, 0, 3);
+    const int proj = std::clamp((int)c.lens.projection, 0, kNumProjections - 1);
     q.model = kModelNames[proj];
-    const int tier = proj == 3 ? 0 : std::clamp(c.lens.tier, 0, 2);
+    const int tier = proj >= 3 ? 0 : std::clamp(c.lens.tier, 0, 2);
     q.distortion = kTierNames[tier];
     for (int k = 0; k < 8; k++) q.dist[k] = tier ? c.lens.dist[k] : 0.0f;
     q.raw = true;
@@ -655,15 +657,15 @@ unsigned FrameRenderer::draw_gl_layer(Slot& s, const LayerSpec& l,
     view[15] = 1.0f;
     const int W = _spec.width, H = _spec.height;
     float intr[4];
-    lens_intrinsics(c.lens, W, H, intr);
+    lens_intrinsics(c.lens, W, H, intr, s.view.norm_to_world.s);
 
     PreviewStyle ps;
     ps.transparent = true;
     ps.point_shape = (int)style.point_style;
     ps.point_px = style.point_px * (float)H / 1080.0f * l.grow;
     ps.point_radius = style.sphere_radius * l.grow;
-    const int proj = std::clamp((int)c.lens.projection, 0, 3);
-    ps.tier = proj == 3 ? 0 : std::clamp(c.lens.tier, 0, 2);
+    const int proj = std::clamp((int)c.lens.projection, 0, kNumProjections - 1);
+    ps.tier = proj >= 3 ? 0 : std::clamp(c.lens.tier, 0, 2);
     for (int k = 0; k < 8; k++) ps.dist[k] = ps.tier ? c.lens.dist[k] : 0.0f;
     if (l.clip) {
         double n[3], d;
@@ -689,7 +691,7 @@ unsigned FrameRenderer::draw_gl_layer(Slot& s, const LayerSpec& l,
     return s.gl->render(W, H, view, (PreviewProjection)proj,
                         intr[0] / (0.5f * W), intr[1] / (0.5f * H),
                         std::max(2.0f, dist), std::max(dist, 0.05f), target,
-                        style.cameras, 1.0f, false, 0.0f, &ps);
+                        style.cameras, 1.0f, false, &ps);
 }
 
 unsigned FrameRenderer::target(int index) {

@@ -110,7 +110,7 @@ struct BAProblem {
 
     // Jc block pool offsets (element index; block is 2 x dof). Jp, Y and the
     // residual are fixed-stride per observation and need no table.
-    std::vector<uint32_t> jc_off;
+    std::vector<uint64_t> jc_off;
     uint64_t jc_total = 0;
 
     // pair-aggregated Schur tables: for each unordered image pair {a,b} seen
@@ -357,11 +357,10 @@ inline void finalizeTables(BAProblem& P) {
     P.jc_off.resize(P.num_obs);
     uint64_t acc = 0;
     for (uint32_t o = 0; o < P.num_obs; o++) {
-        P.jc_off[o] = (uint32_t)acc;
+        P.jc_off[o] = acc;
         acc += 2 * (size_t)img_dof[P.obs_image[o]];
     }
     P.jc_total = acc;
-    if (acc > 0xFFFFFFFFull) throw std::runtime_error("Jc pool exceeds 32-bit indexing");
     // note: the packed-triangle 32-bit limit (n_dim <~ 65k) applies only to
     // the dense solver and is checked when that path is selected
 }

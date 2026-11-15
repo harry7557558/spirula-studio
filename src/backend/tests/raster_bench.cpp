@@ -159,9 +159,11 @@ int main(int argc, char** argv) {
     backend::device_synchronize();
     if (check_error("projection")) return 1;
 
-    auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
+    auto intersections = do_intersect_tile_generic(
         aabb_2d, depths, ellipse_view(splats_s, eval3d, cut), (uint32_t)C,
         ttv(d_intr, {C, 4}), W, H, &cam_ids, nullptr, macro_log2);
+    auto& flatten_ids = std::get<1>(intersections);
+    auto& tile_offsets = std::get<2>(intersections);
     const int64_t n_isects = flatten_ids.size();
     backend::device_synchronize();
     if (check_error("intersect")) return 1;

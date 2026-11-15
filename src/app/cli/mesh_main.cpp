@@ -98,6 +98,9 @@ MeshCameras load_cameras(const JsonValue& run_cfg, const fs::path& run_dir,
         const JsonValue* v = run_cfg.find("train_resolution_divisor");
         if (v && v->type == JsonValue::Type::Number)
             pcfg.train_resolution_divisor = (float)v->as_double(0.0);
+        const JsonValue* cap = run_cfg.find("max_resolution");
+        if (cap && cap->type == JsonValue::Type::Number)
+            pcfg.max_resolution = (int)cap->as_double(0.0);
         const JsonValue* t = run_cfg.find("scene_center_threshold");
         if (t && t->type == JsonValue::Type::Number)
             pcfg.center_auto_threshold = (float)t->as_double(20.0);

@@ -221,6 +221,14 @@ void engine_copy_gt_rgb_to_host(TorchTensorView out) {
                              backend::MemcpyKind::DeviceToHost);
         return;
     }
+    if (std::get<1>(t) == 2) {
+        std::vector<uint16_t> halves(n);
+        backend::memcpy_sync(halves.data(), (const void*)std::get<0>(t), n * sizeof(uint16_t),
+                             backend::MemcpyKind::DeviceToHost);
+        const float* table = spirula::half_to_float_table();
+        for (size_t i = 0; i < n; ++i) dst[i] = table[halves[i]];
+        return;
+    }
     std::vector<uint8_t> bytes(n);
     backend::memcpy_sync(bytes.data(), (const void*)std::get<0>(t), n,
                          backend::MemcpyKind::DeviceToHost);
@@ -281,6 +289,48 @@ void engine_copy_render_depth_normal_to_host(TorchTensorView out) {
 }
 
 
+bool engine_blit_render(int view_camera_model, std::string distortion,
+                        TorchTensorView view_intrins, TorchTensorView view_viewmat,
+                        TorchTensorView view_dist_coeffs, bool show_training_cameras,
+                        bool show_overlay, float grid_dist, float grid_target_x,
+                        float grid_target_y, float grid_target_z,
+                        TorchTensorView out_rgb) {
+    auto& rgb = std::get<0>(engine().fwd.renders);
+    auto& depth = std::get<1>(engine().fwd.renders);
+    auto& Ts = engine().fwd.render_Ts;
+    if (engine().fwd.rgb_fmt != PixelFormat::F32 || engine().camera.num != 1 ||
+        !rgb.data_ptr() || !depth.data_ptr() || !Ts.data_ptr())
+        return false;
+    const int64_t H = engine().camera.height, W = engine().camera.width;
+    auto view = [](const void* p, std::vector<int64_t> shape) {
+        return TorchTensorView{(uint64_t)(uintptr_t)p, (uint32_t)sizeof(float), std::move(shape)};
+    };
+    engine_blit_view("rgb", view(rgb.data_ptr(), {H, W, 3}), view(depth.data_ptr(), {H, W, 1}),
+                     view(Ts.data_ptr(), {H, W, 1}), /*alpha_is_transmittance=*/true,
+                     view_camera_model, std::move(distortion), view_intrins, view_viewmat,
+                     view_dist_coeffs, show_training_cameras, show_overlay, grid_dist,
+                     grid_target_x, grid_target_y, grid_target_z, out_rgb);
+    return true;
+}
+
+
+bool engine_render_sample(int x, int y, float& depth, float& alpha) {
+    auto& d = std::get<1>(engine().fwd.renders);
+    auto& Ts = engine().fwd.render_Ts;
+    const int W = engine().camera.width, H = engine().camera.height;
+    if (!d.data_ptr() || !Ts.data_ptr() || x < 0 || y < 0 || x >= W || y >= H)
+        return false;
+    const size_t i = (size_t)y * (size_t)W + (size_t)x;
+    float T = 1.0f;
+    backend::memcpy_sync(&depth, d.data_ptr() + i, sizeof(float),
+                         backend::MemcpyKind::DeviceToHost);
+    backend::memcpy_sync(&T, Ts.data_ptr() + i, sizeof(float),
+                         backend::MemcpyKind::DeviceToHost);
+    alpha = 1.0f - T;
+    return true;
+}
+
+
 std::vector<std::tuple<std::string, size_t, size_t>> engine_get_pool_breakdown() {
     return DevicePool::global().getBreakdown();
 }
@@ -298,6 +348,12 @@ engine_get_pool_breakdown_categorized() {
         out.emplace_back(std::get<0>(r), to_string((VramCategory)std::get<1>(r)),
                          std::get<2>(r), std::get<3>(r));
     return out;
+}
+
+void engine_get_isect_peaks(int64_t& pairs, int64_t& isects, int64_t& last_isects) {
+    pairs = engine().isect_peak_pairs;
+    isects = engine().isect_peak_count;
+    last_isects = engine().isect_last_count;
 }
 
 size_t engine_get_scratch_bytes() {

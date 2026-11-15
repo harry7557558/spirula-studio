@@ -40,6 +40,8 @@ struct BgOptimParams {
     int has_cam_indices;
     uint total_cells;
     uint wgs_per_row;
+    float grad_scale;      // on the image gradient only
+    uint _pad;
 };
 
 // Common front half: flat-index decode, sparse image gradient, inline TV
@@ -109,7 +111,7 @@ void _bo_grad_and_value(BgOptimParams p, uint idx, bool inside, out float v,
                                    cam_base + self_off + sz_step)) * sz;
     }
 
-    v = image_g + tv_g;
+    v = image_g * p.grad_scale + tv_g;
     if (!bg_finite(v)) v = 0.0f;
     x = inside ? bg_read(kValueQuant != 0, br, int(idx)) : 0.0f;
 }

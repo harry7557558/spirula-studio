@@ -169,7 +169,7 @@ void depth_to_normal_forward(
     p.H = H;
     p.B = B;
     p.is_ray_depth = is_ray_depth ? 1u : 0u;
-    const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
+    const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion, true);
     p.camera_model = (int32_t)cd.cam;
     vkk::dispatch("pixel_wise_render.depth_to_normal_fwd",
                   backend::vk::SpecList{0u, 0u, cd.dist}, (W + 15) / 16,

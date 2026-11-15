@@ -28,9 +28,6 @@ struct ViewProjection {
     int W = 1, H = 1;
     // Camera position in the model frame, for the radius-to-pixels estimate.
     float eye[3] = {0, 0, 0};
-    // An orthographic view is a pinhole pulled this far back (ViewportPanel::
-    // ortho_pullback). Depths include it; a RELATIVE depth test must not.
-    float ortho_back = 0.0f;
 
     // Pixel and the distance in front of the camera. False where the model
     // has no image for that direction.
@@ -87,7 +84,6 @@ public:
 
 private:
     int _W = 0, _H = 0;
-    float _back = 0.0f;          // ViewProjection::ortho_back it was built for
     float _scale = 1.0f;         // view pixels -> buffer pixels
     std::vector<float> _z;
 };

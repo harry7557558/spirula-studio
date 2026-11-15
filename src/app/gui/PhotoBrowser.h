@@ -16,6 +16,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace gui {
@@ -48,6 +49,13 @@ public:
     void open(size_t i);
     // The item the single view is on, -1 in the grid.
     int opened() const { return _single; }
+    int selected() const {
+        if (_single >= 0) return _single;
+        if (_selected >= 0) return _selected;
+        return _big_tex_index;
+    }
+    bool take_selection_changed() { return std::exchange(_selection_changed, false); }
+    void set_mask_preview_open(bool open) { _mask_preview_open = open; }
 
     // `info`, when set, draws what is known about the opened item under it.
     void draw(float height, const std::function<void(size_t)>& info = nullptr);
@@ -77,6 +85,9 @@ private:
     float _cell = 150.0f;          // unscaled
     int _single = -1;
     bool _scroll_to_single = false;
+    int _selected = -1;
+    bool _selection_changed = false;
+    bool _mask_preview_open = false;
 
     mutable std::mutex _mu;
     std::condition_variable _cv;

@@ -135,6 +135,8 @@ __global__ void rasterize_to_pixels_fwd_kernel(
         (int)camera_model, dist_coeffs,
         &raydir
     );
+    if constexpr (camera_model == CameraModelType::ORTHOGRAPHIC)
+        ray_o += SlangProjectionUtils::transform_ray_d(R, {(px-cx)/fx, (py-cy)/fy, 0.0f});
     float3 ray_d = SlangProjectionUtils::transform_ray_d(R, raydir);
 #endif
 

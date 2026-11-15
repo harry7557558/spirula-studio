@@ -716,17 +716,19 @@ void test_fused_optim(Rng& r) {
             // Two steps (quantized state needs a second step over encoded
             // state to be meaningful).
             for (int step = 7; step <= 8; step++) {
+                // The second step also scales the image gradient.
+                const float scale = step == 8 ? 0.5f : 1.0f;
                 if (variant == 0) {
                     fused_bilagrid_tv_adam(
                         c.vq ? nullptr : g.fp32, g.q16, g.vbounds, g1, g2,
                         packed, qb4, image_grad, cams, N_grids, C_batch, c.C,
-                        L, Hg, Wg, lr, c.tv_w, step, c.qbits != 0, c.qbits,
-                        c.vq, backend::kDefaultStream);
+                        L, Hg, Wg, lr, c.tv_w, scale, step, c.qbits != 0,
+                        c.qbits, c.vq, backend::kDefaultStream);
                 } else {
                     fused_bilagrid_tv_adagrad(
                         c.vq ? nullptr : g.fp32, g.q16, g.vbounds, g1, packed,
                         qb2, image_grad, cams, N_grids, C_batch, c.C, L, Hg,
-                        Wg, lr, c.tv_w, c.qbits != 0, c.qbits, c.vq,
+                        Wg, lr, c.tv_w, scale, c.qbits != 0, c.qbits, c.vq,
                         backend::kDefaultStream);
                 }
             }
@@ -786,13 +788,13 @@ void test_fold_tail(Rng& r) {
         if (variant == 0) {
             fused_bilagrid_tv_adam(grids, nullptr, nullptr, nullptr, nullptr,
                                    packed, qb4, image_grad, nullptr, N_grids,
-                                   C_batch, C, L, Hg, Wg, lr, 0.0f, 7, true,
-                                   8, false, backend::kDefaultStream);
+                                   C_batch, C, L, Hg, Wg, lr, 0.0f, 1.0f, 7,
+                                   true, 8, false, backend::kDefaultStream);
         } else {
             fused_bilagrid_tv_adagrad(grids, nullptr, nullptr, nullptr,
                                       packed, qb2, image_grad, nullptr,
                                       N_grids, C_batch, C, L, Hg, Wg, lr,
-                                      0.0f, true, 8, false,
+                                      0.0f, 1.0f, true, 8, false,
                                       backend::kDefaultStream);
         }
 
@@ -881,7 +883,12 @@ void test_utils(Rng& r) {
         const size_t n = 1000;
         float* src = upload(r.vec(n, -2.0f, 2.0f));
         float* dst = upload(r.vec(n, -2.0f, 2.0f));
-        ppisp_add_into_grad(src, dst, n, backend::kDefaultStream);
+        ppisp_add_into_grad(src, dst, 1.0f, n, backend::kDefaultStream);
+        readback_f(g_tight, dst, n);
+        // Scaled, with and without something to add.
+        ppisp_add_into_grad(src, dst, 0.25f, n, backend::kDefaultStream);
+        readback_f(g_tight, dst, n);
+        ppisp_add_into_grad(nullptr, dst, 3.0f, n, backend::kDefaultStream);
         readback_f(g_tight, dst, n);
     }
 }

@@ -125,6 +125,19 @@ int main() {
     const fs::path ws = fs::temp_directory_path() / "spirula_dataset_plan_test";
     const SfmJob made = video_job(ws);
 
+    {
+        SfmJob workers = made;
+        expect(workers.prep.inference_devices.empty() &&
+                   workers.geometry.worker_devices.empty(),
+               "worker scheduling defaults to serial before GPU selection");
+        workers.prep.inference_devices = "uuid:00112233445566778899aabbccddeeff";
+        workers.geometry.worker_devices = workers.prep.inference_devices;
+        expect(frames_fields(made.prep) == frames_fields(workers.prep) &&
+                   masks_fields(made.prep) == masks_fields(workers.prep) &&
+                   geometry_fields(made.geometry) == geometry_fields(workers.geometry),
+               "GPU routing does not change output recipes");
+    }
+
     // ---- which LUT a row's frames go through ---------------------------------
     {
         std::vector<PrepInput> rows(5);
@@ -318,6 +331,33 @@ int main() {
         expect(authorized[Step::Frames].act == Act::Redo && !authorized.ask(),
                "explicit frame rebuilding takes precedence over a retained preservation choice");
         fs::remove_all(w);
+    }
+    {
+        const fs::path w = ws.string() + "_source_identity";
+        const fs::path source = ws.string() + "_source.mp4";
+        touch(source);
+        SfmJob j = video_job(w);
+        j.prep.inputs[0].path = source.string();
+        std::string error;
+        expect(snapshot_frame_sources(j.prep, error), "source identity: snapshot the video");
+        build(w, j);
+        expect(plan(j)[Step::Frames].act == Act::Reuse, "identified unchanged source reuses frames");
+        const auto stamp = fs::last_write_time(source);
+        std::ofstream(source) << "y";
+        fs::last_write_time(source, stamp);
+        expect(snapshot_frame_sources(j.prep, error), "source identity: snapshot replacement");
+        PlanRequest keep;
+        keep.keep_built = true;
+        const DatasetPlan changed = plan(j, keep);
+        expect(changed[Step::Frames].act == Act::Redo && !changed[Step::Frames].can_keep &&
+                   changed.ask() && makes(changed[Step::Masks].act) &&
+                   makes(changed[Step::Model].act),
+               "same-size same-time source replacement invalidates frames and their dependents");
+        PlanRequest redo;
+        redo.redo_frames = true;
+        expect(!plan(j, redo).ask(), "explicit extraction authorizes source invalidation");
+        fs::remove_all(w);
+        fs::remove(source);
     }
     {
         SfmJob scans = made;
@@ -877,6 +917,37 @@ int main() {
         fs::remove_all(w);
     }
 
+    {
+        // A scan's drawn areas: the plan before the run has no input for its
+        // photographs yet, the run has; both must record the same.
+        PrepJob before = video_job(ws).prep;
+        before.scan_stencils["/scans/hall.e57"].mask.shapes.resize(1);
+        PrepJob during = before;
+        PrepInput photos;
+        photos.path = (ws / "lidar" / "photos" / "scan_hall").string();
+        photos.subdir = "scan_hall";
+        photos.scan = "/scans/hall.e57";
+        photos.stencil = before.scan_stencils.begin()->second;
+        during.inputs.push_back(photos);
+        expect(masks_fields(before) == masks_fields(during),
+               "a scan's drawn areas are recorded under the scan, before and during the run");
+        PrepJob changed = before;
+        changed.scan_stencils.begin()->second.mask.shapes.resize(2);
+        expect(!(masks_fields(changed) == masks_fields(before)),
+               "... and drawing on them again is a masks setting changed");
+
+        SfmJob plain = video_job(ws), scanned = video_job(ws);
+        scanned.lidar.clouds = scanned.lidar.with_photos = {"/scans/hall.e57"};
+        SfmJob running = scanned;
+        photos.camera_model = "equirectangular";
+        photos.sequential = true;
+        running.prep.inputs.push_back(photos);
+        expect(model_fields(scanned) == model_fields(running),
+               "the model records a scan's photographs by scan, before and during the run");
+        expect(!(model_fields(plain) == model_fields(scanned)),
+               "... and a scan's photographs joining is a model change");
+    }
+
     // ---- and what the old stamps still say, back on the panel --------------
     {
         std::ofstream(ws / ".spirula-recon")
@@ -968,6 +1039,61 @@ int main() {
         expect(every_frame(j, j.inputs[1]) && !every_frame(j, j.inputs[0]) &&
                    fps_group(j.inputs, 1) == 1,
                "a row set to every frame opens a group of its own");
+    }
+
+    {
+        PrepInput in = insv();
+        expect(is_dual_lens(in), "dual-fisheye clip defaults to dual lens");
+        expect(lens_dirs(PrepJob{}, in).size() == 2, "dual-fisheye clip has two lens dirs");
+        in.active_lens = 1;
+        expect(!is_dual_lens(in), "selecting single track is not dual lens");
+        expect(lens_dirs(PrepJob{}, in) == std::vector<std::string>{"cam1"},
+               "a single track keeps its own lens folder, where its calibration is looked up");
+        expect(has_fisheye_lens(in), "single active track retains fisheye lens model");
+        in.stencil.cameras["cam0"].mask.shapes.resize(1);
+        in.stencil.cameras["cam1"].mask.shapes.resize(2);
+        expect(stencil_cameras(PrepJob{}, in) == std::vector<std::string>{"cam1"},
+               "the fixed areas list the extracted lens only");
+    }
+    {
+        PrepInput in = insv();
+        in.path = "/captures/walk.prx";
+        in.video_tracks = 1;
+        in.packed_lenses = 2;
+        expect(is_dual_lens(in) && lens_dirs(PrepJob{}, in).size() == 2, "a packed clip is two lenses");
+        in.active_lens = 1;
+        expect(!is_dual_lens(in), "one lens of a packed clip is not a dual-lens input");
+        expect(lens_dirs(PrepJob{}, in) == std::vector<std::string>{"cam1"},
+               "one packed lens keeps its own folder");
+        expect(kept_track(in) == -1, "a packed lens is cut from the clip's one track");
+        PrepInput tracks = insv();
+        tracks.active_lens = 1;
+        expect(kept_track(tracks) == 1, "a lens with a track of its own is decoded alone");
+        PrepInput photos;
+        photos.path = "/captures/shots";
+        photos.packed_lenses = 2;
+        photos.active_lens = 0;
+        expect(lens_dirs(PrepJob{}, photos) == std::vector<std::string>{"cam0"},
+               "one lens of packed photographs keeps its own folder");
+    }
+    {
+        const fs::path w = ws.string() + "_track";
+        SfmJob both = video_job(w), one = video_job(w);
+        one.prep.inputs[0].active_lens = 1;
+        bool named = false;
+        for (const StepField& f : frames_fields(one.prep))
+            named = named || (f.key == "active_lens" && f.value == "cam1");
+        expect(named && !(frames_fields(both.prep) == frames_fields(one.prep)),
+               "the lens extracted is a frames setting of its own");
+        build(w, one);
+        SfmJob back = video_job(w);
+        restore_record_inputs(read_dataset_record(w.string()), back.prep, back.camera_model);
+        expect(back.prep.inputs[0].active_lens == 1, "the lens extracted comes back from the record");
+        expect(plan(back)[Step::Frames].act == Act::Reuse, "... and its frames are reused");
+        const DatasetPlan p = plan(both);
+        expect(p[Step::Frames].act == Act::Redo && p[Step::Frames].can_keep,
+               "both lenses again is a setting changed, not a source that went stale");
+        fs::remove_all(w);
     }
 
     fs::remove_all(ws);

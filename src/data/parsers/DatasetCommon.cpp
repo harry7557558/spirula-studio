@@ -52,15 +52,14 @@ std::vector<uint8_t> read_exif_orientations(const std::string& mode,
     std::vector<uint8_t> out;
     if (mode.empty() || mode == "none") return out;
     out.assign(paths.size(), 1);
-    bool any = false;
-    for (size_t i = 0; i < paths.size(); i++) {
+    const int64_t n = (int64_t)paths.size();
+#pragma omp parallel for schedule(dynamic, 16)
+    for (int64_t i = 0; i < n; i++) {
         std::string ext = fs::path(paths[i]).extension().string();
         for (char& c : ext) c = (char)std::tolower((unsigned char)c);
-        if (ext != ".jpg" && ext != ".jpeg") continue;
-        out[i] = (uint8_t)sfm::exifOrientation(paths[i]);
-        any = any || out[i] != 1;
+        if (ext == ".jpg" || ext == ".jpeg") out[i] = (uint8_t)sfm::exifOrientation(paths[i]);
     }
-    if (!any) out.clear();
+    if (std::all_of(out.begin(), out.end(), [](uint8_t o) { return o == 1; })) out.clear();
     return out;
 }
 
@@ -71,44 +70,66 @@ static void exif_up_gl(uint8_t orientation, double up[3]) {
     up[1] = -up[1];
 }
 
-// ---------------------------------------------------------------------------
-// up = normalize(mean c2w Y column), R_align: up -> +Z, center = mean camera
-// position, scale = 1 / max |R_align (pos - center)|. The up/poses pair only;
-// the rest is reference/python/camera_utils.py and check_config() warns.
-// ---------------------------------------------------------------------------
-double compute_normalized_transform(const double* c2w, int64_t n,
-                                     double T_out[16], double R_out[9],
-                                     const uint8_t* exif_orientation) {
-    std::fill(T_out, T_out + 16, 0.0);
-    T_out[0] = T_out[5] = T_out[10] = T_out[15] = 1.0;
-    if (R_out) {
-        std::fill(R_out, R_out + 9, 0.0);
-        R_out[0] = R_out[4] = R_out[8] = 1.0;
-    }
-    if (n <= 0) return 1.0;
-    std::vector<double> pos(n * 3);
-    for (int64_t i = 0; i < n; i++)
-        for (int r = 0; r < 3; r++) pos[i*3 + r] = c2w[i*12 + r*4 + 3];
-    const std::vector<char> inlier = outlier_keep_mask(pos, n, kStrayCameraThreshold);
-    double up[3] = {0, 0, 0}, center[3] = {0, 0, 0};
-    int64_t n_inlier = 0;
-    for (int64_t i = 0; i < n; i++) {
-        double u[3] = {0, 1, 0};
-        if (exif_orientation) exif_up_gl(exif_orientation[i], u);
-        for (int r = 0; r < 3; r++)
-            for (int k = 0; k < 3; k++) up[r] += c2w[i*12 + r*4 + k] * u[k];
-        if (!inlier[i]) continue;
-        n_inlier++;
-        for (int r = 0; r < 3; r++) center[r] += pos[i*3 + r];
-    }
-    double un = std::sqrt(up[0]*up[0] + up[1]*up[1] + up[2]*up[2]);
-    for (auto& u : up) u /= std::max(un, 1e-12);
-    for (auto& c : center) c /= (double)n_inlier;
+namespace {
 
-    double axis[3] = {up[1], -up[0], 0.0};              // up x z
+void eigen_symmetric_3x3(const double A_in[3][3], double w[3], double V[3][3]) {
+    double A[3][3];
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 3; c++) {
+            A[r][c] = A_in[r][c];
+            V[r][c] = (r == c ? 1.0 : 0.0);
+        }
+    }
+    for (int sweep = 0; sweep < 30; sweep++) {
+        const double off = A[0][1] * A[0][1] + A[0][2] * A[0][2] + A[1][2] * A[1][2];
+        if (off < 1e-30) break;
+        for (int p = 0; p < 2; p++) {
+            for (int q = p + 1; q < 3; q++) {
+                if (std::abs(A[p][q]) < 1e-300) continue;
+                const double th = 0.5 * (A[q][q] - A[p][p]) / A[p][q];
+                const double t = (th >= 0.0 ? 1.0 : -1.0) / (std::abs(th) + std::sqrt(th * th + 1.0));
+                const double c = 1.0 / std::sqrt(t * t + 1.0);
+                const double s = t * c;
+                for (int k = 0; k < 3; k++) {
+                    const double akp = A[k][p], akq = A[k][q];
+                    A[k][p] = c * akp - s * akq;
+                    A[k][q] = s * akp + c * akq;
+                }
+                for (int k = 0; k < 3; k++) {
+                    const double apk = A[p][k], aqk = A[q][k];
+                    A[p][k] = c * apk - s * aqk;
+                    A[q][k] = s * apk + c * aqk;
+                }
+                for (int k = 0; k < 3; k++) {
+                    const double vkp = V[k][p], vkq = V[k][q];
+                    V[k][p] = c * vkp - s * vkq;
+                    V[k][q] = s * vkp + c * vkq;
+                }
+            }
+        }
+    }
+    int order[3] = {0, 1, 2};
+    std::sort(order, order + 3, [&](int i, int j) { return A[i][i] < A[j][j]; });
+    double V_sorted[3][3];
+    for (int k = 0; k < 3; k++) {
+        w[k] = A[order[k]][order[k]];
+        for (int r = 0; r < 3; r++) V_sorted[r][k] = V[r][order[k]];
+    }
+    std::copy(&V_sorted[0][0], &V_sorted[0][0] + 9, &V[0][0]);
+}
+
+inline double det3x3(const double M[3][3]) {
+    return M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) -
+           M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) +
+           M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
+}
+
+void align_up_to_z(const double up[3], double R[3][3]) {
+    double axis[3] = {up[1], -up[0], 0.0};  // up x +z
     double s = std::sqrt(axis[0]*axis[0] + axis[1]*axis[1]);
     double c = up[2];
-    double R[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
+    std::fill(&R[0][0], &R[0][0] + 9, 0.0);
+    R[0][0] = R[1][1] = R[2][2] = 1.0;
     if (s > 1e-12) {
         for (auto& a : axis) a /= s;
         double C = 1.0 - c;
@@ -119,7 +140,367 @@ double compute_normalized_transform(const double* c2w, int64_t n,
         };
         std::copy(&Rr[0][0], &Rr[0][0] + 9, &R[0][0]);
     } else if (c < 0.0) {
-        R[1][1] = -1.0; R[2][2] = -1.0;                 // up == -z: flip
+        R[1][1] = -1.0; R[2][2] = -1.0;  // up == -z: 180 deg flip
+    }
+}
+
+using Vec3 = std::array<double, 3>;
+using Mat3 = std::array<std::array<double, 3>, 3>;
+
+Vec3 mat_vec(const Mat3& M, const Vec3& v) {
+    Vec3 o{};
+    for (int r = 0; r < 3; r++) o[r] = M[r][0]*v[0] + M[r][1]*v[1] + M[r][2]*v[2];
+    return o;
+}
+
+Mat3 mat_mul(const Mat3& A, const Mat3& B) {
+    Mat3 C{};
+    for (int r = 0; r < 3; r++)
+        for (int c = 0; c < 3; c++)
+            C[r][c] = A[r][0]*B[0][c] + A[r][1]*B[1][c] + A[r][2]*B[2][c];
+    return C;
+}
+
+Vec3 cross3(const Vec3& a, const Vec3& b) {
+    return {a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]};
+}
+
+double dot3(const Vec3& a, const Vec3& b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+
+bool normalize3(Vec3& v) {
+    const double l = std::sqrt(dot3(v, v));
+    if (!(l > 1e-12) || !std::isfinite(l)) return false;
+    for (double& x : v) x /= l;
+    return true;
+}
+
+// Median of `v`, which it reorders.
+double median_reordering(std::vector<double>& v) {
+    if (v.empty()) return 0.0;
+    const size_t mid = v.size() / 2;
+    std::nth_element(v.begin(), v.begin() + mid, v.end());
+    const double hi = v[mid];
+    if (v.size() % 2 == 1) return hi;
+    return 0.5 * (*std::max_element(v.begin(), v.begin() + mid) + hi);
+}
+
+Vec3 median_per_axis(const std::vector<Vec3>& pts) {
+    Vec3 m{};
+    std::vector<double> col(pts.size());
+    for (int d = 0; d < 3; d++) {
+        for (size_t i = 0; i < pts.size(); i++) col[i] = pts[i][d];
+        m[d] = median_reordering(col);
+    }
+    return m;
+}
+
+// Proper rotation taking unit `a` onto unit `b` by the shortest arc; nearly
+// opposite vectors turn half a revolution about an orthogonal axis (det +1).
+Mat3 rotation_between(const Vec3& a, const Vec3& b) {
+    Mat3 R{{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
+    const double c = dot3(a, b);
+    if (1.0 + c > 1e-8) {
+        const Vec3 v = cross3(a, b);
+        const Mat3 K{{{0, -v[2], v[1]}, {v[2], 0, -v[0]}, {-v[1], v[0], 0}}};
+        const Mat3 K2 = mat_mul(K, K);
+        for (int r = 0; r < 3; r++)
+            for (int k = 0; k < 3; k++)
+                R[r][k] += K[r][k] + K2[r][k] / (1.0 + c);
+        return R;
+    }
+    Vec3 axis = std::abs(a[0]) < 0.9 ? Vec3{1, 0, 0} : Vec3{0, 1, 0};
+    const double along = dot3(axis, a);
+    for (int k = 0; k < 3; k++) axis[k] -= along * a[k];
+    normalize3(axis);
+    for (int r = 0; r < 3; r++)
+        for (int k = 0; k < 3; k++)
+            R[r][k] = 2.0 * axis[r] * axis[k] - (r == k ? 1.0 : 0.0);
+    return R;
+}
+
+// gsplat rigid map p' = R p + t and scene scale (camera up -> -y, point PCA on
+// axes, floor test; details and differences in docs/notes/pose-normalization.md).
+// Returns false on failure (<4 points, degenerate spread, or no valid cameras).
+bool gsplat_rigid_transform(const double* c2w, int64_t n,
+                            const std::vector<char>& inlier,
+                            const uint8_t* exif_orientation,
+                            const double* points_xyz, int64_t n_points,
+                            Mat3& R_out, Vec3& t_out, double& scene_scale_out) {
+    if (!points_xyz || n_points <= 0 || n <= 0) return false;
+
+    // A point cloud of tens of millions costs a per-axis nth_element per pass;
+    // every statistic below is a median or a covariance, and a strided sample of
+    // four million of them is not distinguishable from the whole.
+    constexpr int64_t kMaxSamples = int64_t(1) << 22;
+    const int64_t step = n_points > kMaxSamples ? (n_points + kMaxSamples - 1) / kMaxSamples : 1;
+    std::vector<Vec3> pts;
+    pts.reserve((size_t)(n_points / step + 1));
+    for (int64_t i = 0; i < n_points; i += step) {
+        const double* p = points_xyz + i * 3;
+        if (std::isfinite(p[0]) && std::isfinite(p[1]) && std::isfinite(p[2]))
+            pts.push_back({p[0], p[1], p[2]});
+    }
+    if (pts.size() < 4) return false;
+
+    struct Cam { Vec3 pos, fwd; };
+    std::vector<Cam> cams;
+    Vec3 up{0, 0, 0};
+    for (int64_t i = 0; i < n; i++) {
+        if (!inlier[i]) continue;
+        const double* m = c2w + i * 12;
+        Cam c;
+        c.pos = {m[3], m[7], m[11]};
+        c.fwd = {-m[2], -m[6], -m[10]};      // OpenGL: the optical axis is -z
+        if (!std::isfinite(c.pos[0] + c.pos[1] + c.pos[2])) continue;
+        double u[3] = {0, 1, 0};
+        if (exif_orientation) exif_up_gl(exif_orientation[i], u);
+        for (int r = 0; r < 3; r++)
+            up[r] += m[r*4 + 0] * u[0] + m[r*4 + 1] * u[1] + m[r*4 + 2] * u[2];
+        cams.push_back(c);
+    }
+    if (cams.empty() || !normalize3(up)) return false;
+
+    // 1. Level: the mean camera up goes to -y, the way gsplat's frame is built.
+    const Mat3 R_level = rotation_between(up, Vec3{0, -1, 0});
+    std::vector<Vec3> nearest;
+    nearest.reserve(cams.size());
+    for (Cam& c : cams) {
+        c.pos = mat_vec(R_level, c.pos);
+        c.fwd = mat_vec(R_level, c.fwd);
+        if (!normalize3(c.fwd)) continue;
+        // The point of the optical axis closest to the origin.
+        const double s = -dot3(c.fwd, c.pos);
+        nearest.push_back({c.pos[0] + s * c.fwd[0], c.pos[1] + s * c.fwd[1],
+                           c.pos[2] + s * c.fwd[2]});
+    }
+    if (nearest.empty()) return false;
+    const Vec3 med = median_per_axis(nearest);
+    const Vec3 t_level = {-med[0], -med[1], -med[2]};
+    for (Vec3& p : pts) {
+        p = mat_vec(R_level, p);
+        for (int k = 0; k < 3; k++) p[k] += t_level[k];
+    }
+
+    // 2. Principal axes of the points about their per-axis median.
+    const Vec3 centroid = median_per_axis(pts);
+    double C[3][3] = {};
+    for (const Vec3& p : pts) {
+        const double d[3] = {p[0] - centroid[0], p[1] - centroid[1], p[2] - centroid[2]};
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++) C[r][c] += d[r] * d[c];
+    }
+    // The solver stops on an absolute tolerance, so hand it a unit-trace matrix:
+    // a scene a millimetre across must resolve its axes as well as a city.
+    const double trace = C[0][0] + C[1][1] + C[2][2];
+    if (!(trace > 0.0) || !std::isfinite(trace)) return false;
+    for (auto& row : C)
+        for (double& x : row) x /= trace;
+    double w[3], V[3][3];
+    eigen_symmetric_3x3(C, w, V);          // ascending: V's column 2 is the largest
+    if (!(w[2] > 0.0) || !std::isfinite(w[2])) return false;
+    auto axis_of = [&](int col) {
+        Vec3 v = {V[0][col], V[1][col], V[2][col]};
+        int big = 0;
+        for (int k = 1; k < 3; k++)
+            if (std::abs(v[k]) > std::abs(v[big])) big = k;
+        if (v[big] < 0.0) for (double& x : v) x = -x;
+        return v;
+    };
+    const Vec3 ax = axis_of(2), ay = axis_of(1);
+    Vec3 az = cross3(ax, ay);              // right-handed, so det(R_pca) = +1
+    if (!normalize3(az)) return false;
+    const Mat3 R_pca{{{ax[0], ax[1], ax[2]}, {ay[0], ay[1], ay[2]}, {az[0], az[1], az[2]}}};
+
+    // 3. Which way is up: the heavy side of the height distribution is the floor.
+    std::vector<double> height(pts.size());
+    double mean_height = 0.0;
+    for (size_t i = 0; i < pts.size(); i++) {
+        const Vec3 d = {pts[i][0] - centroid[0], pts[i][1] - centroid[1],
+                        pts[i][2] - centroid[2]};
+        height[i] = dot3(az, d);
+        mean_height += height[i];
+    }
+    mean_height /= (double)pts.size();
+    const bool flip = median_reordering(height) > mean_height;
+    const Mat3 R_flip{{{1, 0, 0}, {0, flip ? -1.0 : 1.0, 0}, {0, 0, flip ? -1.0 : 1.0}}};
+
+    // p' = R_flip R_pca (R_level p + t_level - centroid)
+    const Mat3 R_all = mat_mul(R_flip, mat_mul(R_pca, R_level));
+    const Vec3 shift = {t_level[0] - centroid[0], t_level[1] - centroid[1],
+                        t_level[2] - centroid[2]};
+    R_out = R_all;
+    t_out = mat_vec(mat_mul(R_flip, R_pca), shift);
+
+    // Scene scale: 1.1 x the farthest camera from the cameras' mean, in the
+    // final frame (gsplat's `scene_scale`).
+    std::vector<Vec3> final_pos;
+    final_pos.reserve(cams.size());
+    Vec3 mean_pos{0, 0, 0};
+    for (int64_t i = 0; i < n; i++) {
+        if (!inlier[i]) continue;
+        const double* m = c2w + i * 12;
+        Vec3 p = mat_vec(R_all, Vec3{m[3], m[7], m[11]});
+        if (!std::isfinite(p[0] + p[1] + p[2])) continue;
+        for (int k = 0; k < 3; k++) p[k] += t_out[k];
+        final_pos.push_back(p);
+        for (int k = 0; k < 3; k++) mean_pos[k] += p[k];
+    }
+    if (final_pos.empty()) return false;
+    for (double& x : mean_pos) x /= (double)final_pos.size();
+    double max_dist = 0.0;
+    for (const Vec3& p : final_pos) {
+        const Vec3 d = {p[0] - mean_pos[0], p[1] - mean_pos[1], p[2] - mean_pos[2]};
+        max_dist = std::max(max_dist, std::sqrt(dot3(d, d)));
+    }
+    scene_scale_out = 1.1 * max_dist;
+    return true;
+}
+
+}  // namespace
+
+// T_n_from_camera = scale * [R_align | -R_align @ center]. Supports orientation
+// {up, pca, vertical, none} and center {poses, focus, none}, or `gsplat` for both.
+// With unusable seed points gsplat falls back to up/poses (*gsplat_fell_back = true).
+double compute_normalized_transform(const double* c2w, int64_t n,
+                                    double T_out[16], double R_out[9],
+                                    const uint8_t* exif_orientation,
+                                    const std::string& orientation_method,
+                                    const std::string& center_method,
+                                    bool auto_scale_poses,
+                                    const double* points_xyz,
+                                    int64_t n_points,
+                                    bool* gsplat_fell_back) {
+    std::fill(T_out, T_out + 16, 0.0);
+    T_out[0] = T_out[5] = T_out[10] = T_out[15] = 1.0;
+    if (R_out) {
+        std::fill(R_out, R_out + 9, 0.0);
+        R_out[0] = R_out[4] = R_out[8] = 1.0;
+    }
+    if (gsplat_fell_back) *gsplat_fell_back = false;
+    if (n <= 0) return 1.0;
+    std::vector<double> pos(n * 3);
+    for (int64_t i = 0; i < n; i++)
+        for (int r = 0; r < 3; r++) pos[i*3 + r] = c2w[i*12 + r*4 + 3];
+    const std::vector<char> inlier = outlier_keep_mask(pos, n, kStrayCameraThreshold);
+
+    if (orientation_method == "gsplat" || center_method == "gsplat") {
+        Mat3 Rg;
+        Vec3 tg;
+        double scene_scale = 0.0;
+        if (gsplat_rigid_transform(c2w, n, inlier, exif_orientation, points_xyz,
+                                   n_points, Rg, tg, scene_scale)) {
+            const double scale_factor =
+                (auto_scale_poses && scene_scale > 1e-9) ? 1.0 / scene_scale : 1.0;
+            for (int r = 0; r < 3; r++) {
+                for (int c = 0; c < 3; c++) {
+                    T_out[r*4 + c] = Rg[r][c] * scale_factor;
+                    if (R_out) R_out[r*3 + c] = Rg[r][c];
+                }
+                T_out[r*4 + 3] = tg[r] * scale_factor;
+            }
+            return scale_factor;
+        }
+        if (gsplat_fell_back) *gsplat_fell_back = true;
+        // Falls through: neither name below is a method it knows, which is
+        // `up` for the orientation and `poses` for the centre.
+    }
+    double up[3] = {0, 0, 0}, mean_origin[3] = {0, 0, 0};
+    int64_t n_inlier = 0;
+    for (int64_t i = 0; i < n; i++) {
+        double u[3] = {0, 1, 0};
+        if (exif_orientation) exif_up_gl(exif_orientation[i], u);
+        for (int r = 0; r < 3; r++)
+            for (int k = 0; k < 3; k++) up[r] += c2w[i*12 + r*4 + k] * u[k];
+        if (!inlier[i]) continue;
+        n_inlier++;
+        for (int r = 0; r < 3; r++) mean_origin[r] += pos[i*3 + r];
+    }
+    double un = std::sqrt(up[0]*up[0] + up[1]*up[1] + up[2]*up[2]);
+    for (auto& u : up) u /= std::max(un, 1e-12);
+    if (n_inlier > 0) {
+        for (auto& c : mean_origin) c /= (double)n_inlier;
+    }
+
+    double center[3] = {mean_origin[0], mean_origin[1], mean_origin[2]};
+    if (center_method == "focus") {
+        if (n_inlier > 0 && n_inlier < n) {
+            std::vector<double> inlier_c2w(n_inlier * 12);
+            int64_t idx = 0;
+            for (int64_t i = 0; i < n; i++) {
+                if (!inlier[i]) continue;
+                std::copy(c2w + i * 12, c2w + (i + 1) * 12, inlier_c2w.data() + idx * 12);
+                idx++;
+            }
+            std::array<double, 3> foc = focus_of_attention(inlier_c2w.data(), n_inlier, mean_origin);
+            center[0] = foc[0]; center[1] = foc[1]; center[2] = foc[2];
+        } else {
+            std::array<double, 3> foc = focus_of_attention(c2w, n, mean_origin);
+            center[0] = foc[0]; center[1] = foc[1]; center[2] = foc[2];
+        }
+    } else if (center_method == "none") {
+        center[0] = center[1] = center[2] = 0.0;
+    }
+
+    double R[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
+    if (orientation_method == "pca") {
+        double C[3][3] = {};
+        for (int64_t i = 0; i < n; i++) {
+            if (!inlier[i]) continue;
+            double d[3];
+            for (int r = 0; r < 3; r++) d[r] = pos[i*3 + r] - mean_origin[r];
+            for (int r = 0; r < 3; r++)
+                for (int c = 0; c < 3; c++) C[r][c] += d[r] * d[c];
+        }
+        double w[3], V[3][3];
+        eigen_symmetric_3x3(C, w, V);
+        double V_flipped[3][3];
+        for (int r = 0; r < 3; r++) {
+            V_flipped[r][0] = V[r][2];
+            V_flipped[r][1] = V[r][1];
+            V_flipped[r][2] = V[r][0];
+        }
+        if (det3x3(V_flipped) < 0.0) {
+            for (int r = 0; r < 3; r++) V_flipped[r][2] = -V_flipped[r][2];
+        }
+        if (V_flipped[2][0] * up[0] + V_flipped[2][1] * up[1] + V_flipped[2][2] * up[2] < 0.0) {
+            for (int c = 0; c < 3; c++) {
+                V_flipped[1][c] = -V_flipped[1][c];
+                V_flipped[2][c] = -V_flipped[2][c];
+            }
+        }
+        std::copy(&V_flipped[0][0], &V_flipped[0][0] + 9, &R[0][0]);
+    } else if (orientation_method == "vertical") {
+        double M[3][3] = {};
+        for (int64_t i = 0; i < n; i++) {
+            double u_cam[3] = {0, 1, 0};
+            if (exif_orientation) exif_up_gl(exif_orientation[i], u_cam);
+            double x_cam[3] = {u_cam[1], -u_cam[0], 0.0};
+            double x_world[3] = {0, 0, 0};
+            for (int r = 0; r < 3; r++)
+                for (int k = 0; k < 3; k++) x_world[r] += c2w[i*12 + r*4 + k] * x_cam[k];
+            for (int r = 0; r < 3; r++)
+                for (int c = 0; c < 3; c++) M[r][c] += x_world[r] * x_world[c];
+        }
+        double w[3], V[3][3];
+        eigen_symmetric_3x3(M, w, V);
+        const double S1 = std::sqrt(std::max(0.0, w[1]));
+        double up_vert[3] = {up[0], up[1], up[2]};
+        if (S1 > 0.17 * std::sqrt((double)n)) {
+            double v2[3] = {V[0][0], V[1][0], V[2][0]};
+            const double dot = v2[0]*up[0] + v2[1]*up[1] + v2[2]*up[2];
+            for (int k = 0; k < 3; k++) up_vert[k] = (dot > 0.0 ? v2[k] : -v2[k]);
+        } else {
+            double v0[3] = {V[0][2], V[1][2], V[2][2]};
+            const double dot = v0[0]*up[0] + v0[1]*up[1] + v0[2]*up[2];
+            for (int k = 0; k < 3; k++) up_vert[k] -= dot * v0[k];
+            double l = std::sqrt(up_vert[0]*up_vert[0] + up_vert[1]*up_vert[1] + up_vert[2]*up_vert[2]);
+            for (int k = 0; k < 3; k++) up_vert[k] /= std::max(l, 1e-12);
+        }
+        align_up_to_z(up_vert, R);
+    } else if (orientation_method == "none") {
+        // R stays identity
+    } else {
+        align_up_to_z(up, R);
     }
 
     if (R_out) std::copy(&R[0][0], &R[0][0] + 9, R_out);
@@ -133,9 +514,7 @@ double compute_normalized_transform(const double* c2w, int64_t n,
             max_abs = std::max(max_abs,
                 std::abs(R[r][0]*d[0] + R[r][1]*d[1] + R[r][2]*d[2]));
     }
-    // Cameras all in one place (one photo, a tripod's turn) have no size to
-    // fit, and 1/1e-12 leaves train_to_normalized singular in float.
-    const double scale_factor = max_abs > 1e-9 ? 1.0 / max_abs : 1.0;
+    const double scale_factor = (auto_scale_poses && max_abs > 1e-9) ? 1.0 / max_abs : 1.0;
 
     // T_n_from_camera = scale * [R_align | -R_align @ center]
     for (int r = 0; r < 3; r++) {
@@ -288,6 +667,19 @@ std::shared_ptr<const std::vector<std::string>> listed_files(const fs::path& dir
     return names;
 }
 }  // namespace
+
+std::vector<std::string> find_aux_files(const std::string& aux_dir,
+                                        const std::vector<std::string>& rel_names,
+                                        const char* suffix_tag) {
+    std::vector<std::string> out(rel_names.size());
+    std::error_code ec;
+    if (!fs::is_directory(aux_dir, ec)) return out;
+    const int64_t n = (int64_t)rel_names.size();
+#pragma omp parallel for schedule(dynamic, 16)
+    for (int64_t i = 0; i < n; i++)
+        if (!rel_names[i].empty()) out[i] = find_aux_file(aux_dir, rel_names[i], suffix_tag);
+    return out;
+}
 
 std::string find_aux_file(const std::string& aux_dir_s, const std::string& rel_name,
                           const char* suffix_tag) {
@@ -626,8 +1018,10 @@ template <typename T>
 CenterTable scene_centers_t(const double* c2w, int64_t n, const T* points,
                             int64_t m, int stride, const double* A) {
     CenterTable out{};
+    const auto nav = navigation_hint(c2w, n);
     for (int i = 0; i < kNumCenterModes; i++) {
-        const std::array<double, 3> c = scene_center_t(
+        const std::array<double, 3> c = i == (int)CenterMode::CameraFocus && nav.pivot_focus
+            ? nav.focus : scene_center_t(
             (CenterMode)i, c2w, n, points, m, stride, 1 << 18);
         for (int r = 0; r < 3; r++)
             out[i][r] = A ? (float)(A[r*4]*c[0] + A[r*4+1]*c[1] + A[r*4+2]*c[2] + A[r*4+3])
@@ -705,8 +1099,23 @@ void warn(const spirula::i18n::Msg& m, std::initializer_list<spirula::i18n::Arg>
 
 }  // namespace
 
+std::vector<ImageSize> probe_image_sizes(const DatasetParserConfig& cfg,
+                                         const std::vector<std::string>& paths) {
+    std::vector<ImageSize> out(paths.size());
+    if (!cfg.probe_image_size) return out;
+    const int64_t n = (int64_t)paths.size();
+#pragma omp parallel for schedule(dynamic, 16)
+    for (int64_t i = 0; i < n; i++) {
+        int w = 0, h = 0;
+        if (!paths[i].empty() && cfg.probe_image_size(paths[i].c_str(), &w, &h) && w > 0 &&
+            h > 0)
+            out[i] = {w, h};
+    }
+    return out;
+}
+
 void fit_camera_resolution(const DatasetParserConfig& cfg,
-                           const std::string& image_path,
+                           const std::string& image_path, ImageSize probed,
                            double& W, double& H,
                            double& fx, double& fy, double& cx, double& cy,
                            RedistortSource* src, int turns_cw)
@@ -714,8 +1123,9 @@ void fit_camera_resolution(const DatasetParserConfig& cfg,
     if (!(W > 0.0) || !(H > 0.0)) return;
     double tw = W, th = H;
     int iw = 0, ih = 0;
-    if (cfg.probe_image_size && !image_path.empty() &&
-        cfg.probe_image_size(image_path.c_str(), &iw, &ih) && iw > 0 && ih > 0) {
+    if (probed.w > 0 && probed.h > 0) {
+        iw = probed.w;
+        ih = probed.h;
         // The camera describes the image as it will be LOADED, which a quarter
         // turn transposes.
         if (turns_cw & 1) std::swap(iw, ih);
@@ -743,6 +1153,17 @@ void fit_camera_resolution(const DatasetParserConfig& cfg,
         };
         tw = std::max(1.0, round_dim(tw));
         th = std::max(1.0, round_dim(th));
+    }
+    if (cfg.max_resolution > 0 && std::max(tw, th) > cfg.max_resolution) {
+        const double k = cfg.max_resolution / std::max(tw, th);
+        auto capped_dim = [&](double v) {
+            v *= k;
+            if (cfg.downscale_rounding_mode == "ceil") return std::ceil(v);
+            if (cfg.downscale_rounding_mode == "round") return std::round(v);
+            return std::floor(v);
+        };
+        tw = std::clamp(capped_dim(tw), 1.0, (double)cfg.max_resolution);
+        th = std::clamp(capped_dim(th), 1.0, (double)cfg.max_resolution);
     }
     if (tw == W && th == H) return;
 

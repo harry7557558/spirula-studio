@@ -65,6 +65,10 @@ def strip_c_comments(lines):
     kinds, texts = [], []
     in_block = False
     for line in lines:
+        if not in_block and '//' not in line and '/*' not in line:
+            kinds.append("code" if line.strip() else "")
+            texts.append("")
+            continue
         code, text = [], []
         i, n = 0, len(line)
         # A bare `//` separates paragraphs of one block; it must not end it.
@@ -171,8 +175,10 @@ def changed_lines(root, since="HEAD"):
         return None
     base = head.strip() if head else "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
+    paths = [f":(glob)**/*{ext}" for ext in sorted(C_EXTS | HASH_EXTS)]
+    paths += [f":(exclude){prefix}" for prefix in EXCLUDED]
     diff = run(["git", "-C", root, "diff", "--unified=0", "--no-color",
-                "--diff-filter=d", base])
+                "--diff-filter=d", base, "--", *paths])
     if diff is None:
         return None
 
@@ -187,7 +193,7 @@ def changed_lines(root, since="HEAD"):
                 span = int(m.group(2)) if m.group(2) else 1
                 touched.setdefault(path, set()).update(range(first, first + span))
 
-    others = run(["git", "-C", root, "ls-files", "--others", "--exclude-standard"])
+    others = run(["git", "-C", root, "ls-files", "--others", "--exclude-standard", "--", *paths])
     for path in (others or "").splitlines():
         if path:
             touched[path] = None  # whole file

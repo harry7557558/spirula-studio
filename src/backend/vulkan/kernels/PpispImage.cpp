@@ -44,8 +44,10 @@ static_assert(sizeof(PpispInitParams) == 8 + 2 * 4, "layout");
 struct AddIntoGradParams {
     uint64_t src, dst;
     uint32_t total, wgs_per_row;
+    float dst_scale;
+    uint32_t has_src;
 };
-static_assert(sizeof(AddIntoGradParams) == 2 * 8 + 2 * 4, "layout");
+static_assert(sizeof(AddIntoGradParams) == 2 * 8 + 4 * 4, "layout");
 
 // (kParamType, kClampOutput, kExposureArithmeticMean), in ppisp_image.slang
 // declaration order.
@@ -223,14 +225,17 @@ void ppisp_original_default_init(
 }
 
 void ppisp_add_into_grad(
-    const float* src, float* dst, size_t n, backend::Stream stream
+    const float* src, float* dst, float dst_scale, size_t n,
+    backend::Stream stream
 ) {
     (void)stream;
     if (n == 0) return;
     AddIntoGradParams p{};
-    p.src = (uint64_t)src;
+    p.src = vkk::or_fallback(src);
     p.dst = (uint64_t)dst;
     p.total = (uint32_t)n;
+    p.dst_scale = dst_scale;
+    p.has_src = src != nullptr ? 1 : 0;
     vkk::dispatch_flat("bilagrid_tv.ppisp_add_into_grad",
                        backend::vk::SpecList{0u}, (int64_t)n, 256, &p,
                        sizeof(p), &p.wgs_per_row);

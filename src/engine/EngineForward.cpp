@@ -1,6 +1,7 @@
 // Engine forward pass + debug forward.
 
 #include "engine/Engine.h"
+
 #include "engine/EngineCommon.h"
 #include "engine/EngineInternal.h"
 #include "engine/EngineState.h"
@@ -10,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -64,6 +66,49 @@ constexpr int    kBinTileNext   = 1;    // ... but an accepted one right away
 constexpr double kCoarsenMinPairs = 2.25;
 // A coarser trial this much slower than its baseline has already lost.
 constexpr double kBinTileAbort  = 2.0;
+// A size no training step searches -- the viewer's, a preview's -- is forward
+// only. 30M splats at three zooms: within 6% of best at 16 px, 5.4x it at 64.
+constexpr int    kMacroLog2Render = 1;
+
+// Halving the binning tile turns p pairs a splat -- a footprint of sqrt(p) - 1
+// tiles -- into (2 sqrt(p) - 1)^2.
+double finer_pairs_ratio(double pairs_per_splat) {
+    const double p = std::max(1.0, pairs_per_splat);
+    const double side = 2.0 * std::sqrt(p) - 1.0;
+    return side * side / p;
+}
+
+// A finer bin's pairs must fit a tenth of the device memory still free: the
+// pool keeps what a trial took, and a few percent of speed is not worth the run.
+constexpr double kBinTileFreeShare = 0.1;
+
+// The pool's bytes a splat-tile pair costs: its list entry, and unbanded
+// (under 6M pairs, intersect_bands_for) the sort's 20 beside it.
+double finer_bin_bytes(double pairs_per_splat) {
+    const double now = (double)engine().isect_peak_count;
+    const double finer = now * finer_pairs_ratio(pairs_per_splat);
+    return (finer - now) * (finer <= 6e6 ? 24.0 : 4.0);
+}
+
+bool finer_bin_fits(double pairs_per_splat) {
+    const backend::MemoryUsage mu = backend::memory_usage();
+    if (!mu.has_used || !mu.has_total || mu.total_bytes <= mu.used_bytes) return true;
+    return finer_bin_bytes(pairs_per_splat) <=
+           kBinTileFreeShare * (double)(mu.total_bytes - mu.used_bytes);
+}
+
+// A finer size that lost twice running by twice the margin is not tried again
+// where it would grow the pool, until splats have shrunk against the tile.
+// Twice: one slow view read 16 px 30% over 32 px in a run where they tie.
+bool finer_lost(const BinTileChoice& c, int from, double pairs_per_splat) {
+    return c.finer_losses[from] >= 2 && pairs_per_splat >= 0.7 * c.finer_loss_pairs[from];
+}
+
+bool finer_trial_hopeless(const BinTileChoice& c) {
+    return finer_lost(c, c.macro_log2, c.pairs_typical) &&
+           c.step_pairs * finer_pairs_ratio(c.pairs_typical) >
+               (double)engine().isect_peak_count;
+}
 
 bool bin_tile_log() {
     static const bool on = [] {
@@ -88,14 +133,19 @@ void engine_bin_tile_observe(double step_seconds) {
         c.wait = kBinTileRetry;
         c.warmup = kBinTileWarmup;
         c.have = 0;
-        c.sum = 0.0;
+        c.sum = c.pairs_sum = c.slowest = 0.0;
         return;
     }
     if (c.warmup > 0) { --c.warmup; return; }
     c.sum += step_seconds;
+    c.slowest = std::max(c.slowest, step_seconds);
+    c.pairs_sum += (double)engine().isect_last_count;
     if (++c.have < kBinTileWindow) return;
-    const double cost = c.sum / c.have;
-    c.sum = 0.0;
+    // Without the window's slowest step: one in 64 reads 8 ms long (the Vulkan
+    // params ring wrapping), and a baseline that caught it lost any trial by 15%.
+    const double cost = (c.sum - c.slowest) / (c.have - 1);
+    if (c.probing != 1) c.step_pairs = c.pairs_sum / c.have;
+    c.sum = c.pairs_sum = c.slowest = 0.0;
     c.have = 0;
 
     // A/B/A: splat size moves fast enough early on that one window drifts
@@ -108,10 +158,15 @@ void engine_bin_tile_observe(double step_seconds) {
         if (--c.wait > 0) return;
         const int next = c.macro_log2 + c.dir;
         if (next < std::max(c.floor, kMacroLog2Min) || next > kMacroLog2Max ||
-            (c.dir > 0 && c.pairs_per_splat < kCoarsenMinPairs)) {
+            (c.dir > 0 && c.pairs_per_splat < kCoarsenMinPairs) ||
+            (c.dir < 0 && (finer_trial_hopeless(c) || !finer_bin_fits(c.pairs_typical)))) {
             c.dir = -c.dir;
             c.wait = kBinTileRetry;
             return;
+        }
+        if (c.dir < 0) {
+            c.mark = DevicePool::global().arena_mark(PoolPhase::TileIsect, PoolSlot::IsectFlatA);
+            c.mark_isects = engine().isect_peak_count;
         }
         c.macro_log2 = next;
         c.probing = 1;
@@ -134,6 +189,17 @@ void engine_bin_tile_observe(double step_seconds) {
                          bin_tile_x(probed), 1e3 * c.trial,
                          bin_tile_x(c.from), 1e3 * base,
                          better ? "keep" : "revert");
+        if (c.dir < 0) {
+            const bool lost = c.trial >= base * (1.0 + 2.0 * kBinTileMargin);
+            c.finer_losses[c.from] = lost ? c.finer_losses[c.from] + 1 : 0;
+            c.finer_loss_pairs[c.from] = c.pairs_typical;
+            if (!better) {
+                // The pool grew for pairs this size will not make again.
+                DevicePool::global().arena_release(PoolPhase::TileIsect, c.mark,
+                                                   PoolSlot::IsectFlatA);
+                engine().isect_peak_count = c.mark_isects;
+            }
+        }
         c.probing = 0;
         c.base = cost;
         if (better) {
@@ -151,10 +217,26 @@ void engine_bin_tile_observe(double step_seconds) {
 
 int engine_bin_macro_log2() {
     const auto& bin = bin_choice();
-    return engine().bin_tile_request != 0
-               ? std::max(macro_log2_from_pixels(engine().bin_tile_request),
-                          bin.floor)
-               : bin.macro_log2;
+    if (engine().bin_tile_request != 0)
+        return std::max(macro_log2_from_pixels(engine().bin_tile_request), bin.floor);
+    return bin.searched ? bin.macro_log2 : std::max(kMacroLog2Render, bin.floor);
+}
+
+void engine_bin_tile_claim() { bin_choice().searched = true; }
+
+int64_t engine_bin_finer_isects() {
+    const BinTileChoice& c = bin_choice();
+    const int floor = std::max(c.floor, kMacroLog2Min);
+    if (engine().bin_tile_request != 0 || !c.searched || c.pairs_typical <= 0.0 ||
+        c.macro_log2 - 1 < floor || finer_trial_hopeless(c) || !finer_bin_fits(c.pairs_typical))
+        return 0;
+    // A size that is adopted has the next one tried at once: both, unless the
+    // second has already lost from there.
+    double ratio = finer_pairs_ratio(c.pairs_typical);
+    const double pairs = c.pairs_typical * ratio;
+    if (c.macro_log2 - 2 >= floor && !finer_lost(c, c.macro_log2 - 1, pairs))
+        ratio *= finer_pairs_ratio(pairs);
+    return (int64_t)((double)engine().isect_peak_count * ratio);
 }
 
 void forward_3dgs(
@@ -187,6 +269,8 @@ void forward_3dgs(
     // reuses, so this view is already dead. Dropping it turns a stale
     // fused-optim read into that step's "v_splats_s not stashed" error.
     engine().fwd.v_splats_s.clear();
+    engine().fwd.accum_weight = DeviceVector<float>();
+    engine().fwd.accum_mode = DensifyAccumMode::None;
 
     // Build splats as DeviceTensorFloatND from typed device buffers.
     // For DeviceVector<float> (opacities), build a [N, 1] shape FND manually.
@@ -271,6 +355,8 @@ void forward_3dgs(
     const ColorBasis color{sh_degree, engine().sb_lobes};
 
     // --- Projection ---
+    std::optional<StepTimingScope> timing;
+    timing.emplace(StepPart::Render, StepScale::Splats);
     if (packed) {
         DeviceVector<int32_t> cam_ids, gauss_ids;
         DeviceVector<uint2> aabb_vec;
@@ -381,6 +467,8 @@ void forward_3dgs(
     auto& bin = bin_choice();
     engine().fwd.macro_log2 = engine_bin_macro_log2();
     const int macro_before = engine().fwd.macro_log2;
+    timing.reset();
+    timing.emplace(StepPart::Render, StepScale::SplatsPixels);
 
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
         aabb_q, depths_nd, ellipse,
@@ -393,9 +481,16 @@ void forward_3dgs(
         engine().fwd.macro_log2
     );
 
-    if (bin.probing != 1 && engine().fwd.macro_log2 == bin.macro_log2)
+    if (bin.probing != 1 && engine().fwd.macro_log2 == bin.macro_log2) {
         bin.pairs_per_splat = (double)flatten_ids.size() /
                               (double)std::max<int64_t>(depths_nd.numel(), 1);
+        bin.pairs_typical = bin.typical_at == bin.macro_log2
+            ? 0.9 * bin.pairs_typical + 0.1 * bin.pairs_per_splat : bin.pairs_per_splat;
+        bin.typical_at = bin.macro_log2;
+    }
+    engine().isect_peak_pairs = std::max(engine().isect_peak_pairs, (int64_t)depths_nd.numel());
+    engine().isect_peak_count = std::max(engine().isect_peak_count, (int64_t)flatten_ids.size());
+    engine().isect_last_count = (int64_t)flatten_ids.size();
     if (engine().fwd.macro_log2 > macro_before) {
         // The intersect had to coarsen. That size is now a floor, and any
         // search state below it measured a setting this run cannot use.
@@ -404,7 +499,7 @@ void forward_3dgs(
         bin.from = bin.macro_log2;
         bin.probing = 0;
         bin.have = 0;
-        bin.sum = 0.0;
+        bin.sum = bin.pairs_sum = bin.slowest = 0.0;
         bin.warmup = kBinTileWarmup;
     }
 
@@ -473,6 +568,8 @@ void forward_3dgs(
     engine().fwd.render_Ts = render_Ts;
     engine().fwd.render_median = render_median;
     engine().fwd.last_ids = last_ids;
+
+    timing.reset();
 
     // render -> bg -> [PPISP] -> encode -> [PPISP] -> bilagrid -> [PPISP] ->
     // loss. The stages before the grid run here, so eval and viewer renders get

@@ -98,6 +98,8 @@ __global__ void moments_fwd_kernel(
     inside &= SlangDistortion<distortion>::generate_ray(
         {(px - cx) / fx, (py - cy) / fy},
         (int)camera_model, dist_coeffs, &raydir);
+    if constexpr (camera_model == CameraModelType::ORTHOGRAPHIC)
+        ray_o += SlangProjectionUtils::transform_ray_d(R, {(px-cx)/fx, (py-cy)/fy, 0.0f});
     float3 ray_d = SlangProjectionUtils::transform_ray_d(R, raydir);
 
     bool done = !inside;
@@ -283,7 +285,7 @@ void rasterize_moments_3dgut_fwd(
     #define _DISPATCH(M, D) \
         if (cm == CameraModelType::M && cd == CameraDistortionType::D) \
             launch_moments<CameraModelType::M, CameraDistortionType::D>(_ARGS); else
-    SS_FOR_EACH_CAMERA_VARIANT(_DISPATCH)
+    SS_FOR_EACH_FORWARD_CAMERA_VARIANT(_DISPATCH)
         throw std::runtime_error("rasterize_moments_3dgut_fwd: unsupported camera model / distortion tier");
     #undef _DISPATCH
     CHECK_DEVICE_ERROR(cudaGetLastError());

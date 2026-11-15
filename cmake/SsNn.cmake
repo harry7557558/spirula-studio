@@ -122,6 +122,17 @@ if(SS_ENABLE_PATENTED)
     target_compile_definitions(ss_nn PUBLIC SS_HAVE_VIDEO=1)
 endif()
 target_link_libraries(ss_nn PUBLIC ss_vulkan Threads::Threads)
+if(SS_NN_METAL)
+    # Compiled as CXX, which clang reads as Objective-C++ from the extension.
+    # No enable_language(OBJCXX): it would turn every .m (GLFW's Cocoa layer)
+    # into Objective-C++ too; cmake/SsApps.cmake does NativeDialogMac.mm the same way.
+    target_sources(ss_nn PRIVATE ${SS_SRC}/nn/OpMetal.mm ${SS_SRC}/nn/vk/MetalInterop.mm)
+    set_source_files_properties(${SS_SRC}/nn/OpMetal.mm ${SS_SRC}/nn/vk/MetalInterop.mm
+        PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_compile_definitions(ss_nn PRIVATE SS_HAVE_NN_METAL=1)
+    target_link_libraries(ss_nn PUBLIC "-framework Metal" "-framework Foundation"
+        "-framework MetalPerformanceShaders" "-framework MetalPerformanceShadersGraph")
+endif()
 target_compile_options(ss_nn PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>
     $<$<COMPILE_LANGUAGE:C>:${SPLAT_C_FLAGS}>)
@@ -197,6 +208,21 @@ target_link_libraries(ss_loma PUBLIC ss_nn)
 target_compile_options(ss_loma PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
 set_property(TARGET ss_loma PROPERTY CXX_STANDARD 17)
+
+# ---------------------------------------------------------------------------
+# ss_flexglue -- FlexGlue's dense descriptor and sparse matcher. Its checkpoint
+# is the authors' .pth, read by nn::TorchCheckpoint.
+# ---------------------------------------------------------------------------
+ss_nn_shaders(flexglue ${SS_SRC}/flexglue/shaders SS_FLEXGLUE_EMBED)
+
+file(GLOB_RECURSE SS_FLEXGLUE_SOURCES CONFIGURE_DEPENDS ${SS_SRC}/flexglue/*.cpp)
+list(FILTER SS_FLEXGLUE_SOURCES EXCLUDE REGEX "/tests/")
+
+add_library(ss_flexglue STATIC ${SS_FLEXGLUE_SOURCES} ${SS_FLEXGLUE_EMBED})
+target_link_libraries(ss_flexglue PUBLIC ss_nn)
+target_compile_options(ss_flexglue PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
+set_property(TARGET ss_flexglue PROPERTY CXX_STANDARD 17)
 
 # ---------------------------------------------------------------------------
 # ss_metric3d -- Metric3D v2 monocular depth and normals
@@ -336,7 +362,7 @@ endif()
 file(GLOB SS_NN_TESTS CONFIGURE_DEPENDS
      ${SS_SRC}/nn/tests/*.cpp ${SS_SRC}/sam/tests/*.cpp
      ${SS_SRC}/aliked/tests/*.cpp ${SS_SRC}/loma/tests/*.cpp
-     ${SS_SRC}/metric3d/tests/*.cpp
+     ${SS_SRC}/flexglue/tests/*.cpp ${SS_SRC}/metric3d/tests/*.cpp
      ${SS_SRC}/moge/tests/*.cpp ${SS_SRC}/marigold/tests/*.cpp
      ${SS_SRC}/birefnet/tests/*.cpp
      ${SS_SRC}/gdino/tests/*.cpp ${SS_SRC}/roma/tests/*.cpp
@@ -347,7 +373,8 @@ foreach(test_src ${SS_NN_TESTS})
     # Every test links every library above it: the four are small, and one
     # rule here beats a per-directory list that drifts.
     target_link_libraries(${test_name} PRIVATE ss_sam ss_aliked ss_loma ss_metric3d
-                                               ss_moge ss_marigold ss_roma ss_lpips)
+                                               ss_moge ss_marigold ss_roma ss_lpips
+                                               ss_flexglue)
     set_property(TARGET ${test_name} PROPERTY CXX_STANDARD 17)
     target_compile_definitions(${test_name} PRIVATE SS_REPO_ROOT="${SS_ROOT}")
     target_compile_options(${test_name} PRIVATE

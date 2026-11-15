@@ -587,7 +587,8 @@ PairStatistics select_pairs(const std::vector<PairImage>& images, const PairOpti
     std::sort(pairs.begin(), pairs.end());
     pairs.erase(std::unique(pairs.begin(), pairs.end()), pairs.end());
     std::sort(pairs.begin(), pairs.end(), [&](ImagePair a, ImagePair b) {
-        const auto x = std::minmax(identity(a.first), identity(a.second)), y = std::minmax(identity(b.first), identity(b.second));
+        const auto x = std::minmax({identity(a.first), identity(a.second)});
+        const auto y = std::minmax({identity(b.first), identity(b.second)});
         return x < y;
     });
     for (const auto& pair : pairs) if (!publish(pair)) break;

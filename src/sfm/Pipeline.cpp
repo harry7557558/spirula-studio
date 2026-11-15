@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <chrono>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -50,6 +51,9 @@
 #include "sfm/core/SerialWorker.h"
 #include "sfm/feature/Matcher.h"
 #include "sfm/feature/PairSelection.h"
+#include "sfm/feature/PairExpansion.h"
+#include "sfm/core/Experiment.h"
+#include "sfm/core/FeatureCoordinates.h"
 #include "sfm/feature/Pairing.h"
 #include "sfm/feature/RigPairs.h"
 #include "sfm/feature/GpsPairs.h"
@@ -58,6 +62,8 @@
 #include "sfm/geometry/TwoView.h"
 #include "sfm/map/Assemble.h"
 #include "sfm/map/AttitudeGauge.h"
+#include "sfm/map/GlobalPositionGpu.h"
+#include "sfm/map/GlobalReconstruction.h"
 #include "sfm/map/Mapper.h"
 #include "sfm/map/MetricGauge.h"
 #include "sfm/map/Orient.h"
@@ -168,8 +174,9 @@ void sampleFeatureColors(FeatureSet& fs, const GrayImage& img) {
 // Put a freshly extracted set into the source image's frame and attach what
 // EXIF said about the camera. Called once per image, after anything that
 // indexes the *decoded* image (colors, masks) is done.
-void finishFeatures(FeatureSet& fs, const GrayImage& img) {
+void finishFeatures(FeatureSet& fs, const GrayImage& img, bool colmap_corners) {
     scaleKeypoints(fs, img.orig_width, img.orig_height);
+    if (colmap_corners) shiftKeypoints(fs, 0.5f, 0.5f);
     fs.exif_focal = exifFocalPx(img.exif, fs.width, fs.height);
     fs.exif_camera = exifCameraKey(img.exif, fs.width, fs.height);
     fs.exif_orientation = (uint8_t)img.exif.orientation;
@@ -533,13 +540,31 @@ std::unique_ptr<TelemetryPriors> makeSensorPriors(const SfmConfig& cfg,
 }
 
 
+void reportSensorPriors(const TelemetryPriors& priors) {
+    for (size_t c = 0; c < priors.timeOffsets().size(); c++)
+        if (priors.timeOffsets()[c].found)
+            L::err(Tag::Match, M::sensor_time_offset,
+                   {priors.groups().empty() ? std::string("?") : std::to_string(c),
+                    L::num(1000.0 * priors.timeOffsets()[c].offset, 1),
+                    (long long)priors.timeOffsets()[c].pairs});
+    for (const SensorGroupState& g : priors.groups()) {
+        if (g.ok)
+            L::out(Tag::Match, M::sensor_prior_calib,
+                   {g.name, (long long)g.pairs, L::num(g.fit.sig_rot_deg, 2)});
+        else
+            L::err(Tag::Match, M::sensor_prior_calib_failed,
+                   {g.name, (long long)g.pairs, extrinsicReason(g.fit.reason).get()});
+    }
+}
+
 // Relative rotations from two-view geometry on bearings, over the pairs the
 // source can calibrate on, then the source's own hand-eye fit.
 void calibrateSensorPriorsFrom(TelemetryPriors& priors, const std::vector<FeatureSet>& feats,
                                const std::vector<std::pair<uint32_t, uint32_t>>& pairs,
                                const std::vector<std::vector<FeatureMatch>>& matches,
                                const std::vector<Camera>& cams, const TwoViewOptions& tvopt,
-                               int threads, bool verbose, bool inliers_only) {
+                               int threads, bool verbose, bool inliers_only,
+                               std::vector<PairRotationObs>* calibration = nullptr) {
     std::vector<size_t> use;
     for (size_t p = 0; p < pairs.size() && p < matches.size(); p++)
         if (priors.calibrationPair(pairs[p].first, pairs[p].second) &&
@@ -591,21 +616,8 @@ void calibrateSensorPriorsFrom(TelemetryPriors& priors, const std::vector<Featur
     for (size_t k = 0; k < obs.size(); k++)
         if (ok[k]) kept.push_back(obs[k]);
     priors.calibrateFromPairs(kept);
-    if (!verbose) return;
-    for (size_t c = 0; c < priors.timeOffsets().size(); c++)
-        if (priors.timeOffsets()[c].found)
-            L::err(Tag::Match, M::sensor_time_offset,
-                   {priors.groups().empty() ? std::string("?") : std::to_string(c),
-                    L::num(1000.0 * priors.timeOffsets()[c].offset, 1),
-                    (long long)priors.timeOffsets()[c].pairs});
-    for (const SensorGroupState& g : priors.groups()) {
-        if (g.ok)
-            L::out(Tag::Match, M::sensor_prior_calib,
-                   {g.name, (long long)g.pairs, L::num(g.fit.sig_rot_deg, 2)});
-        else
-            L::err(Tag::Match, M::sensor_prior_calib_failed,
-                   {g.name, (long long)g.pairs, extrinsicReason(g.fit.reason).get()});
-    }
+    if (calibration) *calibration = std::move(kept);
+    if (verbose) reportSensorPriors(priors);
 }
 
 
@@ -613,14 +625,57 @@ void calibrateSensorPriors(TelemetryPriors& priors, const std::vector<FeatureSet
                            const std::vector<std::pair<uint32_t, uint32_t>>& pairs,
                            const std::vector<std::vector<FeatureMatch>>& matches,
                            const std::vector<Camera>& cams, const TwoViewOptions& tvopt,
-                           int threads, bool verbose) {
-    calibrateSensorPriorsFrom(priors, feats, pairs, matches, cams, tvopt, threads, verbose, false);
+                           int threads, bool verbose, std::vector<PairRotationObs>& calibration) {
+    calibrateSensorPriorsFrom(priors, feats, pairs, matches, cams, tvopt, threads, verbose, false,
+                              &calibration);
 }
 
-void calibrateSensorPriorsFromDatabase(TelemetryPriors& priors, const MatchesDatabase& db,
+uint64_t sensorCalibrationFingerprint(const TelemetryPriors& priors,
+                                      const std::vector<FeatureSet>& feats,
+                                      const std::vector<Camera>& cams,
+                                      const TwoViewOptions& opt) {
+    Fingerprint h;
+    h.add(priors.calibrationFingerprint());
+    h.add(cams.size());
+    for (const Camera& c : cams) {
+        h.add(c.id);
+        h.add(c.model);
+        h.add(c.width);
+        h.add(c.height);
+        h.add(c.pixel_scale);
+        double p[16]{};
+        packColmap(c, p);
+        for (int i = 0; i < camColmapParams(c.model); i++) h.add(p[i]);
+    }
+    h.add(feats.size());
+    for (const FeatureSet& f : feats) h.add(f.pixelScale());
+    h.add(opt.min_num_inliers);
+    h.add(opt.max_H_inlier_ratio);
+    h.add(opt.estimate_homography);
+    h.add(opt.ransac.max_error);
+    h.add(opt.ransac.confidence);
+    h.add(opt.ransac.min_num_trials);
+    h.add(opt.ransac.max_num_trials);
+    h.add(opt.ransac.min_inlier_ratio);
+    h.add(opt.ransac.seed);
+    h.add(opt.ransac.lo_iters);
+    return h.value;
+}
+
+void calibrateSensorPriorsFromDatabase(TelemetryPriors& priors, MatchesDatabase& db,
                                        const std::vector<FeatureSet>& feats,
                                        const std::vector<Camera>& cams,
                                        const TwoViewOptions& tvopt, int threads, bool verbose) {
+    const uint64_t fingerprint = sensorCalibrationFingerprint(priors, feats, cams, tvopt);
+    if (db.sensor_calibration && db.sensor_calibration_fingerprint != 0 &&
+        db.sensor_calibration_fingerprint == fingerprint) {
+        priors.calibrateFromPairs(*db.sensor_calibration);
+        if (verbose) reportSensorPriors(priors);
+        return;
+    }
+    L::diag(Tag::Match, "[prior] %s; recalibrating sensors from verified inliers",
+            db.sensor_calibration ? "sensor calibration inputs changed or provenance missing" :
+                                    "no saved sensor calibration sample (legacy matches or fresh fallback)");
     std::vector<std::pair<uint32_t, uint32_t>> pairs;
     std::vector<std::vector<FeatureMatch>> matches;
     for (const TwoViewMatches& p : db.pairs) {
@@ -629,7 +684,9 @@ void calibrateSensorPriorsFromDatabase(TelemetryPriors& priors, const MatchesDat
         pairs.emplace_back(p.image1, p.image2);
         matches.push_back(p.matches.toVector());
     }
-    calibrateSensorPriorsFrom(priors, feats, pairs, matches, cams, tvopt, threads, verbose, true);
+    calibrateSensorPriorsFrom(priors, feats, pairs, matches, cams, tvopt, threads, verbose, true,
+                              &db.sensor_calibration.emplace());
+    db.sensor_calibration_fingerprint = fingerprint;
 }
 
 
@@ -1352,7 +1409,51 @@ std::vector<Reconstruction> runMapper(Mapper& mapper, const MatchesDatabase& db,
     AssembleOptions ao = cfg.assemble;
     ao.verbose = !cfg.quiet;
     std::vector<Reconstruction> models;
-    if (!bup) {
+    if (cfg.mapper_mode == "global") {
+        if (!cfg.quiet) L::out(Tag::Map, M::map_global_start);
+        events::stage_begin(Stage::GlobalInitialize, 10000);
+        mapper.initializeCameras();
+        // View-graph calibration cannot refine fisheye focals.
+        for (const auto& camera : mapper.startingCameras()) {
+            if (camera.second.isFisheye() &&
+                !mapper.options().given_focal_cameras.count(camera.first)) {
+                mapper.bootstrapCameras();
+                break;
+            }
+        }
+        GlobalReconstructionOptions go;
+        go.progress = [](double work) {
+            events::progress(Stage::GlobalInitialize, (int64_t)(work * 10000), 10000);
+        };
+        if (progress::enabled()) go.preview = [](const Reconstruction& model) {
+            progress::model(model);
+        };
+        go.relative.geometry = cfg.twoview;
+        go.relative.threads = cfg.threads;
+        go.rigs = mapper.rigs();
+        go.rotation_priors = mapper.priors();
+        go.position_priors = mapper.priors();
+        go.fixed_focals = mapper.options().given_focal_cameras;
+        go.min_triangulation_angle = cfg.mapper.min_tri_angle_deg * M_PI / 180.0;
+        go.position_solver = [&](GlobalPositionProblem& problem, const GlobalPositionOptions& options) {
+            return solveGlobalPositionGpu(problem, options, cfg.mapper.device, cfg.mapper.device_selector);
+        };
+        GlobalReconstructionStats gs;
+        models = buildGlobalReconstructions(db, feats, mapper.cameraIds(), mapper.startingCameras(),
+                                            mapper.options().known_focal_cameras, go, gs);
+        if (!gs.rotation_converged) L::warn(Tag::Map, M::map_global_rotation_unconverged);
+        if (!cfg.quiet)
+            L::out(Tag::Map, M::map_global_initial,
+                   {(long long)gs.edges, (long long)gs.tracks, (long long)gs.conflicting,
+                    (long long)gs.models});
+        events::stage_end(Stage::GlobalInitialize);
+        events::stage_begin(Stage::Refine);
+        if (!models.empty()) progress::model(models.front(), true);
+        for (Reconstruction& model : models) model = mapper.refine(model, false, true);
+        mapper.claimAll(models);
+        ao.tag = "global";
+        if (!models.empty()) models = assembleModels(mapper, std::move(models), cfg.manager, ao, ast);
+    } else if (!bup) {
         ao.tag = "map";
         models = assembleModels(mapper, mapper.run(), cfg.manager, ao, ast);
     } else {
@@ -1752,10 +1853,12 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
     std::unique_ptr<IFeatureExtractor> ext =
         createFeatureExtractor(cfg.features, opt, cfg.aliked, cfg.loma);
     if (opt.verbose) L::err(Tag::Extract, M::extract_frontend, {ext->name()});
+    const bool colmap_corners = experimentInt("SFM_PIXEL_CENTER", 0, 1) != 0;
     // Everything after extract() reads only the image and its features, so it
     // runs on its own thread while the device works on the next image.
     static const std::string kNoPath;
     auto postProcess = [&](size_t k, GrayImage& img, FeatureSet& f) {
+        if (colmap_corners) centerExtractedKeypoints(f, cfg.features == "sift");
         if (img.exif_mirror_dropped && !stats.warned_exif_mirror) {
             stats.warned_exif_mirror = true;
             L::warn(Tag::Extract, M::extract_exif_mirror_dropped,
@@ -1791,7 +1894,7 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
         // Back to the source file's coordinates (D46), so cameras.bin
         // describes the user's images and not the working copy. Everything
         // reading a keypoint against the decoded image has already run.
-        finishFeatures(f, img);
+        finishFeatures(f, img, colmap_corners);
         fs::create_directories(outs[k].parent_path());
         writeFeatures(outs[k].string(), f);
         stats.features += f.count();
@@ -2090,12 +2193,34 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
         todo = pairs;
     }
 
+    // FlexGlue reads each image's pixels, so it is handed the file behind
+    // every feature set.
+    FlexGlueMatchOptions fgopt = cfg.flexglue;
+    if (cfg.matcher == "flexglue") {
+        if (fgopt.image_dir.empty() && calib) fgopt.image_dir = calib->image_dir;
+        if (fgopt.image_dir.empty() || !fs::is_directory(fgopt.image_dir)) {
+            L::fail(Tag::Match, M::run_not_a_directory,
+                    {fgopt.image_dir.empty() ? "--flexglue-images" : fgopt.image_dir});
+            return 1;
+        }
+        const std::map<std::string, std::string> stem2name = imageStemMap(fgopt.image_dir);
+        fgopt.image_paths.resize(n_images);
+        for (size_t i = 0; i < n_images; i++) {
+            auto it = stem2name.find(db.images[i].name);
+            if (it == stem2name.end()) {
+                L::fail(Tag::Match, M::match_flexglue_no_image,
+                        {db.images[i].name, fgopt.image_dir});
+                return 1;
+            }
+            fgopt.image_paths[i] = (fs::path(fgopt.image_dir) / it->second).string();
+        }
+    }
     std::unique_ptr<IFeatureMatcher> matcher =
-        createFeatureMatcher(cfg.matcher, opt, cfg.lightglue, cfg.loma_match);
+        createFeatureMatcher(cfg.matcher, opt, cfg.lightglue, cfg.loma_match, fgopt);
     if (verbose && cfg.matcher != "bruteforce")
         L::err(Tag::Match, M::match_matcher_name, {matcher->name()});
-    // Pairs the focal search already matched, by pairKey: with a camera per
-    // image its sample is every pair, which matching them again would double.
+    // Pairs the focal or gyro sample already matched, by pairKey: with a camera
+    // per image the focal sample is every pair, which matching again would double.
     std::unordered_map<uint64_t, std::vector<FeatureMatch>> premat;
     auto matchFn = [&](size_t b, size_t e, std::vector<std::vector<FeatureMatch>>& mout) {
         if (premat.empty()) {
@@ -2132,10 +2257,10 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
         vopt.num_threads = cfg.threads;
         vopt.match_batch_pairs = opt.batch_pairs;
 
-        // Calibrated verification (D45), for fisheye captures only: see
-        // VerifyCalibration. Everything else keeps the pixel path, where the
-        // pinhole assumption is exact and results are long settled.
+        // Wide-FOV verification requires rays; rectilinear ray-space fitting is optional.
         BearingCache bc;
+        const int essential_mode = experimentInt("SFM_ESSENTIAL", 0, 3);
+        std::vector<char> essential_images(feats.size(), 0);
         std::vector<Camera> percam;
         VerifyPriorStats pstats;
         if (calib) {
@@ -2179,15 +2304,25 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 bootstrapGroupFocals(feats, cs.ids, sample, sm, cs.cameras, cs.focal_given,
                                      cs.focal_measured, tvopt, calib->sample_pairs, cfg.threads,
                                      verbose);
+            }
+            if (cs.anyWide() || essential_mode) {
                 std::vector<Camera> percam(feats.size());
-                for (size_t i = 0; i < feats.size(); i++) percam[i] = cs.cameras.at(cs.ids[i]);
+                for (size_t i = 0; i < feats.size(); i++) {
+                    percam[i] = cs.cameras.at(cs.ids[i]);
+                    essential_images[i] = essential_mode == 2 ||
+                        (essential_mode == 1 && cs.focal_given.count(cs.ids[i]));
+                }
+                if (essential_mode) vopt.essential_images = &essential_images;
                 double t_b = now();
-                // A mixed capture calibrates *everything*: its cross pairs have
-                // a fisheye on one side, and the pixel path cannot represent
-                // those at all. A wholly rectilinear capture keeps the pixel
-                // path, where the pinhole assumption is exact and results are
-                // long settled.
-                bc = precomputeBearings(feats, percam, /*wide_only=*/!cs.mixed(), cfg.threads);
+                bc = precomputeBearings(feats, percam, !cs.mixed() && !essential_mode, cfg.threads);
+                if (!cs.anyWide() && essential_mode != 3)
+                    for (size_t i = 0; i < essential_images.size(); ++i)
+                        if (!essential_images[i]) bc.bearings[i].clear();
+                if (essential_mode)
+                    L::diag(Tag::Match, "[essential] mode %d, five-point eligible images %zu/%zu",
+                            essential_mode,
+                            (size_t)std::count(essential_images.begin(), essential_images.end(), 1),
+                            essential_images.size());
                 vopt.bearings = &bc;
                 calib->used_bearings = true;
                 if (verbose) {
@@ -2222,17 +2357,34 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 for (size_t k = 0; k < 900; k++) thin.push_back(sample[(size_t)(k * step)]);
                 sample.swap(thin);
             }
-            std::vector<std::vector<FeatureMatch>> sm, chunk;
-            for (size_t b = 0; b < sample.size(); b += 16) {
-                const size_t e = std::min(b + 16, sample.size());
-                matcher->matchBatch(feats, sample, b, e, chunk);
-                for (size_t k = b; k < e; k++) sm.push_back(std::move(chunk[k - b]));
+            std::vector<std::vector<FeatureMatch>> sm(sample.size()), chunk;
+            std::vector<std::pair<uint32_t, uint32_t>> rest;
+            std::vector<size_t> rest_at;
+            for (size_t k = 0; k < sample.size(); k++) {
+                const auto it = premat.find(resume::pairKey(sample[k].first, sample[k].second));
+                if (it != premat.end()) {
+                    sm[k] = it->second;
+                } else {
+                    rest.push_back(sample[k]);
+                    rest_at.push_back(k);
+                }
+            }
+            for (size_t b = 0; b < rest.size(); b += 16) {
+                const size_t e = std::min(b + 16, rest.size());
+                matcher->matchBatch(feats, rest, b, e, chunk);
+                for (size_t k = b; k < e; k++) sm[rest_at[k]] = std::move(chunk[k - b]);
             }
             const double t_c = now();
-            calibrateSensorPriors(*priors, feats, sample, sm, percam, tvopt, cfg.threads, verbose);
+            db.sensor_calibration_fingerprint =
+                sensorCalibrationFingerprint(*priors, feats, percam, tvopt);
+            calibrateSensorPriors(*priors, feats, sample, sm, percam, tvopt, cfg.threads, verbose,
+                                   db.sensor_calibration.emplace());
             if (verbose)
                 L::diag(Tag::Match, "[prior] calibrated on %zu pair(s) in %s", sample.size(),
                         format_duration(now() - t_c).c_str());
+            for (size_t k : rest_at)
+                premat.emplace(resume::pairKey(sample[k].first, sample[k].second),
+                               std::move(sm[k]));
             if (priors->anyRotation()) {
                 vopt.priors = priors;
                 vopt.cameras = &percam;
@@ -2380,12 +2532,37 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                        {(long long)kept, (long long)mates.size(), (long long)seeds.size()});
         }
         journal.close();
+        const int expansion = experimentInt("SFM_PAIR_EXPAND", 0, 32);
+        if (expansion && mode != PairMode::Exhaustive) {
+            PairSelectionOptions broad = popt;
+            broad.num_neighbors = std::min<uint32_t>(128, std::max<uint32_t>(64, 2 * popt.num_neighbors));
+            std::vector<uint32_t> retrieval_scores;
+            const auto retrieval = prefilterPairs(feats, broad, nullptr, &retrieval_scores);
+            const auto extra = expandVerifiedPairs(db, pairs, retrieval, expansion, retrieval_scores);
+            auto extraFn = [&](size_t b, size_t e, std::vector<std::vector<FeatureMatch>>& matches) {
+                matcher->matchBatch(feats, extra, b, e, matches);
+            };
+            vopt.journal = nullptr;
+            vopt.progress_done_base = stats.pairs;
+            vopt.progress_total = stats.pairs + extra.size();
+            events::progress(Stage::Match, (int64_t)stats.pairs, (int64_t)vopt.progress_total);
+            uint64_t extra_putative = 0;
+            auto more = verifyPairs(feats, extra, extraFn, vopt, &extra_putative, progress, &pstats);
+            L::diag(Tag::Match, "[pairs] expansion proposed %zu verified %zu", extra.size(), more.size());
+            stats.pairs += extra.size();
+            stats.putative += extra_putative;
+            for (auto& p : more) db.pairs.push_back(std::move(p));
+            std::sort(db.pairs.begin(), db.pairs.end(), [](const auto& a, const auto& b) {
+                return std::make_pair(a.image1, a.image2) < std::make_pair(b.image1, b.image2);
+            });
+        }
         sfm::progress::flush();
         events::stage_end(Stage::Match);
         for (const TwoViewMatches& tvm : db.pairs) stats.inliers += tvm.matches.size();
         // Calibrated on the verified pairs when the sample could not do it
         // (or was never asked for): the mapper wants the rotations too.
         if (priors && calib && !priors->anyRotation()) {
+            db.sensor_calibration.reset();
             if (percam.empty()) percam = perImageCameras(calib->cameras, feats.size());
             calibrateSensorPriorsFromDatabase(*priors, db, feats, percam, tvopt, cfg.threads,
                                               verbose);
@@ -2473,8 +2650,11 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // The signature is stored BEFORE the stage rather than after it, so that a
     // run interrupted half way through leaves files the next one may reuse.
     const fs::path rdir = resume::dir(_workspace);
-    const std::string extract_sig =
+    std::string extract_sig =
         stageSignature(cfg, CMD_EXTRACT) + resume::kSignedImages + _imagedir + "\n";
+    if (int grid = experimentInt("SFM_SIFT_GRID", 0, 16))
+        extract_sig += "sift-grid=" + std::to_string(grid) + "\n";
+    if (experimentInt("SFM_PIXEL_CENTER", 0, 1)) extract_sig += "pixel-corners=1\n";
     // What the files on disk were recorded as made with, before this run
     // records itself: matches over kept features were made under it.
     const std::string old_extract = resume::recorded(rdir / resume::kExtractSig);
@@ -2548,8 +2728,12 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // What this stage's output depends on: its own settings, the extraction
     // that produced its input, and the feature files themselves -- the pair
     // lists and the journal are indices into a particular set of those.
-    const std::string match_settings = stageSignature(cfg, CMD_MATCH) + "pairs-resolved=" +
+    std::string match_settings = stageSignature(cfg, CMD_MATCH) + "pairs-resolved=" +
                                        std::to_string((int)mode) + "\n";
+    if (int expansion = experimentInt("SFM_PAIR_EXPAND", 0, 32))
+        match_settings += "pair-expansion=" + std::to_string(expansion) + "\n";
+    if (int essential = experimentInt("SFM_ESSENTIAL", 0, 3))
+        match_settings += "essential=" + std::to_string(essential) + "\n";
     const std::string features_before = "features=" + featureDirDigest(featdir) + "\n";
     // Kept features older than their image or mask are dated now, so the next
     // run counts them current as well.
@@ -2601,6 +2785,8 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
                 db.camera_ids = std::move(disk.camera_ids);
                 db.focal_prior = std::move(disk.focal_prior);
                 db.focal_measured = std::move(disk.focal_measured);
+                db.sensor_calibration = std::move(disk.sensor_calibration);
+                db.sensor_calibration_fingerprint = disk.sensor_calibration_fingerprint;
                 loadCameraSetup(db, calib.cameras);
                 mstats.images = feats.size();
                 mstats.kept = mstats.pairs = db.pairs.size();
@@ -2694,13 +2880,27 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     AssembleStats ast;
     std::vector<Reconstruction> models = runMapper(mapper, db, feats, cfg, ast);
     double t_map = now() - t0;
+    if (models.empty()) {
+        L::fail(Tag::Map, M::map_no_model_to_work_with);
+        events::stage_end(Stage::Map);
+        r.exit_code = 1;
+        return r;
+    }
 
     {
         // A global solve per model, and up to two more passes over them: minutes
         // on a large capture, with the last image long since placed.
         events::stage_begin(Stage::Refine);
         double t_finish = 0;
-        models = finishModels(mapper, std::move(models), cfg, verbose, t_finish);
+        try {
+            std::vector<Reconstruction> finished =
+                finishModels(mapper, models, cfg, verbose, t_finish);
+            models = std::move(finished);
+        } catch (const std::exception& e) {
+            L::err_raw(Tag::Map,
+                       "[map] finishing passes failed: " + std::string(e.what()) +
+                       "; continuing with current model");
+        }
         t_map += t_finish;
         events::stage_end(Stage::Refine);
     }

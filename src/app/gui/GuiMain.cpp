@@ -2,6 +2,7 @@
 // core context (lowest version that also satisfies macOS) + Dear ImGui
 // bootstrap, then hands every frame to gui::GuiApp.
 
+#include "i18n/Message.h"
 #include "app/Tools.h"
 #include "i18n/catalog/Log.h"
 #include "app/AppPaths.h"
@@ -144,6 +145,7 @@ bool ui_busy() {
 }  // namespace
 
 int spirula_gui_main(int argc, char** argv) {
+    spirula::i18n::set_terminal_output(false);
     // First, and before anything slow: the console is on screen until it goes.
 #ifdef _WIN32
     release_own_console();

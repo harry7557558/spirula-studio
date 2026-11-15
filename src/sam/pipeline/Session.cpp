@@ -304,87 +304,149 @@ int64_t Session::Impl::buildPrompt(const ConceptPrompt& prompt, nn::Tensor& out_
 // Promptable concept segmentation
 // ---------------------------------------------------------------------------
 
-Result Session::Impl::runConcept(const ConceptPrompt& prompt) {
-    const Hparams& h = model.hp();
-    const int64_t D = h.neck_dim;
-    const int G = model.grid();
-    const int64_t N = (int64_t)G * G;
-    const int64_t S = (int64_t)G * 4;
-    Result result;
+std::vector<Result> Session::Impl::runConcepts(const std::vector<ConceptPrompt>& prompts) {
+    const auto& h = model.hp();
+    const int64_t D = h.neck_dim, NQ = h.ddec_num_queries;
+    const int64_t G = model.grid(), N = G * G, S = G * 4;
+    const uint64_t mask_bytes = (uint64_t)feats.orig_width * feats.orig_height;
+    std::vector<Result> results(prompts.size());
+    if (prompts.empty()) return results;
+    vk::ArenaScope frame(arena);
+    const auto pe = model.neckPe().view(N, D);
+    auto prefix = nn::arena_tensor(arena, nn::DType::F32, N, D);
+    nn::strided_copy(prefix, feats.det[2].view(N, D), N, D, D, D);
+    model::fusion_encoder_prefix(model, arena, prefix, pe);
 
-    vk::ArenaScope scope(arena);
-
-    nn::Tensor prompt_t, bias_t, valid_t;
-    const int64_t T = buildPrompt(prompt, prompt_t, bias_t, valid_t);
-
-    // The fusion encoder rewrites the image features in place, so it gets its
-    // own copy: the pool copy must stay pristine for the next prompt.
-    nn::Tensor fused = nn::arena_tensor(arena, nn::DType::F32, N, D);
-    nn::strided_copy(fused, feats.det[2].view(N, D), N, D, D, D);
-    nn::Tensor pe = model.neckPe().view(N, D);
-    model::fusion_encoder(model, arena, fused, pe, prompt_t, T, bias_t);
-
-    model::DetrOutputs det;
-    model::detr_decoder(model, arena, fused, pe, prompt_t, T, bias_t, valid_t, det);
-
-    // ---- score, threshold, NMS on the host ----
-    const int64_t NQ = h.ddec_num_queries;
-    std::vector<float> scores((size_t)NQ), boxes((size_t)NQ * 4), presence(1);
-    nn::tensor_to_host(det.class_scores, scores.data(), NQ);
-    nn::tensor_to_host(det.boxes, boxes.data(), NQ * 4);
-    nn::tensor_to_host(det.presence, presence.data(), 1);
-    const float presence_prob = sigmoid(presence[0]);
-
-    struct Candidate { int query; float score; Box box; };
-    std::vector<Candidate> cands;
-    for (int64_t q = 0; q < NQ; ++q) {
-        // The reference clamps the logit to [-12, 12] before the sigmoid.
-        const float logit = std::max(-12.0f, std::min(12.0f, scores[(size_t)q]));
-        const float score = sigmoid(logit) * presence_prob;
-        if (score < prompt.score_threshold) continue;
-        cands.push_back({(int)q, score,
-                         cxcywh_to_xyxy(boxes[(size_t)(q * 4 + 0)], boxes[(size_t)(q * 4 + 1)],
-                                        boxes[(size_t)(q * 4 + 2)], boxes[(size_t)(q * 4 + 3)],
-                                        feats.orig_width, feats.orig_height)});
+    struct Readback {
+        vk::DevicePtr ptr;
+        void* mapped = nullptr;
+        explicit Readback(uint64_t bytes) {
+            ptr = vk::Allocator::get().allocHost(bytes, &mapped, "SAM phrase readback", true);
+        }
+        ~Readback() { vk::Allocator::get().free(ptr); }
+    };
+    struct Phrase {
+        nn::Tensor prompt, bias, valid, fused;
+        int64_t tokens = 0;
+        model::DetrOutputs det;
+        std::vector<Detection> detections;
+        std::vector<int> keep;
+        std::vector<int32_t> queries;
+    };
+    // Retained phrase tensors share the fixed arena with one forward pass.
+    const uint64_t retained = (uint64_t)(N * D + NQ * (D + 5) +
+                                         h.text_ctx_len * (D + 2)) * sizeof(float) + 65536;
+    const uint64_t available = arena.capacity() - arena.mark();
+    const uint64_t headroom = arena.capacity() * 3 / 4;
+    const size_t batch_limit = (size_t)std::max<uint64_t>(
+        1, std::min<uint64_t>(8, available > headroom ? (available - headroom) / retained : 1));
+    for (size_t first = 0; first < prompts.size();) {
+        vk::ArenaScope batch(arena);
+        const size_t count = std::min(batch_limit, prompts.size() - first);
+        std::vector<Phrase> phrases(count);
+        const uint64_t score_stride = (uint64_t)(NQ * 5 + 1);
+        Readback scores(count * score_stride * sizeof(float));
+        for (size_t b = 0; b < count; ++b) {
+            auto& p = phrases[b];
+            p.tokens = buildPrompt(prompts[first + b], p.prompt, p.bias, p.valid);
+            p.fused = nn::arena_tensor(arena, nn::DType::F32, N, D);
+            nn::strided_copy(p.fused, prefix, N, D, D, D);
+            model::fusion_encoder(model, arena, p.fused, pe, p.prompt, p.tokens, p.bias, true);
+            model::detr_decoder(model, arena, p.fused, pe, p.prompt, p.tokens,
+                                p.bias, p.valid, p.det);
+            const auto dst = scores.ptr + b * score_stride * sizeof(float);
+            auto& stream = vk::Stream::get();
+            stream.copy(dst, p.det.class_scores.ptr, NQ * sizeof(float));
+            stream.copy(dst + NQ * sizeof(float), p.det.boxes.ptr, NQ * 4 * sizeof(float));
+            stream.copy(dst + NQ * 5 * sizeof(float), p.det.presence.ptr, sizeof(float));
+        }
+        vk::Stream::get().sync();
+        for (size_t b = 0; b < count; ++b) {
+            auto& p = phrases[b];
+            const auto& prompt = prompts[first + b];
+            const float* score = static_cast<const float*>(scores.mapped) + b * score_stride;
+            const float* boxes = score + NQ;
+            const float presence_prob = sigmoid(score[NQ * 5]);
+            struct Candidate { int query; float score; Box box; };
+            std::vector<Candidate> cands;
+            for (int64_t q = 0; q < NQ; ++q) {
+                const float logit = std::max(-12.0f, std::min(12.0f, score[q]));
+                const float value = sigmoid(logit) * presence_prob;
+                if (value < prompt.score_threshold) continue;
+                cands.push_back({(int)q, value,
+                    cxcywh_to_xyxy(boxes[q * 4], boxes[q * 4 + 1],
+                                  boxes[q * 4 + 2], boxes[q * 4 + 3],
+                                  feats.orig_width, feats.orig_height)});
+            }
+            NN_LOG_INFO("[pcs] %zu queries over threshold %.2f (presence %.3f)\n",
+                        cands.size(), prompt.score_threshold, presence_prob);
+            p.detections.reserve(cands.size());
+            for (const Candidate& c : cands) {
+                Detection d;
+                d.box = c.box;
+                d.score = d.iou_score = c.score;
+                p.detections.push_back(std::move(d));
+            }
+            p.keep = nms(p.detections, prompt.nms_threshold);
+            if (prompt.max_detections > 0 && (int)p.keep.size() > prompt.max_detections)
+                p.keep.resize((size_t)prompt.max_detections);
+            for (int k : p.keep) p.queries.push_back((int32_t)cands[(size_t)k].query);
+        }
+        // Bound mapped mask storage even for low thresholds or large source images.
+        constexpr uint64_t kReadbackLimit = 128ull << 20;
+        const uint64_t stride = (mask_bytes + 3) / 4 * 4;
+        const uint64_t masks_per_chunk = std::max<uint64_t>(1, kReadbackLimit / stride);
+        uint64_t total_masks = 0;
+        for (const auto& p : phrases) total_masks += p.keep.size();
+        if (total_masks) {
+            const uint64_t chunk = std::min(total_masks, masks_per_chunk);
+            Readback masks(chunk * stride);
+            struct Output { size_t phrase, row; uint64_t offset; };
+            std::vector<Output> outputs;
+            outputs.reserve((size_t)chunk);
+            auto collect = [&] {
+                if (outputs.empty()) return;
+                vk::Stream::get().sync();
+                for (const auto& output : outputs) {
+                    auto& p = phrases[output.phrase];
+                    Detection& d = p.detections[(size_t)p.keep[output.row]];
+                    d.mask.width = feats.orig_width;
+                    d.mask.height = feats.orig_height;
+                    const auto* src = static_cast<const uint8_t*>(masks.mapped) + output.offset;
+                    d.mask.data.assign(src, src + mask_bytes);
+                    d.mask.iou_score = d.score;
+                    d.mask.instance_id = d.instance_id = (int)output.row + 1;
+                    results[first + output.phrase].detections.push_back(std::move(d));
+                }
+                outputs.clear();
+            };
+            for (size_t b = 0; b < count; ++b) {
+                auto& p = phrases[b];
+                const int64_t n = (int64_t)p.keep.size();
+                if (!n) continue;
+                vk::ArenaScope decode(arena);
+                auto ids = nn::arena_tensor(arena, nn::DType::I32, n);
+                vk::Stream::get().upload(ids.ptr, p.queries.data(), n * sizeof(int32_t));
+                auto sel = nn::arena_tensor(arena, nn::DType::F32, n, D);
+                nn::gather_rows(sel, p.det.queries, ids);
+                auto logits = nn::arena_tensor(arena, nn::DType::F32, n, S * S);
+                model::segmentation_head(model, arena, p.fused, feats, sel, n,
+                                         p.prompt, p.tokens, p.bias, logits);
+                auto out = nn::arena_tensor(arena, nn::DType::U8, (int64_t)stride);
+                for (int64_t i = 0; i < n; ++i) {
+                    nn::resize_binarize(out, logits.slice0(i, 1).view(S, S),
+                                        feats.orig_height, feats.orig_width, 0.0f);
+                    const uint64_t offset = outputs.size() * stride;
+                    vk::Stream::get().copy(masks.ptr + offset, out.ptr, stride);
+                    outputs.push_back({b, (size_t)i, offset});
+                    if (outputs.size() == chunk) collect();
+                }
+            }
+            collect();
+        }
+        first += count;
     }
-    NN_LOG_INFO("[pcs] %zu queries over threshold %.2f (presence %.3f)\n", cands.size(),
-                  prompt.score_threshold, presence_prob);
-
-    std::vector<Detection> dets;
-    dets.reserve(cands.size());
-    for (const Candidate& c : cands) {
-        Detection d;
-        d.box = c.box;
-        d.score = c.score;
-        d.iou_score = c.score;
-        dets.push_back(std::move(d));
-    }
-    std::vector<int> keep = nms(dets, prompt.nms_threshold);
-    if (prompt.max_detections > 0 && (int)keep.size() > prompt.max_detections) {
-        // `nms` returns highest-score-first, so truncating keeps the best.
-        keep.resize((size_t)prompt.max_detections);
-    }
-    if (keep.empty()) return result;
-
-    // ---- masks for the survivors only ----
-    // The segmentation head is the expensive part of this path; decoding all
-    // 200 queries when three survive would triple the cost of a typical prompt.
-    std::vector<int32_t> query_ids;
-    query_ids.reserve(keep.size());
-    for (int k : keep) query_ids.push_back((int32_t)cands[(size_t)k].query);
-
-    const int64_t n_sel = (int64_t)query_ids.size();
-    nn::Tensor ids = nn::arena_tensor(arena, nn::DType::I32, n_sel);
-    vk::Stream::get().upload(ids.ptr, query_ids.data(), query_ids.size() * 4);
-    nn::Tensor sel = nn::arena_tensor(arena, nn::DType::F32, n_sel, D);
-    nn::gather_rows(sel, det.queries, ids);
-
-    nn::Tensor masks = nn::arena_tensor(arena, nn::DType::F32, n_sel, S * S);
-    model::segmentation_head(model, arena, fused, feats, sel, n_sel, prompt_t, T, bias_t,
-                             masks);
-
-    exportMasks(masks, n_sel, S, dets, keep, result);
-    return result;
+    return results;
 }
 
 // Resize each mask row to the original resolution, threshold at 0 and pull back
@@ -414,6 +476,11 @@ void Session::Impl::exportMasks(const nn::Tensor& masks, int64_t n, int64_t mask
 }
 
 Result Session::segmentConcept(const ConceptPrompt& prompt) {
+    auto results = segmentConcepts({prompt});
+    return results.empty() ? Result{} : std::move(results.front());
+}
+
+std::vector<Result> Session::segmentConcepts(const std::vector<ConceptPrompt>& prompts) {
     if (!impl_->loaded || !impl_->feats.valid()) {
         impl_->error = "segmentConcept: call encodeImage() first";
         return {};
@@ -425,9 +492,9 @@ Result Session::segmentConcept(const ConceptPrompt& prompt) {
     }
     try {
         NN_SCOPED_TIMER("segmentConcept");
-        Result r = impl_->runConcept(prompt);
+        auto results = impl_->runConcepts(prompts);
         impl_->error.clear();
-        return r;
+        return results;
     } catch (const std::exception& e) {
         impl_->error = e.what();
         NN_LOG_ERROR("segmentConcept: %s\n", e.what());

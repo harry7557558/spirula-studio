@@ -44,7 +44,20 @@ std::string folder_name(const std::string& cloud) {
 
 }  // namespace
 
+std::vector<std::string> scan_photo_subdirs(const std::vector<std::string>& clouds) {
+    std::vector<std::string> out;
+    std::set<std::string> used;
+    for (const std::string& c : clouds) {
+        std::string sub = folder_name(c);
+        for (int k = 2; used.count(sub); k++) sub = folder_name(c) + "_" + std::to_string(k);
+        used.insert(sub);
+        out.push_back(sub);
+    }
+    return out;
+}
+
 bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
+                           const std::map<std::string, app::FrameStencil>& stencils,
                            std::vector<PrepInput>& inputs, LidarPrep& out, std::string& error) {
     const fs::path root = fs::path(workspace) / "lidar";
     const fs::path anchors = root / "anchors.json";
@@ -53,15 +66,15 @@ bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
     fs::remove(anchors, ec);
     if (!job.enabled() || job.in_frame || !job.scan_photos) return true;
     try {
-        std::set<std::string> used;
-        for (const std::string& c : job.clouds) {
+        const std::vector<std::string> subs = scan_photo_subdirs(job.clouds);
+        for (size_t i = 0; i < job.clouds.size(); i++) {
+            const std::string& c = job.clouds[i];
             spirula::cloud::Reader r(c);
             if (!r.e57() || r.e57()->images().empty()) continue;
-            std::string sub = folder_name(c);
-            for (int k = 2; used.count(sub); k++) sub = folder_name(c) + "_" + std::to_string(k);
-            used.insert(sub);
+            const std::string& sub = subs[i];
             const app::lidar::ExtractedPhotos x = app::lidar::extract_e57_anchors(
                 c, (root / "photos").string(), sub, anchors.string());
+            const auto drawn = stencils.find(c);
             auto add = [&](const std::string& rel, bool pinhole) {
                 PrepInput in;
                 in.path = (root / "photos" / rel).string();
@@ -70,6 +83,15 @@ bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
                 in.focal_factor = pinhole ? (float)x.focal_factor : 0.0f;
                 // A walk's panoramas are taken in order; a tripod's faces are not.
                 in.sequential = !pinhole;
+                in.scan = c;
+                // Faces and panoramas, when a scan has both, are its two
+                // camera folders, each with its own areas.
+                if (drawn != stencils.end() && !x.split) {
+                    in.stencil = drawn->second;
+                } else if (drawn != stencils.end()) {
+                    static_cast<app::CameraStencil&>(in.stencil) =
+                        drawn->second.for_camera(pinhole ? "pinhole" : "panorama");
+                }
                 inputs.push_back(in);
             };
             if (x.pinhole) add(x.split ? sub + "/pinhole" : sub, true);
@@ -81,6 +103,25 @@ bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
         error = e.what();
         return false;
     }
+    return true;
+}
+
+bool extract_scan_photos(const std::vector<std::string>& clouds, size_t scan,
+                         const std::string& workspace, std::string& dir, std::string& error) {
+    if (scan >= clouds.size() || workspace.empty()) return false;
+    const fs::path photos = fs::path(workspace) / "lidar" / "photos";
+    const std::string sub = scan_photo_subdirs(clouds)[scan];
+    const fs::path anchors = fs::path(workspace) / "lidar" / ("preview-" + sub + ".json");
+    std::error_code ec;
+    try {
+        app::lidar::extract_e57_anchors(clouds[scan], photos.string(), sub, anchors.string());
+    } catch (const std::exception& e) {
+        error = e.what();
+        fs::remove(anchors, ec);
+        return false;
+    }
+    fs::remove(anchors, ec);
+    dir = (photos / sub).string();
     return true;
 }
 

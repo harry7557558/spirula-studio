@@ -20,8 +20,8 @@ Three numbers describe a step, and every buffer below is one of them:
 Splat buffers are sized for `cap_max`, so everything else a run allocates is
 fixed once the first densify step has run -- which is what lets the trainer
 forecast its peak from this category alone. Scratch requested per LIVE splat
-that lives across a step (`raster_bwd.accum_weight`,
-`fused_proj_bwd.cam_bounds`, the oversize draw's weights) is Splat too:
+that lives across a step (the sub-batch score sum, the raster backward's
+world gradients, the PCA regularizer's caches) is Splat too:
 `POOL_LIVE_SPLAT_TABLE` in `core/PoolSlots.h` makes the pool allocate it for
 `cap_max` on first use, scaling the request by cap / live. Measured on bonsai
 at 1/4 resolution, 228k -> 666k splats: splat stays at 1042.6 MiB (revised) /
@@ -29,6 +29,51 @@ at 1/4 resolution, 228k -> 666k splats: splat stays at 1042.6 MiB (revised) /
 `other` another 15 MiB. A new buffer whose length follows the live count goes
 in that table, or the forecast under-reads the peak -- unless it dies inside
 one call, in which case it belongs in the arena (the densify scratch below).
+
+The arena follows the same rule for its per-splat slices: one carved in the
+Splat category asks the arena for cap / live times its bytes
+(`DevicePool::_arena_bump`), so a phase's per-splat part is `cap_max`-sized
+from the first step that carves it and only the per-pair slices (SplatXImg)
+grow. `arena_phases()` reports the three apart -- `pixels`, `splats` (per
+pair) and `capped` -- which is what the forecast projects from.
+
+**Nothing a schedule turns on later allocates later.** A feature with a start
+step reserves from step 0: the PCA regularizer counts its work buffer against
+the raster-backward phase with `DevicePool::arena_expect` and allocates its
+caches (docs/notes/pca-reg.md), and the calibration warp acquires the warped
+ground truth's buffers before `--calib-warp-start-iter` (6 bytes a pixel that
+used to appear at step 1000). A run that cannot hold them fails in its first
+steps. A new feature with a start step does the same.
+
+**A trial of something larger gives back what it took.** The pool only
+grows, so the binning-tile search's rejected finer trials used to leave the
+pair list and the tile phase sized for a bin the run never adopted -- 2.5-3x
+a step's pairs. It now marks the pool before such a trial and releases to the
+mark when the trial is rejected (`DevicePool::arena_mark` /
+`arena_release`; docs/notes/binning-tile-size.md).
+
+What those three rules and the regularizer's work buffer came to (Vulkan,
+RTX 5070, 1M cap, process memory in MiB: held at the end of the run, and the
+most at any step -- the difference is the search's finer trials, a dozen
+steps each):
+
+| run | before, end / most | after, end / most |
+|---|---|---|
+| garden 1/4, 30k | 500 / 504 | 457 / 487-504 |
+| garden 1/4, floater suppression strong | 541 / 547 | 518 / 521-529 |
+| bonsai 1/2, 30k | 605 / 608 | 518 / 582 |
+| bonsai 1/2, strong | 659 / 663 | 575 / 583 |
+| 360 preset, 5650 views, 10k | 1112 / 1112 | 1055 / 1106 |
+| 360 preset, strong | 1259 / 1259 | 1202 / 1244 |
+
+Time and held-out PSNR did not move: garden 5:10, 5:11 before and 5:12, 5:06,
+5:11 after (26.97, 26.92 dB against 26.84, 26.97, 26.99); with strong 6:09,
+6:06 against 6:14, 6:06 (26.15, 26.15 against 26.23, 26.14); bonsai 7:26
+against 7:15 (29.88, 29.92) and 8:17 against 8:24, 8:29 with strong (28.81,
+28.86). The bonsai times differ by which of 16 and 32 px the search settled
+on, a tie it resolves either way in either build. london resumed at 15M
+splats for 300 steps: 336-349 ms a step before, 334-338 after; with strong
+386-393 and 388-396, the pool 9490 MiB before and 9364 after.
 
 ## What each buffer costs
 
@@ -42,9 +87,10 @@ Per element, after the 2026-08-30 pass:
 | `raster_bwd.v_screen` | 40 x `nnz` | its gradient, fp32 for the atomics |
 | `proj.aabb` | 8 x `nnz` | 16-bit fixed point, shaders/aabb16.h |
 | `proj.depths` / `camera_ids` / `gaussian_ids` | 4 x `nnz` each | |
-| `isect.tiles_per_splat`, `isect.cum_tiles` | 4 x `nnz` each | |
-| `isect.ids_a/b` | 8 x `n_isects` each | sort key `(tile_id << 32) \| depth` |
-| `isect.flat_a/b` | 4 x `n_isects` each | sort payload |
+| `isect.tiles_per_splat`, `isect.cum_tiles` | 4 x `nnz` each | arena |
+| `isect.ids_a/b` | 8 x one band each | sort key `(tile_id << 32) \| depth`, arena |
+| `isect.flat_b` | 4 x one band | the sort's alternate payload, arena |
+| `isect.flat_a` | 4 x `n_isects` | the sorted list the raster reads |
 
 ## The bitmask compaction
 
@@ -141,6 +187,60 @@ Worth revisiting only together with:
   cost scales with `n_isects` while the gather cost scales with `nnz`, so the
   same change should come out ahead. Measure before believing it.
 
+## Sorting in bands
+
+The sort needs both key buffers and a second payload buffer: 20 bytes a pair
+that are dead once the offsets are written, beside the 4 the raster keeps. On
+a scene whose views see most of the model through many tiles that scratch IS
+the category -- ZipNeRF london at `--cap-max 15000000` (fisheye, 3504x2336):
+14.3M visible pairs, 119M splat-tile pairs, 2.0 GiB of keys in the arena.
+
+So the intersector sorts a band of tile rows at a time. Both passes take a row
+range (`band_row0/1`): a band's count pass, scan, key write and sort run on
+that band alone, the keys count tiles from the band's first
+(`key_tile_base`), and the sorted payload lands in the band's stretch of
+`isect.flat_a` -- the sort starts in whichever payload buffer leaves it there
+(the Vulkan sort swaps once per 8 key bits; CUB's swap count is learned per
+key width and a miss costs one copy). `intersect_offset` adds the band's base.
+
+- **How many** (`intersect_bands_for`, `kernels/tile/IntersectTile.cuh`):
+  enough that a band's 20 bytes a pair fit under what the arena's OTHER
+  phases already hold, so the intersector stops being the phase that sizes
+  it; never for under 6M pairs, never below 4M pairs a band, and at most
+  2^26 / `nnz` bands (2 to 16), because every band reads all `nnz` boxes
+  twice. With no other phase yet (a run's first forward, a viewer-only
+  session) a band is 16M pairs. The VRAM forecast replays this same function
+  (docs/notes/train-forecast.md), so change it there and nowhere else.
+- **Which rows**: the band's share of the pairs at the pairs-per-row the last
+  band measured (`intersect_band_rows`), halved and recounted when a band
+  comes out more than 1.25x its share (`kIsectBandSlack`).
+- **Identical output.** The row-or-column sweep of the ellipse test is chosen
+  on the whole box before the rows are cut, so a banded splat keeps exactly
+  its tiles; `render_parity` and `meshing_parity` dumps are byte-identical
+  under `SS_ISECT_BANDS=3` and `=7` on both backends (`SS_ISECT_BANDS=<n>`
+  forces the count, `=1` turns banding off).
+
+london to step 8100 (the cap is reached at 5500), Vulkan, RTX 5070, MiB:
+
+| | one sort | bands |
+|---|---|---|
+| owned `splat x img` | 1733 | 1256 |
+| arena | 1956 | 839 |
+| pool + scratch | 10404 | 8696 |
+
+The 1.7 GiB is the keys (16 bytes of 113M-119M pairs down to four bands'
+worth), `isect.flat_b` leaving the owned buffers, and 114 MiB of the Splat
+category below. Time is unchanged: 300 steps resumed from the same 15M
+checkpoint ran 344 ms a step before and 339 after (two alternating pairs,
+~2% apart run to run), and the run of the pair that drew the 119M-pair view
+peaked at 10397 MiB before and 8601 after. A band costs one more count and
+write pass over the visible pairs -- 0.5 and 1 ms at 14M of them, against a
+165 ms sub-batch -- which is what the 2^26 / `nnz` limit keeps bounded.
+
+What is left of the category there: the screen rows (547 MiB) and the list
+(433), then the arena, which the tile phase still sizes at four bands (0.77
+GiB of per-splat slices against the raster backward's 0.65).
+
 ## The phase arena
 
 `isect.ids_a/b` and the tile counts are allocated, used and dead inside
@@ -180,9 +280,8 @@ hands a later scale back the first slice -- scale 0's, the largest.
 `Densify` holds what a densify launcher allocates and drops before it returns:
 the relocation mask and destination list, the draw's sort keys and index
 buffers, the MCMC probabilities. Each launcher opens its own instance (they
-run one after another, and each re-acquires the same draw buffers). It is
-sized by the LIVE count, not the cap -- the arena is what grows, which is
-what the forecast already models. 28 bytes a live splat on Vulkan.
+run one after another, and each re-acquires the same draw buffers). 28 bytes
+a splat on Vulkan, of `cap_max` from the first densify step on.
 
 Bicycle at 1/4, `--cap-max 13000000`, RTX 3070, the step trained to the cap
 (`SS_VRAM_TRACE` for the peak):
@@ -244,16 +343,31 @@ beside the new one.
   nothing) and prints the arena's one allocation as `of which alias arena`, so
   the category caps and the pool total still add up.
 
-### Candidates not yet taken
+### Per-splat scratch that no longer owns memory
 
-`raster_bwd.accum_weight` (114 MiB) would fit the `RasterBwd` phase and balance
-it against the intersect phase, for a net ~53 MiB (`fused_proj_bwd.cam_bounds`,
-4 bytes a splat, likewise; `eng.densify.oversize_weight`, 8, is filled by the
-engine before the draw opens its phase, so it would need the draw to compute it). It is not tagged because
-the non-split training path can leave `engine().fwd.accum_weight` pointing at
-the previous step's buffer when a step produces none -- harmless today (stale
-but plausible numbers), garbage once the bytes are reused. Fix that stale view
-the way `_engine_train_step_split_batch` already does, then tag it.
+`raster_bwd.accum_weight` (114 MiB) and `fused_proj_bwd.cam_bounds` (4 bytes a
+splat) are in `POOL_ALIAS_TABLE` under `RasterBwd`. Stale views in the
+non-split training path are cleared before forward/backward and after densify,
+saving ~53 to 114 MiB peak VRAM during backward without lifetime hazards.
+
+The oversize split channel's draw weights (8 bytes a splat, held for `cap_max`)
+are gone: the draw's key kernel computes `(oversize + floor) * score^blend`
+itself from the accumulator it is handed (`add_splats_with_long_axis_split_tensor`'s
+`oversize_accum`), which is the same arithmetic one launch earlier.
+
+The projective-depth angular bound (4 bytes a splat) is a `RasterBwd` slice
+when one backward covers the step -- the fused optimizer path, where it is
+written after the raster backward and read by the optimizer step. A step that
+accumulates over passes (split batches, unequal faces) keeps the owned buffer:
+its bound is a maximum over passes, and the arena is reset between them.
+
+Together, bonsai at `--cap-max 2000000`: the Splat category went from 172 to
+160 bytes a splat at SH degree 0 and 356 to 344 at 3 on the fused path, 204 to
+196 at degree 0 on the split one.
+
+The PCA regularizer's scratch (`--floater-suppression strong`) is one slice,
+`pca_reg.work`, in which the gradients take the sort's place: 32 bytes a splat
+on the fused path where six slices took 52 (docs/notes/pca-reg.md).
 
 ## The packed AABB
 
@@ -292,12 +406,36 @@ center, since 3DGUT stores none of its own).
 
 ## Remaining opportunities, largest first
 
-1. **Packed screen rows** (up to 230 MiB). `opac` and `rgb` would survive fp16
+1. **The bilateral grids of a capture with thousands of views** (55 KiB a
+   view: 37 of 16-bit cells, 18 of optimizer state; 298 of the 1105 MiB the
+   360-camera preset holds at 5650 views and 1M splats). A step touches the
+   grids of its own views only, so the table can live on the host with a
+   device cache of a few hundred slots: the kernels already index it through
+   the batch's camera indices, and a slot index goes in their place. What it
+   needs: write-back of a step's slots (an asynchronous read, one step late),
+   the checkpoint writing and reading host rows under the same names, and the
+   TV readout taken over the cached slots. Lossless; not done.
+2. **Packed screen rows** (up to 230 MiB). `opac` and `rgb` would survive fp16
    comfortably; `xy`, `conic` and `depth` would not. The blocker is
    `raster_bwd.v_screen`, which is accumulated with float atomics -- fp16
    atomic add is not portable to the Vulkan baseline, so only the forward row
    could shrink, and then the two buffers stop sharing a layout.
-2. **Splitting one training image into tile bands** -- low priority. It bounds
-   `n_isects` per launch rather than per image, which is the only lever that
-   helps the 4K case without touching precision. It does not help the
-   `nnz`-sized buffers at all, which is why it is below the one above.
+3. **The split path's gradient accumulators** (73 bytes a splat at SH 3, 28
+   at SH 0, for `cap_max`). A step over several passes cannot use the fused
+   optimizer, so it accumulates quantized world gradients. The SH part is
+   rank-limited -- one RGB gradient per camera centre times that centre's
+   basis -- so storing the RGB gradients per pass would be 6 bytes a pass
+   instead of 45: 33 bytes a splat saved at two passes, nothing past seven,
+   and only where every pass has one camera centre. At SH 0 there is no such
+   structure: the 28 bytes are five 16-bit accumulators. Not done.
+4. **Rasterizing in the sort's bands.** The bands bound the sort's scratch;
+   the 4-byte list still holds every pair. Rasterizing band by band would
+   bound that too, at the cost of every raster kernel learning a row range.
+
+What does not pay: moving more per-pixel buffers into the arena. At high
+resolution the loss is the arena's largest phase, and the buffers still owned
+(the rendered maps, the normals from depth and their gradients, the loss map)
+are all live across it, so they can only join the phase that sizes the arena.
+The viewer's camera thumbnails are sized by the camera count now
+(`viewer_thumbnail_size`: 64 px up to 4096 cameras, down to 16 px so that all
+of them fit 64 MiB; they were 350 MiB at 22k images).

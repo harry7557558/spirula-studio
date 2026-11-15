@@ -109,6 +109,12 @@ struct BgV2Params {
 };
 static_assert(sizeof(BgV2Params) == 9 * 8 + 12 * 4, "layout");
 
+struct BpTileParams {
+    uint64_t fp32, q16, vbounds, rgb, v_output, v_bilagrid, v_rgb, grid_indices;
+    int32_t N, L, H, W, h, w, has_grid_indices, _pad0;
+};
+static_assert(sizeof(BpTileParams) == 8 * 8 + 8 * 4, "layout");
+
 struct BpSampleParams {
     uint64_t fp32, q16, vbounds, image_indices, coords, rgb, out_or_vout,
         v_bilagrid, v_coords, v_rgb;
@@ -224,8 +230,10 @@ struct BgOptimParams {
     float lr, tv_weight;
     int32_t adam_step, has_cam_indices;
     uint32_t total_cells, wgs_per_row;
+    float grad_scale;
+    uint32_t _pad;
 };
-static_assert(sizeof(BgOptimParams) == 10 * 8 + 12 * 4, "layout");
+static_assert(sizeof(BgOptimParams) == 10 * 8 + 14 * 4, "layout");
 
 // Fill the shared (uniform + patched) sampler param fields. `patched`
 // selects the layout; unused pointers route through or_fallback.
@@ -728,6 +736,29 @@ void bilagrid_ppisp_uniform_sample_backward_v1(
     const int* grid_indices
 ) {
     (void)stream;
+    // kBptTile in shaders/bilagrid_ppisp.slang. Exact for any grid; its row
+    // passes grow with cells a tile and levels, so v1 takes the rest.
+    constexpr int kTile = 16, kMaxL = 8;
+    if (v_rgb != nullptr && L <= kMaxL && W > 1 && H > 1 && w > 1 && h > 1 &&
+        (int64_t)(kTile - 1) * (W - 1) <= w - 1 && (int64_t)(kTile - 1) * (H - 1) <= h - 1) {
+        ReaderPtrs r = unpack_reader(bilagrid);
+        BpTileParams p{};
+        p.fp32 = r.fp32; p.q16 = r.q16; p.vbounds = r.vbounds;
+        p.rgb = (uint64_t)rgb.p;
+        p.v_output = (uint64_t)v_output;
+        p.v_bilagrid = (uint64_t)v_bilagrid;
+        p.v_rgb = (uint64_t)v_rgb;
+        p.grid_indices = vkk::or_fallback(grid_indices);
+        p.N = N; p.L = L; p.H = H; p.W = W; p.h = h; p.w = w;
+        p.has_grid_indices = grid_indices != nullptr ? 1 : 0;
+        const uint32_t gx = (uint32_t)((w + kTile - 1) / kTile);
+        const uint32_t gy = (uint32_t)((h + kTile - 1) / kTile);
+        check_grid_dims(gx, gy, (uint32_t)N, "ppisp_bwd_tile");
+        vkk::dispatch_budgeted("bilagrid_ppisp.bilagrid_ppisp_bwd_tile",
+                               backend::vk::SpecList{r.vq, 0u, 0u, 0u, (uint32_t)rgb.f},
+                               gx, gy, (uint32_t)N, &p, sizeof(p), (double)N * h * w);
+        return;
+    }
     launch_family_bwd_v1(kPpispEntries, bilagrid, rgb, nullptr, v_output,
                          v_bilagrid, v_rgb, N, L, H, W, 1, h, w, 1, 1,
                          target_tile_size, 1, grid_indices, false);
@@ -1211,7 +1242,7 @@ void fill_optim(BgOptimParams& p, float* grids, uint16_t* grids_q16,
                 const void* qb4, const void* qb2, const float* image_grad,
                 const int* cam_indices, int N_grids, int C_batch, int C,
                 int L, int H, int W, float lr, float tv_weight,
-                int32_t adam_step, int64_t total_cells) {
+                float grad_scale, int32_t adam_step, int64_t total_cells) {
     p.grids = vkk::or_fallback(grids);
     p.grids_q16 = vkk::or_fallback(grids_q16);
     p.value_bounds = vkk::or_fallback(value_bounds);
@@ -1228,6 +1259,7 @@ void fill_optim(BgOptimParams& p, float* grids, uint16_t* grids_q16,
     p.L = L; p.H = H; p.W = W;
     p.lr = lr;
     p.tv_weight = tv_weight;
+    p.grad_scale = grad_scale;
     p.adam_step = adam_step;
     p.has_cam_indices = cam_indices != nullptr ? 1 : 0;
     p.total_cells = (uint32_t)total_cells;
@@ -1239,8 +1271,9 @@ void fused_bilagrid_tv_adam(
     float* grids, uint16_t* grids_q16, float2* value_bounds, float* g1_f,
     float* g2_f, uint8_t* packed, float4* quant_bounds,
     const float* image_grad, const int* cam_indices, int N_grids, int C_batch,
-    int C, int L, int H, int W, float lr, float tv_weight, int32_t adam_step,
-    bool quantize, int quant_bits, bool value_quantize, backend::Stream stream
+    int C, int L, int H, int W, float lr, float tv_weight, float grad_scale,
+    int32_t adam_step, bool quantize, int quant_bits, bool value_quantize,
+    backend::Stream stream
 ) {
     (void)stream;
     if (C != 12 && C != 9 && C != 3 && C != 2) return;
@@ -1250,7 +1283,7 @@ void fused_bilagrid_tv_adam(
     fill_optim(p, value_quantize ? nullptr : grids, grids_q16, value_bounds,
                g1_f, g2_f, packed, quant_bounds, nullptr, image_grad,
                cam_indices, N_grids, C_batch, C, L, H, W, lr, tv_weight,
-               adam_step, total_cells);
+               grad_scale, adam_step, total_cells);
     const uint32_t qq = quantize ? (quant_bits == 4 ? 4u : 8u) : 0u;
     vkk::dispatch_flat("bilagrid_optim.bilagrid_tv_adam",
                        backend::vk::SpecList{qq, value_quantize ? 1u : 0u},
@@ -1261,8 +1294,8 @@ void fused_bilagrid_tv_adagrad(
     float* grids, uint16_t* grids_q16, float2* value_bounds, float* accum_f,
     uint8_t* packed, float2* quant_bounds, const float* image_grad,
     const int* cam_indices, int N_grids, int C_batch, int C, int L, int H,
-    int W, float lr, float tv_weight, bool quantize, int quant_bits,
-    bool value_quantize, backend::Stream stream
+    int W, float lr, float tv_weight, float grad_scale, bool quantize,
+    int quant_bits, bool value_quantize, backend::Stream stream
 ) {
     (void)stream;
     if (C != 12 && C != 9 && C != 3 && C != 2) return;
@@ -1271,8 +1304,8 @@ void fused_bilagrid_tv_adagrad(
     BgOptimParams p{};
     fill_optim(p, value_quantize ? nullptr : grids, grids_q16, value_bounds,
                accum_f, nullptr, packed, nullptr, quant_bounds, image_grad,
-               cam_indices, N_grids, C_batch, C, L, H, W, lr, tv_weight, 0,
-               total_cells);
+               cam_indices, N_grids, C_batch, C, L, H, W, lr, tv_weight,
+               grad_scale, 0, total_cells);
     const uint32_t qq = quantize ? (quant_bits == 4 ? 4u : 8u) : 0u;
     vkk::dispatch_flat("bilagrid_optim.bilagrid_tv_adagrad",
                        backend::vk::SpecList{qq, value_quantize ? 1u : 0u},

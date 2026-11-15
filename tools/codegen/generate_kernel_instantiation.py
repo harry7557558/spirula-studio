@@ -244,6 +244,15 @@ def generate_ProjectionFwd():
         )] * 5
 
         generate_kernel_instantiation(prefix, definition, map_header, map_body, includes)
+        # Separate files preserve the existing forward batches and compile cache.
+        ortho_maps = [(prim, "CameraModelType::ORTHOGRAPHIC", "CameraDistortionType::None")
+                      for prim in kPrimitives]
+        ortho_includes = [("primitives/Primitive3DGUT.cuh" if "3DGUT" in prim
+                           else "primitives/Primitive3DGS.cuh", kernel_filename)
+                          for prim in kPrimitives]
+        generate_kernel_instantiation(prefix + "Ortho", definition, map_header,
+                                      ortho_maps, ortho_includes)
+
 
 
 def _generate_projection_bwd(prefix, source, wrapper_name, kernel_filename):
@@ -350,6 +359,12 @@ def generate_RasterizationEval3DFwd():
     includes = [("primitives/Primitive3DGUT.cuh", "kernels/raster/RasterizationEval3DFwd_kernel.cuh")] * len(map_body)
 
     generate_kernel_instantiation("RasterizationEval3DFwd", definition, map_header, map_body, includes)
+    ortho_maps = [(prim, "CameraModelType::ORTHOGRAPHIC", dist, dt, median, score)
+                  for prim, cam, dist, dt, median, score in map_body
+                  if cam == "CameraModelType::PINHOLE" and dist == "CameraDistortionType::None"]
+    generate_kernel_instantiation("RasterizationEval3DFwdOrtho", definition, map_header,
+                                  ortho_maps, [includes[0]] * len(ortho_maps))
+
 
 
 def generate_RasterizationEval3DBwd():

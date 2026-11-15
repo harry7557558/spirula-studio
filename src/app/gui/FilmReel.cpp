@@ -253,8 +253,8 @@ void FilmReel::loader_loop() {
 // ---------------------------------------------------------------------------
 
 OutputWatch::OutputWatch(FilmReel* reel, fs::path dir, fs::path images,
-                         fs::path depths, bool fresh_only)
-    : _reel(reel), _dir(std::move(dir)), _images(std::move(images)),
+                         fs::path depths, bool fresh_only, bool atomic_outputs)
+    : _reel(reel), _atomic_outputs(atomic_outputs), _dir(std::move(dir)), _images(std::move(images)),
       _depths(std::move(depths)) {
     if (!_reel || !fresh_only) return;
     for (const std::string& f : listing()) {
@@ -269,7 +269,11 @@ std::vector<std::string> OutputWatch::listing() const {
     for (fs::recursive_directory_iterator
              it(_dir, fs::directory_options::skip_permission_denied, ec), end;
          !ec && it != end; it.increment(ec))
-        if (it->is_regular_file(ec)) out.push_back(it->path().string());
+        if (it->is_regular_file(ec)) {
+            const auto extension = it->path().extension().string();
+            if (extension == ".png" || extension == ".jpg" || extension == ".jpeg")
+                out.push_back(it->path().string());
+        }
     return out;
 }
 
@@ -292,7 +296,7 @@ void OutputWatch::poll(bool flush) {
     }
     std::sort(found.begin(), found.end());
 
-    if (!flush) {
+    if (!flush && !_atomic_outputs) {
         _ripe = std::move(found);
         return;
     }

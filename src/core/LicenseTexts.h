@@ -10,5 +10,6 @@ extern const char* const kGdinoApache;       // IDEA Research, Apache-2.0 (Groun
 extern const char* const kBirefnetMit;       // ZhengPeng, MIT (BiRefNet)
 extern const char* const kRomaMit;           // Johan Edstedt, MIT (RoMa v2)
 extern const char* const kDinov3License;     // Meta, "DINOv3 License", Last Updated: August 19, 2025
+extern const char* const kFlexGlueMit;       // Computer Vision and Geometry Lab, MIT (FlexGlue)
 
 }  // namespace spirula::license

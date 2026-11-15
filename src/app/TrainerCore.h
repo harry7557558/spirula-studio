@@ -18,6 +18,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <deque>
 #include <filesystem>
 #include <functional>
@@ -326,6 +327,9 @@ public:
     double eta_seconds() const;
     // The run's ETA and VRAM forecast, fed by train().
     const TrainForecast& forecast() const { return _forecast; }
+    // Where the time goes: per step over the last window, or this whole run
+    // with the steps still to come forecast.
+    TimeBreakdown time_breakdown(bool whole_run) const;
 
     // The /progress response body.
     std::string progress_json();
@@ -339,6 +343,7 @@ public:
 private:
     // ds.points drawn at random when --random-init asks for it.
     void seed_at_random();
+    void set_downscale_cache(DataManagerConfig& dm) const;
     void set_alpha_config(DataManagerConfig& dm,
                           const std::vector<uint8_t>& alpha) const;
 
@@ -363,11 +368,14 @@ private:
     TrainForecast _forecast;
     int _batches_per_epoch = 1;
     int _resolution_divisor = 0;   // of the last step; 0 before the first
+    std::vector<std::pair<int, int>> _resolution_stages;   // (first step, divisor)
     TrainPerfLog _perf;            // log_performance, SS_TRAIN_PERF
     std::filesystem::path _perf_dir;   // this session's, under <run>/perf; empty without log_performance
     SystemRecorder _system;        // log_performance: setup_engine() to the end of train()
     std::atomic<int64_t> _live_splats{0};
     OomRisk _warned_risk = OomRisk::Low;
+    size_t _sh_bytes = 0;          // observe_memory's, refreshed once a window
+    std::unique_ptr<std::FILE, int (*)(std::FILE*)> _forecast_dump{nullptr, std::fclose};
 };
 
 }  // namespace spirula

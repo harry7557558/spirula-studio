@@ -1,8 +1,8 @@
 #pragma once
 
 // What an input's sensors recorded, drawn so that a wrong one shows: the GPS
-// as a metric map or a 3D track (where altitude drift is a slope), every IMU
-// and GPS stream against the video's time, and the verdicts the
+// as a metric map or a 3D track (where altitude drift is a slope), every IMU,
+// GPS and exposure stream against the video's time, and the verdicts the
 // reconstruction reaches on them (sfm/core/Telemetry.h). A folder of photos
 // has one position per photo instead of a track, and its plots run by photo.
 
@@ -34,15 +34,25 @@ struct SensorFix {
     double x = 0.0, y = 0.0;     // metres east and north of the data's origin
 };
 
+// What the camera exposed a frame (a photo) with; <= 0 where it did not say.
+struct SensorExposure {
+    float t = 0.0f;              // as SensorFix::t
+    float shutter = -1.0f;       // seconds
+    float iso = -1.0f, fnum = -1.0f;
+};
+
 // One quantity against the video's time (a photo's index for photos): up to
-// three channels on one axis, a vector's x, y and z or two readings of it.
+// four channels on one axis, a vector's x, y and z or several readings of it.
+// Shutter, Iso and Aperture hold log2 of the value, so a stop is one height.
 struct SensorSeries {
-    enum Kind { Speed, Altitude, Dop, Rotation, Acceleration, Gravity, Attitude, Magnet, Step };
+    enum Kind { Speed, Altitude, Dop, Rotation, Acceleration, Gravity, Attitude, Magnet, Step,
+                Exposure, Shutter, Iso, Aperture };
     Kind kind = Speed;
     std::vector<float> t;
-    std::vector<float> v[3];
+    std::vector<float> v[4];
     int channels = 1;
-    const spirula::i18n::Msg* channel[3] = {};   // null: x, y, z
+    const spirula::i18n::Msg* channel[4] = {};   // null: x, y, z
+    ImU32 ink[4] = {};                           // 0: the place's own colour
     float reference = -1.0f;                     // a dashed line here, when >= 0
     double rate_hz = 0.0;
     float gap = 0.0f;                            // seconds of silence that are a gap; 0 never
@@ -63,10 +73,11 @@ struct SensorData {
     size_t distinct = 0;
     double path_m = 0.0, spread_m = 0.0, rate_hz = 0.0, imu_rate_hz = 0.0;
     std::vector<SensorSeries> series;
+    std::vector<SensorExposure> exposure;   // in time order
     bool has_gps = false, has_imu = false, gps_usable = false, imu_usable = false;
     std::vector<std::string> warnings;   // English diagnostics, as the checks wrote them
     std::string report;
-    int photos = 0, scanned = 0, with_gps = 0, with_attitude = 0;
+    int photos = 0, scanned = 0, with_gps = 0, with_attitude = 0, with_exposure = 0;
 };
 
 class SensorView {
@@ -117,7 +128,8 @@ private:
     // The plots' shared span of time (of photos), and which of them are hidden.
     double _win0 = 0.0, _win1 = 0.0, _full = 1.0;
     bool _zoomed = false;
-    std::set<int> _hidden{SensorSeries::Dop, SensorSeries::Gravity, SensorSeries::Magnet};
+    std::set<int> _hidden{SensorSeries::Dop, SensorSeries::Gravity, SensorSeries::Magnet,
+                          SensorSeries::Shutter, SensorSeries::Iso, SensorSeries::Aperture};
 };
 
 }  // namespace gui

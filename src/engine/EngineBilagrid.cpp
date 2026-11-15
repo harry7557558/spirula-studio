@@ -273,6 +273,9 @@ void engine_init_bilagrid_normal(int n_grids, int L, int H, int W,
 // Compute TV losses for each enabled bilagrid into a pool-backed 3-float
 // device buffer at [rgb_tv, depth_tv, normal_tv]; unset entries stay 0.
 void _engine_bilagrid_tv_into(float* tv_buf3_device) {
+    StepTimingScope timing(
+        engine().bilagrid_rgb.enabled ? StepPart::Appearance : StepPart::Geometry,
+        StepScale::Images);
     backend::memset_async(tv_buf3_device, 0, 3 * sizeof(float), kBilagridStream);
     auto run = [&](auto& bg, int slot) {
         if (bg.grids.template size<0>() == 0) return;
@@ -331,6 +334,9 @@ void _set_cur_cam_indices(TorchTensorView tv) {
 // in a single kernel launch without any gather of grid params. When
 // `cam_indices` is empty/null, kernels fall back to identity (ni -> ni).
 void engine_bilagrid_forward(TorchTensorView cam_indices) {
+    StepTimingScope timing(
+        engine().bilagrid_rgb.enabled ? StepPart::Appearance : StepPart::Geometry,
+        StepScale::Pixels);
     _set_cur_cam_indices(cam_indices);
     int H = engine().camera.height;
     int W = engine().camera.width;
@@ -483,6 +489,63 @@ static void _ensure_bilagrid_batch_grad(
     grad.zero();
 }
 
+void _engine_bilagrid_step_rows(int64_t total) {
+    auto& s = engine();
+    auto& rows = s.bilagrid_rows;
+    const bool any = s.bilagrid_rgb.enabled || s.bilagrid_depth.enabled ||
+                     s.bilagrid_normal.enabled;
+    rows.total = any ? (int)total : 0;
+    rows.row = 0;
+    rows.sized = 0;
+    rows.cams.assign((size_t)rows.total, -1);
+}
+
+void _engine_bilagrid_pass_rows(int64_t row, TorchTensorView cam_indices) {
+    auto& rows = engine().bilagrid_rows;
+    if (rows.total == 0) return;
+    const int64_t n = engine().camera.num;
+    if (row < 0 || row + n > rows.total)
+        throw std::runtime_error("bilagrid: a pass's cameras exceed the step's");
+    rows.row = (int)row;
+    const int32_t* idx = reinterpret_cast<const int32_t*>(std::get<0>(cam_indices));
+    const auto& shape = std::get<2>(cam_indices);
+    const int64_t have = idx != nullptr && !shape.empty() ? shape[0] : 0;
+    std::vector<int32_t> host;
+    if (have > 0 && _is_device_ptr(idx)) {
+        host.resize((size_t)have);
+        backend::memcpy_sync(host.data(), idx, (size_t)have * sizeof(int32_t),
+                             backend::MemcpyKind::DeviceToHost);
+        idx = host.data();
+    }
+    // No table: the pass's image i reads grid i, as its forward does.
+    for (int64_t i = 0; i < n; ++i)
+        rows.cams[(size_t)(row + i)] = i < have ? idx[i] : (int32_t)i;
+}
+
+// Where this pass's backward writes: a buffer of its own, or -- in a step of
+// several passes -- its rows of the step's, zeroed on the step's first use.
+static float* _bilagrid_pass_grad(
+    DeviceTensor5D<float>& grad,
+    const DeviceTensor5D<float>& grids,
+    int C_batch,
+    PoolSlot key,
+    int type
+) {
+    auto& rows = engine().bilagrid_rows;
+    if (rows.total == 0) {
+        _ensure_bilagrid_batch_grad(grad, grids, C_batch, key);
+        return grad.data_ptr();
+    }
+    if (!(rows.sized >> type & 1u)) {
+        _ensure_bilagrid_batch_grad(grad, grids, rows.total, key);
+        rows.sized |= 1u << type;
+    }
+    if (grad.data_ptr() == nullptr) return nullptr;
+    const int64_t per_camera = grids.size<1>() * grids.size<2>() *
+                               grids.size<3>() * grids.size<4>();
+    return grad.data_ptr() + (int64_t)rows.row * per_camera;
+}
+
 void _engine_bilagrid_backward_hook(
     TorchTensorView v_render_rgb,   // [C, H, W, 3] -- overwritten when RGB enabled
     TorchTensorView v_ref_depth,    // [C, H, W, 1] -- input only
@@ -524,10 +587,9 @@ void _engine_bilagrid_backward_hook(
         int gH = (int)engine().bilagrid_rgb.grids.size<2>();
         int gW = (int)engine().bilagrid_rgb.grids.size<3>();
         BilagridReader grid_ptr = _bg_reader(engine().bilagrid_rgb);
-        _ensure_bilagrid_batch_grad(engine().bilagrid_rgb.image_grad,
-                                    engine().bilagrid_rgb.grids, C_batch,
-                                    PoolSlot::EngBgRgbImageGrad);
-        float* grad_grid_ptr = engine().bilagrid_rgb.image_grad.data_ptr();
+        float* grad_grid_ptr = _bilagrid_pass_grad(
+            engine().bilagrid_rgb.image_grad, engine().bilagrid_rgb.grids,
+            C_batch, PoolSlot::EngBgRgbImageGrad, 0);
 
         // v_render_rgb is the gradient w.r.t. POST-bilagrid rgb (what entered loss).
         // The backward overwrites it with the gradient w.r.t. PRE-bilagrid rgb.
@@ -634,10 +696,9 @@ void _engine_bilagrid_backward_hook(
         int H_d = (int)engine().gt.depth.template size<1>();
         int W_d = (int)engine().gt.depth.template size<2>();
         BilagridReader grid_ptr = _bg_reader(engine().bilagrid_depth);
-        _ensure_bilagrid_batch_grad(engine().bilagrid_depth.image_grad,
-                                    engine().bilagrid_depth.grids, C_batch,
-                                    PoolSlot::EngBgDepthImageGrad);
-        float* grad_grid_ptr = engine().bilagrid_depth.image_grad.data_ptr();
+        float* grad_grid_ptr = _bilagrid_pass_grad(
+            engine().bilagrid_depth.image_grad, engine().bilagrid_depth.grids,
+            C_batch, PoolSlot::EngBgDepthImageGrad, 1);
         float* scalars = engine().bilagrid_depth.scalars.data_ptr();
         const float* depth_pre =
             (const float*)engine().bilagrid_depth.fwd_pre.data_ptr();
@@ -679,10 +740,9 @@ void _engine_bilagrid_backward_hook(
         int H_n = (int)engine().gt.normal.template size<1>();
         int W_n = (int)engine().gt.normal.template size<2>();
         BilagridReader grid_ptr = _bg_reader(engine().bilagrid_normal);
-        _ensure_bilagrid_batch_grad(engine().bilagrid_normal.image_grad,
-                                    engine().bilagrid_normal.grids, C_batch,
-                                    PoolSlot::EngBgNormalImageGrad);
-        float* grad_grid_ptr = engine().bilagrid_normal.image_grad.data_ptr();
+        float* grad_grid_ptr = _bilagrid_pass_grad(
+            engine().bilagrid_normal.image_grad, engine().bilagrid_normal.grids,
+            C_batch, PoolSlot::EngBgNormalImageGrad, 2);
         const float* normal_pre =
             (const float*)engine().bilagrid_normal.fwd_pre.data_ptr();
         const float* v_normal_out = (const float*)std::get<0>(v_ref_normal);
@@ -809,15 +869,34 @@ void _ensure_bilagrid_optim_state() {
 }
 
 void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
+    StepTimingScope timing(
+        engine().bilagrid_rgb.enabled ? StepPart::Appearance : StepPart::Geometry,
+        StepScale::Images);
     _ensure_bilagrid_optim_state();
     int32_t adam_step = step + 1;
     int C_batch = (int)engine().camera.num;
     const int* cam_idx_dev = engine().bilagrid_cur_cam_indices.data_ptr();
+    // A step of several passes: every pass's rows, each pass's loss scaled as
+    // the splat optimizer scales it (the TV term is the step's, unscaled).
+    const BilagridStepRows& rows = engine().bilagrid_rows;
+    float grad_scale = 1.0f;
+    DeviceVector<int32_t> step_cams;
+    if (rows.total > 0) {
+        step_cams.resize_dynamic(VramCategory::Appearance,
+                                 "eng.bg.step_cam_indices", rows.total);
+        backend::memcpy_async(step_cams.data_ptr(), rows.cams.data(),
+                              (size_t)rows.total * sizeof(int32_t),
+                              backend::MemcpyKind::HostToDevice, kBilagridStream);
+        C_batch = rows.total;
+        cam_idx_dev = step_cams.data_ptr();
+        grad_scale = engine().optim.grad_scale;
+    }
 
     // Single fused pass per bilagrid type: reads the sparse per-batch
     // image_grad, computes the local TV gradient from `grids` neighbors, and
     // applies Adam OR AdaGrad (float or uint8-quantized) in one kernel.
-    auto run = [&](DeviceTensor5D<float>& grids,
+    auto run = [&](int type,
+                   DeviceTensor5D<float>& grids,
                    DeviceTensor5D<float>& image_grad,
                    DeviceTensor5D<float>& g1,
                    DeviceTensor5D<float>& g2,
@@ -832,6 +911,8 @@ void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
                    float lr, float tv_weight) {
         if (lr <= 0.0f) return;
         if (image_grad.data_ptr() == nullptr) return;
+        // No pass of this step wrote it: the buffer is an earlier step's.
+        if (rows.total > 0 && !(rows.sized >> type & 1u)) return;
         const bool quantize_optim = (optim_bits != 32);
         const bool value_quantize = (value_bits != 32);
         // When value_quantize, grids.data_ptr() is null (freed after init);
@@ -849,7 +930,7 @@ void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
                 image_grad.data_ptr(),
                 cam_idx_dev,
                 N, C_batch, C, L, H, W,
-                lr, tv_weight,
+                lr, tv_weight, grad_scale,
                 quantize_optim, optim_bits, value_quantize, kBilagridStream);
         } else {
             fused_bilagrid_tv_adam(
@@ -861,7 +942,7 @@ void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
                 image_grad.data_ptr(),
                 cam_idx_dev,
                 N, C_batch, C, L, H, W,
-                lr, tv_weight, adam_step,
+                lr, tv_weight, grad_scale, adam_step,
                 quantize_optim, optim_bits, value_quantize, kBilagridStream);
         }
     };
@@ -885,7 +966,7 @@ void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
     };
     {
         auto [N, L, H, W, C] = get_dims(brgb, brgb.C);
-        run(brgb.grids, brgb.image_grad, brgb.g1, brgb.g2,
+        run(0, brgb.grids, brgb.image_grad, brgb.g1, brgb.g2,
             brgb.quant_state, brgb.accum_f, brgb.adagrad_quant,
             brgb.grids_quant,
             brgb.optim_bits, brgb.value_bits, brgb.use_adagrad,
@@ -894,7 +975,7 @@ void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
     }
     {
         auto [N, L, H, W, C] = get_dims(bdep, 2);
-        run(bdep.grids, bdep.image_grad, bdep.g1, bdep.g2,
+        run(1, bdep.grids, bdep.image_grad, bdep.g1, bdep.g2,
             bdep.quant_state, bdep.accum_f, bdep.adagrad_quant,
             bdep.grids_quant,
             bdep.optim_bits, bdep.value_bits, bdep.use_adagrad,
@@ -903,7 +984,7 @@ void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
     }
     {
         auto [N, L, H, W, C] = get_dims(bnor, 3);
-        run(bnor.grids, bnor.image_grad, bnor.g1, bnor.g2,
+        run(2, bnor.grids, bnor.image_grad, bnor.g1, bnor.g2,
             bnor.quant_state, bnor.accum_f, bnor.adagrad_quant,
             bnor.grids_quant,
             bnor.optim_bits, bnor.value_bits, bnor.use_adagrad,

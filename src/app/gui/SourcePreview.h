@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -60,12 +61,20 @@ public:
     // A video playing wants every frame drawn, not the idle rate.
     bool animating() const { return _video.playing(); }
 
+    // As SegmentPanel::show_frame() takes it; none with no photo picked.
+    std::optional<PreviewFrame> selected_frame() const;
+    bool take_selection_changed() {
+        return _photos.take_selection_changed() || _video.take_selection_changed();
+    }
+    void set_mask_preview_open(bool open) { _photos.set_mask_preview_open(open); }
+
     struct Result {
         bool clip_changed = false;
         bool want_gpu = false;
+        bool lens_changed = false;
     };
     // `clip_*` point at the selected video's clip, null for anything else.
-    Result draw(float height, double* clip_start, double* clip_end);
+    Result draw(float height, double* clip_start, double* clip_end, int* active_lens = nullptr);
     void destroy_gl();
 
 private:

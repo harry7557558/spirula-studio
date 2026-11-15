@@ -766,6 +766,37 @@ int main() {
         check(finite_result(r), "exemplar results are finite");
     }
     {
+        std::vector<sam::ConceptPrompt> prompts(11);
+        for (size_t i = 0; i < prompts.size(); ++i) {
+            prompts[i].text = i % 2 ? "a cat" : "sky";
+            prompts[i].score_threshold = i == 3 ? 1.0f : 0.0f;
+            prompts[i].nms_threshold = 0.1f;
+            prompts[i].max_detections = 3;
+        }
+        prompts[2].pos_exemplars.push_back({20, 20, 90, 80});
+        const auto batched = session.segmentConcepts(prompts);
+        bool equal = batched.size() == prompts.size() && session.lastError().empty();
+        for (size_t i = 0; equal && i < prompts.size(); ++i) {
+            const auto single = session.segmentConcept(prompts[i]);
+            const auto& batch = batched[i];
+            equal = session.lastError().empty() && single.detections.size() == batch.detections.size();
+            for (size_t j = 0; equal && j < single.detections.size(); ++j) {
+                const auto& a = single.detections[j];
+                const auto& b = batch.detections[j];
+                equal = a.score == b.score && a.iou_score == b.iou_score &&
+                        a.box.x0 == b.box.x0 && a.box.y0 == b.box.y0 &&
+                        a.box.x1 == b.box.x1 && a.box.y1 == b.box.y1 &&
+                        a.instance_id == b.instance_id && a.mask.data == b.mask.data &&
+                        a.mask.width == b.mask.width && a.mask.height == b.mask.height &&
+                        a.mask.instance_id == b.mask.instance_id &&
+                        a.mask.iou_score == b.mask.iou_score;
+            }
+        }
+        check(equal, "bounded phrase batches preserve ordered single-prompt results");
+        check(session.segmentConcepts({}).empty() && session.lastError().empty(),
+              "empty phrase batch");
+    }
+    {
         sam::VisualPrompt vp;
         vp.pos_points.push_back({80.0f, 60.0f});
         vp.neg_points.push_back({10.0f, 10.0f});

@@ -62,6 +62,7 @@ struct OptimGeoParams {
     float* densify_score;  // optional output (has_densify_score)
     int* steps;            // per-splat steps (has_steps)
     uint* visit_counters;  // per-splat render counters (has_visit)
+    float* auxiliary_opacities;
     // block-wise 16-bit quantized gradients (kGqMask; bound per 256 splats)
     uint* gq_means_packed;
     float2* gq_means_bounds;
@@ -89,8 +90,9 @@ struct OptimGeoParams {
     float* depth_information;
     float4* depth_centers;
     int* depth_cameras;
+    float* depth_angular_bound;
     float depth_lr, depth_angular_lr;
-    uint has_depth, depth_photo, depth_relative, depth_pad;
+    uint has_depth, depth_photo, depth_relative, depth_has_bound;
     float lr_means;
     float lr_quats;
     float lr_scales;
@@ -116,7 +118,7 @@ struct OptimGeoParams {
     uint32_t wgs_per_row;
     uint32_t has_visit;
     uint32_t skip_unrendered_reg;
-    uint32_t _pad0;
+    uint32_t has_auxiliary_opacities;
 };
 
 // Data gradient for a PRIMS-wide attribute: decode from the 16-bit
@@ -224,6 +226,8 @@ void fused_optim_3dgs_geometry(uint3 wg: SV_GroupID,
         v_quat += p.grad_scale * float4(gd_quat[0], gd_quat[1], gd_quat[2],
                                         gd_quat[3]);
         v_opac += p.grad_scale * gd_opac[0];
+        if (p.has_auxiliary_opacities != 0)
+            v_opac += p.grad_scale * p.auxiliary_opacities[gid];
         if (kZeroGrad != 0) {
             if ((kGqMask & 4) == 0) {
                 p.v_scales[3 * gid] = 0.0f;
@@ -434,7 +438,7 @@ void fused_optim_3dgs_geometry(uint3 wg: SV_GroupID,
                 float3 updated_scale = float3(p.scales[3*gid],p.scales[3*gid+1],p.scales[3*gid+2]);
                 projective_depth_update(projective_anchor,projective_camera,p.depth_lr,p.depth_angular_lr,
                     p.depth_photo != 0,p.depth_relative != 0,projective_gradient,p.depth_information[gid],
-                    projective_state,updated_mean,updated_scale);
+                    projective_state,updated_mean,updated_scale,p.depth_has_bound != 0 ? p.depth_angular_bound[gid] : -1.f);
                 p.means[3*gid] = updated_mean.x; p.means[3*gid+1] = updated_mean.y; p.means[3*gid+2] = updated_mean.z;
                 p.scales[3*gid] = updated_scale.x; p.scales[3*gid+1] = updated_scale.y; p.scales[3*gid+2] = updated_scale.z;
                 p.depth_states[gid] = projective_state;

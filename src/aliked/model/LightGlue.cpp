@@ -20,6 +20,7 @@
 
 #include "aliked/Common.h"
 #include "aliked/model/Fetch.h"
+#include "nn/Blocks.h"
 #include "nn/Ops.h"
 #include "nn/Tensor.h"
 #include "nn/vk/EmbeddedSpirv.h"
@@ -268,25 +269,14 @@ void Matcher::Impl::ffn(const Tensor& x, const Tensor& message, int64_t n,
     char p[128];
     std::snprintf(p, sizeof p, "transformers.%d.%s", layer, prefix);
     const std::string b = p;
-    vk::ArenaScope scope(arena);
-
-    // cat(x, message) along the channel axis, then Linear(2d, 2d).
-    Tensor cat = nn::arena_tensor(arena, DType::F32, n, 2 * dim);
-    nn::strided_copy(cat, x, n, dim, dim, 2 * dim);
-    nn::strided_copy(cat.offsetElems(dim), message, n, dim, dim, 2 * dim);
-
-    Tensor h = nn::arena_tensor(arena, DType::F32, n, 2 * dim);
-    LinearOpts l0;
-    l0.bias = get(b + ".ffn.0.bias");
-    nn::linear(h, cat, get(b + ".ffn.0.weight"), l0);
-    nn::layer_norm(h, h, get(b + ".ffn.1.weight"), get(b + ".ffn.1.bias"), 1e-5f);
-    nn::unary(h, h, Act::GeluErf);
-
-    // The residual is x itself, so the final projection accumulates into it.
-    LinearOpts l1;
-    l1.bias = get(b + ".ffn.3.bias");
-    l1.residual = x;
-    nn::linear(x, h, get(b + ".ffn.3.weight"), l1);
+    nn::ConcatFfn f;
+    f.w0 = get(b + ".ffn.0.weight");
+    f.b0 = get(b + ".ffn.0.bias");
+    f.ln_w = get(b + ".ffn.1.weight");
+    f.ln_b = get(b + ".ffn.1.bias");
+    f.w3 = get(b + ".ffn.3.weight");
+    f.b3 = get(b + ".ffn.3.bias");
+    nn::concat_ffn(arena, x, message, n, dim, f);
 }
 
 std::vector<Match> Matcher::Impl::match(const MatchInput& A, const MatchInput& B,

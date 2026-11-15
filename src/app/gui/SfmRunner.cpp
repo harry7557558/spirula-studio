@@ -23,6 +23,10 @@
 #include "i18n/catalog/Sfm.h"
 #endif
 
+#if defined(SS_TOOL_SFM) && defined(SS_HAVE_FLEXGLUE) && SS_HAVE_FLEXGLUE
+#include "app/ModelLicenses.h"
+#include "flexglue/model/Fetch.h"
+#endif
 #if defined(SS_TOOL_SFM) && defined(SS_HAVE_ALIKED) && SS_HAVE_ALIKED
 #include "aliked/model/Fetch.h"
 #include "loma/Loma.h"
@@ -138,6 +142,15 @@ std::vector<PendingDownload> sfm_feature_downloads(int features, int matcher) {
     auto want_loma = [&](const std::string& id) {
         if (const loma::ModelSource* src = loma::find_model_source(id)) take(src->onnx);
     };
+#if defined(SS_HAVE_FLEXGLUE) && SS_HAVE_FLEXGLUE
+    if (matcher == 2) {
+        app::register_model_licenses();
+        namespace dm = spirula::i18n::msg::dataset;
+        register_license_info(flexglue::kLicenseFamily, &dm::license_flexglue_title,
+                              &dm::license_flexglue_terms);
+        take(flexglue::kCheckpoint);
+    }
+#endif
     if (features <= 0) return out;
 
     const std::string f = sfm_pick(kSfmFeatures, features);
@@ -278,6 +291,7 @@ void SfmRunner::take_selection(PrepJob& prep) {
 void SfmRunner::take_masking(PrepJob& prep) {
     std::lock_guard<std::mutex> lk(_mu);
     prep.mask_enable = _live.prep.mask_enable;
+    prep.inference_devices = _live.prep.inference_devices;
     prep.mask_prompt = _live.prep.mask_prompt;
     prep.mask_negative_prompt = _live.prep.mask_negative_prompt;
     prep.mask_feature_prompt = _live.prep.mask_feature_prompt;
@@ -417,7 +431,8 @@ void SfmRunner::apply_status(const RunStatus& st) {
                 _prog.count(Stage::Matching, st.done, st.total); break;
         // One bar over the whole step, whatever it is doing: a seed retry comes
         // back to seeding mid-run, and the finishing solves place no image.
-        case 2: case 3: case 4: case 8: case 9: {
+        case 2: case 3: case 4: case 8: case 9: case 11: {
+            if (st.stage == 11) _map_work.initialized(st.done, st.total);
             if (st.stage == 2) _map_work.placed(st.done, st.total);
             if (st.stage == 3) _map_work.levels(st.done, st.total);
             if (st.stage == 9) _map_work.refining();
@@ -523,7 +538,7 @@ namespace {
 // 360 packing's views sit where extraction chose; a dual fisheye's back to back.
 bool apply_known_lenses(const PrepJob& prep, const PrepResult* res, const PrepInput& in,
                         sfm::RigDef& d) {
-    if (!in.subcameras.empty()) return false;
+    if (!in.subcameras.empty() || in.active_lens >= 0) return false;
     if (in.packed_lenses == 2 && d.members.size() == 2) {
         d.kind = "dual-fisheye";
         return sfm::applyRigKind(d).empty();
@@ -685,8 +700,8 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         "--camera-mode", sfm_pick(kSfmCameraMode, job.camera_mode, 1),
         "--mapper", sfm_pick(kSfmMapper, job.mapper),
         "--features", sfm_pick(kSfmFeatures, job.features),
-        // A learned matcher only exists for the learned descriptors; asking
-        // for one with SIFT selected is a usage error.
+        // A descriptor-reading matcher with SIFT is a usage error, so the
+        // choice goes through the frontend.
         "--matcher", sfm_matcher_for(job.features, job.matcher),
     };
     if (job.pairs > 0) {
@@ -821,6 +836,8 @@ void SfmRunner::run(SfmJob job) {
         if (prior.resumable())
             log(fmt(lmsg::sfm_resuming, {ws.string()}), /*detail=*/false);
 
+        std::string identity_error;
+        if (!snapshot_frame_sources(job.prep, identity_error)) return fail(identity_error);
         // Each step asks the plan again when it is reached, with the settings
         // the screen holds by then; what already ran stays as it went.
         const DatasetRecord rec = read_plan_record(ws.string(), job.prep);
@@ -856,8 +873,17 @@ void SfmRunner::run(SfmJob job) {
         LidarPrep lidar;
         {
             std::string err;
-            if (!add_scan_photo_inputs(job.lidar, ws.string(), job.prep.inputs, lidar, err))
+            if (!add_scan_photo_inputs(job.lidar, ws.string(), job.prep.scan_stencils,
+                                       job.prep.inputs, lidar, err))
                 return fail(err);
+        }
+        // Their files are this run's own, just extracted from the scans, so
+        // their identity is taken now; the check after the frames covers them.
+        for (size_t i = job.prep.source_content.size(); i < job.prep.inputs.size(); i++) {
+            std::string identity = frame_source_identity(job.prep, job.prep.inputs[i], true);
+            if (identity.empty())
+                return fail("Cannot identify frame source: " + job.prep.inputs[i].path);
+            job.prep.source_content.push_back(std::move(identity));
         }
         PrepResult prep;
         {
@@ -1023,9 +1049,8 @@ void SfmRunner::run(SfmJob job) {
                 log(cmd);
                 rc = run_process(argv, "", [&](const std::string& l) {
                     log(l, !child_line_is_notable(l));
-                    poll_status();
                     note_line(l);
-                }, _cancel);
+                }, _cancel, [this] { poll_status(); });
                 // The last snapshot the child wrote, which is the one carrying
                 // its verdict; the loop above may have missed it between lines.
                 _status_mtime = 0;

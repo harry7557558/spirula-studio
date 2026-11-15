@@ -5,10 +5,11 @@
 
 #include "_common.slang"
 
-// Spec ids 0..2 (module-wide).
+// Spec ids 0..3 (module-wide).
 [SpecializationConstant] const int kInputF16 = 0;
 [SpecializationConstant] const int kAct      = 0;
 [SpecializationConstant] const int kAlignCorners = 0;
+[SpecializationConstant] const int kPadBorder = 0;   // grid_sample padding_mode='border'
 
 static const int WG = 256;
 
@@ -395,6 +396,10 @@ void grid_sample_points(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
     } else {
         sx = ((gx + 1.0f) * float(p.W) - 1.0f) * 0.5f;
         sy = ((gy + 1.0f) * float(p.H) - 1.0f) * 0.5f;
+    }
+    if (kPadBorder != 0) {   // torch clips the source coordinate, then samples
+        sx = clamp(sx, 0.0f, float(p.W) - 1.0f);
+        sy = clamp(sy, 0.0f, float(p.H) - 1.0f);
     }
     store_at(p.out, i, sample_bilinear_zero(p.x, kInputF16 != 0, int(p.H), int(p.W),
                                            int(p.C), int(c), sy, sx));

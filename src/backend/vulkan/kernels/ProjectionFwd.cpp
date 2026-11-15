@@ -72,7 +72,7 @@ launch_projection_fwd_vk(
                          sh_value_bits, sh_bounds_stride, &q_packed,
                          &q_bounds, &q_stride);
 
-    const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
+    const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion, true);
 
     Vanilla3DGS<0>::WorldBuffer wb(in_splats);
     const vkk::ColorSpec cs =
@@ -202,7 +202,7 @@ std::tuple<
                          sh_value_bits, sh_bounds_stride, &q_packed,
                          &q_bounds, &q_stride);
 
-    const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
+    const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion, true);
 
     const int64_t N = num_splats;
     Vanilla3DGUT<0>::WorldBuffer wb(in_splats);

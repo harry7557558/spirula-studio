@@ -1347,7 +1347,8 @@ groupshared float _bt_map[BT_T * BT_T];
 
 [ForceInline]
 void _bt_backward<let THREADS : int>(uint3 wg, uint tid, BtParams p) {
-    const int BT_NW = (34 * 34 + THREADS - 1) / THREADS;
+    // Window centres in vertical pairs: (BT_S / 2) * BT_S pairs.
+    const int BT_NW = (17 * 34 + THREADS - 1) / THREADS;
     const int b = int(wg.z);
     const int sx0 = int(wg.x) * BT_T, sy0 = int(wg.y) * BT_T;
     const uint fmt1 = uint(kSsimFmts) & 3u;
@@ -1363,8 +1364,8 @@ void _bt_backward<let THREADS : int>(uint3 wg, uint tid, BtParams p) {
     float val = 0.0f;
 
     for (int ci = 0; ci < 3; ci++) {
-        float m[BT_NW][5] = {};
-        float gb[BT_NW][3];
+        float m[BT_NW][2][5] = {};
+        float gb[BT_NW][2][3];
         [ForceUnroll]
         for (int pass = 0; pass < 2; pass++) {
             GroupMemoryBarrierWithGroupSync();
@@ -1382,138 +1383,185 @@ void _bt_backward<let THREADS : int>(uint3 wg, uint tid, BtParams p) {
             GroupMemoryBarrierWithGroupSync();
             // Pass 1 needs only the blurred render's three sums; y's are kept.
             const int nk = pass == 0 ? 5 : 3;
-            for (int l = int(tid); l < BT_S * BT_L; l += THREADS) {
-                int lx = l % BT_S + HALO, ly = l / BT_S;
-                float s[5] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+            // Two adjacent outputs a thread read 12 taps rather than 22, and
+            // each still adds its own in the same order (here and below).
+            for (int l = int(tid); l < (BT_S / 2) * BT_L; l += THREADS) {
+                int lx = 2 * (l % (BT_S / 2)) + HALO, ly = l / (BT_S / 2);
+                float s[2][5] = { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
                 [ForceUnroll]
-                for (int d = -HALO; d <= HALO; d++) {
-                    float w = kGauss[HALO - abs(d)];
-                    int t = ly * BT_L + lx + d;
+                for (int e = 0; e <= 2 * HALO + 1; e++) {
+                    int t = ly * BT_L + lx - HALO + e;
                     float X = _bt_sm[THREADS == 512 ? t : t * 2];
                     float Y = _bt_sm[THREADS == 512 ? BT_L * BT_L + t : t * 2 + 1];
-                    s[0] += X * w;
-                    s[1] += X * X * w;
-                    s[2] += X * Y * w;
-                    if (pass == 0) {
-                        s[3] += Y * w;
-                        s[4] += Y * Y * w;
+                    [ForceUnroll]
+                    for (int c = 0; c < 2; c++) {
+                        int d = e - c - HALO;
+                        if (d < -HALO || d > HALO) continue;
+                        float w = kGauss[HALO - abs(d)];
+                        s[c][0] += X * w;
+                        s[c][1] += X * X * w;
+                        s[c][2] += X * Y * w;
+                        if (pass == 0) {
+                            s[c][3] += Y * w;
+                            s[c][4] += Y * Y * w;
+                        }
                     }
                 }
                 [ForceUnroll]
-                for (int k = 0; k < 5; k++)
-                    if (k < nk) _bt_sm[XC + (ly * BT_S + lx - HALO) * 5 + k] = s[k];
+                for (int c = 0; c < 2; c++)
+                    [ForceUnroll]
+                    for (int k = 0; k < 5; k++)
+                        if (k < nk) _bt_sm[XC + (ly * BT_S + lx + c - HALO) * 5 + k] = s[c][k];
             }
             GroupMemoryBarrierWithGroupSync();
             [ForceUnroll]
             for (int k = 0; k < BT_NW; k++) {
-                int l = int(tid) + k * THREADS;
-                if (l >= BT_S * BT_S) break;
-                int lx = l % BT_S, ly = l / BT_S + HALO;
-                float s[5] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+                int q = int(tid) + k * THREADS;
+                if (q >= (BT_S / 2) * BT_S) break;
+                int lx = q % BT_S, ly0 = 2 * (q / BT_S) + HALO;
+                float sp[2][5] = { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
                 [ForceUnroll]
-                for (int d = -HALO; d <= HALO; d++) {
-                    float w = kGauss[HALO - abs(d)];
+                for (int e = 0; e <= 2 * HALO + 1; e++) {
                     [ForceUnroll]
-                    for (int j = 0; j < 5; j++)
-                        if (j < nk) s[j] += _bt_sm[XC + ((ly + d) * BT_S + lx) * 5 + j] * w;
-                }
-                if (pass == 0) {
-                    [ForceUnroll]
-                    for (int j = 0; j < 5; j++) m[k][j] = s[j];
-                    continue;
-                }
-                int cy = sy0 + ly - 2 * HALO, cx = sx0 + lx - HALO;
-                bool in = uint(cx) < uint(p.W) && uint(cy) < uint(p.H);
-                float inv_cov = 1.0f;
-                if (has_cov && in)
-                    inv_cov = 1.0f / max(p.mask_w[(b * p.H + cy) * p.W + cx], 1e-6f);
-                float mx = m[k][0] * inv_cov, my = m[k][3] * inv_cov;
-                float syy = m[k][4] * inv_cov - my * my;
-                float sxx = m[k][1] * inv_cov - mx * mx, sxy = m[k][2] * inv_cov - mx * my;
-                float mb = s[0] * inv_cov;
-                float sbb = s[1] * inv_cov - mb * mb, sby = s[2] * inv_cov - mb * my;
-                float cs0, cs1, a0, a1, a2;
-                float S0 = _bt_ssim(mx, my, sxx, syy, sxy, a0, a1, a2, cs0);
-                float S1 = _bt_ssim(mb, my, sbb, syy, sby, gb[k][0], gb[k][1], gb[k][2], cs1);
-                float top = max(S0, S1);
-                float e0 = exp(kBtTemp * (S0 - top)), e1 = exp(kBtTemp * (S1 - top));
-                float w0 = e0 / (e0 + e1), w1 = 1.0f - w0;
-                float S = top + (log(e0 + e1) - 0.69314718f) / kBtTemp;
-                bool cmask = !in || _bt_mask(p, b, cy, cx);
-                if (lx >= HALO && lx < HALO + BT_T && ly >= 2 * HALO &&
-                        ly < 2 * HALO + BT_T && in) {
-                    if (lm_active) {
-                        float lm = S;
-                        if (kSsimMode == 2) {  // contrast*structure
-                            lm = w0 * cs0 + w1 * cs1;
-                        } else if (kSsimMode == 3) {  // structure only
-                            float vy = max(syy, 0.0f);
-                            lm = w0 * (2.0f * sxy + kC2) / (2.0f * sqrt(max(sxx, 0.0f) * vy) + kC2) +
-                                 w1 * (2.0f * sby + kC2) / (2.0f * sqrt(max(sbb, 0.0f) * vy) + kC2);
+                    for (int j = 0; j < 5; j++) {
+                        if (j >= nk) continue;
+                        float v = _bt_sm[XC + ((ly0 - HALO + e) * BT_S + lx) * 5 + j];
+                        [ForceUnroll]
+                        for (int c = 0; c < 2; c++) {
+                            int d = e - c - HALO;
+                            if (d >= -HALO && d <= HALO) sp[c][j] += v * kGauss[HALO - abs(d)];
                         }
-                        if (!cmask) lm = 1.0f;
-                        int r = (ly - 2 * HALO) * BT_T + lx - HALO;
-                        if (ci == 0) _bt_map[r] = lm;
-                        else _bt_map[r] += lm;
                     }
-                    val += cmask ? S : 1.0f;
                 }
-                float gw = (in && cmask) ? grad * inv_cov : 0.0f;
-                _bt_sm[l] = a0 * w0 * gw;
-                _bt_sm[BT_S * BT_S + l] = a1 * w0 * gw;
-                _bt_sm[2 * BT_S * BT_S + l] = a2 * w0 * gw;
-                gb[k][0] *= w1 * gw; gb[k][1] *= w1 * gw; gb[k][2] *= w1 * gw;
+                [ForceUnroll]
+                for (int c = 0; c < 2; c++) {
+                    int ly = ly0 + c, l = (ly - HALO) * BT_S + lx;
+                    float s[5] = sp[c];
+                    if (pass == 0) {
+                        [ForceUnroll]
+                        for (int j = 0; j < 5; j++) m[k][c][j] = s[j];
+                        continue;
+                    }
+                    int cy = sy0 + ly - 2 * HALO, cx = sx0 + lx - HALO;
+                    bool in = uint(cx) < uint(p.W) && uint(cy) < uint(p.H);
+                    float inv_cov = 1.0f;
+                    if (has_cov && in)
+                        inv_cov = 1.0f / max(p.mask_w[(b * p.H + cy) * p.W + cx], 1e-6f);
+                    float mx = m[k][c][0] * inv_cov, my = m[k][c][3] * inv_cov;
+                    float syy = m[k][c][4] * inv_cov - my * my;
+                    float sxx = m[k][c][1] * inv_cov - mx * mx, sxy = m[k][c][2] * inv_cov - mx * my;
+                    float mb = s[0] * inv_cov;
+                    float sbb = s[1] * inv_cov - mb * mb, sby = s[2] * inv_cov - mb * my;
+                    float cs0, cs1, a0, a1, a2;
+                    float S0 = _bt_ssim(mx, my, sxx, syy, sxy, a0, a1, a2, cs0);
+                    float S1 = _bt_ssim(mb, my, sbb, syy, sby, gb[k][c][0], gb[k][c][1], gb[k][c][2], cs1);
+                    float top = max(S0, S1);
+                    float e0 = exp(kBtTemp * (S0 - top)), e1 = exp(kBtTemp * (S1 - top));
+                    float w0 = e0 / (e0 + e1), w1 = 1.0f - w0;
+                    float S = top + (log(e0 + e1) - 0.69314718f) / kBtTemp;
+                    bool cmask = !in || _bt_mask(p, b, cy, cx);
+                    if (lx >= HALO && lx < HALO + BT_T && ly >= 2 * HALO &&
+                            ly < 2 * HALO + BT_T && in) {
+                        if (lm_active) {
+                            float lm = S;
+                            if (kSsimMode == 2) {  // contrast*structure
+                                lm = w0 * cs0 + w1 * cs1;
+                            } else if (kSsimMode == 3) {  // structure only
+                                float vy = max(syy, 0.0f);
+                                lm = w0 * (2.0f * sxy + kC2) / (2.0f * sqrt(max(sxx, 0.0f) * vy) + kC2) +
+                                     w1 * (2.0f * sby + kC2) / (2.0f * sqrt(max(sbb, 0.0f) * vy) + kC2);
+                            }
+                            if (!cmask) lm = 1.0f;
+                            int r = (ly - 2 * HALO) * BT_T + lx - HALO;
+                            if (ci == 0) _bt_map[r] = lm;
+                            else _bt_map[r] += lm;
+                        }
+                        val += cmask ? S : 1.0f;
+                    }
+                    float gw = (in && cmask) ? grad * inv_cov : 0.0f;
+                    _bt_sm[l] = a0 * w0 * gw;
+                    _bt_sm[BT_S * BT_S + l] = a1 * w0 * gw;
+                    _bt_sm[2 * BT_S * BT_S + l] = a2 * w0 * gw;
+                    gb[k][c][0] *= w1 * gw; gb[k][c][1] *= w1 * gw; gb[k][c][2] *= w1 * gw;
+                }
             }
         }
         GroupMemoryBarrierWithGroupSync();
         [ForceUnroll]
         for (int k = 0; k < BT_NW; k++) {
-            int l = int(tid) + k * THREADS;
-            if (l >= BT_S * BT_S) break;
+            int q = int(tid) + k * THREADS;
+            if (q >= (BT_S / 2) * BT_S) break;
             [ForceUnroll]
-            for (int j = 0; j < 3; j++) _bt_sm[ADJB + j * BT_S * BT_S + l] = gb[k][j];
+            for (int c = 0; c < 2; c++) {
+                int l = (2 * (q / BT_S) + c) * BT_S + q % BT_S;
+                [ForceUnroll]
+                for (int j = 0; j < 3; j++) _bt_sm[ADJB + j * BT_S * BT_S + l] = gb[k][c][j];
+            }
         }
         // One branch at a time, so the 24-pixel tile fits 48 KB.
         [ForceUnroll]
         for (int br = 0; br < 2; br++) {
             GroupMemoryBarrierWithGroupSync();
             const int G = br == 0 ? 0 : ADJB;
-            for (int l = int(tid); l < BT_S * BT_T; l += THREADS) {
-                int yy = l / BT_T, cx = l % BT_T;
-                float a[3] = { 0.0f, 0.0f, 0.0f };
+            for (int l = int(tid); l < BT_S * (BT_T / 2); l += THREADS) {
+                int yy = l / (BT_T / 2), cx = 2 * (l % (BT_T / 2));
+                float a[2][3] = { { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f } };
                 [ForceUnroll]
-                for (int d = -HALO; d <= HALO; d++) {
-                    float w = kGauss[HALO - abs(d)];
-                    const int o = G + yy * BT_S + cx + HALO + d;
+                for (int e = 0; e <= 2 * HALO + 1; e++) {
+                    const int o = G + yy * BT_S + cx + e;
+                    float v[3];
                     [ForceUnroll]
-                    for (int j = 0; j < 3; j++) a[j] += _bt_sm[o + j * BT_S * BT_S] * w;
+                    for (int j = 0; j < 3; j++) v[j] = _bt_sm[o + j * BT_S * BT_S];
+                    [ForceUnroll]
+                    for (int c = 0; c < 2; c++) {
+                        int d = e - c - HALO;
+                        if (d < -HALO || d > HALO) continue;
+                        float w = kGauss[HALO - abs(d)];
+                        [ForceUnroll]
+                        for (int j = 0; j < 3; j++) a[c][j] += v[j] * w;
+                    }
                 }
                 [ForceUnroll]
-                for (int j = 0; j < 3; j++) _bt_sm[SCR + l * 3 + j] = a[j];
+                for (int c = 0; c < 2; c++)
+                    [ForceUnroll]
+                    for (int j = 0; j < 3; j++) _bt_sm[SCR + (yy * BT_T + cx + c) * 3 + j] = a[c][j];
             }
             GroupMemoryBarrierWithGroupSync();
             if ((p.flags & kSsimWriteGrad) == 0) continue;
-            for (int l = int(tid); l < BT_T * BT_T; l += THREADS) {
-                int tx = l % BT_T, ty = l / BT_T;
-                int px = sx0 + tx, py = sy0 + ty;
-                if (px >= p.W || py >= p.H) continue;
-                float a[3] = { 0.0f, 0.0f, 0.0f };
+            for (int l = int(tid); l < BT_T * (BT_T / 2); l += THREADS) {
+                int tx = l % BT_T, ty0 = 2 * (l / BT_T);
+                int px = sx0 + tx;
+                if (px >= p.W || sy0 + ty0 >= p.H) continue;
+                float a[2][3] = { { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f } };
                 [ForceUnroll]
-                for (int d = -HALO; d <= HALO; d++) {
-                    float w = kGauss[HALO - abs(d)];
+                for (int e = 0; e <= 2 * HALO + 1; e++) {
+                    float v[3];
                     [ForceUnroll]
-                    for (int j = 0; j < 3; j++) a[j] += _bt_sm[SCR + ((ty + HALO + d) * BT_T + tx) * 3 + j] * w;
+                    for (int j = 0; j < 3; j++) v[j] = _bt_sm[SCR + ((ty0 + e) * BT_T + tx) * 3 + j];
+                    [ForceUnroll]
+                    for (int c = 0; c < 2; c++) {
+                        int d = e - c - HALO;
+                        if (d < -HALO || d > HALO) continue;
+                        float w = kGauss[HALO - abs(d)];
+                        [ForceUnroll]
+                        for (int j = 0; j < 3; j++) a[c][j] += v[j] * w;
+                    }
                 }
-                int pix = (b * p.H + py) * p.W + px;
-                int o = pix * 3 + ci;
-                bool keep = _bt_mask(p, b, py, px);
-                float Y = _fs_pix(p.img2, fmt2, b, py, px, ci, p.H, p.W);
-                if (br == 0) {
-                    float X = _fs_pix(p.img1, fmt1, b, py, px, ci, p.H, p.W);
-                    p.dL_dimg1[o] += keep ? a[0] + 2.0f * X * a[1] + Y * a[2] : 0.0f;
-                } else {
-                    p.g_blur[o] = keep ? (a[0] + 2.0f * p.blurred[o] * a[1] + Y * a[2]) / p.norm[pix]
-                                       : 0.0f;
+                [ForceUnroll]
+                for (int c = 0; c < 2; c++) {
+                    int py = sy0 + ty0 + c;
+                    if (py >= p.H) continue;
+                    int pix = (b * p.H + py) * p.W + px;
+                    int o = pix * 3 + ci;
+                    bool keep = _bt_mask(p, b, py, px);
+                    float Y = _fs_pix(p.img2, fmt2, b, py, px, ci, p.H, p.W);
+                    if (br == 0) {
+                        float X = _fs_pix(p.img1, fmt1, b, py, px, ci, p.H, p.W);
+                        p.dL_dimg1[o] += keep ? a[c][0] + 2.0f * X * a[c][1] + Y * a[c][2] : 0.0f;
+                    } else {
+                        p.g_blur[o] = keep ? (a[c][0] + 2.0f * p.blurred[o] * a[c][1] + Y * a[c][2]) / p.norm[pix]
+                                           : 0.0f;
+                    }
                 }
             }
         }

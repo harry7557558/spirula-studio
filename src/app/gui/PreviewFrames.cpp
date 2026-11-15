@@ -197,7 +197,7 @@ void collect_preview_frames(PreviewSource& src, int offers,
     frames.clear();
     all_files.clear();
     src.video_seconds = 0.0;
-    offers = std::max(1, offers);
+    offers = std::max(0, offers);
     std::error_code ec;
 
     if (src.is_video) {
@@ -240,9 +240,10 @@ void collect_preview_frames(PreviewSource& src, int offers,
         const long long span = std::max(1LL, end - first);
         src.clip_first = first;
         src.clip_frames = span;
-        for (int i = 0; i < offers; i++) {
+        const int want = offers > 0 ? offers : (int)std::min(span, 100000LL);
+        for (int i = 0; i < want; i++) {
             PreviewFrame f;
-            const long long at = offers > 1 ? (long long)i * (span - 1) / (offers - 1) : 0;
+            const long long at = want > 1 ? (long long)i * (span - 1) / (want - 1) : 0;
             f.index = first + at;
             f.position = (float)((double)at / (double)std::max(1LL, span - 1));
             frames.push_back(f);
@@ -262,14 +263,11 @@ void collect_preview_frames(PreviewSource& src, int offers,
     if (cancel.load()) return;
     std::sort(all_files.begin(), all_files.end());
 
-    // A spread through the capture is enough to judge a setting, and keeps the
-    // slider meaningful on a 3000-photo folder. The index kept is the one in
-    // the FULL list, because that is what a run counts.
     const size_t n = all_files.size();
-    const size_t want = std::min<size_t>(n, (size_t)offers);
+    const size_t want = offers > 0 ? std::min<size_t>(n, (size_t)offers) : n;
     for (size_t i = 0; i < want; i++) {
         PreviewFrame f;
-        f.index = want > 1 ? (long long)(i * (n - 1) / (want - 1)) : 0;
+        f.index = (offers > 0 && want > 1) ? (long long)(i * (n - 1) / (want - 1)) : (long long)i;
         f.path = all_files[(size_t)f.index];
         f.position = n > 1 ? (float)((double)f.index / (double)(n - 1)) : 0.0f;
         frames.push_back(f);
@@ -370,7 +368,14 @@ std::vector<PreviewFrame> spread_preview_frames(
         }
         return out;
     }
-    if (!src.builtin_decode) return offers;
+    // A process of its own per frame where ffmpeg seeks, so eight through the clip.
+    if (!src.builtin_decode) {
+        const size_t n = offers.size();
+        const size_t want = std::min<size_t>(n, 8);
+        for (size_t i = 0; i < want; i++)
+            out.push_back(offers[want > 1 ? i * (n - 1) / (want - 1) : 0]);
+        return out;
+    }
     // 720 is about half a minute, and the fit wants a moving camera rather
     // than a long one: reading further costs a decode per frame for nothing.
     const long long total = std::max(1LL, src.video_frames);

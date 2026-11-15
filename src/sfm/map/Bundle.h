@@ -31,6 +31,7 @@ namespace sfm {
 
 struct BundleOptions {
     RealCfg real = RealCfg::F64;
+    bool fix_rotations = false;
     int max_iters = 25;
     bool verbose = false;
     // Canonical uuid:<hex> of the device this solve runs on; "" = the shared
@@ -399,6 +400,7 @@ inline BundleLayout buildBundle(Reconstruction& rec, const BundleOptions& bopt) 
 inline SolverOptions bundleSolverOptions(const BundleOptions& bopt) {
     SolverOptions sopt;
     sopt.real = bopt.real;
+    sopt.fix_rotations = bopt.fix_rotations;
     sopt.max_iters = bopt.max_iters;
     sopt.verbose = bopt.verbose;
     sopt.device_selector = bopt.device_selector;

@@ -687,6 +687,11 @@ int RenderSession::add_key_from_view(double time, bool select) {
         k.own_lens = true;
         k.lens = _project.keys.empty() ? view_lens() : _project.lens_at(0);
     }
+    const Lens captured = view_lens();
+    if (captured.projection == Projection::Orthographic) {
+        k.own_lens = true;
+        k.lens = captured;
+    }
     _project.keys.push_back(k);
     const double t = k.time;
     _project.sort_keys();
@@ -703,8 +708,14 @@ int RenderSession::add_key_from_view(double time, bool select) {
 Lens RenderSession::view_lens() const {
     Lens l;
     if (!_panel) return l;
-    l.projection = (Projection)std::clamp(_panel->view_model(), 0, 3);
+    const int model = _panel->view_model();
+    l.projection = (Projection)std::clamp(model, 0, kNumProjections - 1);
     lens_set_fov(l, _panel->view_fov());
+    if (l.projection == Projection::Orthographic) {
+        double pos[3], rot[4], target[3];
+        if (view_pose(pos, rot, target))
+            l.ortho_distance = std::max(std::hypot(pos[0]-target[0], pos[1]-target[1], pos[2]-target[2]), 1e-12);
+    }
     return l;
 }
 
@@ -724,6 +735,11 @@ void RenderSession::update_key_from_view(int index) {
     Keyframe& k = _project.keys[(size_t)index];
     double target[3];
     if (!view_pose(k.pos, k.rot, target)) return;
+    const Lens captured = view_lens();
+    if (captured.projection == Projection::Orthographic) {
+        k.own_lens = true;
+        k.lens = captured;
+    }
     if (k.aim) k.roll = roll_of(k.rot, k.pos, k.target, _project.up);
     update_aim(k, _project.up);
     project_changed();
@@ -750,13 +766,14 @@ void RenderSession::look_through(double time) {
         for (int k = 0; k < 3; k++) out[r*4+k] = (float)Rs[r*3+k];
         out[r*4+3] = (float)ps[r];
     }
-    // The pivot stays as far ahead as it was, so orbiting from here turns
-    // about something in front of the camera.
+    // Orthographic framing depends on the navigation pivot distance.
     float nav[12], tgt[3];
     _panel->nav_pose(nav, tgt);
     float d = std::sqrt((tgt[0]-nav[3])*(tgt[0]-nav[3]) + (tgt[1]-nav[7])*(tgt[1]-nav[7]) +
                         (tgt[2]-nav[11])*(tgt[2]-nav[11]));
     if (!(d > 1e-6f)) d = 1.0f;
+    if (c.lens.projection == Projection::Orthographic)
+        d = (float)(c.lens.ortho_distance * _w2s.s);
     const float ahead[3] = {out[3] - out[2] * d, out[7] - out[6] * d, out[11] - out[10] * d};
     _panel->set_nav_pose(out, ahead);
     _panel->set_view_lens((int)c.lens.projection, (float)lens_fov(c.lens));
@@ -1208,7 +1225,6 @@ bool RenderSession::view_projection(ViewProjection& vp, int W, int H) const {
     vp.cy = 0.5f * H;
     vp.W = W;
     vp.H = H;
-    vp.ortho_back = _panel->ortho_pullback(true);
     return true;
 }
 
@@ -1363,7 +1379,7 @@ void RenderSession::apply_xform(const Sim3& step_shared, bool scale_fov, double 
             // A bigger frustum is a wider view.
             const double fov = lens_fov(k.lens);
             const double t = std::tan(std::min(fov, 179.0) * kPi / 360.0) * factor;
-            if (k.lens.projection == Projection::Perspective)
+            if (k.lens.projection == Projection::Perspective || k.lens.projection == Projection::Orthographic)
                 lens_set_fov(k.lens, std::clamp(std::atan(t) * 360.0 / kPi, 1.0, 170.0));
             else if (k.lens.projection != Projection::Equirect)
                 lens_set_fov(k.lens, std::clamp(fov * factor, 10.0, 360.0));
@@ -1562,7 +1578,7 @@ bool RenderSession::on_viewport_input(const ViewportInput& in) {
 const camhost::FrustumShape& RenderSession::frustum_shape(const Lens& l) const {
     const int W = std::max(_project.output.width, 1), H = std::max(_project.output.height, 1);
     char key[160];
-    std::snprintf(key, sizeof key, "%d|%d|%.9g|%dx%d", (int)l.projection, l.tier, l.focal, W, H);
+    std::snprintf(key, sizeof key, "%d|%d|%.9g|%.9g|%dx%d", (int)l.projection, l.tier, l.focal, l.ortho_distance, W, H);
     std::string k = key;
     for (int d = 0; l.tier && d < kLensCoeffs; d++) {
         std::snprintf(key, sizeof key, "|%.9g", l.dist[d]);
@@ -1574,8 +1590,8 @@ const camhost::FrustumShape& RenderSession::frustum_shape(const Lens& l) const {
     if (_shapes.size() > 512) _shapes.clear();
     float in[4];
     lens_intrinsics(l, W, H, in);
-    const int model = std::clamp((int)l.projection, 0, 3);
-    const int tier = model == 3 ? 0 : std::clamp(l.tier, 0, 2);
+    const int model = std::clamp((int)l.projection, 0, kNumProjections - 1);
+    const int tier = model >= 3 ? 0 : std::clamp(l.tier, 0, 2);
     return _shapes.emplace(k, camhost::frustum_template(model, tier, W, H, in[0], in[1], in[2],
                                                         in[3], l.dist)).first->second;
 }
@@ -1652,13 +1668,18 @@ void RenderSession::draw_camera(ImDrawList* dl, const ViewProjection& vp, float 
     }
     // Which way is up: a triangle on the top edge, as camera gizmos have.
     if (c.lens.projection != Projection::Equirect && !shape.lines.empty()) {
-        const std::vector<camhost::FrustumPoint>& b = shape.lines[0].pts;
+        const bool ortho = c.lens.projection == Projection::Orthographic;
+        const std::vector<camhost::FrustumPoint>& b = (ortho ? shape.lines.back() : shape.lines[0]).pts;
         constexpr int N = camhost::kFrustumSeg;
-        const camhost::FrustumPoint& m = b[N / 2];
+        auto edge = [&](float f) -> camhost::FrustumPoint {
+            if (!ortho) return b[(size_t)(N * f)];
+            return {b[0].x + f*(b[1].x-b[0].x), b[0].y, b[0].z};
+        };
+        const auto a = edge(0.375f), m = edge(0.5f), b1 = edge(0.625f);
         const float lift = 0.25f * std::sqrt(m.x * m.x + m.y * m.y + m.z * m.z);
         ImVec2 ea, eb, em;
-        if (screen_cv(b[N * 3 / 8].x, b[N * 3 / 8].y, b[N * 3 / 8].z, ea) &&
-            screen_cv(b[N * 5 / 8].x, b[N * 5 / 8].y, b[N * 5 / 8].z, eb) &&
+        if (screen_cv(a.x, a.y, a.z, ea) &&
+            screen_cv(b1.x, b1.y, b1.z, eb) &&
             screen_cv(m.x, m.y - lift, m.z, em))
             dl->AddTriangleFilled(ea, eb, em, (col & 0x00ffffff) | 0x90000000);
     }
@@ -1911,21 +1932,27 @@ bool RenderSession::fx_frame(Transition kind, bool camera, int source, const Fra
         const double hx = 0.5 * std::min(lens_fov(cam.lens), 360.0) * kPi / 180.0;
         const double aspect = (double)std::max(f.height, 1) / std::max(f.width, 1);
         const bool pinhole = cam.lens.projection == Projection::Perspective;
-        const double hy = pinhole ? std::atan(std::tan(hx) * aspect) : hx * aspect;
+        const bool ortho = cam.lens.projection == Projection::Orthographic;
+        const double hy = pinhole || ortho ? std::atan(std::tan(hx) * aspect) : hx * aspect;
         for (int k = 0; k < 3; k++) {
             view.pos[k] = cam.pos[k];
             view.fwd[k] = -back[k];
             view.right[k] = right[k];
             view.up[k] = cup[k];
         }
-        if (pinhole) {
+        if (ortho) {
+            view.orthographic = true;
+            view.tx = 0.5 * cam.lens.ortho_distance / cam.lens.focal * 1.1;
+            view.ty = view.tx * aspect;
+        } else if (pinhole) {
             view.tx = std::tan(hx) * 1.1;
             view.ty = std::tan(hy) * 1.1;
         } else {
             view.cone = std::min(std::max(hx, hy) * 1.1, kPi);
         }
         const double a = std::clamp(std::min(hx, hy), 5.0 * kPi / 180.0, kPi / 3.0);
-        x.radius = std::clamp(depth * std::tan(a), 0.05 * core.radius, core.radius);
+        const double radius = ortho ? std::min(view.tx, view.ty) / 1.1 : depth * std::tan(a);
+        x.radius = std::clamp(radius, 0.05 * core.radius, core.radius);
     } else {
         double n = 0.0;
         for (int k = 0; k < 3; k++) n += _project.up[k] * _project.up[k];

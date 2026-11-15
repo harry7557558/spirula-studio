@@ -28,7 +28,6 @@ struct FrustumShape {
     std::vector<FrustumPoint> anchors;
 };
 
-// `model` 0 pinhole, 1 fisheye, 2 equisolid, 3 equirectangular.
 inline FrustumShape frustum_template(int model, int tier, int w, int h, float fx, float fy,
                                      float cx, float cy, const float* dist) {
     FrustumShape out;
@@ -36,6 +35,20 @@ inline FrustumShape frustum_template(int model, int tier, int w, int h, float fx
     if (h < 1) h = std::max(1, (int)std::lround(2 * cy));
     const double a = std::sqrt((double)fx * fy / ((double)w * h));
     const double sxy = std::sqrt(a), sz = std::sqrt(a);
+    const double corners[4][2] = {{0, 0}, {(double)w, 0}, {(double)w, (double)h}, {0, (double)h}};
+    if (model == 4) {
+        std::vector<FrustumPoint> near_border, far_border;
+        for (const auto& xy : corners) {
+            const float x = float((xy[0] - cx) / fx * sxy);
+            const float y = float((xy[1] - cy) / fy * sxy);
+            near_border.push_back({x, y, 0});
+            far_border.push_back({x, y, float(sz)});
+            out.lines.push_back({{near_border.back(), far_border.back()}, false, false});
+        }
+        out.lines.push_back({std::move(near_border), true, false});
+        out.lines.push_back({std::move(far_border), true, false});
+        return out;
+    }
     const bool wide = model == 1 || model == 2 || model == 3;
     const double shell = std::sqrt((2 * sxy * sxy + sz * sz) / 3);
     auto place = [&](const double d[3]) -> FrustumPoint {
@@ -93,7 +106,6 @@ inline FrustumShape frustum_template(int model, int tier, int w, int h, float fx
         out.anchors.push_back(place(d));
         return out;
     }
-    const double corners[4][2] = {{0, 0}, {(double)w, 0}, {(double)w, (double)h}, {0, (double)h}};
     std::vector<FrustumPoint> border;
     for (int e = 0; e < 4; e++) {
         auto edge = sample(corners[e][0], corners[e][1], corners[(e + 1) % 4][0],

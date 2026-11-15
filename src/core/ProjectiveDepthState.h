@@ -14,4 +14,6 @@ struct ProjectiveDepthOptim {
     bool single_photometric = false;
     bool angular_relative = true;
     bool single_observation = false;
+    // Step-local maximum angular sensitivity, before dividing by angular_lr.
+    float* angular_bound = nullptr;
 };

@@ -62,12 +62,13 @@ inline std::string json_number_exact(double v) {
 
 class JsonWriter {
 public:
+    explicit JsonWriter(bool pretty = true) : _pretty(pretty) {}
     JsonWriter& object() { return open('{', '}'); }
     JsonWriter& array()  { return open('[', ']'); }
     JsonWriter& end() {
         const Frame f = _stack.back();
         _stack.pop_back();
-        if (f.count) { _out += '\n'; indent(); }
+        if (_pretty && f.count) { _out += '\n'; indent(); }
         _out += f.closer;
         return *this;
     }
@@ -75,7 +76,7 @@ public:
     JsonWriter& key(const char* k) {
         separate();
         _out += json_quote(k);
-        _out += ": ";
+        _out += _pretty ? ": " : ":";
         _pending_key = true;
         return *this;
     }
@@ -102,8 +103,8 @@ public:
         return key(k).raw(encoded);
     }
 
-    // Trailing newline included: every file this writes ends with one.
-    std::string str() const { return _out + "\n"; }
+    // Pretty-printed files end with a newline; compact records have no delimiter.
+    std::string str() const { return _pretty ? _out + "\n" : _out; }
 
 private:
     struct Frame { char closer; int count = 0; };
@@ -119,13 +120,16 @@ private:
     void separate() {
         if (_stack.empty()) return;   // the document's own root value
         if (_stack.back().count++) _out += ',';
-        _out += '\n';
-        indent();
+        if (_pretty) {
+            _out += '\n';
+            indent();
+        }
     }
 
     std::string _out;
     std::vector<Frame> _stack;
     bool _pending_key = false;
+    bool _pretty;
 };
 
 

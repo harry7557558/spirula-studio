@@ -97,6 +97,8 @@ private:
     uint64_t _page = 1024;
     uint64_t _length = 0;
     std::vector<uint8_t> _scratch;
+    uint64_t _scratch_offset = 0;
+    size_t _scratch_size = 0;
     std::vector<Scan> _scans;
     std::vector<Image> _images;
 };

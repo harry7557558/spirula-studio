@@ -131,8 +131,9 @@ struct VisBlitParams {
     int32_t num_cam_lss, show_cams, show_overlay, thumb_w, thumb_h;
     int32_t has_lss, has_tri;
     int32_t alpha_stride;
+    int32_t alpha_is_T, _pad0;
 };
-static_assert(sizeof(VisBlitParams) == 16 * 8 + 12 * 4, "layout");
+static_assert(sizeof(VisBlitParams) == 16 * 8 + 14 * 4, "layout");
 
 struct VisPackParams {
     uint64_t rgba, out_rgb8;
@@ -353,7 +354,8 @@ struct BlitGeom {
 
 void run_blit(const TorchTensorView& render_rgbs,
               const TorchTensorView& render_depths,
-              const TorchTensorView& render_alphas, int view_camera_model,
+              const TorchTensorView& render_alphas, bool alpha_is_T,
+              int view_camera_model,
               uint32_t dist_spec, const TorchTensorView& view_intrins,
               const TorchTensorView& view_viewmat,
               const TorchTensorView& view_dist_coeffs, const BlitGeom& geom,
@@ -397,6 +399,7 @@ void run_blit(const TorchTensorView& render_rgbs,
     p.has_lss = geom.lss_buffer ? 1 : 0;
     p.has_tri = geom.tri_buffer ? 1 : 0;
     p.alpha_stride = (int32_t)alpha_stride;
+    p.alpha_is_T = alpha_is_T ? 1 : 0;
 
     uint64_t params_addr = 0;
     void* params_mapped = nullptr;
@@ -574,7 +577,7 @@ void engine_viewer_init(
         PoolSlot::ViewerC2w,
         TorchTensorView(std::get<0>(camera_to_worlds), 4, {N * 12LL}));
 
-    constexpr int S = VIEWER_THUMBNAIL_SIZE;
+    const int S = v.thumb_size = viewer_thumbnail_size(N);
     v.thumbnails.resize(PoolSlot::ViewerThumb, (int64_t)N * S * S * 4);
     backend::memset_sync(v.thumbnails.data_ptr(), 0,
                          (size_t)N * S * S * 4);
@@ -677,7 +680,7 @@ void engine_viewer_capture_thumbnails(TorchTensorView cam_indices_tv) {
     p.W_rgb = (int)W;
     p.B_post = (int)B_post;
     p.N = v.N_post;
-    p.S = VIEWER_THUMBNAIL_SIZE;
+    p.S = v.thumb_size;
     p.H_alpha = H_alpha;
     p.W_alpha = W_alpha;
     p.has_alpha = d_alpha_mask ? 1 : 0;
@@ -691,6 +694,7 @@ void engine_blit_view(
     TorchTensorView render_buffer,
     TorchTensorView render_depth,
     TorchTensorView render_alpha,
+    bool            alpha_is_transmittance,
     int             view_camera_model,
     std::string     distortion,
     TorchTensorView view_intrins,
@@ -749,10 +753,10 @@ void engine_blit_view(
         geom.show_overlay = show_overlay;
     }
 
-    run_blit(render_buffer, render_depth, render_alpha, view_camera_model,
+    run_blit(render_buffer, render_depth, render_alpha, alpha_is_transmittance,
+             view_camera_model,
              dist_spec, view_intrins, view_viewmat, view_dist_coeffs, geom,
-             v.thumbnails.data_ptr(), VIEWER_THUMBNAIL_SIZE,
-             VIEWER_THUMBNAIL_SIZE, min_max, out_rgb);
+             v.thumbnails.data_ptr(), v.thumb_size, v.thumb_size, min_max, out_rgb);
 }
 
 /*[AutoHeaderGeneratorExport]*/
@@ -792,7 +796,7 @@ void blit_train_cameras_tensor(
 
     if (!show_training_cameras) {
         BlitGeom geom;  // no frusta, no overlay
-        run_blit(render_rgbs, render_depths, render_alphas,
+        run_blit(render_rgbs, render_depths, render_alphas, false,
                  view_camera_model, dist_spec, view_intrins, view_viewmat,
                  view_dist_coeffs, geom, (void*)std::get<0>(thumbnails),
                  thumb_w, thumb_h, min_max, out_rgb);
@@ -835,7 +839,7 @@ void blit_train_cameras_tensor(
     geom.num_cam_lss = (int)num_lss;  // no overlay in the legacy path
     geom.show_cams = true;
     geom.show_overlay = false;
-    run_blit(render_rgbs, render_depths, render_alphas, view_camera_model,
+    run_blit(render_rgbs, render_depths, render_alphas, false, view_camera_model,
              dist_spec, view_intrins, view_viewmat, view_dist_coeffs, geom,
              (void*)std::get<0>(thumbnails), thumb_w, thumb_h, min_max,
              out_rgb);

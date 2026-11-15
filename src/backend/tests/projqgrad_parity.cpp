@@ -334,6 +334,7 @@ int main(int argc, char** argv) {
                    : cfg.prim == 1 ? projection_mip_backward_quantgrad
                                    : projection_3dgut_backward_quantgrad;
         for (int call = 0; call < 2; call++) {
+            pool_begin_phase(PoolPhase::RasterBwd);
             if (cfg.packed && call == 1)  // restore possibly-clobbered keys
                 backend::memcpy_sync(gauss_ids.data_ptr(), gauss_host.data(),
                                      n_isect * 4, MemcpyKind::HostToDevice);

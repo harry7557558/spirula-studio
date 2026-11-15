@@ -31,6 +31,8 @@ struct TargetLayout {
     std::optional<std::array<int, 3>> bilagrid_depth;
     std::optional<std::array<int, 3>> bilagrid_normal;
     bool    ppisp = false;
+    // (grid, floats per control point) of the calibration warp's table.
+    std::optional<std::array<int, 2>> calib_warp;
 };
 
 // True when `state` (a checkpoint's state.json) disagrees with `t` in any way

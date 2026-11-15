@@ -15,15 +15,35 @@
 #include <array>
 #include <cstdint>
 #include <cstddef>
+#include <map>
+#include <string>
 
 
 struct DensifyConfig;
 struct OptimConfig;
+struct PcaRegConfig;
+
+// The local-PCA regularizer's gradient, between the backward and the optim
+// step that consumes it; its loss terms go into `loss_dict` (EnginePcaReg.cpp).
+void engine_pca_reg_step(int step, const PcaRegConfig& cfg,
+                         std::map<std::string, float>& loss_dict);
 
 // Readies DeadCriterion::MaxWeight's buffer for `step`'s raster backward:
 // set to opacity on first use, freed once nothing can relocate. Idempotent
 // within a step (EngineDensify.cpp).
 void engine_max_weight_begin_step(int step, int max_steps, const DensifyConfig& cfg);
+
+// Hands the current image size's binning to the search (engine_bin_tile_observe);
+// a training step calls it before its forward, so the search starts coarse.
+void engine_bin_tile_claim();
+
+// Encodes fp32 colour rows [count, K, 3] as splats [first, first + count) of
+// a packed SH store sized for N, AoS or FPBO (docs/notes/sh-quant-layout.md).
+// A run starts on a 256-splat boundary and ends on one or at N; count < 0 = to N.
+void encode_sh_rows(QuantizedTensor<8, 256>& q, const float* rows, int64_t N, int K,
+                    bool fpbo, int64_t first = 0, int64_t count = -1);
+void encode_sh_rows(QuantizedTensor<16, 256>& q, const float* rows, int64_t N, int K,
+                    bool fpbo, int64_t first = 0, int64_t count = -1);
 
 // --- Raw-pointer image conversion helpers (ImageConvert.cu). ---
 void uint8_image_to_float_raw (const uint8_t*  d_in, float* d_out,
@@ -51,6 +71,7 @@ void fused_bilagrid_tv_adam(
     int L, int H, int W,
     float lr,
     float tv_weight,
+    float grad_scale,                   // on the image gradient only
     int32_t adam_step,
     bool quantize,
     int  quant_bits,
@@ -108,6 +129,7 @@ void fused_bilagrid_tv_adagrad(
     int L, int H, int W,
     float lr,
     float tv_weight,
+    float grad_scale,
     bool quantize,
     int  quant_bits,
     bool value_quantize,
@@ -122,9 +144,11 @@ void bilagrid_affine_identity_init(
 void ppisp_original_default_init(
     float* params, int N, backend::Stream stream);
 
-// --- PPISP elementwise grad accumulation (PpispInit.cu). ---
+// --- PPISP elementwise grad accumulation (PpispInit.cu): ---
+// dst = dst * dst_scale + src; a null src only scales.
 void ppisp_add_into_grad(
-    const float* src, float* dst, size_t n, backend::Stream stream);
+    const float* src, float* dst, float dst_scale, size_t n,
+    backend::Stream stream);
 
 // --- Scatter per-image scalars into a per-camera table (BilagridInit.cu). ---
 void bilagrid_scatter_floats(
@@ -152,6 +176,10 @@ void _engine_bilagrid_backward_hook(
     TorchTensorView v_ref_depth,
     TorchTensorView v_ref_normal);
 void _ensure_bilagrid_optim_state();
+// Split-batch steps: `total` cameras over the step's passes (0 ends it), then
+// each pass's first row, after its set_camera_params. See BilagridStepRows.
+void _engine_bilagrid_step_rows(int64_t total);
+void _engine_bilagrid_pass_rows(int64_t row, TorchTensorView cam_indices);
 void _engine_bilagrid_tv_into(float* tv_buf3_device);
 
 // How many pyramid levels the per-pixel loss will actually use at this render
@@ -218,6 +246,15 @@ void _engine_ppisp_backward_hook(TorchTensorView v_render_rgb);
 // PPISP forward on whatever cam indices are already installed.
 void _engine_ppisp_forward_current();
 void _ensure_ppisp_optim_state();
+
+// Calibration warp: fit and swap gt.rgb for the warped copy before the loss,
+// the loss-gradient update after it, and the swap undone after the backward.
+// tiles_skipped: the forward left out tiles the unwarped mask excludes.
+void _engine_calib_warp_before_loss(int step, bool tiles_skipped);
+void _engine_calib_warp_after_loss(TorchTensorView v_render_rgb);
+void _engine_calib_warp_restore_gt();
+// The compare view's: gt.rgb as the loss would read it for the installed view.
+void _engine_calib_warp_preview();
 
 // Force-allocate splat optimizer state to a given quant layout (checkpoint
 // loader; no training step). Defined in EngineOptim.cpp.

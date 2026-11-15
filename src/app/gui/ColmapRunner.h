@@ -76,6 +76,7 @@ struct ColmapJob {
     // COLMAP does not read it, so its routing remains a separate compatibility
     // tail.
     std::string device;
+    std::string inference_devices;
 
     // Cameras
     std::string camera_model = "OPENCV"; // ImageReader.camera_model

@@ -5,6 +5,8 @@
 // Implemented in parsers/DatasetCommon.cpp; kept apart from DatasetParser.h
 // so the WebGL viewer's fast-math source can call it without the parsers.
 
+#include "data/NavigationHint.h"
+
 #include <array>
 #include <cstdint>
 #include <string>

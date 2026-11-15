@@ -216,8 +216,9 @@ src/
 │                             seeding -> step loop -> eval. Both the CLI and
 │                             the GUI drive this; it lives in the engine
 │                             library (cmake/sources.txt), not the app targets.
-│                             TrainForecast.{h,cpp} beside it is the run's ETA
-│                             and VRAM forecast -- docs/notes/train-forecast.md;
+│                             TrainForecast.{h,cpp} beside it is the run's ETA,
+│                             VRAM forecast and step-time breakdown --
+│                             docs/notes/train-forecast.md, step-timing.md;
 │                             ResourceForecast.h is the shape every job's RAM /
 │                             VRAM forecast takes, RunReport.h how a child
 │                             reports it -- docs/notes/memory-forecast.md
@@ -485,6 +486,79 @@ coming. If you touch a function whose comment breaks a rule above, fix the
 comment in the same diff. Deleting a stale comment needs no justification and
 no ceremony — do not ask, do not leave a note saying you removed it.
 
+## UI text — keep it short
+
+Interface copy lives in `src/i18n/catalog/`. A tooltip should answer what the
+control does or when to change it. Aim for 1–2 rendered lines, with 3 as the
+maximum. Ordinary inline help and confirmations should also fit within 3
+lines; labels should fit on one. CLI option descriptions use the same budget.
+Preserve consequences such as data loss,
+units and prerequisites before keeping rationale or examples.
+
+Do not put an algorithm comparison, shortcut manual or implementation essay in
+a tooltip. Put longer explanations in documentation or explicit detailed help;
+use short descriptions for individual choices. Do not split a paragraph into
+several messages to evade the budget, or concatenate fragments into sentences.
+Shared GUI/CLI help uses the same budget. Preserve necessary instructions in
+concise copy or accessible detailed help. Never truncate copy to meet a limit.
+
+Use a short bullet list for choices, effects or caveats. Start with a plain
+overview when the items need context. The overview follows the ordinary
+3-line budget. Use up to 4 bullets, at most 2 wrapped lines per bullet, and
+at most 8 wrapped lines for the whole message. Start each item on its own
+line with `- ` or `• `. Keep the overview and list in one translated message.
+Use complete items and give each its own point. A single follow-up can go
+on a new line without a marker and still has a 2-line budget. Skip an item
+when its option label already tells the reader what they need.
+
+### Measurement and exceptions
+
+`python3 tools/check_ui_text.py` reports changed messages, including every
+translation, against HEAD. `--all` surveys existing debt; `--base REV` compares
+with a branch base; `--json` emits a complete report. It fails on over-budget
+copy and unsupported English CLI characters. The build runs it through
+`cmake/SsChecks.cmake`, including explicit targets such
+as `spirula`. CI checks all copy and compares pull requests with their base.
+Fix findings or record a reviewed length exception with a reason and usage
+location. A policy or punctuation-table change rechecks all messages.
+`-DSS_CHECK_UI_TEXT=OFF` disables the local build check. Git and Python remain
+optional for building a source checkout.
+
+Measure display width, never UTF-8 bytes or source lines. The initial report
+uses 60 display columns per line: wide/fullwidth characters count as two,
+ordinary Latin and Cyrillic letters as one, combining marks as zero. This is
+an estimate, not a guarantee for the GUI's proportional fonts. Verify important
+copy at the actual panel or tooltip width, including translations and formatted
+arguments. Keep the 1–2-line target even when a sentence fits the 3-line ceiling.
+
+`tools/ui_text_policy.json` records presentation roles and exceptions with a
+reason. CLI output has the same prose/list budgets as GUI help. Legal text
+has a separate role; verbatim agreements are exempt. Inferred roles in reports need call-site review
+before enforcement. Use a specific message exception for mixed catalogs,
+not a whole-file exemption for one long message. License summaries can still
+be shortened with care; verbatim agreements must retain their required text.
+
+The `exclusions` map records reviewed exceptions with a reason and usage
+location. Reports count those messages separately from over-budget copy.
+Resolve entries as their content is fixed.
+
+When editing a message, shorten all translations together and preserve the
+meaning and placeholders. Run the report and the existing i18n/font checks.
+Length checks cannot decide whether a short sentence is useful.
+
+### English terminal output
+
+English terminal message templates use ASCII. Common punctuation and symbols
+are converted through `src/i18n/AsciiPunctuation.inc` before argument
+substitution. Keep user-supplied paths and other arguments intact.
+The length check covers both the catalog and converted English spelling.
+The checker rejects English catalog characters missing from that shared table,
+including length-excluded messages. Raw string literals in `src/app/cli/` and
+`src/app/Main.cpp` must already be ASCII. Add shared CLI copy to the catalogs.
+Embedded English license text uses the same conversion on the terminal, and
+its characters are checked against the replacement table.
+GUI rendering and other languages use their original localized strings.
+
 ## Conventions
 
 - Files are named after **what they do**, not after the file they were split
@@ -571,6 +645,36 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   `--audit`, `SS_SFM_MAP_PROF`, `SS_MESH_DEBUG_RENDER` — and `spirula sam`'s
   machine-readable detection table, which a script reads.
 
+## File I/O — buffer repeated reads and writes
+
+Repeated sequential reads or writes to the same regular file must use a
+reusable **8–32 MiB buffer**, with **16 MiB as the default**. This includes
+binary records, text rows, hashing and file comparisons; the standard stream's
+small default buffer is not enough for these bulk paths.
+
+- Use `spirula::BufferedInputFile` / `BufferedOutputFile` from
+  `src/core/BufferedFile.h`. They own the buffer and handle the different
+  buffer-setup order on MSVC and libstdc++. Preserve their types when returning
+  or storing them; slicing into a plain file stream loses buffer ownership.
+- Existing explicit chunk loops should use `spirula::kFileBufferBytes`.
+  For `FILE*`, call `setvbuf` after opening and before any I/O, and keep its
+  backing storage alive until after `fclose`.
+- Reuse buffers across chunks and repeated operations. Account for every
+  simultaneously open stream and worker in memory budgets and forecasts.
+  Dense code uses `disk_io_buffer_bytes()` in `src/dense/ExternalSort.h`;
+  small budgets may retain standard buffering rather than exceed their limit.
+- Frequent seeks can discard read-ahead and flush pending writes. Use a cached
+  read window for nearby reads, as in `src/data/E57Reader.cpp`; keep genuinely
+  sparse random access on its existing page cache or small-buffer path.
+- Check the final flush or close before reporting success or publishing an
+  output. Do not flush per record unless visibility or durability requires it.
+- Small metadata files, single bulk transfers, memory-mapped files and paths
+  already using suitably sized chunks need no additional large buffer. Preserve
+  timely flushing for live logs, progress output and subprocess protocols.
+- Buffering changes must preserve file bytes, seek/EOF behavior and error
+  reporting. Run the affected format tests; `buffered_file_test` covers chunk
+  boundaries, stream ownership, reopening and deferred write failures.
+
 ## Gotchas worth knowing before you hit them
 
 - **The quantized codecs in `core/Tensor.h` are host-callable.** They carry
@@ -646,13 +750,33 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   end-of-step VRAM sample sees. A buffer whose length follows the LIVE splat
   count and outlives a call goes in `POOL_LIVE_SPLAT_TABLE`, so it is sized
   for `cap_max` once: the trainer's VRAM forecast assumes only `splat x img`
-  grows during a run.
+  grows during a run. An arena slice in the Splat category gets the same
+  treatment by itself (the arena is sized as if it were `cap_max` long), so
+  give a per-splat arena slot that category and nothing else.
+- **A feature that starts at a later step takes its memory at step 0.** The
+  PCA regularizer counts its scratch against the arena from the first step
+  (`DevicePool::arena_expect`) and the calibration warp acquires its warped
+  ground truth before its start step, so a run that cannot hold them fails
+  at once and the VRAM forecast has no start steps to model. A per-splat
+  cost that starts mid-run also tells the ETA: `ForecastSetup::reg_start_step`
+  and `TrainForecast::add_regularizer` (docs/notes/train-forecast.md).
+- **A new Vulkan kernel needs a row in `engine/StepTimingTable.h`**: what it
+  is for and what its time grows with, for the step-time breakdown the GUI
+  shows. The SPIR-V embed fails without it; a shared utility says `Scope` and
+  its caller opens a `StepTimingScope` (docs/notes/step-timing.md).
 - **`SS_PROFILE=1`** enables the per-stage backend timing breakdown
   (H2D / D2H / D2D / memset / device / host), header-only, both backends, plus
   a per-category VRAM breakdown after any run that trained. What the biggest
   category costs per element, and what has already been tried against it, is
   `docs/notes/vram-splat-x-img.md`. `SS_VRAM_TRACE=<MiB>` prints every pool
   allocation at least that large with the process total and peak it brings.
+- **The VRAM forecast replays the tile intersector's band rule.** The sort is
+  cut into bands of tile rows by `intersect_bands_for`
+  (`kernels/tile/IntersectTile.cuh`), and `app/TrainForecast.cpp` calls the
+  same function to size the tile phase at a future splat count. Change the
+  rule there only. A change to the forecast is checked against recorded runs:
+  `SS_FORECAST_DUMP=<file>` and `train_forecast_replay`
+  (docs/notes/train-forecast.md).
 - **On Windows, VRAM is also limited by commit charge.** WDDM charges every
   device allocation to the system commit limit (RAM + page file), so a small
   page file fails an allocation as out-of-memory with VRAM to spare; the
@@ -786,11 +910,10 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   own, and the saved coordinates the grid, the pivot and the alignment helpers
   live in. docs/notes/scene-transform.md has the algebra; get a composition
   order wrong and the model moves the right amount about the wrong point.
-- **The viewport's orthographic view is a pinhole 256x further off with a lens
-  256x longer** (`ViewportPanel`, `kOrthoPull`), because then every renderer,
-  primitive and selection test works unchanged. Anything that takes a
-  RELATIVE depth tolerance has to subtract the pull-back first
-  (`ViewProjection::ortho_back`).
+- **Orthographic uses camera model 4**, with focal pixels per world unit and
+  axial depth. The GUI scales its FOV by orbit distance; model placements must
+  scale the focal values too. Pixel rays have distinct origins and parallel
+  directions. See docs/notes/scene-transform.md.
 - **A progress bar is time, not a count, and never goes back.** Every bar is a
   `ProgressClock` (`app/gui/ProgressClock.h`) fed the job's own 0..1 of work;
   a job whose total can grow counts an upper bound first, so the bar jumps

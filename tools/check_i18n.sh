@@ -33,7 +33,7 @@ banned="$banned"'|InputInt2|InputInt3|InputInt4|InputFloat|InputFloat2'
 banned="$banned"'|InputFloat3|InputFloat4|InputDouble|InputScalar'
 banned="$banned"'|ColorEdit3|ColorEdit4|ColorPicker3|ColorPicker4'
 banned="$banned"'|ProgressBar|PlotLines|PlotHistogram|BeginPopupModal'
-banned="$banned"'|BeginTabItem|TableSetupColumn|Value'
+banned="$banned"'|BeginTabItem|TableSetupColumn|Value|TextLink'
 
 hits=$(git grep --untracked -nIE "ImGui::($banned)[[:space:]]*\(" \
     -- 'src/app/gui/*.cpp' 'src/app/gui/*.h' ':!src/app/gui/Ui.h')

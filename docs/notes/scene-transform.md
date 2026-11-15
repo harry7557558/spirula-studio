@@ -119,22 +119,26 @@ Three details that are easy to get wrong:
   camera, so there `S` does not start a scale (`G` and `R` still work). The
   Transform tool takes the letter keys, and pressing `G`/`R` enters it.
 
-## Orthographic without an orthographic renderer
+## Orthographic projection
 
-Clicking an axis on the navigation gizmo looks along it in an orthographic
-view. Neither backend has an orthographic projection, and adding one is a
-change to the projection of three primitives on two backends with parity tests.
-Instead `ViewportPanel` renders orthographic views as a pinhole pulled back 256
-times as far with a lens 256 times as long (`kOrthoPull`). At that ratio a box
-as deep as the view distance changes size by 0.4% front to back, float still
-resolves 3e-5 of the view distance, and -- the real win -- every renderer,
-every primitive and every selection test works unchanged, because to all of
-them it is a pinhole.
+The viewport offers Orthographic first, with Perspective still the default.
+The side widget and numpad 5 toggle back to the previous camera model; choosing
+Orthographic directly uses Perspective as the return model. Axis snaps enter
+orthographic temporarily and orbiting returns to the previous lens.
 
-Two places have to know: the GL preview's linear depth range moves out with the
-camera (`PreviewRenderer::render(..., ortho_back)`), and the "visible only"
-occlusion test takes its relative slack from the navigated distance rather than
-the pulled-back one (`ViewProjection::ortho_back`).
+Camera model 4 preserves the IDs of existing saved lenses. Both compute backends
+project Gaussian means and covariances linearly in the forward path; the GL
+preview uses the same projection for meshes, points, grids and lines. The camera
+stays at the navigated position and geometry behind it is culled. Depth is axial, and picking uses
+parallel rays with per-pixel origins.
+
+Like the WebGL viewer, the orthographic scale is the perspective focal length
+divided by orbit distance. The native GUI retains its horizontal FOV convention.
+Focal values are pixels per world unit, so they scale with the model-to-navigation
+similarity. Saved views with the legacy orthographic flag still load.
+Orthographic is a compile-time camera variant in the CUDA forward kernels.
+Its instantiations live in separate files to preserve existing build caches;
+backward and fused-training variants remain unchanged.
 
 ## Saving: what each format needs
 

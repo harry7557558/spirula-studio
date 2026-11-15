@@ -23,30 +23,7 @@ namespace gui {
 
 namespace {
 
-// One shader for all draws. Vertices are (pos, aux); for the point cloud
-// and the grid aux is the RGB color (u_scale = 0), for camera frusta aux is
-// the offset from the camera center, scaled by the live frustum-size
-// uniform (u_color.a > 0 selects the flat line color).
-// Projection happens in the shader so the preview supports the same camera
-// models as the engine viewer: u_model selects pinhole(0) / fisheye-
-// equidistant(1) / equisolid(2) / equirectangular(3); u_s is the engine
-// intrinsics normalized to NDC (fx/(W/2), fy/(H/2)). Depth is the linear
-// view-space distance mapped over u_zrange (fine for points/lines and valid
-// for the >180-degree projections where a perspective z is meaningless).
-//
-// The projection function is shared with the fragment shader: a line
-// segment crossing a projection discontinuity (equirectangular +-180-degree
-// seam, fisheye backward point, pinhole behind-camera) rasterizes as the
-// chord between the wrapped endpoints; re-projecting the interpolated
-// view-space position exposes such fragments as a huge reprojection error
-// (same fix as the web viewer's LINE_FS, viewer/js/shaders.js).
-// The reprojection check alone still keeps ~5%-of-viewport stubs at both
-// ends of a wrapped segment (the error shrinks to zero at the endpoints),
-// which stack into ladder artifacts at the equirect image edges. Line
-// vertices therefore also carry a_delta = this-endpoint minus
-// other-endpoint (pre-scale), and the vertex shader kills the WHOLE
-// segment (v_kill) when its chord crosses the equirect seam -- the
-// half-plane x = 0, z > 0 in view space (azimuth +-180 degrees).
+// Projection is shared by vertices and fragments to reject nonlinear seams.
 const char* kProj = R"(
 uniform int u_model;
 uniform vec2 u_s;
@@ -84,9 +61,12 @@ bool lens_valid(vec2 gl) {
     return jd > 0.25 && jd < 4.0 && dot(gl, f) >= 0.0;
 }
 vec2 project_ndc(vec3 v, out bool clipped) {
-    float dist = max(length(v), 1e-9);
+    float dist = u_model == 4 ? -v.z : max(length(v), 1e-9);
     clipped = false;
-    if (u_model == 0) {                     // pinhole
+    if (u_model == 4) {
+        clipped = v.z >= 0.0;
+        return u_s * v.xy;
+    } else if (u_model == 0) {                     // pinhole
         if (v.z > -1e-6) clipped = true;
         vec2 q = v.xy / -v.z;
         if (!lens_valid(q)) clipped = true;
@@ -157,18 +137,18 @@ void main() {
         v_fxr = fract(r1 * 7.31 + r2);
     }
     vec3 v = (u_view * vec4(p, 1.0)).xyz;
-    float dist = max(length(v), 1e-9);
+    float dist = u_model == 4 ? -v.z : max(length(v), 1e-9);
     bool clipped;
     vec2 ndc = project_ndc(v, clipped);
     float z = (dist - u_zrange.x) / (u_zrange.y - u_zrange.x) * 2.0 - 1.0;
-    if (clipped) z = 3.0;
+    if (clipped && u_model != 4) z = 3.0;
     v_col = (u_color.a > 0.0) ? u_color : vec4(a_aux, 1.0);
     v_view = v;
     v_world = p;
     // A soft point's half-maximum spans the size asked for, as wide as a
     // hard one looks: exp(-4 r^2) halves at r = 0.42 of the sprite's radius.
     gl_PointSize = u_pradius > 0.0
-        ? clamp(u_pradius * u_s.x * u_vp.x / dist, 1.0, 256.0)
+        ? clamp(u_pradius * u_s.x * u_vp.x / (u_model == 4 ? 1.0 : dist), 1.0, 256.0)
         : u_points == 3 ? min(u_psize * 2.4, 256.0) : u_psize;
     gl_PointSize = clamp(gl_PointSize * fxs, 1.0, 256.0);
     // Whole-segment equirect seam kill (see the comment above kProj). Both
@@ -272,14 +252,16 @@ void main() {
         pos += dd;
     }
     vec3 v = (u_view * vec4(pos, 1.0)).xyz;
-    float dist = max(length(v), 1e-9);
+    float dist = u_model == 4 ? -v.z : max(length(v), 1e-9);
     float z = (dist - u_zrange.x) / (u_zrange.y - u_zrange.x) * 2.0 - 1.0;
     v_nrm = mat3(u_view) * a_nrm;
     v_col = a_col;
     v_uv = a_uv;
     v_view = v;
     v_world = a_pos;
-    if (u_model == 0 && u_tier == 0) {
+    if (u_model == 4) {
+        gl_Position = vec4(u_s * v.xy, z, 1.0);
+    } else if (u_model == 0 && u_tier == 0) {
         // PINHOLE: emit a REAL clip-space position (w = -z_view) so the
         // hardware clips triangles at the near plane. Writing NDC with w = 1
         // (which is what the point/line program does, and what this used to
@@ -799,68 +781,87 @@ bool PreviewRenderer::build(const ParsedDataset& ds, const PostSplitCameras& pos
     _t2n_scale = (float)sA;
 
     // ---- point cloud ------------------------------------------------------
-    int64_t n_src = ds.points.num();
-    int64_t stride = 1;
-    std::vector<V> pts;
-    pts.reserve(n_src / stride + 1);
-    for (int64_t i = 0; i < n_src; i += stride) {
-        V v;
+    // Sized first and filled in parallel: a few million points, and this runs
+    // on the GUI thread.
+    const int64_t n_src = ds.points.num();
+    const int64_t stride = 1;
+    const int64_t n_pts = (n_src + stride - 1) / stride;
+    std::unique_ptr<V[]> pts(new V[(size_t)n_pts]);   // not zeroed: every one is written
+    _pick_xyz.resize((size_t)n_pts * 3);   // kept host-side for double-click picking
+    _pts_rgb.resize((size_t)n_pts * 3);
+#pragma omp parallel for schedule(static)
+    for (int64_t k = 0; k < n_pts; k++) {
+        const int64_t i = k * stride;
         float p[3];
         map_pt(&ds.points.xyz[i*3], p);
+        V& v = pts[k];
         v.px = p[0]; v.py = p[1]; v.pz = p[2];
         v.ax = ds.points.rgb[i*3 + 0] / 255.0f;
         v.ay = ds.points.rgb[i*3 + 1] / 255.0f;
         v.az = ds.points.rgb[i*3 + 2] / 255.0f;
-        pts.push_back(v);
+        std::copy(&v.px, &v.px + 3, &_pick_xyz[k*3]);
+        std::copy(&v.ax, &v.ax + 3, &_pts_rgb[k*3]);
     }
-    _num_points = (int64_t)pts.size();
-    // Keep the displayed points host-side for double-click picking.
-    _pick_xyz.resize(pts.size() * 3);
-    for (size_t i = 0; i < pts.size(); i++) {
-        _pick_xyz[i*3 + 0] = pts[i].px;
-        _pick_xyz[i*3 + 1] = pts[i].py;
-        _pick_xyz[i*3 + 2] = pts[i].pz;
-    }
+    _num_points = n_pts;
 
-    // ---- camera frusta (per-INPUT cameras, true camera model) ---------------
-    // Size-1 templates in CV camera space via frustum_template (cached per
-    // distinct intrinsics), rotated into the normalized frame. Bright verts
-    // (border + anchors) first, dim interior gridlines after, so render()
-    // can draw the two ranges with different colors.
-    std::vector<VL> hot, bright, dim;
-    // Per-camera colours: a vertex list per distinct colour (quantized to 8
-    // bits), the dim gridlines at half that colour in their own group.
-    std::unordered_map<uint32_t, std::vector<VL>> by_color;
-    std::vector<uint32_t> color_order;
+    // ---- camera frusta: frustum_template per distinct intrinsics, rotated --
+    // Laid out selected, bright (border + anchors), dim (gridlines), then one
+    // group per colour, so render() draws each range in its colour.
     auto color_key = [](const float* c, float mul) {
         uint32_t k = 0;
         for (int j = 0; j < 3; j++)
             k = (k << 8) | (uint32_t)std::lround(std::clamp(c[j] * mul, 0.0f, 1.0f) * 255.0f);
         return k;
     };
-    auto color_list = [&](uint32_t key) -> std::vector<VL>& {
-        auto it = by_color.find(key);
-        if (it == by_color.end()) {
+    // Groups 0..2 are selected / bright / dim; 3 + k is color_order[k].
+    enum { kHot, kBright, kDim, kColor0 };
+    std::unordered_map<uint32_t, int> color_group;
+    std::vector<uint32_t> color_order;
+    auto group_of = [&](uint32_t key) {
+        auto it = color_group.find(key);
+        if (it == color_group.end()) {
+            it = color_group.emplace(key, kColor0 + (int)color_order.size()).first;
             color_order.push_back(key);
-            it = by_color.emplace(key, std::vector<VL>()).first;
         }
         return it->second;
     };
-    std::unordered_map<std::string, FrustumTemplate> templates;
+    struct Tmpl {
+        FrustumTemplate shape;
+        int64_t n_lines_bright = 0, n_lines_dim = 0, n_anchor = 0;
+    };
+    auto line_verts = [](const FrustumLine& l) -> int64_t {
+        const int64_t n = (int64_t)l.pts.size();
+        return 2 * std::max<int64_t>(0, n - 1) + (l.closed && n > 1 ? 2 : 0);
+    };
+    // A camera writes one stream of every line in order, or a bright one
+    // (bright lines, then anchors) and a dim one into two groups.
+    struct CamPlan {
+        const Tmpl* t;
+        bool one_stream;
+        int g_bright, g_dim;
+        int64_t at_bright, at_dim;
+        float c[3], X[3], Y[3], Z[3];
+    };
+    std::vector<CamPlan> plans((size_t)ds.num_cameras);
+    std::vector<int64_t> group_size(kColor0, 0);
+    std::vector<uint8_t> held_out((size_t)ds.num_cameras, 0);
+    for (int32_t i : ds.val_indices) if (i >= 0 && i < ds.num_cameras) held_out[i] = 1;
+    std::unordered_map<std::string, Tmpl> templates;
     for (int64_t i = 0; i < ds.num_cameras; i++) {
+        CamPlan& cp = plans[(size_t)i];
         const bool selected = cam_selected && cam_selected[i];
-        const uint32_t key_bright = cam_rgb ? color_key(&cam_rgb[i * 3], 1.0f) : 0;
-        const uint32_t key_dim = cam_rgb ? color_key(&cam_rgb[i * 3], 0.5f) : 0;
+        const float validation_color[3] = {1.0f, 0.35f, 0.65f};
+        const float* rgb = cam_rgb ? &cam_rgb[i*3] : held_out[i] && !selected ? validation_color : nullptr;
+        const uint32_t key_bright = rgb ? color_key(rgb, 1.0f) : 0;
+        const uint32_t key_dim = rgb ? color_key(rgb, 0.5f) : 0;
         const float* M = &ds.c2w[i*12];
-        float c[3];
         float t[3] = {M[3], M[7], M[11]};
-        map_pt(t, c);
+        map_pt(t, cp.c);
         // Column basis (OpenGL convention; -Z forward), mapped + unit-scaled.
-        float X[3], Y[3], Z[3];
         double dx[3] = {M[0], M[4], M[8]};
         double dy[3] = {M[1], M[5], M[9]};
         double dz[3] = {M[2], M[6], M[10]};
-        map_dir(dx, X); map_dir(dy, Y); map_dir(dz, Z);
+        map_dir(dx, cp.X); map_dir(dy, cp.Y); map_dir(dz, cp.Z);
 
         int model = ds.camera_models.empty() ? M_PINHOLE : (int)ds.camera_models[i];
         int tier = ds.camera_distortions.empty()
@@ -879,61 +880,95 @@ bool PreviewRenderer::build(const ParsedDataset& ds, const PostSplitCameras& pos
             k += key;
         }
         auto it = templates.find(k);
-        if (it == templates.end())
-            it = templates.emplace(k, frustum_template(model, tier, ds.widths[i],
-                     ds.heights[i], fx, fy, cx, cy, dist)).first;
-        const FrustumTemplate& tmpl = it->second;
-
+        if (it == templates.end()) {
+            Tmpl tm;
+            tm.shape = frustum_template(model, tier, ds.widths[i], ds.heights[i], fx, fy, cx, cy,
+                                        dist);
+            for (const FrustumLine& l : tm.shape.lines)
+                (l.dim ? tm.n_lines_dim : tm.n_lines_bright) += line_verts(l);
+            tm.n_anchor = (int64_t)tm.shape.anchors.size() * kASeg * 2;
+            it = templates.emplace(k, std::move(tm)).first;
+        }
+        cp.t = &it->second;
+        // Groups in the order the lines first reach them, as colour groups draw
+        // in order of first use.
+        if (rgb) {
+            for (const FrustumLine& l : cp.t->shape.lines) group_of(l.dim ? key_dim : key_bright);
+            if (!cp.t->shape.anchors.empty()) group_of(key_bright);
+            cp.g_bright = group_of(key_bright);
+            cp.g_dim = group_of(key_dim);
+        } else {
+            cp.g_bright = selected ? kHot : kBright;
+            cp.g_dim = selected ? kHot : kDim;
+        }
+        cp.one_stream = cp.g_bright == cp.g_dim;
+        group_size.resize(kColor0 + color_order.size(), 0);
+        const int64_t nb = cp.t->n_lines_bright + cp.t->n_anchor, nd = cp.t->n_lines_dim;
+        if (cp.one_stream) {
+            cp.at_bright = group_size[cp.g_bright];
+            group_size[cp.g_bright] += nb + nd;
+        } else {
+            cp.at_bright = group_size[cp.g_bright];
+            group_size[cp.g_bright] += nb;
+            cp.at_dim = group_size[cp.g_dim];
+            group_size[cp.g_dim] += nd;
+        }
+    }
+    std::vector<int64_t> group_first(group_size.size(), 0);
+    for (size_t g = 1; g < group_size.size(); g++)
+        group_first[g] = group_first[g - 1] + group_size[g - 1];
+    const int64_t n_cam_verts = group_first.back() + group_size.back();
+    std::unique_ptr<VL[]> cams(new VL[(size_t)n_cam_verts]);
+    const int64_t n_cams = ds.num_cameras;
+#pragma omp parallel for schedule(dynamic, 64)
+    for (int64_t i = 0; i < n_cams; i++) {
+        const CamPlan& cp = plans[(size_t)i];
+        VL* bright_out = &cams[(size_t)(group_first[cp.g_bright] + cp.at_bright)];
+        VL* dim_out = cp.one_stream ? nullptr
+                                    : &cams[(size_t)(group_first[cp.g_dim] + cp.at_dim)];
         // CV cam-space point -> normalized-frame offset: the CV cam->world
         // rotation is the OpenGL c2w basis with the y,z columns negated.
-        auto emit = [&](std::vector<VL>& out, const P3& p) {
-            VL v = {};
-            v.px = c[0]; v.py = c[1]; v.pz = c[2];
-            v.ax = p.x*X[0] - p.y*Y[0] - p.z*Z[0];
-            v.ay = p.x*X[1] - p.y*Y[1] - p.z*Z[1];
-            v.az = p.x*X[2] - p.y*Y[2] - p.z*Z[2];
-            out.push_back(v);
+        auto put = [&](VL*& out, const P3& p) {
+            VL& v = *out++;
+            v.px = cp.c[0]; v.py = cp.c[1]; v.pz = cp.c[2];
+            v.ax = p.x*cp.X[0] - p.y*cp.Y[0] - p.z*cp.Z[0];
+            v.ay = p.x*cp.X[1] - p.y*cp.Y[1] - p.z*cp.Z[1];
+            v.az = p.x*cp.X[2] - p.y*cp.Y[2] - p.z*cp.Z[2];
         };
-        for (const FrustumLine& line : tmpl.lines) {
-            std::vector<VL>& out = cam_rgb ? color_list(line.dim ? key_dim : key_bright)
-                                           : (selected ? hot : (line.dim ? dim : bright));
-            size_t n = line.pts.size();
-            for (size_t j = 0; j + 1 < n; j++) {
-                emit(out, line.pts[j]);
-                emit(out, line.pts[j+1]);
-            }
-            if (line.closed && n > 1) {
-                emit(out, line.pts[n-1]);
-                emit(out, line.pts[0]);
-            }
+        // A segment's deltas: its other endpoint's offset subtracted.
+        auto segment = [&](VL*& out, const P3& a, const P3& b) {
+            VL* first = out;
+            put(out, a);
+            put(out, b);
+            first[0].dx = first[0].ax - first[1].ax;
+            first[0].dy = first[0].ay - first[1].ay;
+            first[0].dz = first[0].az - first[1].az;
+            first[1].dx = -first[0].dx; first[1].dy = -first[0].dy; first[1].dz = -first[0].dz;
+        };
+        for (const FrustumLine& line : cp.t->shape.lines) {
+            VL*& out = line.dim && !cp.one_stream ? dim_out : bright_out;
+            const size_t n = line.pts.size();
+            for (size_t j = 0; j + 1 < n; j++) segment(out, line.pts[j], line.pts[j+1]);
+            if (line.closed && n > 1) segment(out, line.pts[n-1], line.pts[0]);
         }
         // Anchor lines: apex -> corner / view direction, subdivided so they
         // curve correctly under nonlinear display projections.
-        for (const P3& p : tmpl.anchors) {
-            std::vector<VL>& out = cam_rgb ? color_list(key_bright) : (selected ? hot : bright);
-            for (int j = 0; j < kASeg; j++) {
-                emit(out, {p.x*j/kASeg, p.y*j/kASeg, p.z*j/kASeg});
-                emit(out, {p.x*(j+1)/kASeg, p.y*(j+1)/kASeg, p.z*(j+1)/kASeg});
-            }
-        }
+        for (const P3& p : cp.t->shape.anchors)
+            for (int j = 0; j < kASeg; j++)
+                segment(bright_out, {p.x*j/kASeg, p.y*j/kASeg, p.z*j/kASeg},
+                        {p.x*(j+1)/kASeg, p.y*(j+1)/kASeg, p.z*(j+1)/kASeg});
     }
-    _num_cam_sel = (int64_t)hot.size();
-    _num_cam_bright = (int64_t)bright.size();
-    std::vector<VL> cams = std::move(hot);
-    cams.insert(cams.end(), bright.begin(), bright.end());
-    cams.insert(cams.end(), dim.begin(), dim.end());
+    _num_cam_sel = group_size[kHot];
+    _num_cam_bright = group_size[kBright];
     _cam_groups.clear();
-    for (uint32_t key : color_order) {
-        const std::vector<VL>& v = by_color[key];
+    for (size_t k = 0; k < color_order.size(); k++) {
         CamGroup g;
-        g.first = (int64_t)cams.size();
-        g.count = (int64_t)v.size();
-        for (int j = 0; j < 3; j++) g.rgb[j] = ((key >> (8 * (2 - j))) & 255) / 255.0f;
+        g.first = group_first[kColor0 + k];
+        g.count = group_size[kColor0 + k];
+        for (int j = 0; j < 3; j++) g.rgb[j] = ((color_order[k] >> (8 * (2 - j))) & 255) / 255.0f;
         _cam_groups.push_back(g);
-        cams.insert(cams.end(), v.begin(), v.end());
     }
-    _num_cam_verts = (int64_t)cams.size();
-    fill_line_deltas(cams, /*delta_from_aux=*/true);
+    _num_cam_verts = n_cam_verts;
 
     _base_cam_size = viewer_camera_size_heuristic(post) * (float)sA;
 
@@ -968,17 +1003,11 @@ bool PreviewRenderer::build(const ParsedDataset& ds, const PostSplitCameras& pos
         vao = va;
         vbo = vb;
     };
-    make_vao(_vao_pts, _vbo_pts, pts.data(), pts.size() * sizeof(V),
+    make_vao(_vao_pts, _vbo_pts, pts.get(), (size_t)n_pts * sizeof(V),
              sizeof(V), false);
     _pts_stride = stride;
-    _pts_rgb.resize(pts.size() * 3);
-    for (size_t i = 0; i < pts.size(); i++) {
-        _pts_rgb[i * 3] = pts[i].ax;
-        _pts_rgb[i * 3 + 1] = pts[i].ay;
-        _pts_rgb[i * 3 + 2] = pts[i].az;
-    }
     _pts_tinted = false;
-    make_vao(_vao_cam, _vbo_cam, cams.data(), cams.size() * sizeof(VL),
+    make_vao(_vao_cam, _vbo_cam, cams.get(), (size_t)n_cam_verts * sizeof(VL),
              sizeof(VL), true);
 
     _gl_ok = true;
@@ -1047,7 +1076,7 @@ unsigned PreviewRenderer::render(int W, int H, const float view[16],
                                  float scene_radius, float view_dist,
                                  const float view_target[3], bool show_cams,
                                  float frustum_scale, bool show_grid,
-                                 float ortho_back, const PreviewStyle* style) {
+                                 const PreviewStyle* style) {
     if (!_built || !_gl_ok || W < 1 || H < 1) return 0;
     if (!ensure_fbo(W, H)) return 0;
     static const PreviewStyle kViewport;
@@ -1058,10 +1087,6 @@ unsigned PreviewRenderer::render(int W, int H, const float view[16],
     // what it must do is hold a camera that a placement moved a long way off.
     float zn = std::max(1e-7f, 0.002f * std::min(scene_radius, view_dist));
     float zf = std::max({10.0f * zn, 500.0f * scene_radius, 20.0f * view_dist});
-    if (ortho_back > 0.0f) {
-        zn = std::max(zn, ortho_back - zf);
-        zf = ortho_back + zf;
-    }
 
     glx::BindFramebuffer(GL_FRAMEBUFFER, (GLuint)_fbo);
     glViewport(0, 0, W, H);
@@ -1185,7 +1210,7 @@ unsigned PreviewRenderer::render(int W, int H, const float view[16],
         }
     }
 
-    if (_ov_visible && _ov) draw_overlay(view);
+    if (_ov_visible && _ov) draw_overlay(view, proj == PreviewProjection::Orthographic);
 
     glx::BindVertexArray(0);
     glx::UseProgram(0);
@@ -1310,7 +1335,7 @@ void PreviewRenderer::upload_overlay() {
 
 // A translucent fill that writes no depth, then the silhouette dashed; the
 // outline follows the eye, so it is rebuilt every frame.
-void PreviewRenderer::draw_overlay(const float view[16]) {
+void PreviewRenderer::draw_overlay(const float view[16], bool orthographic) {
     if (_ov != _ov_uploaded) upload_overlay();
     if (!_ov_local || !_vao_ov) return;
     float eye[3];
@@ -1334,7 +1359,7 @@ void PreviewRenderer::draw_overlay(const float view[16]) {
     std::vector<float> seg;
     for (const spirula::RegionOverlay::Layer& l : layers) {
         first.push_back((int64_t)lines.size());
-        spirula::region_outline(l, eye, seg);
+        spirula::region_outline(l, eye, seg, orthographic ? view + 8 : nullptr);
         for (size_t i = 0; i + 6 <= seg.size(); i += 6) {
             const float* a = &seg[i];
             const float* b = &seg[i + 3];

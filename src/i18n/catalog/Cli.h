@@ -421,40 +421,19 @@ SS_MSG(train_app_flags_header,
     RU("флаги приложения:"),
     TR("uygulama seçenekleri:"));
 SS_MSG(train_device_help,
-    EN("Compute device to train on (default: auto): an index, part of a name, "
-       "`auto`, or uuid:<32 hex digits>. The device list prints at startup."),
-    JA("学習に使う計算デバイス（既定は自動）: 番号、名前の一部、`auto`、または "
-       "uuid:<32 桁の 16 進数>。デバイスの一覧は起動時に表示されます。"),
-    ZH_HANS("用于训练的计算设备（默认自动）：序号、名称的一部分、`auto`，"
-            "或 uuid:<32 位十六进制>。设备列表会在启动时打印。"),
-    ZH_HANT("用於訓練的計算裝置（預設自動）：序號、名稱的一部分、`auto`，"
-            "或 uuid:<32 位十六進位>。裝置清單會在啟動時列出。"),
-    KO("학습에 쓸 연산 장치(기본값은 자동): 번호, 이름의 일부, `auto`, 또는 "
-       "uuid:<32자리 16진수>. 장치 목록은 시작할 때 출력됩니다."),
-    DE("Rechengerät für das Training (Standard: automatisch): ein Index, ein "
-       "Teil des Namens, `auto` oder uuid:<32 Hexziffern>. Die Geräteliste wird "
-       "beim Start ausgegeben."),
-    FR("Périphérique de calcul pour l'entraînement (par défaut : automatique) : "
-       "un indice, une partie d'un nom, `auto` ou uuid:<32 chiffres "
-       "hexadécimaux>. La liste des périphériques s'affiche au démarrage."),
-    ES("Dispositivo de cálculo con el que entrenar (por defecto: automático): un "
-       "índice, parte de un nombre, `auto` o uuid:<32 dígitos hexadecimales>. La "
-       "lista de dispositivos se imprime al arrancar."),
-    PT("Dispositivo de cálculo para treinar (padrão: automático): um índice, "
-       "parte de um nome, `auto` ou uuid:<32 dígitos hexadecimais>. A lista de "
-       "dispositivos é impressa na inicialização."),
-    IT("Dispositivo di calcolo su cui addestrare (predefinito: automatico): un "
-       "indice, parte di un nome, `auto` o uuid:<32 cifre esadecimali>. L'elenco "
-       "dei dispositivi viene stampato all'avvio."),
-    NL("Rekenapparaat om op te trainen (standaard: automatisch): een index, deel "
-       "van een naam, `auto` of uuid:<32 hexcijfers>. De apparatenlijst wordt "
-       "bij het starten afgedrukt."),
-    RU("Вычислительное устройство для обучения (по умолчанию автоматически): "
-       "номер, часть имени, `auto` или uuid:<32 шестнадцатеричные цифры>. "
-       "Список устройств печатается при запуске."),
-    TR("Eğitimin yapılacağı işlem aygıtı (varsayılan: otomatik): bir sıra, adın "
-       "bir parçası, `auto` veya uuid:<32 onaltılık basamak>. Aygıt listesi "
-       "başlangıçta yazdırılır."));
+    EN("Compute device to train on (default: auto): an index, part of a name, `auto`, or uuid:<32 hex digits>. The device list prints at startup."),
+    JA("学習に使う計算デバイス（既定は自動）: 番号、名前の一部、`auto`、または uuid:<32 桁の 16 進数>。デバイスの一覧は起動時に表示されます。"),
+    ZH_HANS("用于训练的计算设备（默认自动）：序号、名称的一部分、`auto`，或 uuid:<32 位十六进制>。设备列表会在启动时打印。"),
+    ZH_HANT("用於訓練的計算裝置（預設自動）：序號、名稱的一部分、`auto`，或 uuid:<32 位十六進位>。裝置清單會在啟動時列出。"),
+    KO("학습에 쓸 연산 장치(기본값은 자동): 번호, 이름의 일부, `auto`, 또는 uuid:<32자리 16진수>. 장치 목록은 시작할 때 출력됩니다."),
+    DE("Rechengerät für das Training (Standard: automatisch): ein Index, ein Teil des Namens, `auto` oder uuid:<32 Hexziffern>. Die Geräteliste wird beim Start ausgegeben."),
+    FR("GPU d’entraînement (auto par défaut) : indice, partie du nom, auto ou uuid:<32 chiffres hex>. Liste affichée au démarrage."),
+    ES("GPU de entrenamiento (auto por defecto): índice, parte del nombre, auto o uuid:<32 dígitos hex>. Lista al iniciar."),
+    PT("GPU de treino (padrão auto): índice, parte do nome, auto ou uuid:<32 dígitos hex>. Lista no arranque."),
+    IT("GPU di addestramento (predefinito auto): indice, parte del nome, auto o uuid:<32 cifre hex>. Elenco all’avvio."),
+    NL("Rekenapparaat om op te trainen (standaard: automatisch): een index, deel van een naam, `auto` of uuid:<32 hexcijfers>. De apparatenlijst wordt bij het starten afgedrukt."),
+    RU("GPU обучения (по умолчанию auto): номер, часть имени, auto или uuid:<32 hex-цифры>. Список выводится при старте."),
+    TR("Eğitimin yapılacağı işlem aygıtı (varsayılan: otomatik): bir sıra, adın bir parçası, `auto` veya uuid:<32 onaltılık basamak>. Aygıt listesi başlangıçta yazdırılır."));
 // The CUDA backend has no device identity to carry, so its selector is an
 // ordinal and nothing else.
 SS_MSG(train_device_help_cuda,
@@ -980,47 +959,19 @@ SS_MSG(sam_track_summary,
        "yazma {5})"));
 
 SS_MSG(sam_no_video_decoder,
-    EN("this build has no in-process video decoder: it is compiled only with "
-       "-DSS_ENABLE_PATENTED=ON (see cmake/SsOptions.cmake). Use ffmpeg to "
-       "inspect a file or extract frames instead."),
-    JA("このビルドにはプロセス内の動画デコーダーがありません。"
-       "-DSS_ENABLE_PATENTED=ON でのみ組み込まれます（cmake/SsOptions.cmake 参照）。"
-       "ファイルの確認やフレームの取り出しには ffmpeg を使ってください。"),
-    ZH_HANS("本版本没有进程内视频解码器：它只在 -DSS_ENABLE_PATENTED=ON 时编译"
-            "（见 cmake/SsOptions.cmake）。请改用 ffmpeg 查看文件或提取帧。"),
-    ZH_HANT("本版本沒有行程內視訊解碼器：它只在 -DSS_ENABLE_PATENTED=ON 時編譯"
-            "（見 cmake/SsOptions.cmake）。請改用 ffmpeg 檢視檔案或擷取影格。"),
-    KO("이 빌드에는 프로세스 내 비디오 디코더가 없습니다: -DSS_ENABLE_PATENTED=ON "
-       "일 때만 컴파일됩니다(cmake/SsOptions.cmake 참고). 파일 확인이나 프레임 "
-       "추출에는 ffmpeg 을 쓰세요."),
-    DE("dieser Build hat keinen prozessinternen Videodekoder: er wird nur mit "
-       "-DSS_ENABLE_PATENTED=ON übersetzt (siehe cmake/SsOptions.cmake). "
-       "Nutzen Sie ffmpeg, um eine Datei zu prüfen oder Einzelbilder zu "
-       "entnehmen."),
-    FR("cette version n'a pas de décodeur vidéo intégré : il n'est compilé "
-       "qu'avec -DSS_ENABLE_PATENTED=ON (voir cmake/SsOptions.cmake). Utilisez "
-       "ffmpeg pour inspecter un fichier ou en extraire des images."),
-    ES("esta compilación no tiene descodificador de vídeo en el propio proceso: "
-       "solo se compila con -DSS_ENABLE_PATENTED=ON (mira "
-       "cmake/SsOptions.cmake). Usa ffmpeg para inspeccionar un archivo o "
-       "extraer fotogramas."),
-    PT("esta compilação não tem decodificador de vídeo no próprio processo: ele "
-       "só é compilado com -DSS_ENABLE_PATENTED=ON (veja "
-       "cmake/SsOptions.cmake). Use o ffmpeg para inspecionar um arquivo ou "
-       "extrair quadros."),
-    IT("questa build non ha un decodificatore video nel processo: viene "
-       "compilato solo con -DSS_ENABLE_PATENTED=ON (veda "
-       "cmake/SsOptions.cmake). Usi ffmpeg per ispezionare un file o estrarne i "
-       "fotogrammi."),
-    NL("deze build heeft geen videodecoder in het proces zelf: die wordt alleen "
-       "met -DSS_ENABLE_PATENTED=ON gecompileerd (zie cmake/SsOptions.cmake). "
-       "Gebruik ffmpeg om een bestand te bekijken of er beelden uit te halen."),
-    RU("в этой сборке нет внутрипроцессного видеодекодера: он собирается только "
-       "с -DSS_ENABLE_PATENTED=ON (см. cmake/SsOptions.cmake). Для просмотра "
-       "файла или извлечения кадров используйте ffmpeg."),
-    TR("bu derlemede süreç içi video çözücü yok: yalnızca "
-       "-DSS_ENABLE_PATENTED=ON ile derlenir (bkz. cmake/SsOptions.cmake). Bir "
-       "dosyayı incelemek ya da kare çıkarmak için ffmpeg kullanın."));
+    EN("No built-in video decoder. Use ffmpeg to inspect or extract frames, or build with -DSS_ENABLE_PATENTED=ON (cmake/SsOptions.cmake)."),
+    JA("内蔵動画デコーダーがありません。ffmpegで確認・抽出するか、-DSS_ENABLE_PATENTED=ON でビルドしてください（cmake/SsOptions.cmake）。"),
+    ZH_HANS("无内置视频解码器。用 ffmpeg 检查或提取帧，或以 -DSS_ENABLE_PATENTED=ON 构建（cmake/SsOptions.cmake）。"),
+    ZH_HANT("無內建影片解碼器。用 ffmpeg 檢查或擷取影格，或以 -DSS_ENABLE_PATENTED=ON 建置（cmake/SsOptions.cmake）。"),
+    KO("내장 동영상 디코더가 없습니다. ffmpeg로 확인/추출하거나 -DSS_ENABLE_PATENTED=ON으로 빌드하세요(cmake/SsOptions.cmake)."),
+    DE("Kein integrierter Videodecoder. ffmpeg zum Prüfen/Extrahieren nutzen oder mit -DSS_ENABLE_PATENTED=ON bauen (cmake/SsOptions.cmake)."),
+    FR("Pas de décodeur vidéo intégré. Inspecter/extraire via ffmpeg ou compiler avec -DSS_ENABLE_PATENTED=ON (cmake/SsOptions.cmake)."),
+    ES("Sin decodificador de vídeo integrado. Usa ffmpeg para inspeccionar/extraer o compila con -DSS_ENABLE_PATENTED=ON (cmake/SsOptions.cmake)."),
+    PT("Sem descodificador de vídeo interno. Use ffmpeg para inspecionar/extrair ou compile com -DSS_ENABLE_PATENTED=ON (cmake/SsOptions.cmake)."),
+    IT("Nessun decoder video integrato. Usa ffmpeg per ispezionare/estrarre o compila con -DSS_ENABLE_PATENTED=ON (cmake/SsOptions.cmake)."),
+    NL("Geen ingebouwde videodecoder. Gebruik ffmpeg voor inspectie/extractie of bouw met -DSS_ENABLE_PATENTED=ON (cmake/SsOptions.cmake)."),
+    RU("Нет встроенного видеодекодера. Используйте ffmpeg для просмотра/извлечения или соберите с -DSS_ENABLE_PATENTED=ON (cmake/SsOptions.cmake)."),
+    TR("Yerleşik video çözücü yok. İnceleme/çıkarma için ffmpeg kullanın veya -DSS_ENABLE_PATENTED=ON ile derleyin (cmake/SsOptions.cmake)."));
 
 SS_MSG(sam_video_decode,
     EN("Vulkan video decode: available"),
@@ -1324,60 +1275,19 @@ SS_MSG(license_ask_declined,
 // {0} is the licence's name, {1} its URL, {2} the family to pass to --accept-license.
 // The flag and `=yes` are identifiers and stay as typed.
 SS_MSG(license_no_terminal,
-    EN("The licence '{0}' has not been accepted, so this model cannot be downloaded "
-       "or loaded, and there is no terminal to ask on.\n  Read the terms at {1}, "
-       "then pass\n    --accept-license {2}=yes\n  (without =yes it asks on a "
-       "terminal), or accept it in the application's download dialog."),
-    JA("ライセンス '{0}' に同意していないため、このモデルをダウンロードも読み込みも"
-       "できません。確認を求める端末もありません。\n  {1} で条件を読んでから、次を"
-       "指定してください\n    --accept-license {2}=yes\n  （=yes を付けない場合は端末で"
-       "確認します）。アプリのダウンロードダイアログで同意することもできます。"),
-    ZH_HANS("尚未接受许可协议 '{0}'，因此无法下载或加载此模型，而且没有可供询问的终端。\n"
-            "  请先阅读 {1} 上的条款，然后传入\n    --accept-license {2}=yes\n"
-            "  （不带 =yes 时会在终端中询问），或在应用的下载对话框中接受。"),
-    ZH_HANT("尚未接受授權條款 '{0}'，因此無法下載或載入此模型，而且沒有可供詢問的終端機。\n"
-            "  請先閱讀 {1} 上的條款，然後傳入\n    --accept-license {2}=yes\n"
-            "  （不帶 =yes 時會在終端機中詢問），或在應用程式的下載對話框中接受。"),
-    KO("라이선스 '{0}'에 동의하지 않았으므로 이 모델을 내려받거나 불러올 수 없으며, "
-       "물어볼 터미널도 없습니다.\n  {1}에서 조건을 읽은 다음 다음을 지정하세요\n"
-       "    --accept-license {2}=yes\n  (=yes가 없으면 터미널에서 묻습니다). "
-       "앱의 다운로드 대화상자에서 동의할 수도 있습니다."),
-    DE("Die Lizenz '{0}' wurde nicht angenommen, deshalb kann dieses Modell weder "
-       "heruntergeladen noch geladen werden, und es gibt kein Terminal zum Nachfragen.\n"
-       "  Lesen Sie die Bedingungen unter {1} und übergeben Sie dann\n"
-       "    --accept-license {2}=yes\n  (ohne =yes wird im Terminal gefragt) oder "
-       "nehmen Sie sie im Download-Dialog der Anwendung an."),
-    FR("La licence '{0}' n'a pas été acceptée : ce modèle ne peut donc être ni "
-       "téléchargé ni chargé, et il n'y a pas de terminal où poser la question.\n"
-       "  Lisez les conditions à {1}, puis passez\n    --accept-license {2}=yes\n"
-       "  (sans =yes, la question est posée dans un terminal), ou acceptez-la dans la "
-       "boîte de dialogue de téléchargement de l'application."),
-    ES("No se ha aceptado la licencia '{0}', así que este modelo no se puede descargar "
-       "ni cargar, y no hay un terminal donde preguntar.\n  Lea los términos en {1} "
-       "y luego pase\n    --accept-license {2}=yes\n  (sin =yes se pregunta en un "
-       "terminal), o acéptela en el cuadro de descarga de la aplicación."),
-    PT("A licença '{0}' não foi aceita, então este modelo não pode ser baixado nem "
-       "carregado, e não há terminal para perguntar.\n  Leia os termos em {1} e "
-       "depois passe\n    --accept-license {2}=yes\n  (sem =yes ele pergunta em um "
-       "terminal), ou aceite na janela de download do aplicativo."),
-    IT("La licenza '{0}' non è stata accettata, quindi questo modello non può essere "
-       "scaricato né caricato, e non c'è un terminale a cui chiedere.\n  Legga i "
-       "termini su {1}, poi passi\n    --accept-license {2}=yes\n  (senza =yes lo "
-       "chiede in un terminale), oppure la accetti nella finestra di download "
-       "dell'applicazione."),
-    NL("De licentie '{0}' is niet aanvaard, dus dit model kan niet worden gedownload "
-       "of geladen, en er is geen terminal om het te vragen.\n  Lees de voorwaarden "
-       "op {1} en geef dan mee\n    --accept-license {2}=yes\n  (zonder =yes wordt "
-       "het in een terminal gevraagd), of aanvaard de licentie in het "
-       "downloadvenster van de toepassing."),
-    RU("Лицензия '{0}' не принята, поэтому эту модель нельзя ни загрузить, ни "
-       "открыть, а терминала для вопроса нет.\n  Прочитайте условия по адресу {1} "
-       "и передайте\n    --accept-license {2}=yes\n  (без =yes вопрос задаётся в "
-       "терминале) или примите лицензию в диалоге загрузки приложения."),
-    TR("'{0}' lisansı kabul edilmedi, bu yüzden bu model indirilemez veya "
-       "yüklenemez ve soru sorulacak bir terminal yok.\n  Koşulları {1} adresinde "
-       "okuyun, ardından şunu verin\n    --accept-license {2}=yes\n  (=yes olmadan "
-       "terminalde sorulur) ya da uygulamanın indirme penceresinde kabul edin."));
+    EN("Licence '{0}' not accepted: cannot download/load. No terminal available.\n- Read {1}, then pass --accept-license {2}=yes.\n- Or accept in the app’s download dialog. Without =yes a terminal is required."),
+    JA("ライセンス '{0}' が未同意で、ダウンロード・読み込み不可。確認用端末もありません。\n- {1} を読み、--accept-license {2}=yes を指定してください。\n- アプリのダウンロード画面でも同意できます。=yes なしは端末が必要です。"),
+    ZH_HANS("尚未接受许可 '{0}'，无法下载/加载，也没有可用终端。\n- 阅读 {1}，然后传入 --accept-license {2}=yes。\n- 也可在应用下载对话框中接受。不带 =yes 时需要终端。"),
+    ZH_HANT("尚未接受授權 '{0}'，無法下載/載入，也沒有可用終端機。\n- 閱讀 {1}，然後傳入 --accept-license {2}=yes。\n- 也可在應用程式下載對話框中接受。不帶 =yes 時需要終端機。"),
+    KO("라이선스 '{0}' 미동의: 다운로드/로드 불가. 사용 가능한 터미널도 없습니다.\n- {1}을 읽은 뒤 --accept-license {2}=yes를 지정하세요.\n- 앱 다운로드 창에서도 동의할 수 있습니다. =yes가 없으면 터미널이 필요합니다."),
+    DE("Lizenz '{0}' nicht angenommen: kein Download/Laden. Kein Terminal verfügbar.\n- {1} lesen, dann --accept-license {2}=yes angeben.\n- Oder im Download-Dialog zustimmen. Ohne =yes ist ein Terminal nötig."),
+    FR("Licence '{0}' non acceptée : téléchargement/chargement impossible. Aucun terminal.\n- Lire {1}, puis passer --accept-license {2}=yes.\n- Ou accepter dans le dialogue de téléchargement. Sans =yes, un terminal est requis."),
+    ES("Licencia '{0}' no aceptada: no se puede descargar/cargar. No hay terminal.\n- Lee {1} y pasa --accept-license {2}=yes.\n- O acepta en el diálogo de descarga. Sin =yes se necesita terminal."),
+    PT("Licença '{0}' não aceite: não pode descarregar/carregar. Sem terminal disponível.\n- Leia {1} e passe --accept-license {2}=yes.\n- Ou aceite no diálogo de transferência. Sem =yes é necessário um terminal."),
+    IT("Licenza '{0}' non accettata: download/caricamento impossibile. Nessun terminale.\n- Leggi {1}, poi passa --accept-license {2}=yes.\n- Oppure accetta nel dialogo di download. Senza =yes serve un terminale."),
+    NL("Licentie '{0}' niet aanvaard: downloaden/laden niet mogelijk. Geen terminal beschikbaar.\n- Lees {1} en geef --accept-license {2}=yes mee.\n- Of aanvaard in het downloadvenster. Zonder =yes is een terminal vereist."),
+    RU("Лицензия '{0}' не принята: скачивание/загрузка запрещены. Терминал недоступен.\n- Прочтите {1}, затем укажите --accept-license {2}=yes.\n- Или примите в окне загрузки приложения. Без =yes нужен терминал."),
+    TR("'{0}' lisansı kabul edilmedi: indirme/yükleme yapılamaz. Terminal yok.\n- {1} koşullarını okuyup --accept-license {2}=yes verin.\n- Ya da uygulamanın indirme penceresinde kabul edin. =yes olmadan terminal gerekir."));
 
 SS_MSG(license_no_home,
     EN("(Neither XDG_CONFIG_HOME nor HOME is set, so no acceptance can be read or "

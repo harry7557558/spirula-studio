@@ -1,5 +1,6 @@
 // MeshImport.cpp -- see MeshImport.h.
 
+#include "core/BufferedFile.h"
 #include "mesh/MeshImport.h"
 
 #include "data/Json.h"
@@ -49,7 +50,7 @@ std::string join_path(const std::string& dir, const std::string& name) {
 }
 
 std::string read_file(const std::string& path, bool binary, bool* ok) {
-    std::ifstream f(path, binary ? std::ios::binary : std::ios::in);
+    spirula::BufferedInputFile f(path, binary ? std::ios::binary : std::ios::in);
     if (!f) { if (ok) *ok = false; return {}; }
     std::ostringstream ss;
     ss << f.rdbuf();

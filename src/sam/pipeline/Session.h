@@ -47,7 +47,7 @@ struct Session::Impl {
     std::vector<std::vector<int32_t>> text_cache_ids;
     size_t                            text_cache_next = 0;   // round-robin once full
 
-    Result runConcept(const ConceptPrompt& prompt);
+    std::vector<Result> runConcepts(const std::vector<ConceptPrompt>& prompts);
 
     // Resize + threshold + read back one mask per surviving detection.
     void exportMasks(const nn::Tensor& masks, int64_t n, int64_t mask_size,

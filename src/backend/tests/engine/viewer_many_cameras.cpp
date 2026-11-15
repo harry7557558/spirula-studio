@@ -69,7 +69,7 @@ int main() {
         for (bool cams : {true, false}) {
             engine_blit_view("rgb", ttv(d_rgb, {H, W, 3}),
                              ttv(d_depth, {H, W, 1}), ttv(d_alpha, {H, W, 1}),
-                             0, "NONE", ttv(d_vi, {1, 4}), ttv(d_vm, {4, 4}),
+                             false, 0, "NONE", ttv(d_vi, {1, 4}), ttv(d_vm, {4, 4}),
                              ttv(d_vd, {1, kCameraDistortionParams}), cams,
                              /*show_overlay=*/false, 0.f, 0.f, 0.f, 0.f,
                              ttv(d_out, {H, W, 3}));

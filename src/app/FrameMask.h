@@ -175,7 +175,7 @@ void apply_mask_set(FrameStencil& stencil, const MaskSet& set);
 // camera, which is what a multi-track extraction writes (cam0/, cam1/). Keys
 // are relative to `dir`, "" for `dir` itself; each list is sorted.
 std::map<std::string, std::vector<std::string>> group_frames_by_camera(
-    const std::string& dir, const std::string& skip_dir = "");
+    const std::string& dir, const std::vector<std::string>& skip_dirs = {});
 
 struct FrameStencilRun {
     std::string image_dir, mask_dir;
@@ -190,7 +190,7 @@ struct FrameStencilRun {
     BorderDetectOptions detect;
     bool replace = false;      // ignore masks already in mask_dir
     bool dry_run = false;      // resolve the shapes and report, write nothing
-    std::string skip_dir;      // a subtree of image_dir not to walk
+    std::vector<std::string> skip_dirs;   // subtrees of image_dir not to walk
 };
 
 struct FrameStencilSinks {

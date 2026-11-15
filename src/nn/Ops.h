@@ -17,6 +17,7 @@
 #include "nn/vk/Memory.h"
 
 #include <cstdint>
+#include <string>
 
 namespace nn {
 
@@ -100,6 +101,41 @@ struct Nf4Opts {
 };
 void dequant_nf4(const Tensor& out, const Tensor& codes, const Tensor& absmax,
                  const Nf4Opts& opts = {});
+
+// ================
+// Metal (macOS)
+// ================
+
+// MPSGraph runs attention (no bias, packed rows) and GEMMs of at least 128x128
+// output where MoltenVK shares memory with Metal; the rest stays on Vulkan.
+// On by default; $SS_NN_METAL=0|1 sets it, and this pair overrides it at runtime.
+bool metal_enabled();
+void set_metal_enabled(bool on);
+// What was asked for and what runs, e.g. "on (SS_NN_METAL=1)", "off: <why>".
+std::string metal_status();
+struct MetalCounts {
+    uint64_t attention = 0, gemm = 0;   // ops MPSGraph ran
+    uint64_t compiles = 0;              // MPSGraph executables built
+    uint64_t evictions = 0;             // and dropped from the LRU
+    uint64_t sections = 0;              // Vulkan -> Metal -> Vulkan hand-offs
+    uint64_t rotations = 0;             // must stay 0, see nn/vk/MetalInterop.h
+};
+MetalCounts metal_counts();
+
+// While one is alive the Metal path runs attention and GEMM operands in fp16,
+// which the M5's GPU neural accelerators execute. It is its own parity tier: a
+// model opts in with its own flag and its own bars, and nothing in nn sets it.
+class Fp16Scope {
+public:
+    explicit Fp16Scope(bool on);
+    ~Fp16Scope();
+    Fp16Scope(const Fp16Scope&) = delete;
+    Fp16Scope& operator=(const Fp16Scope&) = delete;
+
+private:
+    bool prev_;
+};
+bool fp16_active();
 
 // ================
 // Normalization
@@ -275,11 +311,14 @@ void resize_nearest(const Tensor& out, const Tensor& in, float scale_y, float sc
 // kernel".
 void avgpool(const Tensor& out, const Tensor& in, int kernel, int stride = 0, int pad = 0);
 
+// torch's grid_sample padding_mode: 'zeros' reads zero outside, 'border'
+// clamps the source coordinate to the edge pixels first.
+enum class GridPad : uint32_t { Zeros = 0, Border = 1 };
+
 // out[N, C] = bilinear sample of in[H, W, C] at `pos`, an f32 [N, 2] tensor of
-// normalized (x, y) in [-1, 1]. Reads zero outside, i.e. torch's
-// padding_mode='zeros'. See the shader for why align_corners matters.
+// normalized (x, y) in [-1, 1]. See the shader for why align_corners matters.
 void grid_sample_points(const Tensor& out, const Tensor& in, const Tensor& pos,
-                        bool align_corners = true);
+                        bool align_corners = true, GridPad pad = GridPad::Zeros);
 
 // Warp-centered bilinear correlation, zero padding, channel dot scaled by 1/sqrt(C).
 // out[H,W,(2r+1)^2], window order (dy,dx); warp[H,W,2] uses align_corners=false.

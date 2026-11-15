@@ -272,8 +272,10 @@ GifWriter::~GifWriter() {
 }
 
 bool GifWriter::open(const std::string& path, int w, int h) {
+    if (!_io_buffer) _io_buffer.reset(new char[spirula::kFileBufferBytes]);
     _f = std::fopen(path.c_str(), "wb");
     if (!_f) return false;
+    std::setvbuf(_f, _io_buffer.get(), _IOFBF, spirula::kFileBufferBytes);
     std::vector<uint8_t> head = {'G', 'I', 'F', '8', '9', 'a'};
     put16(head, w);
     put16(head, h);

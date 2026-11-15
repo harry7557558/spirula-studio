@@ -126,8 +126,11 @@ std::tuple<
 
     // Opens the raster-backward phase: the screen-gradient buffer below shares
     // the tile intersector's arena (POOL_ALIAS_TABLE, core/PoolSlots.h).
+    const size_t aw_span = aw
+        ? DevicePool::arena_span({(size_t)num_splats * accum_lanes(accum_mode) * sizeof(float)})
+        : 0;
     pool_begin_phase(PoolPhase::RasterBwd,
-                     v_splats_s.has_value() ? 0 : pool_arena_span_like(splats_s));
+                     (v_splats_s.has_value() ? 0 : pool_arena_span_like(splats_s)) + aw_span);
     if (!v_splats_w.has_value())
         v_splats_w = Vanilla3DGS<0>::WorldBuffer::zeros_pool(
             splats_w, PoolSlot::RasterBwdVWorld);
@@ -136,8 +139,8 @@ std::tuple<
             splats_s, PoolSlot::RasterBwdVScreen);
     DeviceVector<float> o_accum_weight;
     if (aw) {
-        o_accum_weight.resize(PoolSlot::RasterBwdAccumWeight,
-                              num_splats * accum_lanes(accum_mode));
+        o_accum_weight.resize_reused(PoolSlot::RasterBwdAccumWeight,
+                                     num_splats * accum_lanes(accum_mode));
         o_accum_weight.zero();
     }
 
@@ -274,8 +277,11 @@ std::tuple<
 
     // Opens the raster-backward phase: the screen-gradient buffer below shares
     // the tile intersector's arena (POOL_ALIAS_TABLE, core/PoolSlots.h).
+    const size_t aw_span = aw
+        ? DevicePool::arena_span({(size_t)num_splats * accum_lanes(accum_mode) * sizeof(float)})
+        : 0;
     pool_begin_phase(PoolPhase::RasterBwd,
-                     v_splats_s.has_value() ? 0 : pool_arena_span_like(splats_s));
+                     (v_splats_s.has_value() ? 0 : pool_arena_span_like(splats_s)) + aw_span);
     if (!v_splats_w.has_value())
         v_splats_w = Vanilla3DGUT<0>::WorldBuffer::zeros_pool(
             splats_w, PoolSlot::RasterBwdVWorld);
@@ -292,8 +298,8 @@ std::tuple<
     }
     DeviceVector<float> o_accum_weight;
     if (aw) {
-        o_accum_weight.resize(PoolSlot::RasterBwdAccumWeight,
-                              num_splats * accum_lanes(accum_mode));
+        o_accum_weight.resize_reused(PoolSlot::RasterBwdAccumWeight,
+                                     num_splats * accum_lanes(accum_mode));
         o_accum_weight.zero();
     }
 

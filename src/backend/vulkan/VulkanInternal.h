@@ -123,5 +123,10 @@ void gpu_ts_resolve();
 // SS_PROFILE is set); reveals which kernel dominates device time.
 void gpu_ts_report_by_entry();
 
+// The step breakdown's bracket (backend::dispatch_timing_arm): a handle >= 0
+// while armed, -1 otherwise. Independent of the SS_PROFILE pair above.
+int  dispatch_ts_begin(VkCommandBuffer cb, const char* entry);
+void dispatch_ts_end(VkCommandBuffer cb, int handle);
+
 }  // namespace vk
 }  // namespace backend

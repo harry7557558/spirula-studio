@@ -55,6 +55,7 @@ visits them in:
 |---|---|---|---|
 | flat | 0.75, as `x^1.5` of images placed | -- | 0.25 |
 | bottom-up | 0.40, linear | 0.25 | 0.35 |
+| global | 0.75, initialization work | -- | 0.25 |
 
 The finishing solves took 19-28% of the flat mapper's step on three captures
 of 39-226 images. Placing is `x^1.5` because an image costs what the model it
@@ -82,3 +83,14 @@ estimates, the share done was 0.52 at 55% of the time and 0.875 at 88%.
 runner's clock, and the queue takes the per-stage averages of finished tasks.
 Evaluation, mask propagation, video export, edit saves and model downloads
 use the plain clock over their item or byte counts.
+
+Global initialization reports calibration pairs, relative poses, rotation solver
+iterations and positioning iterations. Its provisional work budget assigns 10%
+to calibration, 15% to relative poses, 5% to rotations, 5% to tracks and 65%
+to positioning and filtering. Components divide the last share by track count;
+a possible sensor-constrained second solve is reserved in advance. These are
+work estimates, not measured time shares; early convergence jumps forward.
+The same `GlobalInitialize` events feed both status.bin and the in-process
+consumer without resetting the mapping clock.
+Child-process runs poll status even without log output, so a silent solve
+reports at the same cadence as the snapshot writer.

@@ -64,7 +64,7 @@ void render_background_sh_forward(
         throw std::runtime_error(
             "render_background_sh_forward: sh_degree must be in [0, 4]");
 
-    const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
+    const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion, true);
 
     int64_t b = _batch_count(out_color, (int64_t)h * w * 3);
     if (b * h * w == 0) return;

@@ -289,7 +289,8 @@ void jac_impl<M : ICameraModel, let RIG : int>(uint tid) {
             } else {
                 bwd_diff(reproject<M>)(dp_pose, dp_intr, dp_X, obs, seed);
             }
-            for (int i = 0; i < 6; i++) Jc[row][i] = jRound(dp_pose.d[i] * sw);
+            for (int i = 0; i < 6; i++)
+                Jc[row][i] = u2 != 0 && i < 3 ? Real(0.0) : jRound(dp_pose.d[i] * sw);
             if (RIG != 0)
                 for (int i = 0; i < 6; i++) Jc[row][6 + i] = jRound(dp_ext.d[i] * sw);
             for (int i = 0; i < M.kNumIntr; i++) Jc[row][6 + NE + i] = jRound(dp_intr.d[i] * sw);

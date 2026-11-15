@@ -8,7 +8,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #if defined(_WIN32)
@@ -25,10 +27,15 @@ namespace i18n {
 
 namespace detail {
 std::atomic<Lang> g_current{kDefaultLang};
+std::atomic<bool> g_terminal_output{false};
 }
 
 void set_current(Lang l) {
     detail::g_current.store(l, std::memory_order_relaxed);
+}
+
+void set_terminal_output(bool enabled) {
+    detail::g_terminal_output.store(enabled, std::memory_order_relaxed);
 }
 
 const char* code(Lang l) {
@@ -368,6 +375,38 @@ bool can_break_before(unsigned int cp) {
 }
 
 }  // namespace
+
+const char* ascii_copy(const char* text) {
+    if (!text) return text;
+    const auto* p = reinterpret_cast<const unsigned char*>(text);
+    while (*p && *p < 128) ++p;
+    if (!*p) return text;
+
+    static std::mutex mutex;
+    // Msg pointers can outlive insertions into this cache.
+    static std::unordered_map<std::string, std::string> copies;
+    std::lock_guard<std::mutex> lock(mutex);
+    auto [it, inserted] = copies.try_emplace(text);
+    if (inserted) {
+        std::string& out = it->second;
+        out.assign(text, reinterpret_cast<const char*>(p));
+        while (*p) {
+            const Ch c = decode_one(p);
+            if (c.cp < 128 && c.bytes == 1) {
+                out.push_back(static_cast<char>(c.cp));
+            } else {
+                switch (c.cp) {
+#define SS_ASCII_PUNCTUATION(cp, replacement) case cp: out += replacement; break;
+#include "i18n/AsciiPunctuation.inc"
+#undef SS_ASCII_PUNCTUATION
+                    default: out.push_back('?'); break;
+                }
+            }
+            p += c.bytes;
+        }
+    }
+    return it->second.c_str();
+}
 
 std::vector<std::string> wrap(const std::string& text, int columns) {
     std::vector<std::string> out;

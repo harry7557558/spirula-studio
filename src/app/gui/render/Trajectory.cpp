@@ -191,6 +191,7 @@ Trajectory::Trajectory(const RenderProject& p, bool measure) : _p(p) {
     _rot.resize((size_t)K * 4);
     _roll.resize((size_t)K);
     _logf.resize((size_t)K);
+    _log_ortho_distance.resize((size_t)K);
     for (int i = 0; i < K; i++) {
         const Keyframe& ki = key(i);
         for (int d = 0; d < 3; d++) {
@@ -206,6 +207,7 @@ Trajectory::Trajectory(const RenderProject& p, bool measure) : _p(p) {
         for (int c = 0; c < 4; c++) _rot[(size_t)i * 4 + c] = q[c];
         _roll[(size_t)i] = ki.roll;
         _logf[(size_t)i] = std::log(std::max(_lens[(size_t)_src[(size_t)i]].focal, 1e-6));
+        _log_ortho_distance[(size_t)i] = std::log(std::max(_lens[(size_t)_src[(size_t)i]].ortho_distance, 1e-12));
     }
     const double rot_sign = _closed && (_rot[(size_t)n * 4] * _rot[0] + _rot[(size_t)n * 4 + 1] * _rot[1] +
                                         _rot[(size_t)n * 4 + 2] * _rot[2] +
@@ -379,6 +381,7 @@ Trajectory::Trajectory(const RenderProject& p, bool measure) : _p(p) {
     solve(3, _tgt, _dtgt, aimed, 1.0, true);
     solve(1, _roll, _droll, aimed, 1.0, false);
     solve(1, _logf, _dfocal, same_projection, 1.0, true);
+    solve(1, _log_ortho_distance, _dortho_distance, same_projection, 1.0, true);
 
     // Arc length against the parameter, for constant speed and the readout.
     _visit.assign(k.size(), 0.0);
@@ -506,6 +509,7 @@ CameraState Trajectory::eval(double u) const {
     c.lens = f >= 1.0 ? lb : la;
     if (la.projection == lb.projection) {
         c.lens.focal = std::exp(channel(_logf, _dfocal, 1, 0));
+        c.lens.ortho_distance = std::exp(channel(_log_ortho_distance, _dortho_distance, 1, 0));
         if (la.tier == lb.tier)
             for (int d = 0; d < kLensCoeffs; d++)
                 c.lens.dist[d] = (float)(la.dist[d] + (lb.dist[d] - la.dist[d]) * smoothstep(f));

@@ -21,6 +21,7 @@
 #include <cstring>
 #include <istream>
 #include <ostream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -179,14 +180,17 @@ struct NpyInfo {
 inline NpyInfo npy_locate(std::istream& in, uint64_t npy_start, uint64_t member_size) {
     in.clear();
     in.seekg((std::streamoff)npy_start, std::ios::beg);
-    char pre[10];
+    if (member_size < 10) throw std::runtime_error("truncated NPY header");
+    char pre[10]{};
     in.read(pre, 10);                                  // magic(6) + ver(2) + ...
+    if (!in || std::memcmp(pre, "\x93NUMPY", 6) != 0 || pre[6] < 1 || pre[6] > 3)
+        throw std::runtime_error("invalid NPY header");
     uint8_t major = (uint8_t)pre[6];
     uint32_t hlen;
     uint32_t prefix;
     if (major >= 2) {                                  // v2/v3: 4-byte hlen
         // pre[8..9] are the first 2 bytes of a 4-byte length; read 2 more.
-        char more[2]; in.read(more, 2);
+        char more[2]{}; in.read(more, 2);
         hlen = (uint8_t)pre[8] | ((uint8_t)pre[9] << 8)
              | ((uint8_t)more[0] << 16) | ((uint8_t)more[1] << 24);
         prefix = 12;
@@ -194,8 +198,11 @@ inline NpyInfo npy_locate(std::istream& in, uint64_t npy_start, uint64_t member_
         hlen = (uint8_t)pre[8] | ((uint8_t)pre[9] << 8);
         prefix = 10;
     }
+    if (!in || uint64_t(prefix) + hlen > member_size)
+        throw std::runtime_error("NPY header exceeds archive member");
     std::string dict(hlen, '\0');
-    in.read(&dict[0], hlen);
+    in.read(dict.data(), hlen);
+    if (!in) throw std::runtime_error("truncated NPY header");
     std::string descr;
     size_t d = dict.find("'descr':");
     if (d != std::string::npos) {

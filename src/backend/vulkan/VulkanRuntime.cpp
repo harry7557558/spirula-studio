@@ -23,6 +23,8 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
+#include <unordered_set>
 #include <vector>
 #include "core/Env.h"
 
@@ -555,6 +557,13 @@ void host_free_pinned(void* ptr) {
 
 namespace {
 
+// vkCmdCopyBuffer, bracketed for the step breakdown like a dispatch.
+void timed_copy(VkCommandBuffer cb, VkBuffer src, VkBuffer dst, const VkBufferCopy& c) {
+    const int dt = vk::dispatch_ts_begin(cb, "@copy");
+    vkCmdCopyBuffer(cb, src, dst, 1, &c);
+    vk::dispatch_ts_end(cb, dt);
+}
+
 struct ResolvedPtr {
     bool known = false;
     bool is_device = false;
@@ -588,7 +597,7 @@ void staged_upload_sync(const ResolvedPtr& dst, const void* src,
         std::memcpy(reg.mapped, (const char*)src + done, n);
         vk::record_and_wait([&](VkCommandBuffer cb) {
             VkBufferCopy c{reg.offset, dst.offset + done, n};
-            vkCmdCopyBuffer(cb, reg.buffer, dst.alloc.buffer, 1, &c);
+            timed_copy(cb, reg.buffer, dst.alloc.buffer, c);
         });
         done += n;
     }
@@ -604,7 +613,7 @@ void staged_download_sync(void* dst, const ResolvedPtr& src, size_t bytes) {
         if (!vk::staging_acquire(n, &reg)) return;
         vk::record_and_wait([&](VkCommandBuffer cb) {
             VkBufferCopy c{src.offset + done, reg.offset, n};
-            vkCmdCopyBuffer(cb, src.alloc.buffer, reg.buffer, 1, &c);
+            timed_copy(cb, src.alloc.buffer, reg.buffer, c);
             vk::host_read_barrier(cb);
         });
         std::memcpy((char*)dst + done, reg.mapped, n);
@@ -661,7 +670,7 @@ void memcpy_sync(void* dst, const void* src, size_t bytes, MemcpyKind kind) {
     if (dst_dev && src_dev) {
         vk::record_and_wait([&](VkCommandBuffer cb) {
             VkBufferCopy c{s.offset, d.offset, bytes};
-            vkCmdCopyBuffer(cb, s.alloc.buffer, d.alloc.buffer, 1, &c);
+            timed_copy(cb, s.alloc.buffer, d.alloc.buffer, c);
         });
     } else if (dst_dev) {
         if (s.known) {  // pinned source: direct buffer-to-buffer copy
@@ -669,7 +678,7 @@ void memcpy_sync(void* dst, const void* src, size_t bytes, MemcpyKind kind) {
                 return;
             vk::record_and_wait([&](VkCommandBuffer cb) {
                 VkBufferCopy c{s.offset, d.offset, bytes};
-                vkCmdCopyBuffer(cb, s.alloc.buffer, d.alloc.buffer, 1, &c);
+                timed_copy(cb, s.alloc.buffer, d.alloc.buffer, c);
             });
         } else {
             staged_upload_sync(d, src, bytes);
@@ -680,7 +689,7 @@ void memcpy_sync(void* dst, const void* src, size_t bytes, MemcpyKind kind) {
                 return;
             vk::record_and_wait([&](VkCommandBuffer cb) {
                 VkBufferCopy c{s.offset, d.offset, bytes};
-                vkCmdCopyBuffer(cb, s.alloc.buffer, d.alloc.buffer, 1, &c);
+                timed_copy(cb, s.alloc.buffer, d.alloc.buffer, c);
                 vk::host_read_barrier(cb);
             });
         } else {
@@ -732,7 +741,7 @@ void memcpy_async(void* dst, const void* src, size_t bytes, MemcpyKind kind,
         VkCommandBuffer cb = vk::stream_begin(st);
         if (cb == VK_NULL_HANDLE) return;
         VkBufferCopy c{s.offset, d.offset, bytes};
-        vkCmdCopyBuffer(cb, s.alloc.buffer, d.alloc.buffer, 1, &c);
+        timed_copy(cb, s.alloc.buffer, d.alloc.buffer, c);
         vk::stream_barrier(cb);
         return;
     }
@@ -745,7 +754,7 @@ void memcpy_async(void* dst, const void* src, size_t bytes, MemcpyKind kind,
             VkCommandBuffer cb = vk::stream_begin(st);
             if (cb == VK_NULL_HANDLE) return;
             VkBufferCopy c{s.offset, d.offset, bytes};
-            vkCmdCopyBuffer(cb, s.alloc.buffer, d.alloc.buffer, 1, &c);
+            timed_copy(cb, s.alloc.buffer, d.alloc.buffer, c);
             vk::stream_barrier(cb);
             return;
         }
@@ -763,7 +772,7 @@ void memcpy_async(void* dst, const void* src, size_t bytes, MemcpyKind kind,
             VkCommandBuffer cb = vk::stream_begin(st);
             if (cb == VK_NULL_HANDLE) return;
             VkBufferCopy c{reg.offset, d.offset + done, n};
-            vkCmdCopyBuffer(cb, reg.buffer, d.alloc.buffer, 1, &c);
+            timed_copy(cb, reg.buffer, d.alloc.buffer, c);
             vk::stream_barrier(cb);
             uint64_t value = vk::stream_flush(st);
             vk::staging_release(reg, n, value);
@@ -779,7 +788,7 @@ void memcpy_async(void* dst, const void* src, size_t bytes, MemcpyKind kind,
         VkCommandBuffer cb = vk::stream_begin(st);
         if (cb == VK_NULL_HANDLE) return;
         VkBufferCopy c{s.offset, d.offset, bytes};
-        vkCmdCopyBuffer(cb, s.alloc.buffer, d.alloc.buffer, 1, &c);
+        timed_copy(cb, s.alloc.buffer, d.alloc.buffer, c);
         vk::stream_barrier(cb);
         vk::host_read_barrier(cb);
         return;
@@ -824,7 +833,9 @@ void record_fill(const ResolvedPtr& d, size_t bytes, VkDeviceSize fill,
     if (cb == VK_NULL_HANDLE) return;
     std::optional<prof::Scope> _pms;
     if (prof::enabled()) _pms.emplace(prof::MEMSET, bytes);
+    const int dt = vk::dispatch_ts_begin(cb, "@fill");
     vkCmdFillBuffer(cb, d.alloc.buffer, d.offset, fill, word);
+    vk::dispatch_ts_end(cb, dt);
     vk::stream_barrier(cb);
 }
 
@@ -1133,6 +1144,59 @@ void gpu_ts_report_by_entry() {
     std::fprintf(stderr, "[spirula-profile] -----------------------------------\n");
 }
 
+// --- per-dispatch timing for the step breakdown -----------------------------
+
+namespace {
+
+struct DispatchTiming {
+    std::mutex mu;
+    std::atomic<bool> armed{false};
+    std::thread::id armer;
+    VkQueryPool pool = VK_NULL_HANDLE;
+    uint32_t capacity = 0;    // queries
+    uint32_t want = 2048;     // the capacity the next arm creates
+    uint32_t next = 0;        // pair i holds queries 2i and 2i + 1
+    bool overflowed = false;
+    struct Rec { const char* entry; uint16_t tag; bool foreign; };
+    std::vector<Rec> recs;
+    std::unordered_set<std::string> names;   // node-based: c_str() stays put
+};
+
+DispatchTiming& dispatch_timing() {
+    static DispatchTiming t;
+    return t;
+}
+
+}  // namespace
+
+int dispatch_ts_begin(VkCommandBuffer cb, const char* entry) {
+    DispatchTiming& t = dispatch_timing();
+    if (!t.armed.load(std::memory_order_relaxed)) return -1;
+    std::lock_guard<std::mutex> lock(t.mu);
+    if (!t.armed.load() || t.pool == VK_NULL_HANDLE) return -1;
+    if (t.next + 2 > t.capacity) {
+        t.overflowed = true;
+        return -1;
+    }
+    const uint32_t q = t.next;
+    t.next += 2;
+    t.recs.push_back({t.names.emplace(entry ? entry : "?").first->c_str(),
+                      backend::dispatch_timing_tag(),
+                      std::this_thread::get_id() != t.armer});
+    // One reset for the span, recorded before its first write: every later
+    // pair is in this command buffer or one submitted after it.
+    if (q == 0) vkCmdResetQueryPool(cb, t.pool, 0, t.capacity);
+    // BOTTOM, as gpu_ts_begin: the start waits for the previous dispatch.
+    vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, t.pool, q);
+    return (int)q + 1;
+}
+
+void dispatch_ts_end(VkCommandBuffer cb, int handle) {
+    if (handle < 0) return;
+    vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                        dispatch_timing().pool, (uint32_t)handle);
+}
+
 void pipelines_shutdown();  // VulkanPipelines.cpp
 
 void runtime_shutdown() {
@@ -1175,8 +1239,83 @@ void runtime_shutdown() {
             g_query_free.clear();
         }
     }
+    {
+        DispatchTiming& t = dispatch_timing();
+        std::lock_guard<std::mutex> lock(t.mu);
+        t.armed = false;
+        if (t.pool != VK_NULL_HANDLE) vkDestroyQueryPool(dev, t.pool, nullptr);
+        t.pool = VK_NULL_HANDLE;
+        t.capacity = t.next = 0;
+        t.recs.clear();
+    }
 }
 
 }  // namespace vk
+
+void dispatch_timing_arm() {
+    vk::Context& ctx = vk::Context::get();
+    if (!ctx.ok() || !ctx.caps().timestamps) return;
+    vk::DispatchTiming& t = vk::dispatch_timing();
+    std::lock_guard<std::mutex> lock(t.mu);
+    // Disarmed, the last collect drained the device: the old pool is idle.
+    if (!t.armed.load() && t.capacity < t.want) {
+        if (t.pool != VK_NULL_HANDLE) vkDestroyQueryPool(ctx.device(), t.pool, nullptr);
+        VkQueryPoolCreateInfo qci{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+        qci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        qci.queryCount = t.want;
+        t.pool = VK_NULL_HANDLE;
+        t.capacity = 0;
+        if (vkCreateQueryPool(ctx.device(), &qci, nullptr, &t.pool) != VK_SUCCESS) {
+            t.pool = VK_NULL_HANDLE;
+            t.want = 0;   // never retried: timing is optional
+            return;
+        }
+        t.capacity = t.want;
+    }
+    if (t.pool == VK_NULL_HANDLE) return;
+    t.next = 0;
+    t.recs.clear();
+    t.overflowed = false;
+    t.armer = std::this_thread::get_id();
+    t.armed = true;
+}
+
+bool dispatch_timing_collect(std::vector<DispatchTime>& out) {
+    vk::DispatchTiming& t = vk::dispatch_timing();
+    {
+        std::lock_guard<std::mutex> lock(t.mu);
+        if (!t.armed.exchange(false)) return false;
+    }
+    // A query in a command buffer not yet submitted would never become available.
+    vk::Context& ctx = vk::Context::get();
+    {
+        std::optional<prof::Scope> _p;
+        if (prof::enabled()) _p.emplace(prof::DEVSYNC);
+        ctx.wait(vk::flush_all_streams());
+    }
+    std::lock_guard<std::mutex> lock(t.mu);
+    if (t.overflowed) t.want = std::min<uint32_t>(t.capacity * 2, 1u << 17);
+    const uint32_t n = t.next;
+    t.next = 0;
+    std::vector<vk::DispatchTiming::Rec> recs;
+    recs.swap(t.recs);
+    if (n == 0) return true;
+    // (value, available) per query, without WAIT: the device is drained, and
+    // a pair that is still unwritten is skipped rather than waited on forever.
+    std::vector<uint64_t> ts(2 * (size_t)n);
+    const VkResult r = vkGetQueryPoolResults(
+        ctx.device(), t.pool, 0, n, ts.size() * sizeof(uint64_t), ts.data(),
+        2 * sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+    if (r != VK_SUCCESS && r != VK_NOT_READY) return false;
+    const double ms_per_tick = ctx.caps().timestamp_period_ns * 1e-6;
+    for (size_t i = 0; i < recs.size() && 2 * i + 1 < n; ++i) {
+        const uint64_t* q = &ts[4 * i];
+        const uint64_t t0 = q[0], t1 = q[2];
+        if (!q[1] || !q[3] || t1 < t0) continue;
+        out.push_back({recs[i].entry, recs[i].tag, recs[i].foreign,
+                       (double)(t1 - t0) * ms_per_tick});
+    }
+    return true;
+}
 
 }  // namespace backend

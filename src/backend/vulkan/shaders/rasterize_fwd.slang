@@ -393,6 +393,8 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     bool ray_ok = false;
     SS_DISPATCH_DIST(_rf_ray)
     inside = inside && ray_ok;
+    if (kCameraModel == 4)
+        ray_o += transform_ray_d(R, float3((px-intrin.z)/intrin.x, (py-intrin.w)/intrin.y, 0));
     float3 ray_d = transform_ray_d(R, raydir);
 
     bool done = !inside;

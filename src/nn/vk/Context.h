@@ -129,6 +129,10 @@ public:
     // to address past 4 GiB. Contained the same way the coop-matrix module is.
     bool               hasInt64()      const { return int64_; }
 
+    // VK_EXT_metal_objects (MoltenVK): allocations and the stream's timeline
+    // can be shared with Metal. Only nn/vk/MetalInterop.mm uses it.
+    bool               hasMetalObjects() const { return metal_objects_; }
+
     // Video decode support, resolved at device creation. `videoQueueFamily()`
     // is UINT32_MAX when unavailable; `videoUnavailableReason()` then explains
     // why, for the error video/VideoDecoder.cpp raises.
@@ -200,6 +204,7 @@ private:
     bool     memory_budget_ = false;
 
     bool        int64_ = false;
+    bool        metal_objects_ = false;
     bool        coopmat_ = false;
     std::string coopmat_reason_ = "not probed";
 };

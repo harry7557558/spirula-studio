@@ -155,19 +155,8 @@ inline void jacobiEigenSymmetric(std::vector<double>& A, int n, std::vector<doub
     jacobiEigenSymmetric(A.data(), n, w.data(), V.data());
 }
 
-// Exact null space of an m x 9 matrix with m < 9, by Householder QR of A^T.
-//
-// A minimal RANSAC sample gives a constraint matrix that is rank deficient *by
-// construction*, so its null space is exact and needs no iteration at all. That
-// matters because this is the overwhelming majority of calls and the iterative
-// A^T A + Jacobi path below was, measured, essentially the entire cost of
-// geometric verification (D27).
-//
-// A^T = Q^T R with Q = H_{m-1} ... H_0, so the first m rows of Q span the row
-// space of A and rows m..8 span its null space. Q is a product of Householder
-// reflections, hence orthogonal whatever the input: a degenerate sample yields
-// vectors that are still orthonormal but no longer span the null space, and
-// RANSAC scores and discards the resulting model exactly as it would any other.
+// Householder QR of A^T: rows m..8 of Q span the null space without an eigensolve.
+// Degenerate samples still yield orthonormal vectors; RANSAC rejects their models.
 inline std::vector<std::array<double, 9>> nullSpaceQR9(const std::vector<double>& A, int m,
                                                        int count) {
     double M[9][9] = {};  // A^T, 9 x m
@@ -195,15 +184,16 @@ inline std::vector<std::array<double, 9>> nullSpaceQR9(const std::vector<double>
             d = 2 * d / vn;
             for (int i = k; i < 9; i++) M[i][c] -= d * v[i];
         }
-        for (int c = 0; c < 9; c++) {  // accumulate H into Q
-            double d = 0;
-            for (int i = k; i < 9; i++) d += v[i] * Q[i][c];
-            d = 2 * d / vn;
-            for (int i = k; i < 9; i++) Q[i][c] -= d * v[i];
-        }
+        double d[9] = {};
+        for (int i = k; i < 9; i++)
+            for (int c = 0; c < 9; c++) d[c] += v[i] * Q[i][c];
+        for (int c = 0; c < 9; c++) d[c] = 2 * d[c] / vn;
+        for (int i = k; i < 9; i++)
+            for (int c = 0; c < 9; c++) Q[i][c] -= d[c] * v[i];
     }
 
     std::vector<std::array<double, 9>> out;
+    out.reserve(std::min(count, 9 - m));
     for (int r = m; r < 9 && (int)out.size() < count; r++) {
         std::array<double, 9> v{};
         for (int c = 0; c < 9; c++) v[c] = Q[r][c];
@@ -216,21 +206,17 @@ inline std::vector<std::array<double, 9>> nullSpaceQR9(const std::vector<double>
 // `count` smallest eigenvalues, smallest first. Returns count vectors of len 9.
 inline std::vector<std::array<double, 9>> nullVectors9(const std::vector<double>& A, int m,
                                                        int count) {
-    // Under-determined: take the exact null space directly rather than iterate
-    // an eigensolver for it (D27). Over-determined systems fall through -- there
-    // the answer is the *smallest singular vector*, not a null space, and only
-    // the eigendecomposition gives it. That is the local-optimization refit,
-    // which runs ~10 times per pair against the minimal solver's ~10000.
+    // Minimal samples have an exact null space; noisy refits need the smallest singular vector.
     if (m < 9 && count <= 9 - m) return nullSpaceQR9(A, m, count);
 
-    std::vector<double> ata((size_t)9 * 9, 0.0);
+    double ata[81] = {}, w[9], V[81];
+    for (int r = 0; r < m; r++) {
+        const double* row = A.data() + (size_t)r * 9;
+        for (int i = 0; i < 9; i++)
+            for (int j = i; j < 9; j++) ata[i * 9 + j] += row[i] * row[j];
+    }
     for (int i = 0; i < 9; i++)
-        for (int j = 0; j < 9; j++) {
-            double s = 0;
-            for (int r = 0; r < m; r++) s += A[(size_t)r * 9 + i] * A[(size_t)r * 9 + j];
-            ata[(size_t)i * 9 + j] = s;
-        }
-    std::vector<double> w, V;
+        for (int j = 0; j < i; j++) ata[i * 9 + j] = ata[j * 9 + i];
     jacobiEigenSymmetric(ata, 9, w, V);
     // indices of ascending eigenvalue
     std::array<int, 9> idx{0, 1, 2, 3, 4, 5, 6, 7, 8};

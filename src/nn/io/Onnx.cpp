@@ -4,6 +4,7 @@
 #include "nn/core/Half.h"
 #include "nn/core/Log.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -257,7 +258,8 @@ struct Loader {
     }
 };
 
-OnnxTensor read_tensor_proto(Loader& L, Reader r) {
+OnnxTensor read_tensor_proto(Loader& L, Reader r,
+                           std::vector<std::string>* external_files = nullptr) {
     OnnxTensor t;
     int32_t dt = 0;
     Reader raw{}, float_data{};
@@ -269,6 +271,7 @@ OnnxTensor read_tensor_proto(Loader& L, Reader r) {
     while (next_field(r, f)) {
         switch (f.number) {
             case 1:  // dims: repeated int64, packed or not
+                if (external_files) break;
                 if (f.wire == 0) {
                     t.shape.push_back((int64_t)f.value);
                 } else if (f.wire == 2) {
@@ -308,6 +311,17 @@ OnnxTensor read_tensor_proto(Loader& L, Reader r) {
             default:
                 break;  // segment, string_data, doc_string, ...
         }
+    }
+    if (external_files) {
+        if (location == kLocationExternal) {
+            NN_CHECK(!ext.location.empty(), "initializer '%s' is external with no location",
+                     t.name.c_str());
+            const std::string full = L.dir + ext.location;
+            if (std::find(external_files->begin(), external_files->end(), full) ==
+                external_files->end())
+                external_files->push_back(full);
+        }
+        return t;
     }
 
     const char* name = t.name.empty() ? "<unnamed>" : t.name.c_str();
@@ -437,6 +451,7 @@ OnnxFile walk(const std::string& path, bool want_nodes,
         if (f.number == 5 && f.wire == 2) {
             ++n_init;
             if (sink) (*sink)(read_tensor_proto(L, f.bytes));
+            else read_tensor_proto(L, f.bytes, &out.external_files);
         } else if (f.number == 1 && f.wire == 2 && want_nodes) {
             out.nodes.emplace_back();
             scan_node(f.bytes, out.nodes.back(), out.bn_epsilon);

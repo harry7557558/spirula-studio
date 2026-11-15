@@ -128,19 +128,19 @@ SS_MSG(tab_photos,
     TR("Fotoğraflar"));
 
 SS_MSG(tab_sensors,
-    EN("GPS & IMU"),
-    JA("GPS と IMU"),
-    ZH_HANS("GPS 与 IMU"),
-    ZH_HANT("GPS 與 IMU"),
-    KO("GPS와 IMU"),
-    DE("GPS und IMU"),
-    FR("GPS et IMU"),
-    ES("GPS e IMU"),
-    PT("GPS e IMU"),
-    IT("GPS e IMU"),
-    NL("Gps en IMU"),
-    RU("GPS и IMU"),
-    TR("GPS ve IMU"));
+    EN("Sensors"),
+    JA("センサー"),
+    ZH_HANS("传感器"),
+    ZH_HANT("感測器"),
+    KO("센서"),
+    DE("Sensoren"),
+    FR("Capteurs"),
+    ES("Sensores"),
+    PT("Sensores"),
+    IT("Sensori"),
+    NL("Sensoren"),
+    RU("Датчики"),
+    TR("Algılayıcılar"));
 
 SS_MSG(tab_cloud,
     EN("3D"),
@@ -471,6 +471,36 @@ SS_MSG(streams_side_by_side,
     NL("Videosporen: {0}, naast elkaar getoond"),
     RU("Видеопотоков: {0}, показаны рядом"),
     TR("Video akışı: {0}, yan yana gösteriliyor"));
+
+SS_MSG(camera_toggle_help,
+    EN("Include or exclude this camera's frames from the dataset while preserving telemetry."),
+    JA("テレメトリを保持したまま、このカメラのフレームをデータセットに含めるか除外します。"),
+    ZH_HANS("在保留遥测数据的同时，将此相机的帧包含在数据集中或从中排除。"),
+    ZH_HANT("在保留遙測資料的同時，將此相機的影格包含在資料集中或從中排除。"),
+    KO("원격 측정을 유지하면서 이 카메라의 프레임을 데이터셋에 포함하거나 제외합니다."),
+    DE("Bilder dieser Kamera in den Datensatz aufnehmen oder ausschließen, während Telemetriedaten erhalten bleiben."),
+    FR("Inclure ou exclure les images de cette caméra du jeu de données tout en conservant la télémétrie."),
+    ES("Incluir o excluir los fotogramas de esta cámara del conjunto de datos conservando la telemetría."),
+    PT("Incluir ou excluir os quadros desta câmera do conjunto de dados mantendo a telemetria."),
+    IT("Includi o escludi i fotogrammi di questa fotocamera dal set di dati conservando la telemetria."),
+    NL("Beelden van deze camera in de dataset opnemen of uitsluiten met behoud van telemetrie."),
+    RU("Включить или исключить кадры этой камеры из датасета, сохраняя телеметрию."),
+    TR("Telemetriyi koruyarak bu kameranın karelerini veri kümesine dahil edin veya hariç tutun."));
+
+SS_MSG(camera_disabled,
+    EN("Excluded"),
+    JA("除外"),
+    ZH_HANS("已排除"),
+    ZH_HANT("已排除"),
+    KO("제외됨"),
+    DE("Ausgeschlossen"),
+    FR("Exclu"),
+    ES("Excluido"),
+    PT("Excluído"),
+    IT("Escluso"),
+    NL("Uitgesloten"),
+    RU("Исключено"),
+    TR("Hariç tutuldu"));
 
 SS_MSG(lenses_side_by_side,
     EN("Lenses in one picture: {0}, cut apart and shown side by side"),
@@ -1397,6 +1427,96 @@ SS_MSG(attitude_photos_help,
        "дроны."),
     TR("Dronların yazdığı gibi, kameranın nereye baktığını kaydeden fotoğraflar."));
 
+SS_MSG(exposure_records,
+    EN("Exposure records: {0}"),
+    JA("露出の記録: {0}"),
+    ZH_HANS("曝光记录：{0}"),
+    ZH_HANT("曝光紀錄：{0}"),
+    KO("노출 기록: {0}"),
+    DE("Belichtungsdaten: {0}"),
+    FR("Relevés d'exposition : {0}"),
+    ES("Registros de exposición: {0}"),
+    PT("Registros de exposição: {0}"),
+    IT("Dati di esposizione: {0}"),
+    NL("Belichtingsgegevens: {0}"),
+    RU("Записи экспозиции: {0}"),
+    TR("Pozlama kayıtları: {0}"));
+
+SS_MSG(exposure_records_help,
+    EN("Shutter speed, ISO and aperture as the camera logged them. Extracted "
+       "frames keep them in EXIF for training."),
+    JA("カメラが記録したシャッタースピード、ISO、絞りです。"
+       "抽出したフレームは EXIF にこれを残し、学習に使えます。"),
+    ZH_HANS("相机记录的快门速度、ISO 和光圈。"
+            "提取的帧会把它们写入 EXIF，供训练使用。"),
+    ZH_HANT("相機記錄的快門速度、ISO 與光圈。"
+            "擷取的影格會把它們寫入 EXIF，供訓練使用。"),
+    KO("카메라가 기록한 셔터 속도, ISO, 조리개입니다. "
+       "추출한 프레임은 이를 EXIF에 담아 학습에 씁니다."),
+    DE("Verschlusszeit, ISO und Blende, wie die Kamera sie protokolliert hat. "
+       "Extrahierte Bilder behalten sie im EXIF für das Training."),
+    FR("Vitesse d'obturation, ISO et ouverture telles que la caméra les a "
+       "enregistrées. Les images extraites les gardent dans l'EXIF pour "
+       "l'entraînement."),
+    ES("Velocidad de obturación, ISO y apertura tal como las registró la "
+       "cámara. Los fotogramas extraídos las guardan en el EXIF para el "
+       "entrenamiento."),
+    PT("Velocidade do obturador, ISO e abertura como a câmera as registrou. Os "
+       "quadros extraídos as guardam no EXIF para o treinamento."),
+    IT("Tempo di posa, ISO e diaframma come li ha registrati la fotocamera. I "
+       "fotogrammi estratti li conservano nell'EXIF per l'addestramento."),
+    NL("Sluitertijd, ISO en diafragma zoals de camera ze vastlegde. "
+       "Geëxtraheerde beelden bewaren ze in de EXIF voor de training."),
+    RU("Выдержка, ISO и диафрагма, как их записала камера. Извлечённые кадры "
+       "хранят их в EXIF для обучения."),
+    TR("Kameranın kaydettiği enstantane hızı, ISO ve diyafram. Çıkarılan "
+       "kareler bunları eğitim için EXIF'te tutar."));
+
+SS_MSG(exposure_photos,
+    EN("Exposure: {0} of {1} photos"),
+    JA("露出: {0} / {1} 枚"),
+    ZH_HANS("曝光：{0} / {1} 张照片"),
+    ZH_HANT("曝光：{0} / {1} 張相片"),
+    KO("노출: 사진 {1}장 중 {0}장"),
+    DE("Belichtung: {0} von {1} Fotos"),
+    FR("Exposition : {0} photos sur {1}"),
+    ES("Exposición: {0} de {1} fotos"),
+    PT("Exposição: {0} de {1} fotos"),
+    IT("Esposizione: {0} foto su {1}"),
+    NL("Belichting: {0} van {1} foto's"),
+    RU("Экспозиция: {0} фото из {1}"),
+    TR("Pozlama: {1} fotoğrafın {0} tanesinde"));
+
+SS_MSG(exposure_photos_help,
+    EN("Photos whose EXIF records shutter speed, ISO or aperture. Training can "
+       "start each photo's exposure from them."),
+    JA("EXIF にシャッタースピード、ISO、絞りのいずれかが記録された写真です。"
+       "学習は各写真の露出をこれから始められます。"),
+    ZH_HANS("EXIF 中记录了快门速度、ISO 或光圈的照片。"
+            "训练可以据此设定每张照片的初始曝光。"),
+    ZH_HANT("EXIF 中記錄了快門速度、ISO 或光圈的相片。"
+            "訓練可以據此設定每張相片的初始曝光。"),
+    KO("EXIF에 셔터 속도, ISO, 조리개 중 하나가 기록된 사진입니다. "
+       "학습은 이것으로 사진마다 노출을 시작할 수 있습니다."),
+    DE("Fotos, deren EXIF Verschlusszeit, ISO oder Blende verzeichnet. Das "
+       "Training kann die Belichtung jedes Fotos daraus beginnen."),
+    FR("Photos dont l'EXIF indique la vitesse d'obturation, l'ISO ou "
+       "l'ouverture. L'entraînement peut en tirer l'exposition initiale de "
+       "chaque photo."),
+    ES("Fotos cuyo EXIF registra la velocidad de obturación, el ISO o la "
+       "apertura. El entrenamiento puede partir de ellos para la exposición de "
+       "cada foto."),
+    PT("Fotos cujo EXIF registra velocidade do obturador, ISO ou abertura. O "
+       "treinamento pode partir deles para a exposição de cada foto."),
+    IT("Foto il cui EXIF registra tempo di posa, ISO o diaframma. "
+       "L'addestramento può partire da questi per l'esposizione di ogni foto."),
+    NL("Foto's waarvan de EXIF sluitertijd, ISO of diafragma vastlegt. De "
+       "training kan de belichting van elke foto daarmee beginnen."),
+    RU("Фотографии, в EXIF которых записаны выдержка, ISO или диафрагма. "
+       "Обучение может начать с них экспозицию каждой фотографии."),
+    TR("EXIF'inde enstantane hızı, ISO ya da diyafram kayıtlı fotoğraflar. "
+       "Eğitim her fotoğrafın pozlamasına bunlardan başlayabilir."));
+
 SS_MSG(gps_distinct,
     EN("Distinct positions: {0}"),
     JA("異なる位置: {0}"),
@@ -1601,41 +1721,19 @@ SS_MSG(gps_no_fix,
     TR("Konum kilidi yok (gösterilir, kullanılmaz): {0}"));
 
 SS_MSG(gps_no_fix_help,
-    EN("Positions the receiver itself did not mark as a fix, often the last "
-       "place it saw the sky. They are marked × in amber on the map, and the "
-       "reconstruction leaves them out."),
-    JA("受信機自身が測位として示さなかった位置です。多くは最後に空が見えた場所で"
-       "す。地図上に黄色の × で示し、再構成では使いません。"),
-    ZH_HANS("接收器自身未标记为定位的位置，通常是它最后一次看到天空的地方。在地图上用"
-            "黄色 × 标出，重建不会使用。"),
-    ZH_HANT("接收器本身未標記為定位的位置，通常是它最後一次看到天空的地方。在地圖上以"
-            "黃色 × 標出，重建不會使用。"),
-    KO("수신기가 스스로 측위로 표시하지 않은 위치로, 대개 마지막으로 하늘이 보인 "
-       "곳입니다. 지도에 노란색 ×로 표시하며 재구성에는 쓰지 않습니다."),
-    DE("Positionen, die der Empfänger selbst nicht als Fix markiert hat, oft "
-       "der Ort, an dem er zuletzt den Himmel sah. Auf der Karte gelb mit × "
-       "markiert; die Rekonstruktion lässt sie weg."),
-    FR("Positions que le récepteur lui-même n'a pas marquées comme fixées, "
-       "souvent le dernier endroit où il voyait le ciel. Marquées × en jaune "
-       "sur la carte ; la reconstruction les écarte."),
-    ES("Posiciones que el propio receptor no marcó como fijas, a menudo el "
-       "último lugar donde vio el cielo. Se marcan con × en amarillo en el "
-       "mapa y la reconstrucción las descarta."),
-    PT("Posições que o próprio receptor não marcou como fixas, muitas vezes o "
-       "último lugar onde viu o céu. Marcadas com × em amarelo no mapa; a "
-       "reconstrução deixa-as de fora."),
-    IT("Posizioni che il ricevitore stesso non ha segnato come fix, spesso "
-       "l'ultimo punto in cui vedeva il cielo. Segnate con × in giallo sulla "
-       "mappa; la ricostruzione le esclude."),
-    NL("Posities die de ontvanger zelf niet als fix markeerde, vaak de laatste "
-       "plek waar hij de hemel zag. Op de kaart geel gemarkeerd met ×; de "
-       "reconstructie laat ze weg."),
-    RU("Положения, которые сам приёмник не отметил как фиксацию, часто последнее "
-       "место, где он видел небо. На карте отмечены жёлтым ×, реконструкция их "
-       "не использует."),
-    TR("Alıcının kendisinin konum kilidi olarak işaretlemediği konumlar; çoğu "
-       "zaman gökyüzünü son gördüğü yer. Haritada sarı × ile işaretlidir ve "
-       "yeniden oluşturma bunları kullanmaz."));
+    EN("Positions the receiver itself did not mark as a fix, often the last place it saw the sky.\nThey are marked × in amber on the map, and the reconstruction leaves them out."),
+    JA("受信機自身が測位として示さなかった位置です。\n- 多くは最後に空が見えた場所です。\n- 地図上に黄色の × で示し、再構成では使いません。"),
+    ZH_HANS("接收器自身未标记为定位的位置，通常是它最后一次看到天空的地方。\n在地图上用黄色 × 标出，重建不会使用。"),
+    ZH_HANT("接收器本身未標記為定位的位置，通常是它最後一次看到天空的地方。\n在地圖上以黃色 × 標出，重建不會使用。"),
+    KO("수신기가 스스로 측위로 표시하지 않은 위치로, 대개 마지막으로 하늘이 보인 곳입니다.\n지도에 노란색 ×로 표시하며 재구성에는 쓰지 않습니다."),
+    DE("Positionen, die der Empfänger selbst nicht als Fix markiert hat, oft der Ort, an dem er zuletzt den Himmel sah. Auf der Karte gelb mit × markiert; die Rekonstruktion lässt sie weg."),
+    FR("Positions que le récepteur lui-même n'a pas marquées comme fixées, souvent le dernier endroit où il voyait le ciel.\nMarquées × en jaune sur la carte ; la reconstruction les écarte."),
+    ES("Posiciones que el propio receptor no marcó como fijas, a menudo el último lugar donde vio el cielo.\nSe marcan con × en amarillo en el mapa y la reconstrucción las descarta."),
+    PT("Posições que o próprio receptor não marcou como fixas, muitas vezes o último lugar onde viu o céu.\nMarcadas com × em amarelo no mapa; a reconstrução deixa-as de fora."),
+    IT("Posizioni che il ricevitore stesso non ha segnato come fix, spesso l'ultimo punto in cui vedeva il cielo.\nSegnate con × in giallo sulla mappa; la ricostruzione le esclude."),
+    NL("Posities die de ontvanger zelf niet als fix markeerde, vaak de laatste plek waar hij de hemel zag.\nOp de kaart geel gemarkeerd met ×; de reconstructie laat ze weg."),
+    RU("Положения, которые сам приёмник не отметил как фиксацию, часто последнее место, где он видел небо.\nНа карте отмечены жёлтым ×, реконструкция их не использует."),
+    TR("Alıcının kendisinin konum kilidi olarak işaretlemediği konumlar; çoğu zaman gökyüzünü son gördüğü yer.\nHaritada sarı × ile işaretlidir ve yeniden oluşturma bunları kullanmaz."));
 
 SS_MSG(map_fit,
     EN("Fit"),
@@ -1775,44 +1873,19 @@ SS_MSG(track_3d,
     TR("3D"));
 
 SS_MSG(track_3d_help,
-    EN("The track in 3D, its height included: altitude that drifts shows as a "
-       "slope or a step. Drag to turn it, right-drag to move it, scroll to "
-       "zoom, double-click to fit."),
-    JA("高さも含めた 3D の軌跡です。高度がずれていくと、坂や段差として見えます。"
-       "ドラッグで回転、右ドラッグで移動、スクロールで拡大縮小、ダブルクリックで"
-       "全体表示。"),
-    ZH_HANS("包含高度的 3D 轨迹：漂移的高度会显示为斜坡或台阶。拖动可旋转，右键拖动可"
-            "移动，滚轮可缩放，双击可适应。"),
-    ZH_HANT("包含高度的 3D 軌跡：漂移的高度會顯示為斜坡或台階。拖曳可旋轉，右鍵拖曳可"
-            "移動，捲動可縮放，按兩下可符合。"),
-    KO("높이까지 담은 3D 궤적입니다. 고도가 틀어지면 비탈이나 계단으로 보입니다"
-       ". 끌면 회전, 오른쪽 버튼으로 끌면 이동, 스크롤하면 확대·축소, 더블클릭하"
-       "면 맞춥니다."),
-    DE("Die Spur in 3D, mit ihrer Höhe: eine wegdriftende Höhe zeigt sich als "
-       "Steigung oder Stufe. Ziehen dreht, Ziehen mit der rechten Taste "
-       "verschiebt, Scrollen zoomt, Doppelklick passt ein."),
-    FR("La trace en 3D, altitude comprise : une altitude qui dérive se voit "
-       "comme une pente ou une marche. Faites glisser pour tourner, glissez "
-       "avec le bouton droit pour déplacer, défilez pour zoomer, double-cliquez "
-       "pour ajuster."),
-    ES("La traza en 3D, con su altura: una altitud que deriva se ve como una "
-       "pendiente o un escalón. Arrastra para girarla, arrastra con el botón "
-       "derecho para moverla, desplaza para hacer zoom, doble clic para ajustar."),
-    PT("O trajeto em 3D, com a altura: uma altitude que deriva aparece como uma "
-       "rampa ou um degrau. Arraste para girar, arraste com o botão direito "
-       "para mover, role para dar zoom, clique duas vezes para ajustar."),
-    IT("La traccia in 3D, altezza compresa: un'altitudine che deriva si vede "
-       "come una salita o un gradino. Trascina per ruotarla, trascina col tasto "
-       "destro per spostarla, scorri per lo zoom, doppio clic per adattarla."),
-    NL("Het spoor in 3D, met de hoogte erbij: een hoogte die wegdrijft is te "
-       "zien als een helling of een trede. Slepen draait, slepen met de "
-       "rechterknop verschuift, scrollen zoomt, dubbelklikken maakt passend."),
-    RU("Трек в 3D, вместе с высотой: уплывающая высота видна как склон или "
-       "ступенька. Перетаскивание вращает, перетаскивание правой кнопкой "
-       "сдвигает, прокрутка масштабирует, двойной щелчок вписывает."),
-    TR("Yüksekliğiyle birlikte 3D iz: kayan yükseklik bir eğim ya da basamak "
-       "olarak görünür. Döndürmek için sürükleyin, taşımak için sağ tuşla "
-       "sürükleyin, yakınlaştırmak için kaydırın, sığdırmak için çift tıklayın."));
+    EN("The track in 3D, its height included: altitude that drifts shows as a slope or a step.\nDrag to turn it, right-drag to move it, scroll to zoom, double-click to fit."),
+    JA("高さも含めた 3D の軌跡です。 高度がずれていくと、坂や段差として見えます。\nドラッグで回転、右ドラッグで移動、スクロールで拡大縮小、ダブルクリックで全体表示。"),
+    ZH_HANS("包含高度的 3D 轨迹：漂移的高度会显示为斜坡或台阶。拖动可旋转，右键拖动可移动，滚轮可缩放，双击可适应。"),
+    ZH_HANT("包含高度的 3D 軌跡：漂移的高度會顯示為斜坡或台階。拖曳可旋轉，右鍵拖曳可移動，捲動可縮放，按兩下可符合。"),
+    KO("높이까지 담은 3D 궤적입니다. 고도가 틀어지면 비탈이나 계단으로 보입니다.\n끌면 회전, 오른쪽 버튼으로 끌면 이동, 스크롤하면 확대·축소, 더블클릭하면 맞춥니다."),
+    DE("Die Spur in 3D, mit ihrer Höhe: eine wegdriftende Höhe zeigt sich als Steigung oder Stufe.\nZiehen dreht, Ziehen mit der rechten Taste verschiebt, Scrollen zoomt, Doppelklick passt ein."),
+    FR("Trace en 3D : la dérive d’altitude forme une pente ou une marche.\nGlisser : tourner ; glisser droit : déplacer ; molette : zoom ; double-clic : ajuster."),
+    ES("Traza en 3D: la deriva de altitud forma una pendiente o escalón.\nArrastrar: girar; botón derecho: mover; rueda: zoom; doble clic: ajustar."),
+    PT("O trajeto em 3D, com a altura: uma altitude que deriva aparece como uma rampa ou um degrau.\nArraste para girar, arraste com o botão direito para mover, role para dar zoom, clique duas vezes para ajustar."),
+    IT("La traccia in 3D, altezza compresa: un'altitudine che deriva si vede come una salita o un gradino.\nTrascina per ruotarla, trascina col tasto destro per spostarla, scorri per lo zoom, doppio clic per adattarla."),
+    NL("Het spoor in 3D, met de hoogte erbij: een hoogte die wegdrijft is te zien als een helling of een trede.\nSlepen draait, slepen met de rechterknop verschuift, scrollen zoomt, dubbelklikken maakt passend."),
+    RU("Трек в 3D: дрейф высоты виден как склон или ступенька.\nПеретаскивание: вращать; правой кнопкой: сдвигать; колесо: масштаб; двойной щелчок: вписать."),
+    TR("3D iz: yükseklik kayması eğim ya da basamak olarak görünür.\nSürükle: döndür; sağ sürükle: taşı; kaydır: yakınlaştır; çift tık: sığdır."));
 
 SS_MSG(height_scale,
     EN("Height"),
@@ -1860,52 +1933,19 @@ SS_MSG(height_auto,
     TR("Otomatik ({0})"));
 
 SS_MSG(height_scale_help,
-    EN("Stretches the heights, so that a few metres of drift along a long track "
-       "can be seen. Auto stretches until the climb is a fifth of the track's "
-       "width; at 1× the track is true to scale. The ruler is in true metres "
-       "either way."),
-    JA("高さを引き伸ばして、長い軌跡に沿った数メートルの高度のずれを見えるように"
-       "します。自動では、上り下りの幅が軌跡の幅の 5 分の 1 になるまで引き伸ばし"
-       "ます。1× では縮尺どおりです。目盛りはどちらでも実際のメートルです。"),
-    ZH_HANS("拉伸高度，让长轨迹上几米的高度漂移也能看出来。“自动”会拉伸到高度起伏等于"
-            "轨迹宽度的五分之一；1× 时比例真实。两种情况下标尺都是真实的米数。"),
-    ZH_HANT("拉伸高度，讓長軌跡上幾公尺的高度漂移也能看出來。「自動」會拉伸到高度起伏"
-            "等於軌跡寬度的五分之一；1× 時比例真實。兩種情況下尺規都是真實的公尺數。"),
-    KO("높이를 늘려서 긴 궤적을 따라 생긴 몇 미터의 고도 틀어짐도 보이게 합니다"
-       ". 자동은 오르내림이 궤적 폭의 5분의 1이 될 때까지 늘립니다. 1×이면 실제 "
-       "축척입니다. 눈금자는 어느 경우든 실제 미터입니다."),
-    DE("Streckt die Höhen, damit ein paar Meter Drift entlang einer langen Spur "
-       "zu sehen sind. Automatisch streckt, bis der Höhenunterschied ein "
-       "Fünftel der Spurbreite ist; bei 1× ist die Spur maßstabsgetreu. Das "
-       "Lineal zeigt in jedem Fall echte Meter."),
-    FR("Étire les hauteurs, pour que quelques mètres de dérive le long d'une "
-       "longue trace se voient. Auto étire jusqu'à ce que le dénivelé fasse un "
-       "cinquième de la largeur de la trace ; à 1×, la trace est à l'échelle. "
-       "La règle est en vrais mètres dans tous les cas."),
-    ES("Estira las alturas para que se vean unos pocos metros de deriva a lo "
-       "largo de una traza larga. Auto estira hasta que el desnivel sea una "
-       "quinta parte del ancho de la traza; a 1× la traza está a escala. La "
-       "regla está en metros reales en ambos casos."),
-    PT("Estica as alturas, para que alguns metros de deriva ao longo de um "
-       "trajeto longo apareçam. Auto estica até o desnível ser um quinto da "
-       "largura do trajeto; em 1× o trajeto está em escala. A régua fica em "
-       "metros reais nos dois casos."),
-    IT("Allunga le altezze, perché si vedano pochi metri di deriva lungo una "
-       "traccia lunga. Auto allunga finché il dislivello è un quinto della "
-       "larghezza della traccia; a 1× la traccia è in scala. Il righello è in "
-       "metri veri in ogni caso."),
-    NL("Rekt de hoogtes uit, zodat een paar meter drift langs een lang spoor te "
-       "zien is. Automatisch rekt uit tot het hoogteverschil een vijfde van de "
-       "breedte van het spoor is; bij 1× is het spoor op schaal. De liniaal is "
-       "hoe dan ook in echte meters."),
-    RU("Растягивает высоты, чтобы стали видны несколько метров дрейфа вдоль "
-       "длинного трека. «Авто» растягивает, пока перепад высот не станет пятой "
-       "частью ширины трека; при 1× трек в масштабе. Линейка в любом случае в "
-       "настоящих метрах."),
-    TR("Uzun bir iz boyunca birkaç metrelik kaymanın görülebilmesi için "
-       "yükseklikleri uzatır. Otomatik, yükseklik farkı izin genişliğinin beşte "
-       "biri olana dek uzatır; 1× konumunda iz ölçeğine uygundur. Cetvel her "
-       "durumda gerçek metredir."));
+    EN("Stretches the heights, so that a few metres of drift along a long track can be seen.\n- Auto stretches until the climb is a fifth of the track's width; at 1× the track is true to scale.\n- The ruler is in true metres either way."),
+    JA("高さを引き伸ばして、長い軌跡に沿った数メートルの高度のずれを見えるようにします。\n- 自動では、上り下りの幅が軌跡の幅の 5 分の 1 になるまで引き伸ばします。 1× では縮尺どおりです。\n- 目盛りはどちらでも実際のメートルです。"),
+    ZH_HANS("拉伸高度，让长轨迹上几米的高度漂移也能看出来。 “自动”会拉伸到高度起伏等于轨迹宽度的五分之一； 1× 时比例真实。\n两种情况下标尺都是真实的米数。"),
+    ZH_HANT("拉伸高度，讓長軌跡上幾公尺的高度漂移也能看出來。 「自動」會拉伸到高度起伏等於軌跡寬度的五分之一； 1× 時比例真實。\n兩種情況下尺規都是真實的公尺數。"),
+    KO("높이를 늘려서 긴 궤적을 따라 생긴 몇 미터의 고도 틀어짐도 보이게 합니다.\n- 자동은 오르내림이 궤적 폭의 5분의 1이 될 때까지 늘립니다. 1×이면 실제 축척입니다.\n- 눈금자는 어느 경우든 실제 미터입니다."),
+    DE("Streckt die Höhen, damit ein paar Meter Drift entlang einer langen Spur zu sehen sind.\n- Automatisch streckt, bis der Höhenunterschied ein Fünftel der Spurbreite ist; bei 1× ist die Spur maßstabsgetreu.\n- Das Lineal zeigt in jedem Fall echte Meter."),
+    FR("Étire les hauteurs, pour que quelques mètres de dérive le long d'une longue trace se voient.\n- Auto étire jusqu'à ce que le dénivelé fasse un cinquième de la largeur de la trace ;\n- à 1×, la trace est à l'échelle. La règle est en vrais mètres dans tous les cas."),
+    ES("Estira las alturas para que se vean unos pocos metros de deriva a lo largo de una traza larga.\n- Auto estira hasta que el desnivel sea una quinta parte del ancho de la traza; a 1× la traza está a escala.\n- La regla está en metros reales en ambos casos."),
+    PT("Estica as alturas, para que alguns metros de deriva ao longo de um trajeto longo apareçam.\n- Auto estica até o desnível ser um quinto da largura do trajeto; em 1× o trajeto está em escala.\n- A régua fica em metros reais nos dois casos."),
+    IT("Allunga le altezze, perché si vedano pochi metri di deriva lungo una traccia lunga.\n- Auto allunga finché il dislivello è un quinto della larghezza della traccia; a 1× la traccia è in scala.\n- Il righello è in metri veri in ogni caso."),
+    NL("Rekt de hoogtes uit, zodat een paar meter drift langs een lang spoor te zien is.\n- Automatisch rekt uit tot het hoogteverschil een vijfde van de breedte van het spoor is;\n- bij 1× is het spoor op schaal. De liniaal is hoe dan ook in echte meters."),
+    RU("Растягивает высоты, чтобы стали видны несколько метров дрейфа вдоль длинного трека.\n- «Авто» растягивает, пока перепад высот не станет пятой частью ширины трека; при 1× трек в масштабе.\n- Линейка в любом случае в настоящих метрах."),
+    TR("Uzun bir iz boyunca birkaç metrelik kaymanın görülebilmesi için yükseklikleri uzatır.\n- Otomatik, yükseklik farkı izin genişliğinin beşte biri olana dek uzatır; 1× konumunda iz ölçeğine uygundur.\n- Cetvel her durumda gerçek metredir."));
 
 SS_MSG(no_altitude,
     EN("No altitude was recorded: the track is drawn flat."),
@@ -2087,6 +2127,66 @@ SS_MSG(plot_step,
     NL("Afstand tot de vorige foto (m)"),
     RU("Расстояние от предыдущего фото (м)"),
     TR("Önceki fotoğrafa uzaklık (m)"));
+
+SS_MSG(plot_exposure,
+    EN("Exposure (EV)"),
+    JA("露出 (EV)"),
+    ZH_HANS("曝光 (EV)"),
+    ZH_HANT("曝光 (EV)"),
+    KO("노출 (EV)"),
+    DE("Belichtung (LW)"),
+    FR("Exposition (IL)"),
+    ES("Exposición (EV)"),
+    PT("Exposição (EV)"),
+    IT("Esposizione (EV)"),
+    NL("Belichting (EV)"),
+    RU("Экспозиция (EV)"),
+    TR("Pozlama (EV)"));
+
+SS_MSG(plot_shutter,
+    EN("Shutter speed"),
+    JA("シャッタースピード"),
+    ZH_HANS("快门速度"),
+    ZH_HANT("快門速度"),
+    KO("셔터 속도"),
+    DE("Verschlusszeit"),
+    FR("Vitesse d'obturation"),
+    ES("Velocidad de obturación"),
+    PT("Velocidade do obturador"),
+    IT("Tempo di posa"),
+    NL("Sluitertijd"),
+    RU("Выдержка"),
+    TR("Enstantane hızı"));
+
+SS_MSG(plot_iso,
+    EN("ISO"),
+    JA("ISO 感度"),
+    ZH_HANS("ISO 感光度"),
+    ZH_HANT("ISO 感光度"),
+    KO("ISO 감도"),
+    DE("ISO"),
+    FR("ISO"),
+    ES("ISO"),
+    PT("ISO"),
+    IT("ISO"),
+    NL("ISO"),
+    RU("ISO"),
+    TR("ISO"));
+
+SS_MSG(plot_aperture,
+    EN("Aperture (f-number)"),
+    JA("絞り (F 値)"),
+    ZH_HANS("光圈 (f 值)"),
+    ZH_HANT("光圈 (f 值)"),
+    KO("조리개 (F값)"),
+    DE("Blende (Blendenzahl)"),
+    FR("Ouverture (nombre f)"),
+    ES("Apertura (número f)"),
+    PT("Abertura (número f)"),
+    IT("Diaframma (numero f)"),
+    NL("Diafragma (f-getal)"),
+    RU("Диафрагма (f-число)"),
+    TR("Diyafram (f sayısı)"));
 
 SS_MSG(plots_button,
     EN("Plots…"),
@@ -2316,6 +2416,66 @@ SS_MSG(ch_roll,
     RU("крен"),
     TR("yuvarlanma"));
 
+SS_MSG(ch_total,
+    EN("total"),
+    JA("合計"),
+    ZH_HANS("合计"),
+    ZH_HANT("合計"),
+    KO("합계"),
+    DE("gesamt"),
+    FR("total"),
+    ES("total"),
+    PT("total"),
+    IT("totale"),
+    NL("totaal"),
+    RU("итог"),
+    TR("toplam"));
+
+SS_MSG(ch_shutter,
+    EN("shutter"),
+    JA("シャッター"),
+    ZH_HANS("快门"),
+    ZH_HANT("快門"),
+    KO("셔터"),
+    DE("Verschluss"),
+    FR("obturation"),
+    ES("obturación"),
+    PT("obturador"),
+    IT("tempo"),
+    NL("sluiter"),
+    RU("выдержка"),
+    TR("enstantane"));
+
+SS_MSG(ch_iso,
+    EN("ISO"),
+    JA("ISO"),
+    ZH_HANS("ISO"),
+    ZH_HANT("ISO"),
+    KO("ISO"),
+    DE("ISO"),
+    FR("ISO"),
+    ES("ISO"),
+    PT("ISO"),
+    IT("ISO"),
+    NL("ISO"),
+    RU("ISO"),
+    TR("ISO"));
+
+SS_MSG(ch_aperture,
+    EN("aperture"),
+    JA("絞り"),
+    ZH_HANS("光圈"),
+    ZH_HANT("光圈"),
+    KO("조리개"),
+    DE("Blende"),
+    FR("ouverture"),
+    ES("apertura"),
+    PT("abertura"),
+    IT("diaframma"),
+    NL("diafragma"),
+    RU("диафрагма"),
+    TR("diyafram"));
+
 SS_MSG(diagnostics,
     EN("Diagnostics"),
     JA("診断"),
@@ -2375,6 +2535,81 @@ SS_MSG(hz_value,
     NL("{0} Hz"),
     RU("{0} Гц"),
     TR("{0} Hz"));
+
+SS_MSG(ev_value,
+    EN("{0} EV"),
+    JA("{0} EV"),
+    ZH_HANS("{0} EV"),
+    ZH_HANT("{0} EV"),
+    KO("{0} EV"),
+    DE("{0} LW"),
+    FR("{0} IL"),
+    ES("{0} EV"),
+    PT("{0} EV"),
+    IT("{0} EV"),
+    NL("{0} EV"),
+    RU("{0} EV"),
+    TR("{0} EV"));
+
+SS_MSG(shutter_fraction,
+    EN("1/{0} s"),
+    JA("1/{0} 秒"),
+    ZH_HANS("1/{0} 秒"),
+    ZH_HANT("1/{0} 秒"),
+    KO("1/{0}초"),
+    DE("1/{0} s"),
+    FR("1/{0} s"),
+    ES("1/{0} s"),
+    PT("1/{0} s"),
+    IT("1/{0} s"),
+    NL("1/{0} s"),
+    RU("1/{0} с"),
+    TR("1/{0} sn"));
+
+SS_MSG(shutter_seconds,
+    EN("{0} s"),
+    JA("{0} 秒"),
+    ZH_HANS("{0} 秒"),
+    ZH_HANT("{0} 秒"),
+    KO("{0}초"),
+    DE("{0} s"),
+    FR("{0} s"),
+    ES("{0} s"),
+    PT("{0} s"),
+    IT("{0} s"),
+    NL("{0} s"),
+    RU("{0} с"),
+    TR("{0} sn"));
+
+SS_MSG(iso_value,
+    EN("ISO {0}"),
+    JA("ISO {0}"),
+    ZH_HANS("ISO {0}"),
+    ZH_HANT("ISO {0}"),
+    KO("ISO {0}"),
+    DE("ISO {0}"),
+    FR("ISO {0}"),
+    ES("ISO {0}"),
+    PT("ISO {0}"),
+    IT("ISO {0}"),
+    NL("ISO {0}"),
+    RU("ISO {0}"),
+    TR("ISO {0}"));
+
+SS_MSG(f_value,
+    EN("f/{0}"),
+    JA("f/{0}"),
+    ZH_HANS("f/{0}"),
+    ZH_HANT("f/{0}"),
+    KO("f/{0}"),
+    DE("f/{0}"),
+    FR("f/{0}"),
+    ES("f/{0}"),
+    PT("f/{0}"),
+    IT("f/{0}"),
+    NL("f/{0}"),
+    RU("f/{0}"),
+    TR("f/{0}"));
 
 SS_MSG(tip_photo,
     EN("Photo {0}"),
@@ -2585,6 +2820,21 @@ SS_MSG(tip_gap,
     NL("Geen metingen gedurende {0} s"),
     RU("Нет показаний {0} с"),
     TR("{0} sn boyunca okuma yok"));
+
+SS_MSG(tip_exposure_mean,
+    EN("0 EV is this input's average; +1 EV is twice as bright."),
+    JA("0 EV はこの入力の平均、+1 EV は 2 倍の明るさです。"),
+    ZH_HANS("0 EV 是此输入的平均值，+1 EV 是两倍亮度。"),
+    ZH_HANT("0 EV 是此輸入的平均值，+1 EV 是兩倍亮度。"),
+    KO("0 EV는 이 입력의 평균이고, +1 EV는 두 배 밝기입니다."),
+    DE("0 LW ist der Mittelwert dieser Eingabe; +1 LW ist doppelt so hell."),
+    FR("0 IL est la moyenne de cette entrée ; +1 IL est deux fois plus clair."),
+    ES("0 EV es la media de esta entrada; +1 EV es el doble de brillo."),
+    PT("0 EV é a média desta entrada; +1 EV é o dobro do brilho."),
+    IT("0 EV è la media di questo ingresso; +1 EV è il doppio della luminosità."),
+    NL("0 EV is het gemiddelde van deze invoer; +1 EV is twee keer zo helder."),
+    RU("0 EV — среднее для этого входа; +1 EV — вдвое ярче."),
+    TR("0 EV bu girdinin ortalamasıdır; +1 EV iki kat parlaklıktır."));
 
 // ===========================================================================
 // 3D
@@ -3294,6 +3544,21 @@ SS_MSG(log_clicks_dropped_clip,
        "которых они сделаны, могут больше не извлекаться."),
     TR("{0} üzerindeki maske tıklamaları atıldı: kesiti değişti, bu yüzden "
        "üzerlerinde tıklandıkları kareler artık çıkarılmayabilir."));
+
+SS_MSG(plan_active_lens,
+    EN("Lens extracted"),
+    JA("取り出すレンズ"),
+    ZH_HANS("提取的镜头"),
+    ZH_HANT("提取的鏡頭"),
+    KO("추출할 렌즈"),
+    DE("Extrahiertes Objektiv"),
+    FR("Objectif extrait"),
+    ES("Objetivo extraído"),
+    PT("Lente extraída"),
+    IT("Obiettivo estratto"),
+    NL("Geëxtraheerde lens"),
+    RU("Извлекаемый объектив"),
+    TR("Çıkarılan mercek"));
 
 SS_MSG(plan_clip,
     EN("Clip"),

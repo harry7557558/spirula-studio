@@ -2560,7 +2560,12 @@ inline __device__ void _d_exp_0(DiffPair_float_0 * dpx_12, float dOut_12)
     return;
 }
 
-inline __device__ float3  exp_0(float3  x_13)
+inline __device__ float4  normalize_0(float4  x_13)
+{
+    return x_13 / make_float4 (length_2(x_13));
+}
+
+inline __device__ float3  exp_0(float3  x_14)
 {
     float3  result_17;
     int i_10 = int(0);
@@ -2573,7 +2578,7 @@ inline __device__ float3  exp_0(float3  x_13)
         {
             break;
         }
-        *_slang_vector_get_element_ptr(&result_17, i_10) = (F32_exp((_slang_vector_get_element(x_13, i_10))));
+        *_slang_vector_get_element_ptr(&result_17, i_10) = (F32_exp((_slang_vector_get_element(x_14, i_10))));
         i_10 = i_10 + int(1);
     }
     return result_17;
@@ -2585,11 +2590,6 @@ inline __device__ void _d_exp_vector_0(DiffPair_vectorx3Cfloatx2C3x3E_0 * dpx_13
     dpx_13->primal_0 = (*dpx_13).primal_0;
     dpx_13->differential_0 = _S599;
     return;
-}
-
-inline __device__ float4  normalize_0(float4  x_14)
-{
-    return x_14 / make_float4 (length_2(x_14));
 }
 
 inline __device__ void _d_log_0(DiffPair_float_0 * dpx_14, float dOut_14)
@@ -24455,6 +24455,240 @@ inline __device__ void projection_3dgut_equirect_none_vjp(bool antialiased_39, f
     *v_in_opacity_19 = *v_in_opacity_19 + _S9171;
     *v_R_19 = *v_R_19 + _S9170;
     *v_t_19 = *v_t_19 + _S9167;
+    return;
+}
+
+inline __device__ void projection_3dgs_ortho_none(bool antialiased_40, float3  mean_41, float4  quat_40, float3  scale_40, float in_opacity_40, Matrix<float, 3, 3>  R_40, float3  t_40, float fx_50, float fy_50, float cx_43, float cy_43, FixedArray<float, 1>  dist_coeffs_49, uint image_width_40, uint image_height_40, float4  * aabb_xyxy_20, float * sorting_depth_20, float * radius_22, float2  * mean2d_30, float * depth_20, float3  * conic_20, float * opacity_20)
+{
+    for(;;)
+    {
+        float4  _S9173 = make_float4 (0.0f);
+        *aabb_xyxy_20 = _S9173;
+        *sorting_depth_20 = 0.0f;
+        *radius_22 = 0.0f;
+        *mean2d_30 = make_float2 (0.0f);
+        *conic_20 = make_float3 (0.0f);
+        *opacity_20 = 0.0f;
+        float3  mean_c_40 = mul_6(R_40, mean_41) + t_40;
+        float _S9174 = mean_c_40.z;
+        *depth_20 = _S9174;
+        if(_S9174 <= 0.0f)
+        {
+            *aabb_xyxy_20 = _S9173;
+            break;
+        }
+        Matrix<float, 2, 2>  covar2d_30;
+        *opacity_20 = 1.0f / (1.0f + (F32_exp((- in_opacity_40))));
+        float4  _S9175 = normalize_0(quat_40);
+        float3  _S9176 = exp_0(scale_40);
+        float x_47 = _S9175.y;
+        float x2_40 = x_47 * x_47;
+        float y2_40 = _S9175.z * _S9175.z;
+        float z2_40 = _S9175.w * _S9175.w;
+        float xy_40 = _S9175.y * _S9175.z;
+        float xz_40 = _S9175.y * _S9175.w;
+        float yz_40 = _S9175.z * _S9175.w;
+        float wx_40 = _S9175.x * _S9175.y;
+        float wy_40 = _S9175.x * _S9175.z;
+        float wz_40 = _S9175.x * _S9175.w;
+        Matrix<float, 3, 3>  M_10 = mul_5(transpose_3(makeMatrix<float, 3, 3> (1.0f - 2.0f * (y2_40 + z2_40), 2.0f * (xy_40 + wz_40), 2.0f * (xz_40 - wy_40), 2.0f * (xy_40 - wz_40), 1.0f - 2.0f * (x2_40 + z2_40), 2.0f * (yz_40 + wx_40), 2.0f * (xz_40 + wy_40), 2.0f * (yz_40 - wx_40), 1.0f - 2.0f * (x2_40 + y2_40))), makeMatrix<float, 3, 3> (_S9176.x, 0.0f, 0.0f, 0.0f, _S9176.y, 0.0f, 0.0f, 0.0f, _S9176.z));
+        Matrix<float, 3, 3>  _S9177 = transpose_3(R_40);
+        Matrix<float, 3, 3>  covar_c_10 = mul_5(mul_5(R_40, mul_5(M_10, transpose_3(M_10))), _S9177);
+        *mean2d_30 = make_float2 (fx_50 * mean_c_40.x + cx_43, fy_50 * mean_c_40.y + cy_43);
+        float _S9178 = fx_50 * fy_50;
+        covar2d_30 = makeMatrix<float, 2, 2> (fx_50 * fx_50 * covar_c_10.rows[int(0)].x, _S9178 * covar_c_10.rows[int(0)].y, _S9178 * covar_c_10.rows[int(1)].x, fy_50 * fy_50 * covar_c_10.rows[int(1)].y);
+        float eps2d_40;
+        if(antialiased_40)
+        {
+            eps2d_40 = 0.10000000149011612f;
+        }
+        else
+        {
+            eps2d_40 = 0.30000001192092896f;
+        }
+        float det_orig_40 = *&(((&covar2d_30)->rows + (int(0)))->x) * *&(((&covar2d_30)->rows + (int(1)))->y) - *&(((&covar2d_30)->rows + (int(0)))->y) * *&(((&covar2d_30)->rows + (int(1)))->x);
+        float _S9179 = *&(((&covar2d_30)->rows + (int(0)))->x) + eps2d_40;
+        *&(((&covar2d_30)->rows + (int(0)))->x) = _S9179;
+        float _S9180 = *&(((&covar2d_30)->rows + (int(1)))->y) + eps2d_40;
+        *&(((&covar2d_30)->rows + (int(1)))->y) = _S9180;
+        float det_blur_40 = _S9179 * _S9180 - *&(((&covar2d_30)->rows + (int(0)))->y) * *&(((&covar2d_30)->rows + (int(1)))->x);
+        float compensation_20 = (F32_sqrt(((F32_max((0.0f), (det_orig_40 / det_blur_40))))));
+        if(det_blur_40 <= 0.0f)
+        {
+            *aabb_xyxy_20 = _S9173;
+            break;
+        }
+        float invdet_46 = 1.0f / (covar2d_30.rows[int(0)].x * covar2d_30.rows[int(1)].y - covar2d_30.rows[int(0)].y * covar2d_30.rows[int(1)].x);
+        Matrix<float, 2, 2>  _S9181 = makeMatrix<float, 2, 2> (covar2d_30.rows[int(1)].y * invdet_46, - covar2d_30.rows[int(0)].y * invdet_46, - covar2d_30.rows[int(1)].x * invdet_46, covar2d_30.rows[int(0)].x * invdet_46);
+        if(antialiased_40)
+        {
+            *opacity_20 = *opacity_20 * compensation_20;
+        }
+        if((*opacity_20) < 0.00392156885936856f)
+        {
+            *aabb_xyxy_20 = _S9173;
+            break;
+        }
+        float _S9182 = (F32_min((3.32999992370605469f), ((F32_sqrt((2.0f * (F32_log((*opacity_20 / 0.00392156885936856f)))))))));
+        float radius_x_20 = _S9182 * (F32_sqrt((covar2d_30[int(0)].x)));
+        float radius_y_20 = _S9182 * (F32_sqrt((covar2d_30[int(1)].y)));
+        float _S9183 = (*mean2d_30).x - radius_x_20;
+        float _S9184 = (*mean2d_30).x + radius_x_20;
+        float _S9185 = (*mean2d_30).y - radius_y_20;
+        float _S9186 = (*mean2d_30).y + radius_y_20;
+        bool _S9187;
+        if(_S9184 <= 0.0f)
+        {
+            _S9187 = true;
+        }
+        else
+        {
+            _S9187 = _S9183 >= float(image_width_40);
+        }
+        if(_S9187)
+        {
+            _S9187 = true;
+        }
+        else
+        {
+            _S9187 = _S9186 <= 0.0f;
+        }
+        if(_S9187)
+        {
+            _S9187 = true;
+        }
+        else
+        {
+            _S9187 = _S9185 >= float(image_height_40);
+        }
+        if(_S9187)
+        {
+            *aabb_xyxy_20 = _S9173;
+            break;
+        }
+        *aabb_xyxy_20 = make_float4 (_S9183, _S9185, _S9184, _S9186);
+        *sorting_depth_20 = _S9174;
+        *conic_20 = make_float3 (_S9181.rows[int(0)].x, _S9181.rows[int(0)].y, _S9181.rows[int(1)].y);
+        *radius_22 = view_radius_3dgs_0(mean_41, scale_40, in_opacity_40, - mul_6(_S9177, t_40));
+        break;
+    }
+    return;
+}
+
+inline __device__ void projection_3dgut_ortho_none(bool antialiased_41, float3  mean_42, float4  quat_41, float3  scale_41, float in_opacity_41, Matrix<float, 3, 3>  R_41, float3  t_41, float fx_51, float fy_51, float cx_44, float cy_44, FixedArray<float, 1>  dist_coeffs_50, uint image_width_41, uint image_height_41, float4  * aabb_xyxy_21, float * sorting_depth_21, float * radius_23, float2  * mean2d_31, float * depth_21, float3  * conic_21, float * opacity_21)
+{
+    for(;;)
+    {
+        float4  _S9188 = make_float4 (0.0f);
+        *aabb_xyxy_21 = _S9188;
+        *sorting_depth_21 = 0.0f;
+        *radius_23 = 0.0f;
+        *mean2d_31 = make_float2 (0.0f);
+        *conic_21 = make_float3 (0.0f);
+        *opacity_21 = 0.0f;
+        float3  mean_c_41 = mul_6(R_41, mean_42) + t_41;
+        float _S9189 = mean_c_41.z;
+        *depth_21 = _S9189;
+        if(_S9189 <= 0.0f)
+        {
+            *aabb_xyxy_21 = _S9188;
+            break;
+        }
+        Matrix<float, 2, 2>  covar2d_31;
+        *opacity_21 = 1.0f / (1.0f + (F32_exp((- in_opacity_41))));
+        float4  _S9190 = normalize_0(quat_41);
+        float3  _S9191 = exp_0(scale_41);
+        float x_48 = _S9190.y;
+        float x2_41 = x_48 * x_48;
+        float y2_41 = _S9190.z * _S9190.z;
+        float z2_41 = _S9190.w * _S9190.w;
+        float xy_41 = _S9190.y * _S9190.z;
+        float xz_41 = _S9190.y * _S9190.w;
+        float yz_41 = _S9190.z * _S9190.w;
+        float wx_41 = _S9190.x * _S9190.y;
+        float wy_41 = _S9190.x * _S9190.z;
+        float wz_41 = _S9190.x * _S9190.w;
+        Matrix<float, 3, 3>  M_11 = mul_5(transpose_3(makeMatrix<float, 3, 3> (1.0f - 2.0f * (y2_41 + z2_41), 2.0f * (xy_41 + wz_41), 2.0f * (xz_41 - wy_41), 2.0f * (xy_41 - wz_41), 1.0f - 2.0f * (x2_41 + z2_41), 2.0f * (yz_41 + wx_41), 2.0f * (xz_41 + wy_41), 2.0f * (yz_41 - wx_41), 1.0f - 2.0f * (x2_41 + y2_41))), makeMatrix<float, 3, 3> (_S9191.x, 0.0f, 0.0f, 0.0f, _S9191.y, 0.0f, 0.0f, 0.0f, _S9191.z));
+        Matrix<float, 3, 3>  _S9192 = transpose_3(R_41);
+        Matrix<float, 3, 3>  covar_c_11 = mul_5(mul_5(R_41, mul_5(M_11, transpose_3(M_11))), _S9192);
+        *mean2d_31 = make_float2 (fx_51 * mean_c_41.x + cx_44, fy_51 * mean_c_41.y + cy_44);
+        float _S9193 = fx_51 * fy_51;
+        covar2d_31 = makeMatrix<float, 2, 2> (fx_51 * fx_51 * covar_c_11.rows[int(0)].x, _S9193 * covar_c_11.rows[int(0)].y, _S9193 * covar_c_11.rows[int(1)].x, fy_51 * fy_51 * covar_c_11.rows[int(1)].y);
+        float eps2d_41;
+        if(antialiased_41)
+        {
+            eps2d_41 = 0.10000000149011612f;
+        }
+        else
+        {
+            eps2d_41 = 0.30000001192092896f;
+        }
+        float det_orig_41 = *&(((&covar2d_31)->rows + (int(0)))->x) * *&(((&covar2d_31)->rows + (int(1)))->y) - *&(((&covar2d_31)->rows + (int(0)))->y) * *&(((&covar2d_31)->rows + (int(1)))->x);
+        float _S9194 = *&(((&covar2d_31)->rows + (int(0)))->x) + eps2d_41;
+        *&(((&covar2d_31)->rows + (int(0)))->x) = _S9194;
+        float _S9195 = *&(((&covar2d_31)->rows + (int(1)))->y) + eps2d_41;
+        *&(((&covar2d_31)->rows + (int(1)))->y) = _S9195;
+        float det_blur_41 = _S9194 * _S9195 - *&(((&covar2d_31)->rows + (int(0)))->y) * *&(((&covar2d_31)->rows + (int(1)))->x);
+        float compensation_21 = (F32_sqrt(((F32_max((0.0f), (det_orig_41 / det_blur_41))))));
+        if(det_blur_41 <= 0.0f)
+        {
+            *aabb_xyxy_21 = _S9188;
+            break;
+        }
+        float invdet_47 = 1.0f / (covar2d_31.rows[int(0)].x * covar2d_31.rows[int(1)].y - covar2d_31.rows[int(0)].y * covar2d_31.rows[int(1)].x);
+        Matrix<float, 2, 2>  _S9196 = makeMatrix<float, 2, 2> (covar2d_31.rows[int(1)].y * invdet_47, - covar2d_31.rows[int(0)].y * invdet_47, - covar2d_31.rows[int(1)].x * invdet_47, covar2d_31.rows[int(0)].x * invdet_47);
+        if(antialiased_41)
+        {
+            *opacity_21 = *opacity_21 * compensation_21;
+        }
+        if((*opacity_21) < 0.00392156885936856f)
+        {
+            *aabb_xyxy_21 = _S9188;
+            break;
+        }
+        float _S9197 = (F32_min((3.32999992370605469f), ((F32_sqrt((2.0f * (F32_log((*opacity_21 / 0.00392156885936856f)))))))));
+        float radius_x_21 = _S9197 * (F32_sqrt((covar2d_31[int(0)].x)));
+        float radius_y_21 = _S9197 * (F32_sqrt((covar2d_31[int(1)].y)));
+        float _S9198 = (*mean2d_31).x - radius_x_21;
+        float _S9199 = (*mean2d_31).x + radius_x_21;
+        float _S9200 = (*mean2d_31).y - radius_y_21;
+        float _S9201 = (*mean2d_31).y + radius_y_21;
+        bool _S9202;
+        if(_S9199 <= 0.0f)
+        {
+            _S9202 = true;
+        }
+        else
+        {
+            _S9202 = _S9198 >= float(image_width_41);
+        }
+        if(_S9202)
+        {
+            _S9202 = true;
+        }
+        else
+        {
+            _S9202 = _S9201 <= 0.0f;
+        }
+        if(_S9202)
+        {
+            _S9202 = true;
+        }
+        else
+        {
+            _S9202 = _S9200 >= float(image_height_41);
+        }
+        if(_S9202)
+        {
+            *aabb_xyxy_21 = _S9188;
+            break;
+        }
+        *aabb_xyxy_21 = make_float4 (_S9198, _S9200, _S9199, _S9201);
+        *sorting_depth_21 = _S9189;
+        *conic_21 = make_float3 (_S9196.rows[int(0)].x, _S9196.rows[int(0)].y, _S9196.rows[int(1)].y);
+        *radius_23 = view_radius_3dgs_0(mean_42, scale_41, in_opacity_41, - mul_6(_S9192, t_41));
+        break;
+    }
     return;
 }
 

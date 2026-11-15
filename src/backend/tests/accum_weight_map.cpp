@@ -151,10 +151,12 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
     DeviceVector<int32_t>* img_ids =
         (packed && cam_ids.data_ptr()) ? &cam_ids : nullptr;
     int macro_log2 = kMacroLog2Default;
-    auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
+    auto intersections = do_intersect_tile_generic(
         aabb_2d, depths_nd, ellipse_view(splats_s, false), C,
         ttv(d_intr, {(int64_t)C, 4}), W, H, img_ids, /*tile_active=*/nullptr,
         macro_log2);
+    auto& flatten_ids = std::get<1>(intersections);
+    auto& tile_offsets = std::get<2>(intersections);
     auto rout = rasterize_to_pixels_3dgs_fwd(N, in_splats, splats_s, gauss_ids,
                                              W, H, tile_offsets, flatten_ids,
                                              macro_log2,

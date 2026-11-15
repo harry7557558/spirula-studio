@@ -618,6 +618,11 @@ void Context::createDevice(const ContextOptions& opts) {
                      preferred_subgroup_, sp.minSubgroupSize, sp.maxSubgroupSize);
     }
 
+    // Metal interop (nn/vk/MetalInterop.mm): MoltenVK's MTLBuffer behind each
+    // allocation and the MTLSharedEvent behind the timeline.
+    metal_objects_ = has("VK_EXT_metal_objects");
+    if (metal_objects_) exts.push_back("VK_EXT_metal_objects");
+
     // ---- 64-bit integers -------------------------------------------------
     // Only the `*_wide` modules use them, to address past 4 GiB. Contained like
     // the coop-matrix module: false keeps Int64 off the device entirely.

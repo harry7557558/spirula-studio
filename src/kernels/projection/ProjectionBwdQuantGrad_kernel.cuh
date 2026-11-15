@@ -83,7 +83,7 @@ __global__ void __launch_bounds__(BLOCK_SIZE) projection_bwd_quantgrad_kernel(
     const bool inside = (gid < N);
 
     const bool packed = (camera_id_bounds != nullptr && camera_ids != nullptr);
-    int cid_0 = 0, cid_1 = (int)C;
+    int cid_0 = 0, cid_1 = inside ? (int)C : 0;
     if (packed) {
         cid_0 = inside ? camera_id_bounds[gid]   : 0;
         cid_1 = inside ? camera_id_bounds[gid+1] : 0;

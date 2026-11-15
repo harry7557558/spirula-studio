@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <mutex>
 #include <set>
 #include <string>
@@ -22,6 +23,7 @@
 
 #include <climits>
 #include "core/Env.h"
+#include "core/VulkanMemoryBudget.h"
 
 namespace spirula {
 namespace vkselect {
@@ -34,6 +36,7 @@ struct DeviceRecord {
     std::string                name;
     std::string                type;  // discrete|integrated|virtual|cpu|other
     uint64_t                   vram_bytes = 0;
+    uint64_t                   others_bytes = 0;  // local memory other programs held at first probe, 0 if unknown
     bool                       usable = false;
     std::string                unusable_reason;
     VkPhysicalDeviceProperties props{};
@@ -89,8 +92,20 @@ inline std::string selectorFor(const DeviceRecord& r) {
     return uuidIsZero(r.uuid) ? std::string() : uuidSelector(r.uuid);
 }
 
-// Fills name/type/props/uuid from one enumerated physical device; the caller
-// adds its own vram figure and usability verdict.
+// Measured at a device's first probe in this process, so the engine, inference
+// and SfM runtimes rank alike however far apart they enumerate.
+inline uint64_t othersAtFirstProbe(VkPhysicalDevice pd, const VkPhysicalDeviceIDProperties& id) {
+    static std::mutex m;
+    static std::map<std::string, uint64_t> seen;
+    const std::string key = uuidSelector(id.deviceUUID);
+    std::lock_guard<std::mutex> lock(m);
+    const auto it = seen.find(key);
+    if (it != seen.end()) return it->second;
+    return seen[key] = vkmemory::othersLocalBytes(pd, id);
+}
+
+// Fills name/type/props/uuid/others_bytes from one enumerated physical device;
+// the caller adds its own vram figure and usability verdict.
 inline void probeIdentity(VkPhysicalDevice pd, DeviceRecord* r) {
     VkPhysicalDeviceIDProperties id{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
@@ -102,6 +117,7 @@ inline void probeIdentity(VkPhysicalDevice pd, DeviceRecord* r) {
     r->name = p2.properties.deviceName;
     r->type = deviceTypeName(p2.properties.deviceType);
     std::copy(id.deviceUUID, id.deviceUUID + VK_UUID_SIZE, r->uuid);
+    r->others_bytes = othersAtFirstProbe(pd, id);
 }
 
 // What the caller asked for. `text` is the raw value; `error` explains a
@@ -235,18 +251,21 @@ inline void warnOnce(const std::string& what) {
     if (said.insert(what).second) std::fprintf(stderr, "warning: %s\n", what.c_str());
 }
 
-// Auto's total order: type rank first, VRAM second. A record with no reported
-// deviceUUID is not a candidate at all: an identity is what the request carries
-// forward, and Vulkan permits an all-zero one.
+// Auto's order: type rank, VRAM, then the memory other programs hold. A record
+// with no reported deviceUUID is not a candidate at all: an identity is what the
+// request carries forward, and Vulkan permits an all-zero one.
 inline bool autoCandidate(const DeviceRecord& r) {
     return r.usable && !uuidIsZero(r.uuid);
 }
 
+// Under 256 MiB of difference is driver noise, so identical idle cards keep
+// enumeration order.
 inline bool outranks(const DeviceRecord& a, const DeviceRecord& b) {
     const int ra = deviceTypeRank(a.props.deviceType);
     const int rb = deviceTypeRank(b.props.deviceType);
     if (ra != rb) return ra > rb;
-    return a.vram_bytes > b.vram_bytes;
+    if (a.vram_bytes != b.vram_bytes) return a.vram_bytes > b.vram_bytes;
+    return a.others_bytes + (256ull << 20) < b.others_bytes;
 }
 
 // Best record with a reported identity, or -1.

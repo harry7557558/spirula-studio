@@ -2,6 +2,7 @@
 #include "app/gui/TrainPreset.h"
 #include "app/AppPaths.h"
 #include "core/SourcePath.h"
+#include "i18n/catalog/Gui.h"
 
 #include <chrono>
 #include <cmath>
@@ -29,9 +30,10 @@ static void training_overrides(const fs::path& root) {
     gui::TrainPreset preset;
     train_apply_preset(preset.cfg, preset.base);
     preset.cfg.quality = "high";
-    preset.cfg.floater_suppression = "strong";
+    preset.cfg.floater_suppression = "moderate";
     preset.cfg.sh_reg = 0.25f;
     preset.touched = {"quality", "floater_suppression", "sh_reg"};
+    preset.cfg.finish_command = "shutdown now";
     train_resolve_macros(preset.cfg, preset.touched);
     const std::string path = (root / "train.json").string();
     gui::save_preset(preset, path);
@@ -50,13 +52,14 @@ static void training_overrides(const fs::path& root) {
     };
 
     SS_CHECK(build());
-    SS_CHECK(cfg.floater_suppression == "strong");
+    SS_CHECK(cfg.floater_suppression == "moderate");
     SS_CHECK(cfg.num_iterations == 50000 && cfg.cap_max == 3000000);
     SS_CHECK(close(cfg.depth_distortion_reg, 0.03f));
     SS_CHECK(close(cfg.sh_reg, 0.25f));
     SS_CHECK(cfg.image_dir == "external-images" && cfg.mask_dir == "external-masks");
     SS_CHECK(cfg.flip_mask && cfg.disable_viewer);
     SS_CHECK(cfg.output_dir_prefix == (root / "outputs").string());
+    SS_CHECK(cfg.finish_command.empty());
 
     run.iterations = "12";
     run.cap_max = "12345";
@@ -72,10 +75,16 @@ static void training_overrides(const fs::path& root) {
     SS_CHECK(touched.count("cap_max") && touched.count("num_iterations") &&
              touched.count("sh_degree") && touched.count("floater_suppression"));
 
+    run.floater_suppression = "strong";
+    SS_CHECK(build());
+    SS_CHECK(cfg.pca_reg_neighbors == 31);
+    SS_CHECK(close(cfg.depth_distortion_reg, 0.1f) && close(cfg.max_screen_size, 0.1f));
+
     run.floater_suppression = "off";
     SS_CHECK(build());
     TrainConfig stock;
     train_apply_preset(stock, base);
+    SS_CHECK(cfg.pca_reg_neighbors == stock.pca_reg_neighbors);
     SS_CHECK(close(cfg.depth_distortion_reg, stock.depth_distortion_reg));
     SS_CHECK(close(cfg.rgb_distortion_reg, stock.rgb_distortion_reg));
     SS_CHECK(close(cfg.max_screen_size, stock.max_screen_size));
@@ -104,15 +113,72 @@ static void training_overrides(const fs::path& root) {
     SS_CHECK(!build());
 }
 
+// A run folder's config.json records its --finish-command; loading it as a
+// preset must not arm that command for the next run.
+static void finish_command_not_loaded(const fs::path& root) {
+    const fs::path path = root / "config.json";
+    std::ofstream(path) << R"({"preset": "3dgs", "sh_degree": 2, )"
+                           R"("finish_command": "shutdown now"})";
+    const gui::TrainPreset p = gui::load_preset(path.string());
+    SS_CHECK(p.cfg.sh_degree == 2);
+    SS_CHECK(p.cfg.finish_command.empty());
+    SS_CHECK(!p.touched.count("finish_command"));
+}
+
+// Each run of one row trains in its own region; a region since deleted is
+// caught before the queue starts rather than when that run loads.
+static void region_per_run(const fs::path& root) {
+    const fs::path ds = root / "roi-dataset";
+    fs::create_directories(ds / "roi");
+    std::ofstream(ds / "roi" / "castle.json") << "{}";
+    gui::BatchRow row;
+    row.dataset = ds.string();
+    row.runs.resize(3);
+    row.runs[1].roi_region = "roi/castle.json";
+    row.runs[2].roi_region = "off";
+    const char* want[] = {"", "roi/castle.json", "off"};
+    for (int k = 0; k < 3; k++) {
+        TrainConfig cfg;
+        std::string base, error;
+        SS_CHECK(gui::batch_build_train_config(row, k, ds.string(), {}, {}, false, cfg, base,
+                                               error));
+        SS_CHECK(cfg.roi_region == want[k]);
+    }
+
+    gui::BatchCapabilities caps;
+    caps.device = true;
+    auto duplicate = [&](const std::vector<gui::BatchRow>& all) {
+        for (const auto& issue : gui::batch_check_row(all[0], all, 0, caps))
+            if (issue.text == &spirula::i18n::msg::gui::chk_dataset_duplicate) return true;
+        return false;
+    };
+    auto missing = [&](const char* name) {
+        for (const auto& issue : gui::batch_check_row(row, {row}, 0, caps))
+            if (issue.fatal && issue.raw.find(name) != std::string::npos) return true;
+        return false;
+    };
+    gui::BatchRow other = row;
+    SS_CHECK(duplicate({row, other}));
+    other.runs[1].roi_region = "off";
+    SS_CHECK(!duplicate({row, other}));
+
+    SS_CHECK(!missing("castle.json"));
+    row.runs[1].roi_region = "roi/gone.json";
+    SS_CHECK(missing("gone.json"));
+}
+
 static void queue_roundtrip(const fs::path& root) {
     gui::BatchRow row;
     row.dataset = root.string();
-    for (const auto& value : {"", "off", "mild", "strong"}) {
+    const char* regions[] = {"", "roi/castle.json", "off", "roi/castle.json", "off"};
+    int n = 0;
+    for (const auto& value : {"", "off", "mild", "moderate", "strong"}) {
         gui::BatchRun run;
         run.iterations = "123";
         run.cap_max = "456";
         run.sh_degree = "0";
         run.floater_suppression = value;
+        run.roi_region = regions[n++];
         row.runs.push_back(run);
     }
     gui::save_batch_list({row});
@@ -124,6 +190,7 @@ static void queue_roundtrip(const fs::path& root) {
     for (size_t i = 0; i < row.runs.size(); i++) {
         const auto& run = loaded[0].runs[i];
         SS_CHECK(run.floater_suppression == row.runs[i].floater_suppression);
+        SS_CHECK(run.roi_region == row.runs[i].roi_region);
         SS_CHECK(run.iterations == "123" && run.cap_max == "456" && run.sh_degree == "0");
     }
 
@@ -150,6 +217,8 @@ int main() {
     setenv("XDG_CONFIG_HOME", root.string().c_str(), 1);
 #endif
     training_overrides(root);
+    finish_command_not_loaded(root);
+    region_per_run(root);
     queue_roundtrip(root);
     fs::remove_all(root);
     std::printf("batch_process_test: %d failures\n", failures);

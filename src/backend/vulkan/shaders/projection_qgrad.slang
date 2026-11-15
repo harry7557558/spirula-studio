@@ -249,7 +249,7 @@ void projection_qgrad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     // writes are blk_ok-gated (optimizer.slang convention).
     bool blk_ok = block_id < (p.N + 255u) / 256u;
 
-    int cid_0 = 0, cid_1 = int(p.C);
+    int cid_0 = 0, cid_1 = inside ? int(p.C) : 0;
     if (kPacked != 0) {
         cid_0 = inside ? p.camera_id_bounds[gid] : 0;
         cid_1 = inside ? p.camera_id_bounds[gid + 1] : 0;

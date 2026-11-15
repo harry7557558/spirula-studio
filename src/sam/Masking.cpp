@@ -316,6 +316,30 @@ bool Masker::run(const nn::Image& image, sam::Mask& out, sam::Result* overlay_ou
         return false;
     }
 
+    std::vector<sam::Result> phrase_results;
+    size_t positive_count = 0, negative_count = 0;
+    if (!s.subject_mode && s.opts.detector.empty()) {
+        std::vector<sam::ConceptPrompt> prompts;
+        auto add = [&](const std::vector<std::string>& phrases) {
+            for (const auto& phrase : phrases) {
+                sam::ConceptPrompt cp;
+                cp.text = phrase;
+                cp.score_threshold = s.opts.threshold;
+                cp.nms_threshold = s.opts.nms;
+                prompts.push_back(std::move(cp));
+            }
+        };
+        if (!s.opts.video) add(s.pos);
+        positive_count = prompts.size();
+        add(s.neg);
+        negative_count = prompts.size() - positive_count;
+        add(feat);
+        if (!prompts.empty()) {
+            phrase_results = s.session.segmentConcepts(prompts);
+            if (!s.session.lastError().empty()) return false;
+        }
+    }
+
     if (s.subject_mode) {
         // The subject needs no prompt, no tracker and no second pass.
     } else if (s.opts.video) {
@@ -361,15 +385,8 @@ bool Masker::run(const nn::Image& image, sam::Mask& out, sam::Result* overlay_ou
             }
         }
     } else {
-        for (const std::string& phrase : s.opts.detector.empty() ? s.pos
-                                                                 : std::vector<std::string>{}) {
-            sam::ConceptPrompt cp;
-            cp.text = phrase;
-            cp.score_threshold = s.opts.threshold;
-            cp.nms_threshold = s.opts.nms;
-            sam::Result r = s.session.segmentConcept(cp);
-            Impl::append(all, r);
-        }
+        for (size_t i = 0; i < positive_count; ++i)
+            Impl::append(all, phrase_results[i]);
         // Without a memory bank a click means nothing on any frame but its own,
         // so only the seeds drawn on this one are used -- one segmentation per
         // object, unioned, never one prompt holding everybody's clicks.
@@ -427,24 +444,10 @@ bool Masker::run(const nn::Image& image, sam::Mask& out, sam::Result* overlay_ou
         }
     }
 
-    // Negative phrases carve back out of what the positives found. The features
-    // are already on the device, so this is a decoder pass only.
-    for (const std::string& phrase : s.subject_mode || !s.opts.detector.empty()
-                                         ? std::vector<std::string>{}
-                                         : s.neg) {
-        sam::ConceptPrompt cp;
-        cp.text = phrase;
-        cp.score_threshold = s.opts.threshold;
-        cp.nms_threshold = s.opts.nms;
-        Impl::append(neg, s.session.segmentConcept(cp));
-    }
-    for (const std::string& phrase : s.opts.detector.empty() ? feat : no_phrases) {
-        sam::ConceptPrompt cp;
-        cp.text = phrase;
-        cp.score_threshold = s.opts.threshold;
-        cp.nms_threshold = s.opts.nms;
-        Impl::append(feat_found, s.session.segmentConcept(cp));
-    }
+    for (size_t i = positive_count; i < positive_count + negative_count; ++i)
+        Impl::append(neg, phrase_results[i]);
+    for (size_t i = positive_count + negative_count; i < phrase_results.size(); ++i)
+        Impl::append(feat_found, phrase_results[i]);
 
     // Every positive detection reached `all` as it was found, so the union and
     // the margin happen once here. The boxes it measures the margin from are

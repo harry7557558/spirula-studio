@@ -57,6 +57,9 @@ std::string default_workspace(const std::vector<PrepInput>& sources);
 bool workspace_named_by(const std::vector<PrepInput>& sources, const std::string& ws);
 
 bool any_pano360(const std::vector<PrepInput>& sources);
+// `fallback` is the dataset-wide model, as camera_group_models takes it.
+bool any_fisheye_or_pano_lens(const std::vector<PrepInput>& sources,
+                              const std::string& fallback);
 void reset_pano_size(const std::vector<PrepInput>& sources,
                      app::Pano360Options& pano);
 

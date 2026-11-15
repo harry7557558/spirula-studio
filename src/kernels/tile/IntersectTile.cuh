@@ -1,17 +1,26 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
 
 #include <core/Common.cuh>
+#include <core/Env.h>
 #include <core/Tensor.h>
 
 #include "primitives/Primitive3DGS.cuh"
 #include "primitives/Primitive3DGUT.cuh"
 #include "shaders/screen_layout.h"
 
+
+// Arena bytes one splat-tile pair of a band costs while it is sorted: both
+// 64-bit key buffers and the alternate index buffer.
+inline constexpr int64_t kIsectBandBytes = 20;
+// A band is halved and recounted past this multiple of its share of the pairs.
+inline constexpr double kIsectBandSlack = 1.25;
 
 // Ellipse-mode inputs, read out of a packed screen row. data == nullptr
 // selects the conservative AABB test instead.
@@ -82,6 +91,50 @@ inline bool intersect_should_coarsen(int64_t n_isects, int& macro_log2) {
                      (long long)n_isects, bin_tile_x(macro_log2));
     }
     return true;
+}
+
+// How many bands of tile rows the sort is cut into, from the arena's other
+// phases (bytes of the largest, and the tile phase's own per-pixel slices):
+// the one rule the intersector and the VRAM forecast (app/TrainForecast.cpp) share.
+inline int intersect_bands_for(int64_t n_isects, int64_t pairs, int64_t other_bytes,
+                               int64_t tile_pixel_bytes) {
+    // Below this a band saves less than its extra count and write pass cost.
+    constexpr int64_t kMinBand = 1ll << 22;
+    if (n_isects <= kMinBand + kMinBand / 2) return 1;
+    // No other phase yet (a run's first forward, the viewer): 16M pairs a band.
+    const int64_t band = other_bytes <= 0 ? 4 * kMinBand
+        : std::max(kMinBand, (other_bytes - 8 * pairs - tile_pixel_bytes) / kIsectBandBytes);
+    // Each band re-reads every pair twice: fewer bands where the pairs are many.
+    const int64_t most =
+        std::clamp<int64_t>((1ll << 26) / std::max<int64_t>(pairs, 1), 2, 16);
+    // A band may come out kIsectBandSlack over its share, so aim that far over.
+    const int64_t over = (int64_t)(kIsectBandSlack * (double)band);
+    return (int)std::clamp<int64_t>((n_isects + over - 1) / over, 1, most);
+}
+
+// The same for the pool as it stands. SS_ISECT_BANDS=<n> forces the count.
+inline int intersect_band_count(int64_t n_isects, int64_t pairs, int64_t rows) {
+    static const int forced = [] {
+        const char* v = spirula::env("ISECT_BANDS");
+        return v && *v ? std::atoi(v) : 0;
+    }();
+    if (n_isects <= 0 || rows <= 1) return 1;
+    if (forced > 0) return (int)std::min<int64_t>(forced, rows);
+    const DevicePool::ArenaPhases ph = DevicePool::global().arena_phases();
+    size_t other = 0;
+    for (size_t p = 0; p < ph.peak.size(); ++p)
+        if (p != (size_t)PoolPhase::TileIsect)
+            other = std::max(other, ph.peak[p].pixels + ph.peak[p].splats + ph.peak[p].capped);
+    return (int)std::min<int64_t>(
+        rows, intersect_bands_for(n_isects, pairs, (int64_t)other,
+                                  (int64_t)ph.peak[(size_t)PoolPhase::TileIsect].pixels));
+}
+
+// Rows for the next band: its share of the pairs at the density (pairs a row)
+// the last band measured.
+inline int32_t intersect_band_rows(int64_t share, double density, int32_t rows_left) {
+    const double want = density > 0.0 ? (double)share / density : (double)rows_left;
+    return (int32_t)std::clamp<int64_t>((int64_t)(want + 0.5), 1, rows_left);
 }
 
 

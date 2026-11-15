@@ -53,8 +53,10 @@ MODULES = {
         " scatter utilities.",
     ),
     "Loss.h": (
-        ["kernels/loss/FusedSSIM.cuh", "kernels/loss/PerPixelLoss.cuh", "kernels/loss/PerSplatLoss.cuh"],
-        "Fused SSIM, multi-scale per-pixel losses, per-splat losses.",
+        ["kernels/loss/FusedSSIM.cuh", "kernels/loss/PerPixelLoss.cuh", "kernels/loss/PerSplatLoss.cuh",
+         "kernels/loss/PcaReg.cuh"],
+        "Fused SSIM, multi-scale per-pixel losses, per-splat losses, the"
+        " local-PCA neighbourhood regularizer.",
     ),
     "Background.h": (
         ["kernels/background/BackgroundSphericalHarmonics.cuh"],

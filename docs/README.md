@@ -17,7 +17,9 @@ the detail.
 | [notes/compare-view.md](notes/compare-view.md) | showing several models at once: engine scene slots, the shared navigation frame |
 | [notes/spherical-beta.md](notes/spherical-beta.md) | spherical-beta lobes: the colour row they share with SH, training, rotation, the PLY layout, results |
 | [notes/s-cielab.md](notes/s-cielab.md) | the S-CIELAB alternative to SSIM: colour pipeline, blur radii, the `auto` densification map |
+| [notes/pca-reg.md](notes/pca-reg.md) | the local-PCA surface regularizer (PCAsplat): its terms, the six ways of finding neighbours, and what each costs |
 | [notes/flip.md](notes/flip.md) | the FLIP alternative: the viewing distance that makes its filters 11x11, where it departs from the reference, its two densification maps |
+| [notes/calib-warp.md](notes/calib-warp.md) | a per-image smooth warp of the ground truth that absorbs calibration residual, its Gauss-Newton fit, the aligned eval metrics (`al_`, `alcc_`), results and what was dropped |
 | [notes/ssim-blur-tolerance.md](notes/ssim-blur-tolerance.md) | blur-tolerant SSIM, so blurry photos stop blurring the scene; the loss and map study behind it on degraded mip-NeRF 360 scenes |
 | [notes/web-viewer-robustness.md](notes/web-viewer-robustness.md) | what web viewers draw differently, training on PlayCanvas's kernel for part of the steps, the peak-weight noise gate, the per-coefficient SH reg, and what did not help |
 | [notes/vram-splat-x-img.md](notes/vram-splat-x-img.md) | what the largest scratch category costs per element, the bitmask compaction, and the measured dead ends |
@@ -26,6 +28,8 @@ the detail.
 | [notes/gui-editing-plan.md](notes/gui-editing-plan.md) | editing in the GUI: the selection seam every tool shares, transforms, mask editing, trajectories, and the order to build them in |
 | [notes/gui-automation.md](notes/gui-automation.md) | driving the GUI from a script: the imgui item hooks, the loopback control surface, `tools/guictl.py` and the MCP server |
 | [notes/sfm-in-process-plan.md](notes/sfm-in-process-plan.md) | running SfM inside the GUI: the library seam, the input manifest, and what manual ties need |
+| [notes/sfm-quality-review.md](notes/sfm-quality-review.md) | initial source review, ranked hypotheses for SfM quality and merge robustness, and the prototype evaluation protocol |
+| [notes/sfm-quality-experiments.md](notes/sfm-quality-experiments.md) | selected SfM defaults, ranked prototype tradeoffs, calibration/rendering results, regressions, and resource costs |
 | [notes/](notes/) | design notes for individual subsystems |
 
 Authoritative documents that live next to their code rather than here:

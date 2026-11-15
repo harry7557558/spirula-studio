@@ -115,6 +115,9 @@ function(ss_setup_spirv shared_dir vk_dir slangc spirv_dir embed_cpp debug)
     list(LENGTH blob_outputs blob_count)
     message(STATUS "SPIR-V: ${blob_count} blobs to compile (per-blob, -j aware)")
 
+    # The embed fails on a kernel with no row in the step-timing table.
+    set(_timing_table ${SS_SRC}/engine/StepTimingTable.h)
     ss_embed_spirv(${embed_cpp} ${spirv_dir}/blobs.txt
-        "Embedding SPIR-V (${blob_count} blobs)" BLOBS ${blob_outputs})
+        "Embedding SPIR-V (${blob_count} blobs)" BLOBS ${blob_outputs}
+        FLAGS --timing-table ${_timing_table} DEPENDS ${_timing_table})
 endfunction()

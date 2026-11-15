@@ -32,6 +32,16 @@ bool load_stencil_preset(const std::string& name_or_path, app::MaskSet& out,
 // file written.
 bool save_stencil_preset(const std::string& name, const app::MaskSet& set, std::string& path,
                          std::string& error);
+// Replaces what `p` lists with `set`, in the folder it is in, and leaves `p`
+// describing what was written.
+bool update_stencil_preset(StencilPreset& p, const app::MaskSet& set, std::string& error);
+// Removes what `p` lists and nothing else, even of the same name: its file, or
+// every camera's.
+bool delete_stencil_preset(const StencilPreset& p, std::string& error);
+// Gives what `p` lists another name, its files too, and leaves `p` describing
+// them. NameTaken: a set of that name, or a file it would write over, exists.
+enum class StencilRename { Done, NameTaken, Failed };
+StencilRename rename_stencil_preset(StencilPreset& p, const std::string& name, std::string& error);
 
 // A run keeps each input's drawn shapes beside the dataset, so they outlive
 // the session that drew them even if nobody saved them.

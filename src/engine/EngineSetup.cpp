@@ -148,6 +148,7 @@ void set_training_data(
     TorchTensorView gt_alpha,
     bool input_depth_is_ray_depth
 ) {
+    StepTimingScope timing(StepPart::Loading, StepScale::Pixels);
     engine().gt.rgb    = _upload_gt_rgb(gt_rgb);
     engine().gt.depth  = _hv_to_dt3d_gt<float>(gt_depth,   PoolSlot::GtDepth,  "depth");
     engine().gt.normal = _hv_to_dt3d_gt<float3>(gt_normal, PoolSlot::GtNormal, "normal");

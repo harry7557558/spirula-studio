@@ -170,6 +170,13 @@ The settings refit on letting go, as long as the keys are still the fit's.
 
 ## One frame
 
+Orthographic is available for photos, videos and frame sequences. Its FOV uses
+the same reference distance as the viewport; that distance is saved with the
+lens in project world units and interpolated with the zoom. Capturing a view
+preserves its framing, including when models have different normalizations or
+the whole project is scaled. Orthographic lenses have no distortion, and both
+the splat renderer and the mesh/point preview cull geometry behind the camera.
+
 `FrameRenderer` draws each model with the renderer the viewer already uses,
 at the output size:
 

@@ -312,7 +312,8 @@ void draw_mask_model_picker(std::string& model_id, std::string* detector_id,
     }
     const ModelEntry* entry = find_model(model_id);
     if (entry) {
-        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + px(560.0f));
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() +
+                               std::min(px(560.0f), ImGui::GetContentRegionAvail().x));
         ui::TextDisabled(*entry->blurb);
         ImGui::PopTextWrapPos();
     }

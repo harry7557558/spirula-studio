@@ -49,7 +49,7 @@ bool ViewProjection::project(const float p[3], float& px, float& py,
     for (int r = 0; r < 3; r++)
         c[r] = w2c[r * 4 + 0] * p[0] + w2c[r * 4 + 1] * p[1] +
                w2c[r * 4 + 2] * p[2] + w2c[r * 4 + 3];
-    depth = std::sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]);
+    depth = camera_model == 4 ? c[2] : std::sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]);
     float u, v;
     if (!viewer_ray_pixel(camera_model, c, u, v)) return false;
     px = u * fx + cx;
@@ -68,7 +68,9 @@ bool ViewProjection::unproject(float px, float py, float origin[3],
     for (int r = 0; r < 3; r++)
         dir[r] = w2c[0 * 4 + r] * cam[0] + w2c[1 * 4 + r] * cam[1] +
                  w2c[2 * 4 + r] * cam[2];
-    for (int r = 0; r < 3; r++) origin[r] = eye[r];
+    for (int r = 0; r < 3; r++)
+        origin[r] = eye[r] + (camera_model == 4
+            ? w2c[r] * (px - cx) / fx + w2c[4 + r] * (py - cy) / fy : 0.0f);
     return true;
 }
 
@@ -138,7 +140,6 @@ void OcclusionBuffer::build(const EditDoc& doc, const ViewProjection& view) {
     _W = std::max(1, (int)(view.W * _scale));
     _H = std::max(1, (int)(view.H * _scale));
     _z.assign((size_t)_W * _H, kFar);
-    _back = view.ortho_back;
 
     const float* pos = doc.positions();
     const float* rad = doc.radii();
@@ -154,7 +155,7 @@ void OcclusionBuffer::build(const EditDoc& doc, const ViewProjection& view) {
         // pixels around its centre or a lasso still reaches through it.
         int r = 1;
         if (rad) {
-            const float rp = rad[i] * view.fx * _scale / std::max(d, 1e-6f);
+            const float rp = rad[i] * view.fx * _scale / (view.camera_model == 4 ? 1.0f : std::max(d, 1e-6f));
             r = std::clamp((int)rp, 1, 6);
         }
         const int x0 = std::max(0, (int)px - r), x1 = std::min(_W - 1, (int)px + r);
@@ -172,9 +173,7 @@ bool OcclusionBuffer::visible(float px, float py, float depth, float tol) const 
     const int x = (int)(px * _scale), y = (int)(py * _scale);
     if (x < 0 || y < 0 || x >= _W || y >= _H) return true;
     const float z = _z[(size_t)y * _W + x];
-    // The slack is a share of the distance from the NAVIGATED eye, which in an
-    // orthographic view is a long way in front of the one that rendered.
-    return z >= kFar || depth <= z + tol * std::max(z - _back, 1e-6f) + 1e-6f;
+    return z >= kFar || depth <= z + tol * std::max(z, 1e-6f) + 1e-6f;
 }
 
 
@@ -204,7 +203,7 @@ SelectResult select_by_stencil(const EditDoc& doc, const ViewProjection& view,
         bool hit = st.at((int)px, (int)py);
         if (!hit && rad) {
             const float rp = std::min(rad[i] * opt.extent_scale * view.fx /
-                                          std::max(d, 1e-6f), 256.0f);
+                                          (view.camera_model == 4 ? 1.0f : std::max(d, 1e-6f)), 256.0f);
             if (rp >= 1.0f)
                 hit = st.at((int)(px - rp), (int)py) ||
                       st.at((int)(px + rp), (int)py) ||

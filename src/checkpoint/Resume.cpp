@@ -49,11 +49,13 @@ ResolvedCheckpoint resolve_checkpoint(const fs::path& path) {
         return {path.parent_path(), path};
 
     // Checkpoint dirs are step-%09d.ckpt, so lexicographic order is numeric.
+    // One without state.tar is a save that never finished.
     std::vector<fs::path> ckpts;
     if (fs::is_directory(path))
         for (const auto& e : fs::directory_iterator(path)) {
             std::string b = e.path().filename().string();
-            if (b.rfind("step-", 0) == 0 && b.find(".ckpt") != std::string::npos)
+            if (b.rfind("step-", 0) == 0 && b.find(".ckpt") != std::string::npos &&
+                fs::is_regular_file(e.path() / "state.tar"))
                 ckpts.push_back(e.path());
         }
     if (ckpts.empty())
@@ -121,6 +123,8 @@ TrainConfig build_resume_config(const TrainConfig& cli,
 
     TrainConfig base = config_from_json(cfg_path);
     base.resume = cli.resume;
+    // This invocation's alone: a run folder from elsewhere must not run one.
+    base.finish_command = cli.finish_command;
 
     // Continue writing into the checkpoint's own run folder, so new
     // checkpoints, eval images and logs land beside the old ones. An explicit

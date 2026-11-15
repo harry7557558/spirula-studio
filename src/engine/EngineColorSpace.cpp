@@ -67,6 +67,7 @@ void engine_init_color_space(
 void _engine_color_space_forward() {
     auto& cs = engine().color_space;
     if (!cs.splat_enabled) return;
+    StepTimingScope timing(StepPart::ColorSpace, StepScale::Pixels);
 
     auto& fwd_rgb_tensor = std::get<0>(engine().fwd.renders);
     if (fwd_rgb_tensor.data_ptr() == nullptr) return;

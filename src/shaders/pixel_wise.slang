@@ -300,11 +300,8 @@ float3 background_apply_exponent(float3 display, float p) {
                   pow(max(display.z, 0.0f), p));
 }
 
-// Unproject an undistorted, normalized image point to a ray direction.
-// Handles all camera models (PINHOLE / FISHEYE / EQUISOLID); EQUIRECTANGULAR
-// is currently unsupported and falls back to PINHOLE.
-// is_ray_depth: ray is unit length (depth measured along the ray);
-// otherwise the ray has z == 1 (depth measured along the optical axis).
+// Unproject an undistorted image point to ray direction. is_ray_depth gives
+// a unit ray; otherwise the ray has z == 1 (measured along optical axis).
 [Differentiable]
 float3 unproject_raydir(
     float2 uv,
@@ -315,6 +312,7 @@ float3 unproject_raydir(
 
     float3 raydir;
     bool is_unit = false;  // base ray already has unit length
+    if (model == CameraModelType::ORTHOGRAPHIC) return float3(0, 0, 1);
     if (model == CameraModelType::FISHEYE) {
         float theta = length(uv);
         raydir = float3(uv / max(theta, 1e-7f) * sin(theta), cos(theta));
@@ -327,8 +325,12 @@ float3 unproject_raydir(
         raydir = float3(uv * s, z);
         is_unit = true;
     }
+    else if (model == CameraModelType::EQUIRECTANGULAR) {
+        raydir = equirect_unproj(uv);
+        is_unit = true;
+    }
     else {
-        // PINHOLE (EQUIRECTANGULAR unsupported -> pinhole fallback)
+        // PINHOLE
         raydir = float3(uv.x, uv.y, 1.0f);
     }
 
@@ -372,6 +374,8 @@ float3 depth_to_point<D : ICameraDistortion>(
         return float3(0.0f);
     }
 
+    if (camera_model == (int)CameraModelType::ORTHOGRAPHIC)
+        return float3(uv, depth);
     return depth * unproject_raydir(uv_u, camera_model, is_ray_depth);
 }
 

@@ -275,4 +275,7 @@ inline float event_elapsed_ms(Event* start, Event* end) {
     return ms;
 }
 
+inline void dispatch_timing_arm() {}
+inline bool dispatch_timing_collect(std::vector<DispatchTime>&) { return false; }
+
 }  // namespace backend

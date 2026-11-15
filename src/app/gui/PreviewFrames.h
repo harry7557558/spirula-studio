@@ -56,6 +56,7 @@ struct PreviewSource {
     // other way.
     std::string device_error;
     int tracks = 1;         // video tracks in the file
+    int lens = -1;          // the one kept (PrepInput::active_lens), -1 all
     // The same input color metadata passed to dataset masking.
     std::string image_gamut;
     std::optional<bool> image_is_linear;
@@ -83,8 +84,8 @@ PreviewSource gated(const PreviewSource& src, DecodeGate& gate,
 // `folder` argument below selects. One empty name for a single camera.
 std::vector<std::string> preview_folders(const PreviewSource& src);
 
-// `offers` frames spread through the input. `all_files` comes back holding
-// every image of a photo folder (what a border fit reads), empty for a video.
+// `offers` frames spread through the input (0 = all frames). `all_files`
+// comes back holding every image of a photo folder, empty for a video.
 void collect_preview_frames(PreviewSource& src, int offers,
                             std::vector<PreviewFrame>& frames,
                             std::vector<std::string>& all_files,
@@ -112,7 +113,7 @@ bool load_ffmpeg_stills(const PreviewSource& src, double seconds,
 
 // A spread for a fit that wants several frames (the fisheye border): `samples`
 // of `files`, or for a video the first few hundred frames -- as far forward as
-// a decoder that cannot seek can afford -- and `offers` where ffmpeg seeks.
+// a decoder that cannot seek can afford -- and eight of `offers` where ffmpeg seeks.
 std::vector<PreviewFrame> spread_preview_frames(
     const PreviewSource& src, const std::vector<PreviewFrame>& offers,
     const std::vector<std::string>& files, int samples);

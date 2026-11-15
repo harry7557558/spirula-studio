@@ -5,6 +5,7 @@
 
 #include "core/LicenseConsent.h"
 #include "core/LicenseTexts.h"
+#include "flexglue/model/Fetch.h"
 #include "roma/model/Fetch.h"
 
 #include <string>
@@ -19,6 +20,13 @@ inline void register_model_licenses() {
         spirula::roma::kLicenseFamily, "DINOv3 License (Meta) and RoMa v2 License (MIT)",
         spirula::roma::kDinoTerms, roma_text.c_str()};
     spirula::license::register_terms(&roma);
+    // The same for FlexGlue, whose checkpoint bundles DINOv3's ConvNeXt-B.
+    static const std::string flexglue_text = std::string(spirula::license::kDinov3License) +
+                                             "\n---\n\n" + spirula::license::kFlexGlueMit;
+    static const spirula::license::Terms flexglue{
+        flexglue::kLicenseFamily, "DINOv3 License (Meta) and FlexGlue License (MIT)",
+        spirula::roma::kDinoTerms, flexglue_text.c_str()};
+    spirula::license::register_terms(&flexglue);
 }
 
 }  // namespace app

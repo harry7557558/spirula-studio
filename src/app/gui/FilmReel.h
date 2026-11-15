@@ -160,12 +160,12 @@ private:
 // says nothing about them, so the folder is what is watched.
 class OutputWatch {
 public:
-    // A row is a file of `dir` with its photograph under `images` and its depth
-    // map under `depths`, either path empty for none. `fresh_only` holds back
-    // what `dir` has now until it is written again: an earlier run's output.
+    // Rows combine a map with its photograph and optional depth map.
+    // `fresh_only` skips unchanged files; `atomic_outputs` displays renamed,
+    // complete maps without waiting for another scan.
     OutputWatch(FilmReel* reel, std::filesystem::path dir,
                 std::filesystem::path images, std::filesystem::path depths,
-                bool fresh_only = false);
+                bool fresh_only = false, bool atomic_outputs = false);
 
     // One scan of lag before a file is shown: what appeared this tick may
     // still be half written, and a truncated PNG reads as a failure rather
@@ -178,6 +178,7 @@ private:
     std::vector<PicturePanel> row_for(const std::string& map) const;
 
     FilmReel* _reel;
+    bool _atomic_outputs;
     std::filesystem::path _dir, _images, _depths;
     std::set<std::string> _seen;
     std::map<std::string, std::filesystem::file_time_type> _before;

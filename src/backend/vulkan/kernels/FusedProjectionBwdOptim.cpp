@@ -26,9 +26,9 @@ struct FpboParams {
     uint64_t nq_means_bounds, nq_quats_bounds, nq_scales_bounds,
         nq_opacities_bounds, nq_dc_bounds;
     uint64_t radii, densify_score, steps, visit_counters;
-    uint64_t depth_states, depth_information, depth_centers, depth_cameras;
+    uint64_t depth_states, depth_information, depth_centers, depth_cameras, depth_angular_bound;
     float depth_lr, depth_angular_lr;
-    uint32_t has_depth, depth_photo, depth_relative, depth_pad;
+    uint32_t has_depth, depth_photo, depth_relative, depth_has_bound;
     float lr_means, lr_quats, lr_scales, lr_opacs, lr_features_dc,
         lr_features_sh, lr_features_sb;
     float max_gauss_ratio, scale_regularization_weight;
@@ -46,7 +46,7 @@ struct FpboParams {
     uint32_t has_visit, skip_unrendered_reg;
     uint32_t sb_base, _pad0;
 };
-static_assert(sizeof(FpboParams) == 52 * 8 + 21 * 4 + 17 * 4,
+static_assert(sizeof(FpboParams) == 53 * 8 + 21 * 4 + 17 * 4,
               "params layout must match the slang struct");
 
 using vkk::or_fallback;
@@ -213,6 +213,8 @@ void launch_fpbo_vk(
     p.has_depth = depth.states ? 1u : 0u;
     p.depth_photo = depth.single_photometric;
     p.depth_relative = depth.angular_relative;
+    p.depth_angular_bound = vkk::or_fallback(depth.angular_bound);
+    p.depth_has_bound = depth.angular_bound ? 1u : 0u;
 
     p.lr_means = lr_means;
     p.lr_quats = lr_quats;

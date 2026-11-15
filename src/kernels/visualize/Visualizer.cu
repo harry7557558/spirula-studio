@@ -689,6 +689,8 @@ __global__ void blit_aabb_bvh_kernel(
             const float px = (float)pix_x + (i/MSAA + 0.5f) / (float)MSAA;
             const float py = (float)pix_y + (i%MSAA + 0.5f) / (float)MSAA;
             ray_o[i] = SlangProjectionUtils::transform_ray_o(R, t);
+            if (view_camera_model == (int)CameraModelType::ORTHOGRAPHIC)
+                ray_o[i] += SlangProjectionUtils::transform_ray_d(R, {(px-cx)/fx, (py-cy)/fy, 0.0f});
             inside |= SlangDistortion<distortion>::generate_ray(
                 {(px-cx)/fx, (py-cy)/fy},
                 view_camera_model, dist_coeffs,
@@ -859,6 +861,7 @@ __global__ void blit_with_bvh_kernel(
     const TensorView<float, 3> render_rgbs,  // [H, W, 3]
     const TensorView<float, 3> render_depths,  // [H, W, 1]
     const TensorView<float, 3> render_alphas,  // [H, W, 1]
+    const bool alpha_is_T,  // render_alphas holds transmittance
     const int view_camera_model,
     const int image_width,
     const int image_height,
@@ -932,6 +935,7 @@ __global__ void blit_with_bvh_kernel(
 
     float depth = render_depths.load1(pix_y, pix_x);
     float opac = render_alphas.load1(pix_y, pix_x);
+    if (alpha_is_T) opac = 1.0f - opac;
     depth /= fminf(fmaxf(opac, 1e-6f) / 0.5f, 1.0f);
     if (depth == 0.0f)
         depth = 1e10f;
@@ -958,6 +962,8 @@ __global__ void blit_with_bvh_kernel(
         float3 ray_o = SlangProjectionUtils::transform_ray_o(R, t);
         float3 ray_d;
         float2 uv = {(px-cx)/fx, (py-cy)/fy};
+        if (view_camera_model == (int)CameraModelType::ORTHOGRAPHIC)
+            ray_o += SlangProjectionUtils::transform_ray_d(R, {uv.x, uv.y, 0.0f});
         bool inside = SlangDistortion<distortion>::generate_ray(
             uv,
             view_camera_model, dist_coeffs,
@@ -1238,7 +1244,7 @@ void engine_viewer_init(
 
     // Allocate thumbnail cache (N * S * S * 4 bytes; zero-initialized so
     // unfilled cells render as transparent black).
-    constexpr int S = VIEWER_THUMBNAIL_SIZE;
+    const int S = v.thumb_size = viewer_thumbnail_size(N);
     v.thumbnails.resize(PoolSlot::ViewerThumb, (int64_t)N * S * S * 4);
     cudaMemset(v.thumbnails.data_ptr(), 0,
                (size_t)N * S * S * 4 * sizeof(uint8_t));
@@ -1516,7 +1522,7 @@ void engine_viewer_capture_thumbnails(TorchTensorView cam_indices_tv) {
     update_thumbnails_kernel<<<(uint32_t)B_post, 128, 0, viewer_stream()>>>(
         (const void*)std::get<0>(gt_rgb), pixel_format(gt_rgb),
         (int)H, (int)W,
-        d_ci, (int)B_post, v.N_post, VIEWER_THUMBNAIL_SIZE,
+        d_ci, (int)B_post, v.N_post, v.thumb_size,
         v.thumbnails.data_ptr(),
         v.thumbnail_done_mask.data_ptr(),
         d_alpha_mask, H_alpha, W_alpha
@@ -1631,6 +1637,7 @@ void engine_blit_view(
     TorchTensorView render_buffer,
     TorchTensorView render_depth,
     TorchTensorView render_alpha,
+    bool            alpha_is_transmittance,
     int             view_camera_model,
     std::string     distortion,
     TorchTensorView view_intrins,
@@ -1686,13 +1693,13 @@ void engine_blit_view(
     TensorView<uint8_t, 4> thumb_view;
     thumb_view.data = v.thumbnails.data_ptr();
     thumb_view.shape[0] = (long)v.N_post;
-    thumb_view.shape[1] = (long)VIEWER_THUMBNAIL_SIZE;
-    thumb_view.shape[2] = (long)VIEWER_THUMBNAIL_SIZE;
+    thumb_view.shape[1] = (long)v.thumb_size;
+    thumb_view.shape[2] = (long)v.thumb_size;
     thumb_view.shape[3] = 4L;
     thumb_view.strides[3] = 1L;
     thumb_view.strides[2] = 4L;
-    thumb_view.strides[1] = (long)(VIEWER_THUMBNAIL_SIZE * 4);
-    thumb_view.strides[0] = (long)(VIEWER_THUMBNAIL_SIZE * VIEWER_THUMBNAIL_SIZE * 4);
+    thumb_view.strides[1] = (long)(v.thumb_size * 4);
+    thumb_view.strides[0] = (long)(v.thumb_size * v.thumb_size * 4);
 
     const float4* lss_buffer = nullptr;
     const int2*   lss_nodes  = nullptr;
@@ -1735,6 +1742,7 @@ void engine_blit_view(
             tv_to_view<float, 3>(render_buffer), \
             tv_to_view<float, 3>(render_depth), \
             tv_to_view<float, 3>(render_alpha), \
+            alpha_is_transmittance, \
             view_camera_model, (int)w, (int)h, \
             (float4*)std::get<0>(view_intrins), \
             (float*)std::get<0>(view_viewmat), \
@@ -1802,7 +1810,7 @@ void blit_train_cameras_tensor(
             blit_with_bvh_kernel<D><<<_LAUNCH_ARGS_2D(w, h, 8, 4)>>>( \
                 tv_to_view<float, 3>(render_rgbs), \
                 tv_to_view<float, 3>(render_depths), \
-                tv_to_view<float, 3>(render_alphas), \
+                tv_to_view<float, 3>(render_alphas), false, \
                 view_camera_model, w, h, \
                 (float4*)std::get<0>(view_intrins), \
                 (float*)std::get<0>(view_viewmat), \
@@ -1871,7 +1879,7 @@ void blit_train_cameras_tensor(
         blit_with_bvh_kernel<D><<<_LAUNCH_ARGS_2D(w, h, 8, 4)>>>( \
             tv_to_view<float, 3>(render_rgbs), \
             tv_to_view<float, 3>(render_depths), \
-            tv_to_view<float, 3>(render_alphas), \
+            tv_to_view<float, 3>(render_alphas), false, \
             view_camera_model, w, h, \
             (float4*)std::get<0>(view_intrins), \
             (float*)std::get<0>(view_viewmat), \

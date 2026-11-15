@@ -1,6 +1,7 @@
 // FrameSelect.cpp -- see FrameSelect.h.
 
 #include "app/gui/FrameSelect.h"
+#include "core/BufferedFile.h"
 
 #include "app/FrameSharpness.h"
 #include "app/gui/PickSheet.h"
@@ -141,8 +142,16 @@ bool is_picture(const fs::path& p) {
 bool same_bytes(const fs::path& a, const fs::path& b) {
     std::ifstream fa(a, std::ios::binary), fb(b, std::ios::binary);
     if (!fa || !fb) return false;
-    return std::equal(std::istreambuf_iterator<char>(fa), std::istreambuf_iterator<char>(),
-                      std::istreambuf_iterator<char>(fb), std::istreambuf_iterator<char>());
+    thread_local std::vector<char> left(spirula::kFileBufferBytes), right(spirula::kFileBufferBytes);
+    for (;;) {
+        fa.read(left.data(), (std::streamsize)left.size());
+        fb.read(right.data(), (std::streamsize)right.size());
+        const auto n = fa.gcount();
+        if (n != fb.gcount() || !std::equal(left.begin(), left.begin() + n, right.begin())) return false;
+        if (fa.bad() || fb.bad()) return false;
+        if (fa.eof() || fb.eof()) return fa.eof() && fb.eof();
+        if (!fa || !fb) return false;
+    }
 }
 
 // ffmpeg's fps filter repeats a source frame to reach a rate above the

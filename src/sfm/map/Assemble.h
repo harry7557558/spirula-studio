@@ -693,10 +693,10 @@ inline std::vector<Reconstruction> finishModels(Mapper& mapper,
         t0 = clk();
         const size_t before = models.size();
         models = splitFoldedModels(mapper, std::move(models), fopt, memo, st.finish);
-        if (models.size() != before)
-            for (Reconstruction& m : models)
-                if (m.numRegistered() >= 2 && memo.audited.insert(ModelMemo::of(m)).second)
-                    m = mapper.refine(m);
+        if (models.size() != before) {
+            models = refineAfterFoldSplit(std::move(models), memo, mopt, st.finish,
+                                          [&](const Reconstruction& m) { return mapper.refine(m); });
+        }
         st.t_fold = secs(t0, clk());
     }
 

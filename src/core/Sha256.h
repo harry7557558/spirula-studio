@@ -11,6 +11,7 @@
 // Header-only for the same reason src/core/Env.h is: the standalone tool
 // binaries link neither the engine nor each other.
 
+#include "core/BufferedFile.h"
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -109,7 +110,7 @@ inline std::string sha256_file(const std::string& path) {
     std::ifstream fin(path, std::ios::binary);
     if (!fin) return {};
     Sha256 sha;
-    std::vector<char> chunk(1 << 20);
+    thread_local std::vector<char> chunk(kFileBufferBytes);
     while (fin) {
         fin.read(chunk.data(), (std::streamsize)chunk.size());
         const std::streamsize got = fin.gcount();

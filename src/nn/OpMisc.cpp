@@ -564,7 +564,7 @@ void avgpool(const Tensor& out, const Tensor& in, int kernel, int stride, int pa
 }
 
 void grid_sample_points(const Tensor& out, const Tensor& in, const Tensor& pos,
-                        bool align_corners) {
+                        bool align_corners, GridPad pad) {
     NN_CHECK(in.ndim == 3, "grid_sample_points expects an [H, W, C] map");
     NN_CHECK(pos.dtype == DType::F32 && pos.cols() == 2,
              "grid_sample_points: pos must be an f32 [N, 2] tensor");
@@ -583,7 +583,8 @@ void grid_sample_points(const Tensor& out, const Tensor& in, const Tensor& pos,
     p.W = (uint32_t)in.shape[1];
     p.C = (uint32_t)C;
     p.N = (uint32_t)N;
-    vk::SpecList spec{(uint32_t)(in.dtype == DType::F16), 0u, (uint32_t)align_corners};
+    vk::SpecList spec{(uint32_t)(in.dtype == DType::F16), 0u, (uint32_t)align_corners,
+                      (uint32_t)(pad == GridPad::Border)};
     vk::Stream::get().dispatchFlat(entry, spec, N * C, 256, &p, sizeof(p),
                                    &p.groups_per_row);
 }

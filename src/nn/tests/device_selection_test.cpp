@@ -30,25 +30,13 @@ void check(bool ok, const char* what) {
     if (!ok) g_failures++;
 }
 
-int autoRank(const std::string& type) {
-    return type == "discrete"  ? 4
-         : type == "integrated" ? 3
-         : type == "virtual"    ? 2
-         : type == "cpu"        ? 1
-                                : 0;
-}
-
 const nn::DeviceInfo* autoUsable(
     const std::vector<nn::DeviceInfo>& devices) {
-    const nn::DeviceInfo* best = nullptr;
-    for (const auto& d : devices) {
-        if (!d.usable || d.uuid.empty()) continue;
-        if (!best || autoRank(d.type) > autoRank(best->type) ||
-            (autoRank(d.type) == autoRank(best->type) &&
-             d.vram_bytes > best->vram_bytes))
-            best = &d;
-    }
-    return best;
+    const sel::Resolution res =
+        nn::vk::Context::resolveSelector(sel::parseRequest("auto"));
+    for (const auto& d : devices)
+        if (res.ok() && d.uuid == res.selector) return &d;
+    return nullptr;
 }
 
 // Another identity, not another record: a driver installed twice reports the
@@ -156,6 +144,28 @@ void testResolutionAndRanking() {
     check(sel::resolveRequest(sel::parseRequest("auto"), sameType).device.name ==
               "iGPU large",
           "auto: VRAM breaks a type tie");
+
+    // Identical cards: less memory held by other programs wins, past 256 MiB of noise.
+    std::vector<sel::DeviceRecord> twins{
+        makeRecord(0, "GPU busy", VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, kUuidA,
+                   32ull << 30),
+        makeRecord(1, "GPU idle", VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, kUuidB,
+                   32ull << 30),
+    };
+    twins[0].others_bytes = 2ull << 30;
+    twins[1].others_bytes = 0;
+    check(sel::resolveRequest(sel::parseRequest("auto"), twins).device.name ==
+              "GPU idle",
+          "auto: memory other programs hold breaks a tie between identical cards");
+    twins[1].others_bytes = twins[0].others_bytes - (128ull << 20);
+    check(sel::resolveRequest(sel::parseRequest("auto"), twins).device.name ==
+              "GPU busy",
+          "auto: under 256 MiB of difference keeps enumeration order");
+    twins[1].vram_bytes = 16ull << 30;
+    twins[1].others_bytes = 0;
+    check(sel::resolveRequest(sel::parseRequest("auto"), twins).device.name ==
+              "GPU busy",
+          "auto: VRAM outranks free memory");
 
     // An unusable device is not an Auto candidate even if it is fastest.
     std::vector<sel::DeviceRecord> mixed{

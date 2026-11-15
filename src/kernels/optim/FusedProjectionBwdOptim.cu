@@ -166,11 +166,13 @@ inline void launch_fused_projection_bwd_optimizer_3dgs_kernel(
     DeviceVector<int32_t> camera_id_bounds;
 
     if (packed) {
+        if (DevicePool::global().phase() != PoolPhase::RasterBwd)
+            pool_begin_phase(PoolPhase::RasterBwd);
         long nnz = camera_ids.size();
         // The forward emits the list in (gaussian, camera) order, so
         // gaussian_ids is already non-decreasing and cid_t is the out_idx --
         // no sort, no permutation to carry.
-        camera_id_bounds.resize(PoolSlot::FusedProjBwdCamBounds, (int64_t)(N+1));
+        camera_id_bounds.resize_reused(PoolSlot::FusedProjBwdCamBounds, (int64_t)(N+1));
         camera_id_bounds_kernel<<<_LAUNCH_ARGS_1D(N+1, 256)>>>(
             nnz, N, gaussian_ids.data_ptr(), camera_id_bounds.data_ptr()
         );

@@ -1,5 +1,6 @@
 // ScenePartition.cpp -- see ScenePartition.h and docs/notes/scene-partition.md.
 
+#include "data/FileBytes.h"
 #include "data/ScenePartition.h"
 
 #include "data/CameraMath.h"
@@ -1408,13 +1409,7 @@ bool get(const std::string& s, size_t& at, T& v) {
 }
 
 std::string read_file(const std::string& path) {
-    FILE* f = std::fopen(path.c_str(), "rb");
-    if (!f) throw std::runtime_error("cannot read " + path);
-    std::string bytes;
-    char buf[1 << 16];
-    size_t got;
-    while ((got = std::fread(buf, 1, sizeof buf, f)) > 0) bytes.append(buf, got);
-    std::fclose(f);
+    const std::string bytes = read_file_bytes(path, "ScenePartition");
     return bytes;
 }
 

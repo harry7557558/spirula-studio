@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "core/Env.h"
 
@@ -234,6 +235,26 @@ void   event_record(Event* event, Stream stream = kDefaultStream);
 void   event_synchronize(Event* event);
 void   event_destroy(Event* event);
 float  event_elapsed_ms(Event* start, Event* end);  // requires enable_timing
+
+// --- per-dispatch timing (the step breakdown, docs/notes/step-timing.md) ---
+// While armed, each kernel dispatch, fill and copy is bracketed by device
+// timestamps and tagged with its recording thread's tag. Vulkan only.
+struct DispatchTime {
+    const char* entry;   // "module.entry", "@fill" or "@copy"; static storage
+    uint16_t tag;
+    bool foreign;        // recorded by a thread other than the one that armed
+    double ms;
+};
+void dispatch_timing_arm();
+// Drains the device, appends what the armed span recorded and disarms; false
+// when nothing could be timed (no timestamps, or the CUDA backend).
+bool dispatch_timing_collect(std::vector<DispatchTime>& out);
+
+namespace detail {
+inline thread_local uint16_t g_dispatch_tag = 0;
+}
+inline void dispatch_timing_set_tag(uint16_t tag) { detail::g_dispatch_tag = tag; }
+inline uint16_t dispatch_timing_tag() { return detail::g_dispatch_tag; }
 
 }  // namespace backend
 

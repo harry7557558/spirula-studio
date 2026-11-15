@@ -77,7 +77,7 @@ public:
                                uint64_t count, uint64_t seed, uint64_t budget)
         : prefix_(prefix), width_(width), height_(height), count_(count), seed_(seed), budget_(budget) {
         const auto layout = sampling_layout(width,height,count); columns_ = layout.first; rows_ = layout.second;
-        output_.open(path("input"),std::ios::binary | std::ios::trunc);
+        output_.open(path("input"),std::ios::binary | std::ios::trunc, disk_io_buffer_bytes(budget_));
         if (!output_) throw std::runtime_error("cannot write dense sample weights");
     }
 
@@ -95,24 +95,26 @@ public:
             return std::tie(a.confidence,a.pixel) > std::tie(b.confidence,b.pixel);
         },check);
         {
-            std::ifstream input(path("cells"),std::ios::binary);
-            std::ofstream output(path("coverage"),std::ios::binary | std::ios::trunc);
+            BufferedInputFile input(path("cells"),std::ios::binary, disk_io_buffer_bytes(budget_));
+            BufferedOutputFile output(path("coverage"),std::ios::binary | std::ios::trunc, disk_io_buffer_bytes(budget_));
             Item item; uint64_t cell = UINT64_MAX;
             while (read_disk_record(input,item)) if (cell != item.cell) { write_disk_record(output,item); cell = item.cell; }
+            flush_disk_output(output);
         }
         external_sort<Item>(path("coverage"),path("ranked-coverage"),budget_,[](const Item& a,const Item& b) {
             return std::tie(a.confidence,a.pixel) > std::tie(b.confidence,b.pixel);
         },check);
         {
-            std::ifstream input(path("ranked-coverage"),std::ios::binary);
-            std::ofstream output(path("cover-pixels"),std::ios::binary | std::ios::trunc);
+            BufferedInputFile input(path("ranked-coverage"),std::ios::binary, disk_io_buffer_bytes(budget_));
+            BufferedOutputFile output(path("cover-pixels"),std::ios::binary | std::ios::trunc, disk_io_buffer_bytes(budget_));
             Item item; uint64_t count = 0, coverage = (uint64_t)std::ceil(count_ * 0.15);
             while (count < coverage && read_disk_record(input,item)) { write_disk_record(output,item.pixel); ++count; }
+            flush_disk_output(output);
         }
         external_sort<uint32_t>(path("cover-pixels"),path("cover-sorted"),budget_,std::less<uint32_t>(),check);
         DiskArray<uint32_t> coverage(path("cover-spill"),budget_ / 4);
         {
-            std::ifstream input(path("cover-sorted"),std::ios::binary); uint32_t pixel;
+            BufferedInputFile input(path("cover-sorted"),std::ios::binary, disk_io_buffer_bytes(budget_)); uint32_t pixel;
             while (read_disk_record(input,pixel)) coverage.push_back(pixel);
         }
         auto covered = [&](uint32_t pixel) {
@@ -124,14 +126,15 @@ public:
             return std::tie(a.weight,a.pixel) > std::tie(b.weight,b.pixel);
         },check);
         {
-            std::ifstream input(path("weights"),std::ios::binary);
-            std::ofstream output(path("chosen"),std::ios::binary | std::ios::trunc);
+            BufferedInputFile input(path("weights"),std::ios::binary, disk_io_buffer_bytes(budget_));
+            BufferedOutputFile output(path("chosen"),std::ios::binary | std::ios::trunc, disk_io_buffer_bytes(budget_));
             for (auto pixel : coverage) write_disk_record(output,pixel);
             Item item; uint64_t count = coverage.size();
             while (count < count_ && read_disk_record(input,item)) {
                 if (check) check();
                 if (!covered(item.pixel)) { write_disk_record(output,item.pixel); ++count; }
             }
+            flush_disk_output(output);
         }
         external_sort<uint32_t>(path("chosen"),path("selected"),budget_,std::less<uint32_t>(),check);
         return path("selected");
@@ -143,7 +146,7 @@ private:
     std::filesystem::path prefix_;
     int width_, height_, columns_, rows_;
     uint64_t count_, seed_, budget_;
-    std::ofstream output_;
+    BufferedOutputFile output_;
 };
 
 }  // namespace spirula::dense

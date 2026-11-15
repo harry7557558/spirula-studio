@@ -18,6 +18,7 @@ namespace gui {
 
 struct LidarJob {
     std::vector<std::string> clouds;   // .e57 / .las / .ply
+    std::vector<std::string> with_photos;   // those of them an E57 with photographs
     bool scan_photos = true;           // an E57's photographs join the reconstruction
     bool in_frame = false;             // the model is already in the scans' frame
     bool scanner_only = false;         // its photographs are all the images: no reconstruction
@@ -35,11 +36,20 @@ struct LidarPrep {
     std::vector<std::string> photographed;   // the clouds those photographs came from
 };
 
+// Each scan's folder under <workspace>/lidar/photos/, in `clouds` order.
+std::vector<std::string> scan_photo_subdirs(const std::vector<std::string>& clouds);
+
 // Before the frames: each scan's photographs, extracted under
 // <workspace>/lidar/photos/ with their poses recorded as anchors, become
-// inputs of their own, so they are imported and masked like any other.
+// inputs of their own, imported and masked like any other with `stencils`.
 bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
+                           const std::map<std::string, app::FrameStencil>& stencils,
                            std::vector<PrepInput>& inputs, LidarPrep& out, std::string& error);
+
+// One scan's photographs, where a run extracts them, to draw on before it:
+// `dir` is the folder. Anchors go to a file of their own, not the run's.
+bool extract_scan_photos(const std::vector<std::string>& clouds, size_t scan,
+                         const std::string& workspace, std::string& dir, std::string& error);
 
 // After the frames: views of the scans without photographs rendered into
 // `image_dir`/scan_views as anchors, unless one sharing their frame has them,

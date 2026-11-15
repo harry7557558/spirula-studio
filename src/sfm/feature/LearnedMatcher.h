@@ -14,7 +14,11 @@
 // without the inference layer, and the factory says so at run time.
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
+
+#include "core/ColorSpace.h"
 
 #include "sfm/feature/Matcher.h"
 
@@ -48,13 +52,41 @@ struct LomaMatchOptions {
     bool   verbose = true;
 };
 
+// FlexGlue matches any extractor's keypoints through dense features of the
+// images themselves, so it reads pixels at match time and ignores descriptors.
+// COLMAP's FlexGlueMatchingOptions defaults.
+struct FlexGlueMatchOptions {
+    // "flexglue" (fetched and cached, licence-gated) or a path to flexglue.pth.
+    std::string model = "flexglue";
+    double min_score = 0.1;          // filter_threshold
+    double max_distance = 3.0;       // pixels of the 512x512 input; <= 0 off
+    // A pair scoring below this is rejected whole; 0 keeps every pair.
+    double min_covisibility = 0.5;
+    double early_stop_decay = 0.5;   // 1 never stops early
+    int    cache_size = 128;         // images whose dense features stay resident
+    // Where the images are (the `match` command; `auto` fills it in).
+    std::string image_dir;
+    // One file per feature set, in feature order; the pipeline fills it in.
+    std::vector<std::string> image_paths;
+    // How the extractor decoded them, so the pixels match the keypoints' frame.
+    std::string gamut;
+    std::optional<bool> is_linear;
+    colorspace::Exposure exposure;
+    bool apply_exif_orientation = false;
+    std::string device_selector;
+    bool verbose = true;
+};
+
 bool isLearnedMatcher(const std::string& type);
+// A learned matcher that reads descriptors, and so needs its own frontend's.
+bool matcherReadsDescriptors(const std::string& type);
 
 // Throws std::runtime_error naming the type when it is unknown, or when it is
 // learned and this binary has no inference layer.
 std::unique_ptr<IFeatureMatcher> createFeatureMatcher(const std::string& type,
                                                       const MatchOptions& match,
                                                       const LightGlueOptions& lightglue,
-                                                      const LomaMatchOptions& loma);
+                                                      const LomaMatchOptions& loma,
+                                                      const FlexGlueMatchOptions& flexglue = {});
 
 }  // namespace sfm

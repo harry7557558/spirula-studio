@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <limits>
 #include <map>
 #include <memory>
@@ -50,6 +51,7 @@
 #include "sfm/core/Log.h"
 #include "sfm/map/BlockScale.h"
 #include "sfm/map/Bundle.h"
+#include "sfm/ba/CpuParallel.h"
 #include "i18n/catalog/Sfm.h"
 #include "sfm/map/CorrespondenceGraph.h"
 // For alignByStructure: the similarity two models' shared points determine, and
@@ -57,12 +59,15 @@
 // include this header, so there is no cycle.
 #include "sfm/map/Merge.h"
 #include "sfm/map/Profile.h"
+#include "sfm/map/TrackPolicy.h"
 #include "core/Env.h"
 #include "core/HardwareThreads.h"
 
 namespace sfm {
 
 struct MapperOptions {
+    TrackPolicy tracks;
+    int seed_essential = 0;
     double focal = 0;                  // 0 = COLMAP default (1.2 * max dim)
     // Every pixel threshold below is in *extraction* pixels -- the frame the
     // keypoints were measured in, not the frame they are stored in. They are
@@ -255,12 +260,8 @@ struct MapperOptions {
     // fraction of max_reproj_error (the churn hysteresis); 0 disables the
     // retriangulation pass entirely.
     double retri_scale = 0.75;
-    // Fuse two 3D points a correspondence says are the same feature
-    // (Mapper::mergeTracks). Off is the pre-existing behaviour: creation-only
-    // tracks, which fragment wherever a point was triangulated twice before the
-    // pose joining the two halves existed. Measured worth 13 images and 2.4
-    // AUC@5 on a 1146-image capture, at the cost of the solver time longer
-    // tracks bring -- which kMergeMaxTrack is what bounds.
+    // Track fusion added 13 registered images and 2.4 AUC@5 on a 1146-image capture.
+    // tracks.merge_max_track bounds its union length independently of seam welding.
     bool merge_tracks = true;
     // A verified pair with seam_min_matches matches, of which the finished model explains
     // fewer than this fraction by a shared 3D point, is a seam candidate; Mapper::openSeams
@@ -342,20 +343,9 @@ struct MapperOptions {
     // rate is a small fraction of its fp32 rate -- every consumer card -- can be
     // the faster way to the same answer.
     std::string ba_real = "double";
-    // ... and the scalar for solves whose answer is provisional: a growth-phase
-    // refinement, or a merge-tree level that another level will re-solve. Those
-    // only need a step good enough to register and filter against, and fp32
-    // halves the bytes every kernel moves -- worth 25-35% of the mapping stage.
-    //
-    // It is nonetheless **double by default**, because fp32 there costs both
-    // accuracy and reproducibility. The Schur and Jacobian kernels accumulate
-    // with floating-point atomics, whose execution order is arbitrary; at fp64
-    // the resulting perturbation (~1e-16) never crosses a decision threshold
-    // and the whole pipeline is reproducible run to run, while at fp32 (~1e-7)
-    // it crosses them constantly. Measured over three identical runs each: a
-    // 379-image capture scored 96.1 AUC@10 every time in fp64 and 96.5 / 92.3 /
-    // 91.5 in fp32; an 896-image one 88.3 / 87.7 / 88.0 against 85.2 / 87.5 /
-    // 87.1. Not just noisier -- worse on average, by 2.7 and 1.4 points.
+    // Growth/merge-tree scalar: fp32 saved 25-35% mapping time but lost mean
+    // AUC@10 by 2.7/1.4 points on 379/896-image captures (src/sfm/README.md).
+    // fp64 reduces numerical variation; it does not make mapping deterministic.
     std::string ba_real_coarse = "double";
     int device = -1;
     // Canonical uuid:<hex>; every BA this mapper runs carries it. "" = shared
@@ -404,7 +394,10 @@ public:
         : db_(db), feats_(feats), opt_(opt), cam_ids_(std::move(camera_ids)),
           rigs_(rigs && !rigs->empty() && opt.use_rigs ? rigs : nullptr),
           seq_(seqs && !seqs->empty() ? seqs : nullptr),
-          priors_(priors && opt.use_priors ? priors : nullptr) {}
+          priors_(priors && opt.use_priors ? priors : nullptr) {
+        opt_.tracks.readExperiments();
+        opt_.seed_essential = experimentInt("SFM_SEED_ESSENTIAL", opt_.seed_essential, 3);
+    }
 
     const RigTable* rigs() const { return rigs_; }
     const SequenceTable* sequences() const { return seq_; }
@@ -818,10 +811,25 @@ public:
         return snapshotModel();
     }
 
-    // Choose the starting intrinsics before any model is built (D48). Part of
-    // run(); public so a bottom-up schedule can do it once over the whole
-    // database, instead of leaving the choice to whichever small piece of the
-    // capture it happens to reconstruct first.
+    // Global initialization needs intrinsics before it needs the correspondence graph.
+    void initializeCameras() {
+        cancel::check();
+        if (!default_cams_.empty()) return;
+        if (cam_ids_.size() != db_.images.size()) cam_ids_.assign(db_.images.size(), 1);
+        for (uint32_t i = 0; i < db_.images.size(); i++) {
+            const uint32_t cid = cam_ids_[i];
+            if (default_cams_.count(cid)) continue;
+            auto proto = opt_.initial_cameras.find(cid);
+            Camera camera = proto != opt_.initial_cameras.end()
+                                ? proto->second
+                                : Camera::defaultFor(cid, feats_[i].width, feats_[i].height,
+                                                     opt_.focal, opt_.camera_model);
+            camera.id = cid;
+            default_cams_[cid] = camera;
+        }
+    }
+
+    // Bottom-up atoms share the focal estimated over the whole capture (D48).
     void bootstrapCameras() {
         ensureSetup();
         bootstrapFocalLength();
@@ -836,14 +844,30 @@ public:
     // one. For a caller asking a yes/no question about the result (can this
     // seam be reconciled at all?) the last digits of convergence decide
     // nothing, and something else optimizes the model properly afterwards.
-    Reconstruction refine(const Reconstruction& m, bool coarse = false) {
+    Reconstruction refine(const Reconstruction& m, bool coarse = false,
+                          bool fixed_rotation_stage = false) {
         ensureSetup();
         resetModel();
         adopt(m);
+        fitGpsFrame();
         rebuildScores();
         const bool tight = opt_.ba_final_tight;
         opt_.ba_final_tight = tight && !coarse;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const BAOverBudget&) {
+            opt_.ba_final_tight = tight;
+            throw;
+        } catch (const Cancelled&) {
+            opt_.ba_final_tight = tight;
+            throw;
+        } catch (const std::exception& e) {
+            opt_.ba_final_tight = tight;
+            slog::err_raw(slog::Tag::Map,
+                          "[map] model refinement failed: " + std::string(e.what()) +
+                          "; keeping unrefined model");
+            return m;
+        }
         opt_.ba_final_tight = tight;
         return snapshotModel();
     }
@@ -1150,7 +1174,18 @@ public:
         // second round, without retriangulation (44a78445 dropped that deliberately), pulls it.
         final_.min_rounds = 2;
         final_.no_retri = true;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const Cancelled&) {
+            final_ = FinalRelease{};
+            throw;
+        } catch (const std::exception& e) {
+            final_ = FinalRelease{};
+            slog::err_raw(slog::Tag::Map,
+                          "[seam] weld refinement failed: " + std::string(e.what()) +
+                          "; keeping unwelded model");
+            return m;
+        }
         final_ = FinalRelease{};
         st.rounds = refine_rounds_;
         st.reproj_after = meanReprojPx();
@@ -1255,7 +1290,18 @@ public:
         for (const auto& kv : rec_.cameras) before[kv.first] = {kv.second.cx, kv.second.cy};
         final_.pp = pp;
         final_.extra = extra;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const Cancelled&) {
+            final_ = FinalRelease{};
+            throw;
+        } catch (const std::exception& e) {
+            final_ = FinalRelease{};
+            slog::err_raw(slog::Tag::Map,
+                          "[map] polish refinement failed: " + std::string(e.what()) +
+                          "; keeping unpolished model");
+            return m;
+        }
         final_ = FinalRelease{};
         if (opt_.verbose)
             for (const auto& kv : rec_.cameras) {
@@ -1281,7 +1327,18 @@ public:
         if (!splitCamerasPerImage()) return m;
         final_.extra = free_extra;
         final_.no_sanitize = true;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const Cancelled&) {
+            final_ = FinalRelease{};
+            throw;
+        } catch (const std::exception& e) {
+            final_ = FinalRelease{};
+            slog::err_raw(slog::Tag::Map,
+                          "[map] per-image intrinsics refinement failed: " + std::string(e.what()) +
+                          "; keeping shared intrinsics model");
+            return m;
+        }
         final_ = FinalRelease{};
         return snapshotModel();
     }
@@ -1296,7 +1353,18 @@ public:
         adopt(m);
         rebuildScores();
         final_.no_rig = true;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const Cancelled&) {
+            final_ = FinalRelease{};
+            throw;
+        } catch (const std::exception& e) {
+            final_ = FinalRelease{};
+            slog::err_raw(slog::Tag::Map,
+                          "[map] free-rig refinement failed: " + std::string(e.what()) +
+                          "; keeping calibrated rig model");
+            return m;
+        }
         final_ = FinalRelease{};
         return snapshotModel();
     }
@@ -1804,12 +1872,23 @@ public:
             } catch (const BAOverBudget& e) {
                 const int want =
                     std::max(batches + 1, (int)std::ceil(e.need_mb / e.budget_mb * batches));
-                if (want > 64) throw;
+                if (want > 64) {
+                    slog::err_raw(slog::Tag::Map,
+                                  "[map] joint solve exceeds memory budget across 64 batches; keeping unrefined models");
+                    return;
+                }
                 if (opt_.verbose)
                     slog::diag(slog::Tag::Map,
                                "[map] the joint solve needs %.0f MB against a %.0f MB budget: "
                                "splitting it %d ways", e.need_mb, e.budget_mb, want);
                 batches = want;
+            } catch (const Cancelled&) {
+                throw;
+            } catch (const std::exception& e) {
+                slog::err_raw(slog::Tag::Map,
+                              "[map] joint solve failed: " + std::string(e.what()) +
+                              "; keeping unrefined models");
+                return;
             }
         }
         // Deliberately no per-model refine afterwards: that would re-fit each
@@ -2570,7 +2649,7 @@ private:
                 if (ik == rec_.points3D.end() || ig == rec_.points3D.end()) continue;
                 Point3D& P = ik->second;
                 const Point3D& Q = ig->second;
-                if (P.track.size() + Q.track.size() > kMergeMaxTrack) continue;
+                if (P.track.size() + Q.track.size() > kSeamMergeMaxTrack) continue;
                 bool clash = false;
                 for (const TrackElement& a : P.track) on_track[a.image_id] = 1;
                 for (const TrackElement& b : Q.track)
@@ -3077,7 +3156,18 @@ private:
             ProfTimer pt(g_map_prof.snapshot);
             snap = takeSnapshot();
         }
-        globalRefine(final_pass);
+        try {
+            globalRefine(final_pass);
+        } catch (const Cancelled&) {
+            throw;
+        } catch (const std::exception& e) {
+            slog::err_raw(slog::Tag::Map,
+                          "[map] global refinement failed: " + std::string(e.what()) +
+                          "; keeping current model");
+            restoreSnapshot(snap);
+            recent_regs_.clear();
+            return;
+        }
         // Collapse = losing half the registered images. Observation loss alone
         // is NOT a collapse: shredding most of a junk-heavy image's points
         // while every pose survives is the filters working as intended, and
@@ -3129,11 +3219,6 @@ private:
     // Unit viewing ray for feature f of image img (the geometry core's
     // interchange type, D31; fisheye-ready, unlike z=1 normalized coords).
     Vec3 bearing(uint32_t img, uint32_t f) const { return camOf(img).bearing(kp(img, f)); }
-    Mat34 Pmat(uint32_t img) const {
-        const Pose& p = rec_.images.at(img).pose;
-        return {p.R[0], p.R[1], p.R[2], p.t.x, p.R[3], p.R[4], p.R[5], p.t.y,
-                p.R[6], p.R[7], p.R[8], p.t.z};
-    }
     // A point is "in front" of a camera if it lies along the viewing ray. For
     // the pinhole family that is p.z > 0 (kept bit-identical); a wide-FOV camera
     // sees past 90 deg, where p.z < 0 is still valid, so the test becomes the
@@ -3145,18 +3230,19 @@ private:
     double reprojErr(uint32_t img, uint32_t f, const Vec3& X) const {
         const Pose& p = rec_.images.at(img).pose;
         const Camera& cam = camOf(img);
+        const Vec2 o = kp(img, f);
+        return reprojErrFor(cam, p, o, cam.wideFov() ? cam.bearing(o) : Vec3{}, X);
+    }
+
+    static double reprojErrFor(const Camera& cam, const Pose& p, const Vec2& o,
+                               const Vec3& bearing, const Vec3& X) {
         Vec3 pc = mul(p.R, X) + p.t;
-        // Cheirality: pinhole path stays exactly `pc.z < 1e-8` (no bearing cost);
-        // a wide-FOV camera sees past 90 deg, so it tests the sign along the ray
-        // (D33). For a spherical camera every direction is in view, and the dot
-        // test costs nothing beyond the bearing it already needs.
         if (cam.wideFov()) {
-            if (pc.dot(cam.bearing(kp(img, f))) <= 0) return 1e30;
+            if (pc.dot(bearing) <= 0) return 1e30;
         } else if (pc.z < 1e-8) {
             return 1e30;
         }
         Vec2 px = cam.project(pc);
-        Vec2 o = kp(img, f);
         return std::hypot(px.x - o.x, px.y - o.y);
     }
 
@@ -3212,17 +3298,35 @@ private:
     // every-frame video asked for the same ones millions of times a pass.
     double reprojErrAt(const ModelIndex& mi, uint32_t img, uint32_t f, const Vec3& X,
                        const Vec3& bearing) const {
-        const Pose& p = mi.img[img]->pose;
-        const Camera& cam = *mi.cam[img];
-        Vec3 pc = mul(p.R, X) + p.t;
-        if (cam.wideFov()) {
-            if (pc.dot(bearing) <= 0) return 1e30;
-        } else if (pc.z < 1e-8) {
-            return 1e30;
-        }
-        Vec2 px = cam.project(pc);
-        Vec2 o = kp(img, f);
-        return std::hypot(px.x - o.x, px.y - o.y);
+        return reprojErrFor(*mi.cam[img], mi.img[img]->pose, kp(img, f), bearing, X);
+    }
+
+    struct TriangulationView {
+        const Camera& camera;
+        const Pose& pose;
+        Mat34 projection;
+        Vec3 center;
+        double max_error;
+
+        TriangulationView(const Camera& c, const Pose& p, double error)
+            : camera(c), pose(p),
+              projection{p.R[0], p.R[1], p.R[2], p.t.x, p.R[3], p.R[4], p.R[5], p.t.y,
+                         p.R[6], p.R[7], p.R[8], p.t.z},
+              center(cameraCenter(p)), max_error(error) {}
+    };
+
+    bool triangulatePair(const TriangulationView& a, const Vec2& oa, const Vec3& ba,
+                         const TriangulationView& b, const Vec2& ob, const Vec3& bb,
+                         Vec3& X, double& angle) const {
+        X = triangulateDLT(a.projection, b.projection, ba, bb);
+        Vec3 pa = mul(a.pose.R, X) + a.pose.t;
+        Vec3 pb = mul(b.pose.R, X) + b.pose.t;
+        if (!inFront(a.camera, pa, ba, 1e-6) || !inFront(b.camera, pb, bb, 1e-6)) return false;
+        angle = triangulationAngle(X, a.center, b.center) * 180.0 / M_PI;
+        if (angle < opt_.min_tri_angle_deg) return false;
+        if (reprojErrFor(a.camera, a.pose, oa, ba, X) > a.max_error) return false;
+        if (reprojErrFor(b.camera, b.pose, ob, bb, X) > b.max_error) return false;
+        return true;
     }
 
     // triangulatePair() against the index.
@@ -3234,51 +3338,19 @@ private:
     bool triangulatePairAt(const ModelIndex& mi, uint32_t a, uint32_t fa, const Vec3& ba,
                            uint32_t b, uint32_t fb, const Vec3& bb, Vec3& X,
                            double err_scale = 1.0) const {
-        const Pose& pa_ = mi.img[a]->pose;
-        const Pose& pb_ = mi.img[b]->pose;
-        const Camera& ca = *mi.cam[a];
-        const Camera& cb = *mi.cam[b];
-        Mat34 Pa{pa_.R[0], pa_.R[1], pa_.R[2], pa_.t.x, pa_.R[3], pa_.R[4], pa_.R[5], pa_.t.y,
-                 pa_.R[6], pa_.R[7], pa_.R[8], pa_.t.z};
-        Mat34 Pb{pb_.R[0], pb_.R[1], pb_.R[2], pb_.t.x, pb_.R[3], pb_.R[4], pb_.R[5], pb_.t.y,
-                 pb_.R[6], pb_.R[7], pb_.R[8], pb_.t.z};
-        X = triangulateDLT(Pa, Pb, ba, bb);
-        Vec3 pa = mul(pa_.R, X) + pa_.t;
-        Vec3 pb = mul(pb_.R, X) + pb_.t;
-        if (!inFront(ca, pa, ba, 1e-6) || !inFront(cb, pb, bb, 1e-6)) return false;
-        double ang = triangulationAngle(X, cameraCenter(pa_), cameraCenter(pb_));
-        if (ang * 180.0 / M_PI < opt_.min_tri_angle_deg) return false;
-        if (reprojErrAt(mi, a, fa, X, ba) > err_scale * (opt_.max_reproj_error * mi.pixel_scale[a]))
-            return false;
-        if (reprojErrAt(mi, b, fb, X, bb) > err_scale * (opt_.max_reproj_error * mi.pixel_scale[b]))
-            return false;
-        return true;
-    }
-
-    // Triangulate the correspondence (a,fa)<->(b,fb); accept on cheirality,
-    // angle and reprojection. Returns true and fills X on success.
-    // `err_scale` tightens the reprojection acceptance (< 1 during
-    // retriangulation, so re-created points must beat the filter's kill
-    // threshold with margin -- the churn hysteresis, see D36).
-    bool triangulatePair(uint32_t a, uint32_t fa, uint32_t b, uint32_t fb, Vec3& X,
-                         double err_scale = 1.0) const {
-        Vec3 ba = bearing(a, fa), bb = bearing(b, fb);
-        X = triangulateDLT(Pmat(a), Pmat(b), ba, bb);
-        Vec3 pa = mul(rec_.images.at(a).pose.R, X) + rec_.images.at(a).pose.t;
-        Vec3 pb = mul(rec_.images.at(b).pose.R, X) + rec_.images.at(b).pose.t;
-        if (!inFront(camOf(a), pa, ba, 1e-6) || !inFront(camOf(b), pb, bb, 1e-6)) return false;
-        double ang = triangulationAngle(X, cameraCenter(rec_.images.at(a).pose),
-                                        cameraCenter(rec_.images.at(b).pose));
-        if (ang * 180.0 / M_PI < opt_.min_tri_angle_deg) return false;
-        if (reprojErr(a, fa, X) > err_scale * errPx(a)) return false;
-        if (reprojErr(b, fb, X) > err_scale * errPx(b)) return false;
-        return true;
+        const TriangulationView va(*mi.cam[a], mi.img[a]->pose,
+                                    err_scale * (opt_.max_reproj_error * mi.pixel_scale[a]));
+        const TriangulationView vb(*mi.cam[b], mi.img[b]->pose,
+                                    err_scale * (opt_.max_reproj_error * mi.pixel_scale[b]));
+        double angle;
+        return triangulatePair(va, kp(a, fa), ba, vb, kp(b, fb), bb, X, angle);
     }
 
     // Idempotent: every public entry point calls it, and only the first does
     // anything. The graph and the per-image records are properties of the
     // database, not of a particular model.
     void ensureSetup() {
+        cancel::check();
         if (!setup_done_) {
             setup();
             setup_done_ = true;
@@ -3286,25 +3358,13 @@ private:
     }
 
     void setup() {
-        if (cam_ids_.size() != db_.images.size()) cam_ids_.assign(db_.images.size(), 1);
-        // One Camera per distinct id, sized from the first image that uses it.
-        // The pristine default is kept so a camera whose images all get
-        // de-registered can start over instead of retrying from bad intrinsics.
-        for (uint32_t i = 0; i < db_.images.size(); i++) {
-            uint32_t cid = cam_ids_[i];
-            if (rec_.cameras.count(cid)) continue;
-            auto proto = opt_.initial_cameras.find(cid);
-            rec_.cameras[cid] = proto != opt_.initial_cameras.end()
-                                    ? proto->second
-                                    : Camera::defaultFor(cid, feats_[i].width, feats_[i].height,
-                                                         opt_.focal, opt_.camera_model);
-            rec_.cameras[cid].id = cid;
-            default_cams_[cid] = rec_.cameras[cid];
-        }
+        initializeCameras();
+        rec_.cameras = default_cams_;
         // Priors survive every reset; see MapperOptions::known_focal_cameras.
         for (uint32_t cid : opt_.known_focal_cameras)
             if (rec_.cameras.count(cid)) focal_known_.insert(cid);
         for (uint32_t i = 0; i < db_.images.size(); i++) {
+            cancel::check();
             Image im;
             im.id = i;
             im.camera_id = cam_ids_[i];
@@ -3313,7 +3373,7 @@ private:
             im.points2D.resize(feats_[i].count());
             im.point3D_ids.assign(feats_[i].count(), kInvalidPoint3D);
             for (uint32_t f = 0; f < feats_[i].count(); f++) im.points2D[f] = kp(i, f);
-            rec_.images[i] = im;
+            rec_.images[i] = std::move(im);
         }
         graph_.build(db_, [&] {
             std::vector<uint32_t> nf(db_.images.size());
@@ -3341,6 +3401,8 @@ private:
     // Wipe everything a previous seed attempt built, so the next attempt starts
     // from the same state setup() left behind.
     void resetModel() {
+        // Reset may adopt a camera consensus newer than the cached two-view pose.
+        for (auto& entry : seed_geom_) entry.second.created = -1;
         scale_cache_ = 0;
         bss_stamp_.clear();
         bss_stored_.clear();
@@ -3700,6 +3762,7 @@ private:
     }
 
     bool initialize(size_t& from) {
+        cancel::check();
         init_tally_ = InitTally();
         // The relaxation level and, with sequences, the phase (neighbour pairs
         // first, every pair once those are exhausted, D79) are sticky across
@@ -3725,12 +3788,7 @@ private:
 
     bool initializeAttempt(size_t& from, double min_ang_deg, int min_inliers,
                            bool allow_forward) {
-        // Candidate pairs: verified, non-planar, most inliers first. Built once
-        // per restriction and reused: the relaxation ladder only ever *lowers*
-        // min_inliers, so every level's candidate set is a prefix of this one
-        // ordering, and rebuilding it per level per attempt meant scanning and
-        // sorting the whole pair list (74k of them on a 5400-image capture)
-        // once per cluster -- a quarter of a bottom-up run's mapper time.
+        // Relaxation changes thresholds, never candidate order.
         if (!seed_cand_valid_) {
             seed_cand_.clear();
             seed_cand_far_.clear();
@@ -3752,54 +3810,28 @@ private:
         }
         const std::vector<const TwoViewMatches*>& cand = seed_phase_ ? seed_cand_far_ : seed_cand_;
 
-        // The scan is serial by construction -- the first candidate that clears
-        // the level's thresholds wins, and each trial mutates rec_ -- but the
-        // expensive part of a trial is `seedGeometry`, a pure function of the
-        // pair (D38's memoization already relies on that). So the candidates
-        // ahead of the cursor are precomputed a block at a time on all cores
-        // and the serial loop below then only reads the cache. Same answer,
-        // same order; a rejected candidate's RANSAC just no longer costs wall
-        // clock. On a capture where the seed search rejects hundreds of pairs
-        // this is the difference between minutes and seconds of dead GPU.
-        // The block doubles rather than starting at full width. Speculating a
-        // core's worth of RANSACs ahead is free only when the search is going
-        // to reject that many candidates; on a small restricted graph -- a
-        // bottom-up atom -- the first candidate usually seeds, and every other
-        // pair in the block was computed for nothing, once per atom.
-        //
-        // With one thread it is not speculation at all, only extra work: the
-        // block would be computed on this very thread, in order, and the loop
-        // below computes exactly what it needs on demand (trySeedPair fills the
-        // same cache). That is the atom case -- the parallelism there is over
-        // atoms, so each mapper runs single-threaded -- and leaving the
-        // prefetch on cost 2578 two-view RANSACs where 34 atoms needed 84.
+        // Speculate in growing blocks without changing which passing pair wins.
+        // Single-threaded atoms compute only the pair they are about to try.
         const unsigned hc = spirula::hardware_threads();
-        const size_t max_block =
+        const size_t workers =
             std::max<size_t>(1, opt_.threads > 0 ? (size_t)opt_.threads : (hc ? hc : 1));
+        const size_t max_block = workers > 1 ? 4 * workers : 1;
         size_t block = 1;
         size_t prefetched = max_block > 1 ? from : cand.size();
 
         for (size_t ci = from; ci < cand.size(); ci++) {
+            cancel::check();
             const TwoViewMatches* p = cand[ci];
             // Sorted by inlier count, so the first pair under this level's
             // threshold ends the level.
             if ((int)p->matches.size() < min_inliers) break;
             uint32_t a = p->image1, b = p->image2;
-            // Relaxation levels re-scan the (re-sorted) candidate list, so the
-            // cursor alone cannot prevent rebuilding a seed a previous attempt
-            // already grew and rejected -- burning retry budget on duplicates.
             if (used_seeds_.count({a, b})) continue;
-            // A further model must start somewhere no kept model reached, or it
-            // would just rebuild the model that is already written (COLMAP
-            // FindFirstInitialImage's `num_registrations == 0` rule, D41).
-            // Inert while the primary model is being built -- but the same
-            // argument applies between that model's own seed attempts, where
-            // nothing is claimed yet: a retry that starts inside what the last
-            // attempt registered rebuilds it (D58).
+            // Retries start outside every earlier model, including discarded attempts.
             if (claimed(a) || claimed(b) || seedBlocked(a) || seedBlocked(b)) continue;
             if (ci >= prefetched) {
                 prefetched = std::min(cand.size(), ci + block);
-                prefetchSeedGeometry(cand, ci, prefetched);
+                prefetchSeedGeometry(cand, ci, prefetched, {min_ang_deg, min_inliers, allow_forward});
                 block = std::min(max_block, block * 2);
             }
             if (!trySeedPair(*p, min_ang_deg, min_inliers, allow_forward, true)) continue;
@@ -3810,28 +3842,34 @@ private:
         return false;
     }
 
-    // Two-view geometry for a seed candidate. Pure: it reads the pristine
-    // cameras and the features, and touches no reconstruction state -- which is
-    // what lets it be memoized (D38) and precomputed off-thread.
-    TwoViewGeometry seedGeometry(const TwoViewMatches& pm) const {
+    struct SeedGeometry {
+        TwoViewGeometry geometry;
+        bool complete = false;
+        int created = -1;
+        double median_angle = 0;
+    };
+
+    // Homography can only veto an epipolar seed; defer it until the baseline passes.
+    SeedGeometry seedGeometry(const TwoViewMatches& pm, bool complete = false) const {
+        cancel::check();
         ProfTimer pt(g_map_prof.seed_geom);
         g_map_prof.n_seed_geom++;
         const uint32_t a = pm.image1, b = pm.image2;
         TwoViewOptions tvo;
         tvo.recover_pose = true;
-        // Whether to re-derive planar-or-panoramic here. `pm.matches` are
-        // verification's surviving inliers and `pm.config` is its verdict on
-        // the pair; only Uncalibrated ones reach here (initializeAttempt filters
-        // on it). Re-deriving it costs a homography RANSAC, which is ~90% of the
-        // seed search on a 550-image capture -- H's inlier ratio on a
-        // non-planar pair is low, so its trial count adapts into the hundreds
-        // where F, fed its own inliers, converges in a handful.
-        tvo.estimate_homography = opt_.seed_homography;
+        tvo.ransac.check_interrupt = cancel::check;
+        complete = complete || !opt_.seed_homography;
+        tvo.estimate_homography = complete && opt_.seed_homography;
         const Camera& ca = camOf(a);
         const Camera& cb = camOf(b);
+        tvo.calibrated_essential = opt_.seed_essential == 2 ||
+            (opt_.seed_essential == 1 && opt_.given_focal_cameras.count(ca.id) &&
+             opt_.given_focal_cameras.count(cb.id));
         Mat3 Rp;
         double sig;
         if (priors_ && priors_->relativeRotation(a, b, Rp, sig)) {
+            // The gyro fallback depends on the full free-pose verdict.
+            tvo.estimate_homography = opt_.seed_homography;
             // The gyro's rotation, with the translation from the two-point
             // fit, when it explains what the free estimate did: a seed whose
             // rotation is measured rather than fitted.
@@ -3859,9 +3897,9 @@ private:
                 g.pose = k.pose;
                 g.has_pose = true;
             }
-            return g;
+            return {std::move(g), true};
         }
-        if (ca.wideFov() || cb.wideFov()) {
+        if (ca.wideFov() || cb.wideFov() || tvo.calibrated_essential || opt_.seed_essential == 3) {
             // Same reason verification works on bearings (D45): a pinhole seed
             // throws away every wide correspondence, and the seed is what the
             // whole model is built on. The thresholds move from pixels to
@@ -3873,7 +3911,7 @@ private:
             }
             tvo.ransac.max_error =
                 0.5 * (ca.errRad(tvo.ransac.max_error) + cb.errRad(tvo.ransac.max_error));
-            return estimateTwoViewBearing(b1, b2, tvo);
+            return {estimateTwoViewBearing(b1, b2, tvo), complete};
         }
         std::vector<Vec2> q1(pm.matches.size()), q2(pm.matches.size());
         for (size_t k = 0; k < pm.matches.size(); k++) {
@@ -3882,158 +3920,171 @@ private:
         }
         tvo.K1 = ca.K();
         tvo.K2 = cb.K();
-        return estimateTwoView(q1, q2, tvo);
+        return {estimateTwoView(q1, q2, tvo), complete};
     }
 
-    // Fill seed_geom_ for cand[lo, hi) on a thread pool. Candidates already
-    // cached are skipped; the map itself is only written on this thread.
+    template <class Emit>
+    void triangulateSeed(const TwoViewMatches& pm, const TwoViewGeometry& geometry, Emit emit) const {
+        const uint32_t a = pm.image1, b = pm.image2;
+        const Camera& ca = camOf(a);
+        const Camera& cb = camOf(b);
+        const Pose origin{mat3Identity(), {0, 0, 0}};
+        const TriangulationView va(ca, origin, ca.errPx(opt_.max_reproj_error));
+        const TriangulationView vb(cb, geometry.pose, cb.errPx(opt_.max_reproj_error));
+        for (size_t k = 0; k < pm.matches.size(); k++) {
+            if (k % 256 == 0) cancel::check();
+            if (!geometry.inlier_mask[k]) continue;
+            const uint32_t fa = pm.matches[k].idx1, fb = pm.matches[k].idx2;
+            if (opt_.tracks.ignore_two_view && graph_.isolatedPair(a, fa)) continue;
+            const Vec2 oa = kp(a, fa), ob = kp(b, fb);
+            Vec3 X;
+            double angle;
+            if (triangulatePair(va, oa, ca.bearing(oa), vb, ob, cb.bearing(ob), X, angle))
+                emit(fa, fb, X, angle);
+        }
+    }
+
+    static double seedForwardMotion(const TwoViewGeometry& g) {
+        const Vec3 c2 = cameraCenter(g.pose).normalized();
+        return std::max(std::fabs(c2.z),
+                        std::fabs(c2.x * g.pose.R[6] + c2.y * g.pose.R[7] + c2.z * g.pose.R[8]));
+    }
+
+    bool seedPosePasses(const TwoViewMatches& pm, const SeedGeometry& candidate,
+                        const InitLevel& level) const {
+        const auto& g = candidate.geometry;
+        return g.has_pose && g.config == TwoViewConfig::Uncalibrated &&
+               g.num_inliers >= level.inliers &&
+               (level.allow_forward || (camOf(pm.image1).isSpherical() && camOf(pm.image2).isSpherical()) ||
+                !(seedForwardMotion(g) > opt_.init_max_forward_motion));
+    }
+
+    static bool seedStructurePasses(const SeedGeometry& candidate, const InitLevel& level) {
+        return candidate.created >= std::max(30, level.inliers / 2) &&
+               candidate.median_angle >= level.angle;
+    }
+
+    bool seedNeedsEvaluation(const TwoViewMatches& pm, const SeedGeometry& candidate,
+                             const InitLevel& level) const {
+        return seedPosePasses(pm, candidate, level) &&
+               (candidate.created < 0 || (!candidate.complete && seedStructurePasses(candidate, level)));
+    }
+
+    void evaluateSeed(const TwoViewMatches& pm, SeedGeometry& candidate, const InitLevel& level) const {
+        if (!seedNeedsEvaluation(pm, candidate, level)) return;
+        if (candidate.created < 0) {
+            std::vector<double> angles;
+            angles.reserve(candidate.geometry.num_inliers);
+            triangulateSeed(pm, candidate.geometry, [&](uint32_t, uint32_t, const Vec3&, double angle) {
+                angles.push_back(angle);
+            });
+            candidate.created = (int)angles.size();
+            candidate.median_angle = 0;
+            if (!angles.empty()) {
+                std::sort(angles.begin(), angles.end());
+                candidate.median_angle = angles[angles.size() / 2];
+            }
+        }
+        if (!candidate.complete && seedStructurePasses(candidate, level)) {
+            auto full = seedGeometry(pm, true);
+            candidate.geometry = std::move(full.geometry);
+            candidate.complete = full.complete;
+        }
+    }
+
+    // Workers read the model; only the ordered consumer may commit a seed to it.
     void prefetchSeedGeometry(const std::vector<const TwoViewMatches*>& cand, size_t lo,
-                              size_t hi) {
+                              size_t hi, const InitLevel& level) {
+        cancel::check();
         std::vector<const TwoViewMatches*> todo;
+        std::vector<SeedGeometry> out;
+        std::vector<uint8_t> estimate;
         for (size_t i = lo; i < hi; i++) {
             const TwoViewMatches* p = cand[i];
-            std::pair<uint32_t, uint32_t> key{p->image1, p->image2};
-            if (used_seeds_.count(key) || claimed(key.first) || claimed(key.second)) continue;
-            if (seed_geom_.count(key)) continue;
+            const std::pair<uint32_t, uint32_t> key{p->image1, p->image2};
+            if ((int)p->matches.size() < level.inliers) break;
+            if (used_seeds_.count(key) || claimed(key.first) || claimed(key.second) ||
+                seedBlocked(key.first) || seedBlocked(key.second)) continue;
+            auto cached = seed_geom_.find(key);
+            if (cached != seed_geom_.end() && !seedNeedsEvaluation(*p, cached->second, level)) continue;
             todo.push_back(p);
+            estimate.push_back(cached == seed_geom_.end());
+            out.push_back(cached == seed_geom_.end() ? SeedGeometry{} : cached->second);
         }
-        if (todo.size() < 2) return;  // one pair is not worth a pool
-        std::vector<TwoViewGeometry> out(todo.size());
-        std::atomic<size_t> next{0};
-        const unsigned hc = spirula::hardware_threads();
-        const size_t want = opt_.threads > 0 ? (size_t)opt_.threads : std::max(1u, hc);
-        const size_t nt = std::min<size_t>(todo.size(), want);
-        std::vector<std::thread> pool;
-        pool.reserve(nt);
-        for (size_t t = 0; t < nt; t++)
-            pool.emplace_back([&] {
-                for (size_t i = next++; i < todo.size(); i = next++)
-                    out[i] = seedGeometry(*todo[i]);
-            });
-        for (std::thread& t : pool) t.join();
+        if (todo.size() < 2) return;
+        std::atomic<bool> failed{false};
+        std::vector<std::exception_ptr> errors(todo.size());
+        auto& pool = bacpu::Pool::get();
+        const int workers = opt_.threads > 0 ? std::min(opt_.threads, pool.size()) : pool.size();
+        pool.run((int)todo.size(), workers, [&](int i, int) {
+            if (failed || cancel::requested()) return;
+            try {
+                if (estimate[i]) out[i] = seedGeometry(*todo[i]);
+                evaluateSeed(*todo[i], out[i], level);
+            } catch (...) {
+                errors[i] = std::current_exception();
+                failed = true;
+            }
+        });
+        for (const auto& error : errors) if (error) std::rethrow_exception(error);
+        cancel::check();
         for (size_t i = 0; i < todo.size(); i++)
             seed_geom_[{todo[i]->image1, todo[i]->image2}] = std::move(out[i]);
     }
 
-    // Build the two-camera seed on one candidate pair and keep it if it clears
-    // the level's thresholds; otherwise roll the model back to empty. Split out
-    // of the candidate scan so the focal bootstrap can rebuild *the same* pair
-    // under a different focal -- comparing hypotheses on one pair is what makes
-    // its scores comparable.
+    // Focal hypotheses must rebuild the same seed pair for their scores to be comparable.
     bool trySeedPair(const TwoViewMatches& pm, double min_ang_deg, int min_inliers,
                      bool allow_forward, bool memoize) {
-        const TwoViewMatches* p = &pm;
-        const uint32_t a = p->image1, b = p->image2;
-        // Memoized (D38): relaxation levels and later seed attempts rescan
-        // the candidate list, and estimateTwoView (full two-view RANSAC) is by
-        // far its cost. The result is identical on every rescan -- cameras are
-        // pristine defaults whenever initialize() runs (resetModel precedes
-        // it), and the estimator is deterministic. The focal bootstrap passes
-        // memoize=false because it is *changing* the cameras between calls,
-        // which is exactly the assumption the cache rests on.
-        TwoViewGeometry g;
+        cancel::check();
+        const uint32_t a = pm.image1, b = pm.image2;
+        const InitLevel level{min_ang_deg, min_inliers, allow_forward};
+        // Focal bootstrapping changes intrinsics, so it cannot reuse cached geometry (D38).
         auto cached = memoize ? seed_geom_.find({a, b}) : seed_geom_.end();
-        if (cached != seed_geom_.end()) {
-            g = cached->second;
-        } else {
-            g = seedGeometry(pm);
-            if (memoize) seed_geom_[{a, b}] = g;
-        }
+        SeedGeometry candidate = cached != seed_geom_.end() ? cached->second : seedGeometry(pm);
+        evaluateSeed(pm, candidate, level);
+        if (memoize) seed_geom_[{a, b}] = candidate;
+        const TwoViewGeometry& g = candidate.geometry;
         init_tally_.candidates++;
+        if (candidate.created >= 0 &&
+            (!seedPosePasses(pm, candidate, level) || !seedStructurePasses(candidate, level)))
+            rec_.next_point3D_id = 1;
         if (!g.has_pose) { init_tally_.no_pose++; return false; }
         if (g.config != TwoViewConfig::Uncalibrated) { init_tally_.config++; return false; }
         if (g.num_inliers < min_inliers) { init_tally_.few_inliers++; return false; }
 
-        // Near-pure forward motion: the baseline is parallel to the
-        // viewing directions, points triangulate on needle-thin cones
-        // around the epipole (COLMAP init_max_forward_motion).
-        //
-        // The veto is about what the *image* covers, not about the motion:
-        // a narrow lens pointed along its own baseline sees only the pencil of
-        // rays around the epipole. A spherical camera sees the whole sphere, so
-        // the points abeam have full parallax and driving straight forward is
-        // as well conditioned as any other motion -- the cap would be measuring
-        // a degeneracy that is not there (D49).
-        double fwd;
-        {
-            Vec3 c2 = cameraCenter(g.pose).normalized();  // cam1 is at origin
-            fwd = std::max(std::fabs(c2.z),
-                           std::fabs(c2.x * g.pose.R[6] + c2.y * g.pose.R[7] +
-                                     c2.z * g.pose.R[8]));
-            init_tally_.best_forward = std::min(init_tally_.best_forward, fwd);
-            const bool spherical = camOf(a).isSpherical() && camOf(b).isSpherical();
-            if (!allow_forward && !spherical && fwd > opt_.init_max_forward_motion) {
-                init_tally_.forward++;
-                return false;
-            }
-        }
+        const double fwd = seedForwardMotion(g);
+        init_tally_.best_forward = std::min(init_tally_.best_forward, fwd);
+        if (!seedPosePasses(pm, candidate, level)) { init_tally_.forward++; return false; }
+        init_tally_.best_angle = std::max(init_tally_.best_angle, candidate.median_angle);
+        if (candidate.created < std::max(30, min_inliers / 2)) init_tally_.few_points++;
+        else if (candidate.median_angle < min_ang_deg) init_tally_.low_angle++;
+        if (!seedStructurePasses(candidate, level)) return false;
 
-        // Set up the two cameras and triangulate the inliers.
         rec_.images[a].pose = {mat3Identity(), {0, 0, 0}};
         rec_.images[a].registered = true;
         rec_.images[b].pose = g.pose;
         rec_.images[b].registered = true;
-
-        std::vector<double> angles;
-        int created = 0;
-        for (size_t k = 0; k < p->matches.size(); k++) {
-            if (!g.inlier_mask[k]) continue;
-            uint32_t fa = p->matches[k].idx1, fb = p->matches[k].idx2;
-            Vec3 X;
-            if (!triangulatePair(a, fa, b, fb, X)) continue;
-            double ang = triangulationAngle(X, cameraCenter(rec_.images[a].pose),
-                                            cameraCenter(rec_.images[b].pose));
-            angles.push_back(ang * 180.0 / M_PI);
+        triangulateSeed(pm, g, [&](uint32_t fa, uint32_t fb, const Vec3& X, double) {
             rec_.addPoint3D(X, {{a, fa}, {b, fb}});
-            created++;
+        });
+        // The seed cameras' first BA must not be overwritten by a later focal search.
+        focal_known_.insert(rec_.images[a].camera_id);
+        focal_known_.insert(rec_.images[b].camera_id);
+        if (opt_.report_progress) {
+            events::map_placed(a);
+            events::map_placed(b);
         }
-        double medAng = 0;
-        if (!angles.empty()) {
-            std::sort(angles.begin(), angles.end());
-            medAng = angles[angles.size() / 2];
-        }
-        init_tally_.best_angle = std::max(init_tally_.best_angle, medAng);
-        if (created < std::max(30, min_inliers / 2)) init_tally_.few_points++;
-        else if (medAng < min_ang_deg) init_tally_.low_angle++;
-        if (created >= std::max(30, min_inliers / 2) && medAng >= min_ang_deg) {
-            // The seed cameras are about to be refined by the first global
-            // BA; do not let a later focal search overwrite that.
-            focal_known_.insert(rec_.images[a].camera_id);
-            focal_known_.insert(rec_.images[b].camera_id);
-            // Only now: a rolled-back candidate is not progress, and the scan
-            // tries dozens. Counting each one that merely had a pose put 120 of
-            // a 120-image capture on the bar before the model existed.
-            if (opt_.report_progress) {
-                events::map_placed(a);
-                events::map_placed(b);
-            }
-            seed_pair_ = &pm;
-            seed_forward_ = fwd;
-            completeFrameOf(a);
-            completeFrameOf(b);
-            if (opt_.verbose)
-                slog::out(slog::Tag::Map, spirula::i18n::msg::sfm::map_init_pair,
-                         {(long long)a, (long long)b, (long long)created, slog::num(medAng, 1),
-                          (fwd > 0.5 ? spirula::i18n::msg::sfm::baseline_forward
-                                     : spirula::i18n::msg::sfm::baseline_sideways).get()});
-            return true;
-        }
-        // Roll back and let the caller try the next candidate.
-        rollbackInit(a, b);
-        return false;
-    }
-
-    // Candidates are tried on a reset model (resetModel precedes initialize) and
-    // touch only their two images: sweeping every image cost a 3000-frame video,
-    // which rejects every neighbour pair, 80 MB of stores per candidate.
-    void rollbackInit(uint32_t a, uint32_t b) {
-        rec_.points3D.clear();
-        rec_.next_point3D_id = 1;
-        for (uint32_t i : {a, b}) {
-            Image& im = rec_.images[i];
-            im.registered = false;
-            std::fill(im.point3D_ids.begin(), im.point3D_ids.end(), kInvalidPoint3D);
-        }
+        seed_pair_ = &pm;
+        seed_forward_ = fwd;
+        completeFrameOf(a);
+        completeFrameOf(b);
+        if (opt_.verbose)
+            slog::out(slog::Tag::Map, spirula::i18n::msg::sfm::map_init_pair,
+                     {(long long)a, (long long)b, (long long)candidate.created,
+                      slog::num(candidate.median_angle, 1),
+                      (fwd > 0.5 ? spirula::i18n::msg::sfm::baseline_forward
+                                 : spirula::i18n::msg::sfm::baseline_sideways).get()});
+        return true;
     }
 
     // ---- registration ----
@@ -4222,32 +4273,77 @@ private:
         return out;
     }
 
-    // The 2D-3D correspondences an unregistered image has to the model, one 3D
-    // point per feature: the first a sequence neighbour sees, else the first
-    // seen. `nearf`, when asked for, says which came from a neighbour.
+    // Sequence-neighbor support takes precedence over more distant views.
     void gatherCorrespondences(uint32_t img, std::vector<Vec3>& X, std::vector<Vec3>& br,
                                std::vector<uint32_t>& feat, std::vector<uint64_t>& pid,
                                std::vector<char>* nearf = nullptr) const {
+        std::vector<AssociationVote> votes;
+        std::vector<PointAssociation> associations;
+        const bool unique_before = opt_.tracks.unique_points == 1;
+        const bool inspect = opt_.tracks.association || unique_before || MapProf::enabled();
         for (uint32_t f = 0; f < feats_[img].count(); f++) {
             uint64_t chosen = kInvalidPoint3D;
             bool from_near = false;
+            votes.clear();
             for (const Correspondence& c : graph_.at(img, f)) {
                 const Image& oi = rec_.images.at(c.image_id);
                 if (!oi.registered || oi.point3D_ids[c.feature_idx] == kInvalidPoint3D) continue;
-                if (chosen == kInvalidPoint3D) chosen = oi.point3D_ids[c.feature_idx];
-                if (!seq_) break;
-                if (nearby(img, c.image_id)) {
-                    chosen = oi.point3D_ids[c.feature_idx];
-                    from_near = true;
-                    break;
+                const uint64_t candidate = oi.point3D_ids[c.feature_idx];
+                const bool nearby_support = seq_ && nearby(img, c.image_id);
+                if (chosen == kInvalidPoint3D || (nearby_support && !from_near)) {
+                    chosen = candidate;
+                    from_near = nearby_support;
                 }
+                if (inspect) votes.push_back({candidate, c.image_id,
+                                              rec_.points3D.at(candidate).track.size(), nearby_support});
+                else if (!seq_ || nearby_support) break;
             }
             if (chosen == kInvalidPoint3D) continue;
+            size_t support = 0;
+            if (inspect) {
+                const TrackAssociation association = supportedAssociation(votes);
+                if (MapProf::enabled()) {
+                    ++g_map_prof.association_features;
+                    if (association.alternatives > 1) ++g_map_prof.association_ambiguous;
+                }
+                if (opt_.tracks.association) {
+                    if (opt_.tracks.association == 2 && association.tied) {
+                        if (MapProf::enabled()) ++g_map_prof.association_deferred;
+                        continue;
+                    }
+                    if (MapProf::enabled() && chosen != association.point)
+                        ++g_map_prof.association_changed;
+                    chosen = association.point;
+                    from_near = association.nearby;
+                }
+                if (unique_before)
+                    for (size_t k = 0; k < votes.size(); ++k)
+                        if (votes[k].point == chosen &&
+                            (!k || votes[k - 1].point != chosen || votes[k - 1].image != votes[k].image))
+                            ++support;
+            }
             X.push_back(rec_.points3D.at(chosen).xyz);
             br.push_back(bearing(img, f));
             feat.push_back(f);
             pid.push_back(chosen);
             if (nearf) nearf->push_back(from_near ? 1 : 0);
+            if (unique_before) associations.push_back({chosen, f, support, from_near});
+        }
+        if (unique_before) {
+            const auto kept = uniquePointAssociations(associations);
+            if (MapProf::enabled()) g_map_prof.association_duplicates += X.size() - kept.size();
+            for (size_t k = 0; k < kept.size(); ++k) {
+                X[k] = X[kept[k]];
+                br[k] = br[kept[k]];
+                feat[k] = feat[kept[k]];
+                pid[k] = pid[kept[k]];
+                if (nearf) (*nearf)[k] = (*nearf)[kept[k]];
+            }
+            X.resize(kept.size());
+            br.resize(kept.size());
+            feat.resize(kept.size());
+            pid.resize(kept.size());
+            if (nearf) nearf->resize(kept.size());
         }
     }
 
@@ -4317,18 +4413,33 @@ private:
         return true;
     }
 
-    // Commit a pose: register, continue the tracks its inliers belong to, and
-    // report. Shared by PnP and by the rig completion.
     void commitPose(uint32_t img, const Pose& pose, const std::vector<uint32_t>& feat,
                     const std::vector<uint64_t>& pid, const std::vector<char>& inlier,
                     int num_inliers, size_t pool) {
         rec_.images[img].pose = pose;
         rec_.images[img].registered = true;
+        std::vector<char> distinct;
+        if (opt_.tracks.unique_points == 2) {
+            std::vector<double> errors(pid.size(), std::numeric_limits<double>::infinity());
+            size_t eligible = 0;
+            for (size_t k = 0; k < pid.size(); ++k) {
+                if (!inlier[k] || rec_.images[img].point3D_ids[feat[k]] != kInvalidPoint3D) continue;
+                const double error = reprojErr(img, feat[k], rec_.points3D.at(pid[k]).xyz);
+                if (std::isfinite(error) && error <= errPx(img)) { errors[k] = error; ++eligible; }
+            }
+            const auto kept = bestPointObservations(pid, errors);
+            distinct.assign(pid.size(), 0);
+            for (size_t k : kept) distinct[k] = 1;
+            if (MapProf::enabled()) g_map_prof.association_duplicates += eligible - kept.size();
+        }
         for (size_t k = 0; k < feat.size(); k++) {
-            if (!inlier[k]) continue;
+            if (!inlier[k] || (!distinct.empty() && !distinct[k])) continue;
             uint32_t f = feat[k];
             if (rec_.images[img].point3D_ids[f] != kInvalidPoint3D) continue;
             Point3D& pt = rec_.points3D[pid[k]];
+            if (opt_.tracks.unique_points &&
+                std::any_of(pt.track.begin(), pt.track.end(),
+                            [img](const TrackElement& t) { return t.image_id == img; })) continue;
             if (reprojErr(img, f, pt.xyz) > errPx(img)) continue;
             pt.track.push_back({img, f});
             rec_.images[img].point3D_ids[f] = pid[k];
@@ -5145,7 +5256,7 @@ private:
                       const WorldRays* rays = nullptr) const {
         const Image& me = *mi.img[img];
         if (me.point3D_ids[f] != kInvalidPoint3D) return false;
-        // candidate observations: registered, feature not yet on a 3D point
+        if (opt_.tracks.ignore_two_view && graph_.isolatedPair(img, f)) return false;
         obs.clear();
         for (const Correspondence& c : graph_.at(img, f))
             if (mi.img[c.image_id]->registered &&
@@ -5170,6 +5281,7 @@ private:
         Vec3 bestX;
         double bestAng = -1;
         const Correspondence* bestC = nullptr;
+        std::vector<std::pair<double, Vec3>> hypotheses;
         for (size_t k = 0; k < obs.size(); k++) {
             const Correspondence& c = obs[k];
             const double lim = opt_.min_tri_angle_deg * M_PI / 180.0 - tol_a -
@@ -5192,10 +5304,53 @@ private:
             double ang = triangulationAngle(X, cameraCenter(me.pose),
                                             cameraCenter(mi.img[c.image_id]->pose));
             if (ang > bestAng) { bestAng = ang; bestX = X; bestC = &c; }
+            if (opt_.tracks.refine_points) {
+                hypotheses.emplace_back(ang, X);
+                std::sort(hypotheses.begin(), hypotheses.end(), [](const auto& a, const auto& b) {
+                    return a.first > b.first;
+                });
+                if (hypotheses.size() > 4) hypotheses.resize(4);
+            }
         }
         if (!bestC) return false;
 
-        // Build the track: this obs + every candidate that reprojects well.
+        if (opt_.tracks.refine_points) {
+            auto bestObservations = [&](const Vec3& x) {
+                std::map<uint32_t, std::pair<double, size_t>> chosen;
+                for (size_t k = 0; k < obs.size(); ++k) {
+                    const auto& c = obs[k];
+                    const double limit = err_scale * opt_.max_reproj_error * mi.pixel_scale[c.image_id];
+                    const double error = reprojErrAt(mi, c.image_id, c.feature_idx, x, bearingOf(k)) / limit;
+                    auto it = chosen.find(c.image_id);
+                    if (it == chosen.end() || error < it->second.first)
+                        chosen[c.image_id] = {error, k};
+                }
+                return chosen;
+            };
+            double best_cost = std::numeric_limits<double>::infinity();
+            for (const auto& candidate : hypotheses) {
+                double cost = 0;
+                for (const auto& entry : bestObservations(candidate.second)) {
+                    const double r = entry.second.first;
+                    cost += std::min(1.0, r * r);
+                }
+                if (cost < best_cost) { best_cost = cost; bestX = candidate.second; }
+            }
+            std::vector<PointObservation> observations;
+            observations.push_back({poseToP(me.pose), bf,
+                                    mi.cam[img]->errRad(err_scale * opt_.max_reproj_error)});
+            for (const auto& entry : bestObservations(bestX)) {
+                if (entry.second.first > 1) continue;
+                const size_t k = entry.second.second;
+                const auto& c = obs[k];
+                observations.push_back({poseToP(mi.img[c.image_id]->pose), bearingOf(k),
+                                        mi.cam[c.image_id]->errRad(err_scale * opt_.max_reproj_error)});
+            }
+            bestX = refineTriangulatedPoint(bestX, observations);
+            if (reprojErrAt(mi, img, f, bestX, bf) >
+                err_scale * opt_.max_reproj_error * mi.pixel_scale[img]) return false;
+        }
+
         std::vector<TrackElement>& track = out.track;
         track.clear();
         track.push_back({img, f});
@@ -5208,8 +5363,11 @@ private:
         if (track.size() < 2) return false;
         // Guard against two features from the same image on one track.
         std::sort(track.begin(), track.end(),
-                  [](const TrackElement& a, const TrackElement& b) {
-                      return a.image_id < b.image_id;
+                  [&](const TrackElement& a, const TrackElement& b) {
+                      if (a.image_id != b.image_id) return a.image_id < b.image_id;
+                      if (!opt_.tracks.refine_points) return false;
+                      return reprojErrAt(mi, a.image_id, a.point2D_idx, bestX) <
+                             reprojErrAt(mi, b.image_id, b.point2D_idx, bestX);
                   });
         track.erase(std::unique(track.begin(), track.end(),
                                 [](const TrackElement& a, const TrackElement& b) {
@@ -5217,6 +5375,13 @@ private:
                                 }),
                     track.end());
         if (track.size() < 2) return false;
+        if (opt_.tracks.refine_points) {
+            double angle = 0;
+            for (const auto& e : track)
+                angle = std::max(angle, triangulationAngle(bestX, cameraCenter(me.pose),
+                                                           cameraCenter(mi.img[e.image_id]->pose)));
+            if (angle < opt_.min_tri_angle_deg * M_PI / 180.0) return false;
+        }
         out.X = bestX;
         out.f = f;
         return true;
@@ -5264,21 +5429,15 @@ private:
 
     void commitNewTrack(const NewTrack& t) {
         rec_.addPoint3D(t.X, t.track);
+        if (MapProf::enabled()) g_map_prof.track_created += t.track.size();
         // Each element joins a point. Completion's direct track edits leave these
         // counts behind -- harmless: nothing ranks before rebuildScores().
         for (const TrackElement& e : t.track) attachObservation(e.image_id, e.point2D_idx);
     }
 
 
-    // ---- global refinement: BA + filtering + image de-registration ----
-    //
-    // COLMAP's IterativeGlobalRefinement in miniature: bundle-adjust, filter,
-    // and repeat while the model keeps changing, then de-register images the
-    // filtering hollowed out. De-registration is the mapper's undo: a
-    // registration that passed its PnP gates but stopped agreeing with the
-    // refined model exits (and may re-register later, better) instead of
-    // staying and bending everything around it (D36).
-    void globalRefine(bool final_pass) {
+    // Completion uses a stricter threshold than filtering to avoid observation churn.
+    void globalRefine(bool final_pass, bool fixed_rotation_stage = false) {
         std::unordered_set<uint64_t> welded;
         welded.swap(welded_);
         if (rec_.numRegistered() < 2 || rec_.points3D.size() < 10) return;
@@ -5288,15 +5447,14 @@ private:
         for (int i = 0; i < rounds; i++) {
             refine_rounds_ = i + 1;
             const bool weld_round = i == 0 && !welded.empty();
-            // Observations shredded by the previous round's filtering (or
-            // never triangulated because the poses were still rough) get a
-            // second chance against the refined geometry -- COLMAP's
-            // Retriangulate + CompleteTracks. Without it refinement can only
-            // ever LOSE observations, and on sparse match graphs the model
-            // starves right after bootstrap (D36).
-            if (i > 0 && opt_.retri_scale > 0 && !final_.no_retri) {
+            const bool complete_first = opt_.tracks.completion == 2 ||
+                                        (opt_.tracks.completion == 1 && final_pass) ||
+                                        (opt_.tracks.completion == 3 && final_pass &&
+                                         rec_.numRegistered() >= (uint32_t)std::max(3, opt_.min_model_size));
+            size_t track_changes = 0;
+            if ((i > 0 || complete_first) && opt_.retri_scale > 0 && !final_.no_retri) {
                 ProfTimer pt(g_map_prof.retri);
-                completeAndRetriangulate();
+                track_changes = completeAndRetriangulate();
             }
             size_t before = countObservations();
             BundleOptions bo;
@@ -5310,24 +5468,8 @@ private:
             bo.refine_principal_point = opt_.refine_principal_point || final_.pp;
             bo.refine_extra_params = opt_.refine_extra_params || final_.extra;
             bo.pp_min_images = opt_.pp_min_images;
-            // Convergence-adaptive iterations (D38): the first round of a
-            // growth refine runs to a loose tolerance -- most refines stop
-            // there because the model barely changed. A round beyond the
-            // first only happens when the previous one moved >ba_refine_change
-            // of the observations (retriangulation just rebuilt structure, or
-            // filtering shredded it), and those rounds run to the solver's
-            // full tolerance: the filters that follow are about to make
-            // kill/keep decisions against this geometry, and judging them
-            // against a half-converged model is what cost a dataset
-            // its tail under D37's fixed cap. Final passes are always tight.
-            //
-            // The scalar follows the *tolerance*, not the pass: fp32 belongs
-            // exactly where the stopping threshold is one it can reach. A round
-            // past the first runs to the solver's full tolerance even in a
-            // growth refine, and asking fp32 for that means the LM loop spends
-            // its whole iteration budget on a threshold below its noise floor.
-            // Measured on a 1194-image capture, getting this pairing wrong took
-            // the finishing passes from 48 s to 260 s.
+            // Precision follows tolerance: fp32 cannot reach the tight stopping threshold.
+            // Mismatching them took finishing passes from 48 s to 260 s on 1194 images (D38).
             const bool loose = !tight && i == 0 && opt_.ba_growth_rtol > 0;
             if (loose) {
                 bo.rtol = opt_.ba_growth_rtol;
@@ -5357,17 +5499,16 @@ private:
                         bo.metres_per_unit = std::sqrt(A[0] * A[0] + A[3] * A[3] + A[6] * A[6]);
                 }
             }
+            if (fixed_rotation_stage) {
+                BundleOptions fixed = bo;
+                fixed.fix_rotations = true;
+                runGlobalBA(rec_, fixed);
+            }
             double cost = runGlobalBA(rec_, bo);
             if (rigs_ && !final_.no_rig) snapRigFrames();
             ProfTimer pt(g_map_prof.filter);
-            // Runs after every mapping BA, and it is load-bearing: without it
-            // a capture whose distortion terms drift lands in a self-consistent
-            // pancake it cannot climb out of. Measured on an 811-image object
-            // capture, disabling it took AUC@10 from 84.3 to 0.0 and the focal
-            // to 25219 from a 2813 default. It was once disabled as breaking
-            // internet image collections; on the only such collection here
-            // (1363 images, one camera each) it is the other way round --
-            // AUC@10 83.2 with, 68.7 without.
+            // Unbounded distortion can flatten a model while keeping residuals low.
+            // Disabling sanitization took AUC@10 from 84.3 to 0.0 on an 811-image capture.
             if (!final_.no_sanitize) sanitizeCameras();
             int removedObs = 0, removedPts = 0;
             filterPoints(removedObs, removedPts, weld_round ? &welded : nullptr);
@@ -5378,7 +5519,14 @@ private:
                          {cost_s, (long long)removedObs, (long long)removedPts,
                           (long long)rec_.points3D.size()});
             }
-            const bool converged = !before || (double)removedObs / (double)before <=
+            if (MapProf::enabled()) {
+                g_map_prof.track_removed += removedObs;
+                slog::diag(slog::Tag::Map,
+                           "[tracks] refine final %d round %d observations %zu changed %zu removed %d",
+                           final_pass, i + 1, before, track_changes, removedObs);
+            }
+            const size_t changed = removedObs + (complete_first ? track_changes : 0);
+            const bool converged = !before || (double)changed / (double)before <=
                                                    opt_.ba_refine_change;
             if (converged && refine_rounds_ >= std::max(1, final_.min_rounds)) break;
         }
@@ -5394,32 +5542,14 @@ private:
         if (rigs_ && !final_.no_rig) completeRigFrames();
     }
 
-    // Fuse two 3D points that a correspondence says are the same feature
-    // (COLMAP's IncrementalTriangulator::MergeTracks). Track *creation* only
-    // ever gathers features that are still free, so a point triangulated from
-    // images A,B and one triangulated from C,D stay separate for good once the
-    // pose that connects them arrives -- every later pass sees both features
-    // already assigned and leaves them alone. Fusing them is what turns a
-    // revisit into a loop closure: one long track constrains the two ends of
-    // the loop against each other, two short ones constrain nothing.
-    //
-    // A merge is accepted only if *every* element of the union reprojects
-    // within `err` of the track-length-weighted average position -- the same
-    // all-inliers rule COLMAP uses -- if the union keeps at most one
-    // observation per image, the invariant the rest of the mapper relies on,
-    // and if it still subtends the minimum triangulation angle (D54).
+    // A correspondence permits fusion only when the entire union still fits.
     size_t mergeTracks(const ModelIndex& mi, double err_scale) {
         const double err = err_scale * opt_.max_reproj_error;
         size_t merged = 0;
         std::vector<uint64_t> ids;
         ids.reserve(rec_.points3D.size());
         for (const auto& kv : rec_.points3D) ids.push_back(kv.first);
-        // Pairs already judged, so a pair reached from both of its ends costs
-        // one test rather than two. Keyed by the two ids packed into one word:
-        // this set takes a lookup per (observation, correspondence) over the
-        // whole model, which is millions per pass, and a tree node each was
-        // most of the cost. Point ids are handed out one per triangulation, so
-        // the 32-bit halves are not a practical limit.
+        // Point IDs occupy 32-bit halves; duplicate graph paths must not repeat a merge test.
         std::unordered_set<uint64_t> tried;
         tried.reserve(4 * rec_.points3D.size());
         std::vector<uint8_t> on_track(db_.images.size(), 0);
@@ -5440,10 +5570,7 @@ private:
         return merged;
     }
 
-    // One merge attempt over every correspondence of `pid`'s track; returns the
-    // number of observations absorbed (0 if nothing merged).
-    // Observations a merged track may reach; see the note in mergeOne.
-    static constexpr size_t kMergeMaxTrack = 20;
+    static constexpr size_t kSeamMergeMaxTrack = 20;
 
     size_t mergeOne(const ModelIndex& mi, uint64_t pid, double err,
                     std::unordered_set<uint64_t>& tried, std::vector<uint8_t>& on_track,
@@ -5462,25 +5589,34 @@ private:
                 if (qit == rec_.points3D.end()) continue;
                 Point3D& q = qit->second;
 
-                // The reduced camera system the solver builds has an entry per
-                // image *pair* on a track, so a track of length t costs
-                // t(t+1)/2 -- fusing two length-10 tracks into one costs three
-                // times what the two cost apart, for a twentieth observation
-                // that constrains a point nineteen views already pin down. On a
-                // 1194-image fisheye capture, unbounded fusion took the mean
-                // track from 3.5 to 7.2 observations and the bundle adjustment
-                // from 0.03 to 0.36 seconds per iteration.
-                if (pt.track.size() + q.track.size() > kMergeMaxTrack) continue;
+                // Dense Schur work grows quadratically with track length; PCG does not form it.
+                if (!opt_.tracks.allowsMerge(pt.track.size(), q.track.size())) {
+                    if (MapProf::enabled()) ++g_map_prof.fusion_cap;
+                    continue;
+                }
                 // One observation per image, or the union is not a track.
                 bool clash = false;
                 for (const TrackElement& a : pt.track) on_track[a.image_id] = 1;
                 for (const TrackElement& b : q.track)
                     if (on_track[b.image_id]) { clash = true; break; }
                 for (const TrackElement& a : pt.track) on_track[a.image_id] = 0;
-                if (clash) continue;
+                if (clash) {
+                    if (MapProf::enabled()) ++g_map_prof.fusion_clash;
+                    continue;
+                }
 
                 const double wa = (double)pt.track.size(), wb = (double)q.track.size();
-                const Vec3 x = (pt.xyz * wa + q.xyz * wb) * (1.0 / (wa + wb));
+                Vec3 x = (pt.xyz * wa + q.xyz * wb) * (1.0 / (wa + wb));
+                if (opt_.tracks.refine_fusion) {
+                    std::vector<PointObservation> observations;
+                    observations.reserve(pt.track.size() + q.track.size());
+                    for (const auto* track : {&pt.track, &q.track})
+                        for (const auto& el : *track)
+                            observations.push_back({poseToP(mi.img[el.image_id]->pose),
+                                mi.cam[el.image_id]->bearing(kp(el.image_id, el.point2D_idx)),
+                                mi.cam[el.image_id]->errRad(err)});
+                    x = refineTriangulatedPoint(x, observations);
+                }
                 bool ok = true;
                 for (const std::vector<TrackElement>* tr : {&pt.track, &q.track}) {
                     for (const TrackElement& el : *tr)
@@ -5488,15 +5624,15 @@ private:
                             err * mi.pixel_scale[el.image_id]) { ok = false; break; }
                     if (!ok) break;
                 }
-                if (!ok) continue;
-                // The union must still be a triangulation. Without this a merge
-                // can produce a point whose views all sit on one line -- every
-                // observation reprojects, so the test above passes -- and the
-                // very next filterPoints kills it for lost parallax. The two
-                // halves are then retriangulated and merged again on the next
-                // round: churn that costs a bundle adjustment each time and
-                // ends where it started.
-                if (!wellTriangulated(pt.track, q.track, x, centers)) continue;
+                if (!ok) {
+                    if (MapProf::enabled()) ++g_map_prof.fusion_error;
+                    continue;
+                }
+                // A union with no parallax would be filtered and rebuilt on the next round.
+                if (!wellTriangulated(pt.track, q.track, x, centers)) {
+                    if (MapProf::enabled()) ++g_map_prof.fusion_angle;
+                    continue;
+                }
 
                 const size_t absorbed = q.track.size();
                 pt.xyz = x;
@@ -5535,17 +5671,10 @@ private:
         return false;
     }
 
-    // Extend existing tracks to unassigned features that reproject well
-    // (transitively: added elements are sources for further completion), then
-    // re-run triangulation for every registered image so features whose
-    // earlier points were filtered can rebuild them from the refined poses, and
-    // finally fuse the tracks that turn out to be the same point.
-    //
-    // Everything re-added must clear a *stricter* bar (0.75x) than the filter
-    // kills at: without the hysteresis, junk in the borderline band churns --
-    // filtered at >4 px, immediately re-created at <=4 px -- and every BA
-    // round drags the poses toward it again (D36).
-    void completeAndRetriangulate() {
+    // Hysteresis keeps borderline observations from being removed and recreated each round.
+    size_t completeAndRetriangulate() {
+        const size_t before = countObservations();
+        size_t completed = 0, merged = 0;
         const double err = opt_.retri_scale * opt_.max_reproj_error;  // x pixel_scale below
         ModelIndex mi = indexModel();
         std::vector<std::pair<uint64_t, Point3D*>> pts;
@@ -5574,6 +5703,7 @@ private:
             for (const TrackElement& e : clash ? redo : added[i]) {
                 pt.track.push_back(e);
                 mi.img[e.image_id]->point3D_ids[e.point2D_idx] = pts[i].first;
+                ++completed;
             }
         }
 
@@ -5595,8 +5725,11 @@ private:
             commitCollected(mi, imgs[i], made[i], opt_.retri_scale);
         if (opt_.merge_tracks) {
             ProfTimer pt(g_map_prof.merge);
-            g_map_prof.n_merged += mergeTracks(mi, opt_.retri_scale);
+            merged = mergeTracks(mi, opt_.retri_scale);
+            g_map_prof.n_merged += merged;
         }
+        if (MapProf::enabled()) g_map_prof.track_completed += completed;
+        return countObservations() - before + merged;
     }
 
     // The observations track completion adds to `pt`: every correspondence of
@@ -5906,7 +6039,7 @@ private:
     const TwoViewMatches* seed_pair_ = nullptr;  // pair the last seed was built on
     double seed_forward_ = 0;         // its |baseline . viewing dir|
     std::set<std::pair<uint32_t, uint32_t>> used_seeds_;  // seeds already grown
-    std::map<std::pair<uint32_t, uint32_t>, TwoViewGeometry> seed_geom_;  // memoized (D38)
+    std::map<std::pair<uint32_t, uint32_t>, SeedGeometry> seed_geom_;
     Reconstruction rec_;
     CorrespondenceGraph graph_;
     std::vector<std::vector<uint16_t>> support_;  // per (image, feature), see rebuildScores

@@ -10,6 +10,7 @@
 
 #include "app/FrameMask.h"
 #include "app/gui/DatasetPrep.h"
+#include "app/gui/DatasetRecord.h"
 #include "app/gui/FilmReel.h"
 #include "app/gui/PickSheet.h"
 #include "app/gui/mask/MaskLayer.h"
@@ -17,13 +18,16 @@
 #include "external/stb_image_write.h"
 #include "i18n/catalog/Log.h"
 #include "i18n/catalog/MaskEdit.h"
+#include "sfm/core/Exif.h"
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <stdexcept>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -223,6 +227,42 @@ void test_per_camera_stencil() {
           "per camera: cam0 has the input's shapes, the left half out");
     check(at(m1, W, 5, 10) == 255 && at(m1, W, 35, 10) == 0,
           "per camera: cam1 has its own, the right half out");
+}
+
+// A lone input keeps images/ to itself, and a scan's photographs join it in a
+// folder of their own: each folder gets its own input's stencil, not both.
+void test_nested_input_stencils() {
+    const int W = 40, H = 20;
+    const fs::path root = scratch("nested");
+    const fs::path a = root / "video", b = root / "scan", ws = root / "dataset";
+    for (const char* f : {"f.jpg", "g.jpg", "h.jpg"}) {
+        write_jpg(a / f, W, H, 0);
+        write_jpg(b / f, W, H, 1);
+    }
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    gui::PrepInput lone, scan;
+    lone.path = a.string();
+    scan.path = b.string();
+    scan.subdir = "scan_b";
+    std::string err;
+    app::parse_mask_shapes("-rect 0,0,0.5,1", lone.stencil.mask.shapes, err);
+    app::parse_mask_shapes("-rect 0.5,0,1,1", scan.stencil.mask.shapes, err);
+    job.inputs = {lone, scan};
+    gui::RunProgress prog;
+    check(run_prep(job, prog, err), "nested: run: " + err);
+    std::vector<uint8_t> mine, theirs;
+    int w = 0, h = 0;
+    const bool read =
+        app::load_stencil((ws / "masks" / "f.png").string(), w, h, mine) &&
+        app::load_stencil((ws / "masks" / "scan_b" / "f.png").string(), w, h, theirs) &&
+        mine.size() == (size_t)W * H && theirs.size() == mine.size();
+    check(read, "nested: a mask for each input's photographs");
+    if (!read) return;
+    check(at(mine, W, 5, 10) == 0 && at(mine, W, 35, 10) == 255,
+          "nested: the lone input's photographs have its shape");
+    check(at(theirs, W, 5, 10) == 255 && at(theirs, W, 35, 10) == 0,
+          "nested: the folder inside it has its own input's shape only");
 }
 
 // feature_masks/ is the run's own, so a workspace holding only it is one to
@@ -447,6 +487,95 @@ void test_frames_reel_counts_images() {
     check(reel.size() == 11, "reel: reused frames remain available for preview");
 }
 
+// One lens of each .insp is written, and which one is a setting, not a source
+// that changed: the plan refuses to keep frames when the identity moves.
+void test_packed_photo_one_lens() {
+    const fs::path root = scratch("one_lens");
+    const fs::path ws = root / "dataset";
+    for (int i = 0; i < 3; i++) write_jpg(root / "dual" / ("d" + std::to_string(i) + ".insp"), 32, 16, i);
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    job.photo_import = gui::PhotoImport::Copy;
+    gui::PrepInput in;
+    in.path = (root / "dual").string();
+    in.packed_lenses = 2;
+    in.active_lens = 1;
+    job.inputs.push_back(in);
+    gui::RunProgress prog;
+    std::string err;
+    const bool ran = run_prep(job, prog, err);
+    check(ran, "one lens: run: " + err);
+    std::error_code ec;
+    check(!fs::exists(ws / "images" / "cam0", ec) && files_in(ws / "images" / "cam1") == 3,
+          "one lens: only the lens kept is written");
+    const std::string identity = gui::frame_source_identity(job, job.inputs[0], false);
+    job.inputs[0].active_lens = 0;
+    check(!identity.empty() && gui::frame_source_identity(job, job.inputs[0], false) == identity,
+          "one lens: another lens is the same source");
+}
+
+// An .insp as a 360 camera writes one: its EXIF holds the exposure, the
+// whole frame's 35 mm focal and a GPS fix (43.25 N, 79.5 W).
+void write_insp_with_exif(const fs::path& p) {
+    std::vector<uint8_t> t;
+    auto u16 = [&t](uint32_t v) { t.push_back((uint8_t)v); t.push_back((uint8_t)(v >> 8)); };
+    auto u32 = [&](uint32_t v) { u16(v & 0xFFFF); u16(v >> 16); };
+    auto entry = [&](uint32_t tag, uint32_t type, uint32_t count, uint32_t value) {
+        u16(tag); u16(type); u32(count); u32(value);
+    };
+    const uint32_t exif_ifd = 8 + 2 + 2 * 12 + 4, gps_ifd = exif_ifd + 2 + 3 * 12 + 4;
+    const uint32_t data = gps_ifd + 2 + 4 * 12 + 4;
+    t = {'I', 'I'};
+    u16(42); u32(8);
+    u16(2); entry(0x8769, 4, 1, exif_ifd); entry(0x8825, 4, 1, gps_ifd); u32(0);
+    u16(3); entry(0x829A, 5, 1, data); entry(0x8827, 3, 1, 166); entry(0xA405, 3, 1, 6); u32(0);
+    u16(4);
+    entry(0x0001, 2, 2, 'N'); entry(0x0002, 5, 3, data + 8);
+    entry(0x0003, 2, 2, 'W'); entry(0x0004, 5, 3, data + 32);
+    u32(0);
+    u32(1); u32(25);
+    for (uint32_t v : {43u, 15u, 0u, 79u, 30u, 0u}) { u32(v); u32(1); }
+    std::vector<uint8_t> seg = {'E', 'x', 'i', 'f', 0, 0};
+    seg.insert(seg.end(), t.begin(), t.end());
+
+    std::vector<uint8_t> px(32 * 16 * 3, 128), jpeg;
+    stbi_write_jpg_to_func([](void* c, void* d, int n) {
+        auto* v = (std::vector<uint8_t>*)c;
+        v->insert(v->end(), (uint8_t*)d, (uint8_t*)d + n);
+    }, &jpeg, 32, 16, 3, px.data(), 90);
+    sfm::jpegInsertApp1(jpeg, seg);
+    std::error_code ec;
+    fs::create_directories(p.parent_path(), ec);
+    std::ofstream(p, std::ios::binary).write((const char*)jpeg.data(), (std::streamsize)jpeg.size());
+}
+
+// Each lens of an .insp keeps the photo's GPS and exposure, which SfM's
+// position prior and PPISP's exposure seeds read, but not its focal.
+void test_packed_photo_keeps_exif() {
+    const fs::path root = scratch("insp_exif");
+    const fs::path ws = root / "dataset";
+    for (const char* name : {"IMG_0001.insp", "IMG_0002.insp"})
+        write_insp_with_exif(root / "dual" / name);
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    job.photo_import = gui::PhotoImport::Copy;
+    gui::PrepInput in;
+    in.path = (root / "dual").string();
+    in.packed_lenses = 2;
+    job.inputs.push_back(in);
+    gui::RunProgress prog;
+    std::string err;
+    check(run_prep(job, prog, err), "insp exif: run: " + err);
+    for (const char* cam : {"cam0", "cam1"}) {
+        const sfm::ExifData e = sfm::readExif((ws / "images" / cam / "IMG_0001.jpg").string());
+        const std::string tag = std::string("insp exif: ") + cam;
+        check(e.has_gps && std::fabs(e.lat_deg - 43.25) < 1e-9 && std::fabs(e.lon_deg + 79.5) < 1e-9,
+              tag + " keeps the GPS fix");
+        check(std::fabs(e.exposure_time - 0.04) < 1e-12 && e.iso == 166, tag + " keeps the exposure");
+        check(!e.hasFocal(), tag + " drops the whole frame's focal");
+    }
+}
+
 // A review's sheet: a looser threshold brings a frame back by a rename, and
 // what is still left out is deleted without touching anything else there.
 void test_pick_sheet_discards() {
@@ -638,16 +767,143 @@ void test_sort_folders_not_rig() {
           "days: the one smeared photograph moves aside, alone");
 }
 
+void test_source_aware_video_resume() {
+    const fs::path root = scratch("source_identity");
+    const fs::path source = root / "source.mp4", ws = root / "dataset";
+    { std::ofstream file(source, std::ios::binary); file << "first video bytes"; }
+    for (int i = 1; i <= 3; ++i)
+        write_jpg(ws / "images" / ("frame_00000" + std::to_string(i) + ".jpg"), 16, 12, i);
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    gui::PrepInput input;
+    input.path = source.string();
+    input.is_video = true;
+    job.inputs = {input};
+    job.make_frames = false;
+    job.recorded_captures = {{"", source.string(), 1.0, false}};
+    std::string error;
+    check(gui::snapshot_frame_sources(job, error), "source resume: snapshot succeeds");
+    gui::StepRecord frames;
+    frames.present = frames.complete = true;
+    frames.id = "fixture";
+    frames.fields = {{"source_content", ".", job.source_content[0]}};
+    gui::write_step_record(job.workspace, gui::Step::Frames, frames);
+    gui::RunProgress progress;
+    const bool reused = run_prep(job, progress, error);
+    check(reused, "unchanged video reuses its existing frames: " + error);
+    const auto stamp = fs::last_write_time(source);
+    { std::ofstream file(source, std::ios::binary); file << "other video bytes"; }
+    fs::last_write_time(source, stamp);
+    std::atomic<bool> cancel{false};
+    gui::DatasetPrep prep(&progress, {}, cancel);
+    gui::PrepResult result;
+    bool completed = false;
+    check(!prep.run(job, result, error, {},
+                    [&](gui::Stage, const gui::PrepJob&) { completed = true; }) &&
+              !completed && error.find("changed") != std::string::npos,
+          "source changed after planning never publishes frame completion");
+    job.source_content.clear();
+    error.clear();
+    check(!run_prep(job, progress, error) && error.find("identity") != std::string::npos,
+          "same-size same-timestamp replacement cannot reuse old video frames");
+    check(fs::exists(ws / "images" / "frame_000001.jpg"),
+          "identity mismatch preserves existing frames until explicit rebuild");
+    frames.fields.clear();
+    gui::write_step_record(job.workspace, gui::Step::Frames, frames);
+    error.clear();
+    check(!run_prep(job, progress, error), "legacy record without source identity fails closed");
+    check(fs::exists(source), "resume failure preserves the source");
+    gui::PrepJob photos;
+    photos.workspace = ws.string();
+    photos.photo_import = gui::PhotoImport::Copy;
+    gui::PrepInput photo;
+    photo.path = (root / "photos").string();
+    photos.inputs = {photo};
+    write_jpg(root / "photos" / "a.jpg", 16, 12, 1);
+    const std::string inventory = gui::frame_source_identity(photos, photos.inputs[0], true);
+    fs::rename(root / "photos" / "a.jpg", root / "photos" / "b.jpg");
+    check(!inventory.empty() &&
+              inventory != gui::frame_source_identity(photos, photos.inputs[0], true),
+          "photo inventory identity includes relative names, not just image bytes");
+    const fs::path lut = root / "look.cube";
+    { std::ofstream file(lut); file << "first LUT"; }
+    job.inputs[0].lut = lut.string();
+    const std::string with_lut = gui::frame_source_identity(job, job.inputs[0], true);
+    { std::ofstream file(lut); file << "other LUT"; }
+    check(!with_lut.empty() && with_lut != gui::frame_source_identity(job, job.inputs[0], true),
+          "file-backed LUT content is a frame source dependency");
+}
+
+void test_mask_output_ownership() {
+    const fs::path root = scratch("mask_owners") / std::string(96, 'p');
+    const fs::path masks = root / "masks";
+    fs::create_directories(masks);
+    const fs::path output = masks / "frame.png";
+    { std::ofstream file(output); file << "existing mask"; }
+    gui::MaskOutputOwners owners;
+    auto rejected = [&](const fs::path& path) {
+        try { owners.claim(path); }
+        catch (const std::runtime_error&) { return true; }
+        return false;
+    };
+    const fs::path old_owner = root / ".spirula-mask-attempts" / "attempt" / "owners" /
+        fs::absolute(output).relative_path();
+    check(old_owner.native().size() > 260, "ownership regression exceeds Windows scratch path limit");
+    check(!rejected(output), "long destination claims ownership without mirroring its path on disk");
+    check(rejected(output), "two images with the same mask stem are rejected");
+    check(rejected(masks / "." / "frame.png"), "lexical aliases cannot own the same mask");
+    check(rejected(fs::relative(output, fs::current_path())), "relative and absolute owners collide");
+    check(!rejected(root / "feature_masks" / "frame.png"), "separate train and feature outputs are allowed");
+    check(!fs::exists(root / ".spirula-mask-attempts"), "ownership validation creates no scratch tree");
+    std::string contents;
+    { std::ifstream file(output); std::getline(file, contents); }
+    check(contents == "existing mask", "ownership validation preserves existing masks");
+    std::error_code ec;
+    fs::create_directory_symlink(masks, root / "alias", ec);
+    if (!ec)
+        check(rejected(root / "alias" / "frame.png"), "directory symlink aliases cannot own the same mask");
+#ifdef _WIN32
+    check(rejected(masks / "FRAME.PNG"), "Windows ownership remains case-insensitive");
+    check(!rejected(masks / fs::path(L"\u00c4.png")) &&
+          rejected(masks / fs::path(L"\u00e4.png")), "Windows Unicode case aliases collide");
+    const auto absolute = fs::absolute(output).native();
+    if (absolute.rfind(L"\\\\", 0) != 0)
+        check(rejected(fs::path(L"\\\\?\\" + absolute)), "Windows extended and ordinary paths collide");
+#else
+    check(!rejected(masks / "FRAME.PNG"), "case-distinct POSIX outputs remain separate");
+#endif
+}
+
+void test_geometry_reel_outputs() {
+    const auto root = scratch("geometry-reel");
+    const auto maps = root / "normals";
+    write_png(maps / "frame.png", 16, 16, 128);
+    std::ofstream(maps / "frame.png.geometry-complete") << "completion record";
+    std::ofstream(maps / "frame.png.part-1") << "unfinished image";
+    gui::FilmReel reel;
+    gui::OutputWatch watch(&reel, maps, {}, {}, false, true);
+    watch.poll();
+    check(reel.size() == 1, "atomic geometry appears immediately without markers or temporary files");
+    watch.poll(true);
+    check(reel.size() == 1, "geometry flush does not duplicate published frames");
+}
+
 int main() {
+    test_geometry_reel_outputs();
+    test_mask_output_ownership();
+    test_source_aware_video_resume();
     test_bare_model_is_not_a_dataset();
     test_rerun_reapplies_corrections();
     test_camera_scan_skips_mask_edits();
     test_per_camera_stencil();
+    test_nested_input_stencils();
     test_feature_masks_workspace();
     test_model_masking_needs_segmentation();
     test_heif_folder();
     test_skipped_photos();
     test_frames_reel_counts_images();
+    test_packed_photo_one_lens();
+    test_packed_photo_keeps_exif();
     test_pick_sheet_discards();
     test_sort_in_place();
     test_sort_rig_in_place();

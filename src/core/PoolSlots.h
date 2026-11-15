@@ -128,12 +128,12 @@ enum class SaveClass : uint8_t {
   X(EngVisitCounters               , "eng.visit_counters",                Splat    , Resume) \
   X(EngProjectiveState, "eng.projective_state", Splat, Resume) \
   X(EngProjectiveInformation, "eng.projective_information", Splat, Resume) \
+  X(EngProjectiveAngularBound, "eng.projective_angular_bound", Splat, Never) \
   X(EngProjectiveCenters, "eng.projective_centers", Other, Never) \
   X(EngMaxWeight                   , "eng.max_weight",                    Splat    , Never) \
   X(EngDensifyWorldGradScore       , "eng.densify.world_grad_score",      Splat    , Never) \
   X(EngDensifySampleScore          , "eng.densify.sample_score",          Splat    , Never) \
   X(EngDensifyOversize             , "eng.densify.oversize",              Splat    , Never) \
-  X(EngDensifyOversizeWeight       , "eng.densify.oversize_weight",       Splat    , Never) \
   X(EngLearnedScoreStats           , "eng.densify.learned_score_stats",   Other    , Never) \
   X(EngRegionWeight                , "eng.region.weight",                 Splat    , Never) \
   X(EngRegionProgram               , "eng.region.program",                Other    , Never) \
@@ -213,6 +213,15 @@ enum class SaveClass : uint8_t {
   X(FusedProjBwdPerm               , "fused_proj_bwd.perm",               SplatXImg, Never) \
   X(FusedProjBwdPermSorted         , "fused_proj_bwd.perm_sorted",        SplatXImg, Never) \
   X(FusedProjBwdCamBounds          , "fused_proj_bwd.cam_bounds",         Splat    , Never) \
+  /* ---- PCA regularizer (kernels/loss/PcaReg.cu) ---- */ \
+  X(PcaRegWork                     , "pca_reg.work",                      Splat    , Never) \
+  X(PcaRegBox                      , "pca_reg.box",                       Splat    , Never) \
+  X(PcaRegNodes                    , "pca_reg.nodes",                     Splat    , Never) \
+  X(PcaRegMeta                     , "pca_reg.meta",                      Splat    , Never) \
+  X(PcaRegRanges                   , "pca_reg.ranges",                    Splat    , Never) \
+  X(PcaRegPermCache                , "pca_reg.perm_cache",                Splat    , Never) \
+  X(PcaRegNbrsCache                , "pca_reg.nbrs_cache",                Splat    , Never) \
+  X(PcaRegLossSums                 , "pca_reg.loss_sums",                 Other    , Never) \
   /* ---- splat-tile intersector scratch ---- */ \
   X(StiBruteCount                  , "sti.brute.count",                   SplatXImg, Never) \
   X(StiBruteCountMap               , "sti.brute.count_map",               SplatXImg, Never) \
@@ -286,6 +295,8 @@ enum class SaveClass : uint8_t {
   X(EngPpispRegRawLosses           , "eng.ppisp.reg_raw_losses",          Appearance, Never) \
   X(EngPpispVRegLosses             , "eng.ppisp.v_reg_losses",            Appearance, Never) \
   X(EngPpispVRegParams             , "eng.ppisp.v_reg_params",            Appearance, Never) \
+  /* ---- calibration warp (engine/EngineCalibWarp.cpp) ---- */ \
+  X(EngCalibWarpParams             , "eng.calib_warp.params",             Appearance, Always) \
   /* ---- color-shift reg ---- */ \
   X(EngColorShiftRegEma            , "eng.color_shift_reg.ema",           Appearance, Always) \
   X(EngColorShiftRegBatchSum       , "eng.color_shift_reg.batch_sum",     Appearance, Never) \
@@ -496,16 +507,29 @@ enum class PoolPhase : uint8_t {
 
 // X(PoolSlot enumerator, PoolPhase enumerator)
 #define POOL_ALIAS_TABLE(X) \
-  /* The sort keys and tile counts: no caller reads the key array the \
-     intersector returns, and the counts never leave it. */ \
+  /* The sort keys, the tile counts and the sort's alternate index buffer: \
+     none leaves the intersector, which sorts into isect.flat_a. */ \
   X(IsectIdsA          , TileIsect) \
   X(IsectIdsB          , TileIsect) \
+  X(IsectFlatB         , TileIsect) \
   X(IsectTilesPerSplat , TileIsect) \
   X(IsectCumTiles      , TileIsect) \
   /* Screen-space gradients: written by the raster backward, consumed by the \
      projection backward, or stashed for the fused optim step -- all before \
      the next forward's intersection. forward_3dgs drops the stashed view. */ \
   X(RasterBwdVScreen   , RasterBwd) \
+  /* Per-splat densification score from raster backward. */ \
+  X(RasterBwdAccumWeight, RasterBwd) \
+  /* Camera ID bounds for packed projection backward / FPBO. */ \
+  X(FusedProjBwdCamBounds, RasterBwd) \
+  /* The PCA regularizer runs between the backward and the optim step, which \
+     reads its gradient out of pca_reg.work: the sort's scratch first, then \
+     the order and the gradients (engine/EnginePcaReg.cpp). */ \
+  X(PcaRegWork         , RasterBwd) \
+  X(PcaRegBox          , RasterBwd) \
+  X(PcaRegNodes        , RasterBwd) \
+  X(PcaRegMeta         , RasterBwd) \
+  X(PcaRegRanges       , RasterBwd) \
   /* The perceptual losses' per-call scratch, re-acquired per pyramid scale \
      (acquire_reused): scale 0 sizes it. */ \
   X(SsimMaskWeight     , Loss) \
@@ -562,9 +586,8 @@ static_assert(ce_alias_rows_unique(),
 // them for cap_max on first use: Splat then stops growing as the model
 // densifies, which the training VRAM forecast assumes.
 #define POOL_LIVE_SPLAT_TABLE(X) \
-  X(EngSubbatchAccumWeightSum)       X(EngDensifyOversizeWeight) \
-  X(RasterBwdAccumWeight)            X(RasterBwdVWorld) \
-  X(FusedProjBwdCamBounds)
+  X(EngSubbatchAccumWeightSum)       X(RasterBwdVWorld) \
+  X(PcaRegPermCache)                 X(PcaRegNbrsCache)
 
 inline constexpr PoolSlot kLiveSplatSlots[] = {
 #define X(name) PoolSlot::name,

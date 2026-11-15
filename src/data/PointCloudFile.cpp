@@ -1,3 +1,4 @@
+#include "core/BufferedFile.h"
 #include "data/PointCloudFile.h"
 
 #include <algorithm>
@@ -96,7 +97,7 @@ struct Reader::Ply {
         std::vector<Prop> props;
         int stride = -1;                      // bytes a record, -1 with a list
     };
-    std::ifstream f;
+    BufferedInputFile f;
     enum class Enc { Ascii, Little, Big } enc = Enc::Little;
     uint64_t body = 0;                        // byte offset after end_header
     std::vector<Element> elements;
@@ -331,11 +332,12 @@ bool Reader::read(const std::function<void(const e57::Point*, size_t)>& sink,
         Las& L = *_las;
         L.f.clear();
         L.f.seekg((std::streamoff)L.offset);
-        std::vector<uint8_t> buf((size_t)L.record * kBatch);
+        const size_t rows = std::max<size_t>(1, kFileBufferBytes / L.record);
+        std::vector<uint8_t> buf((size_t)L.record * rows);
         uint64_t left = L.count;
         while (left > 0) {
             if (cancel && cancel->load()) return false;
-            const uint64_t n = std::min<uint64_t>(left, kBatch);
+            const uint64_t n = std::min<uint64_t>(left, rows);
             L.f.read((char*)buf.data(), (std::streamsize)(n * L.record));
             const uint64_t got = (uint64_t)L.f.gcount() / L.record;
             if (got == 0) fail(_path, "the file ends before its last point");
@@ -381,14 +383,16 @@ bool Reader::read(const std::function<void(const e57::Point*, size_t)>& sink,
                 }
                 for (const Ply::Prop& pr : e.props) {
                     if (pr.count_type.empty()) {
-                        P.f.seekg(pr.size, std::ios::cur);
+                        P.f.ignore(pr.size);
                         continue;
                     }
                     uint8_t c[8];
                     const int cs = ply_size(pr.count_type);
                     P.f.read((char*)c, cs);
                     const int64_t n = (int64_t)ply_value(c, pr.count_type, big);
-                    P.f.seekg((std::streamoff)(n * ply_size(pr.type)), std::ios::cur);
+                    const auto bytes = (std::streamoff)(n * ply_size(pr.type));
+                    if (bytes <= (std::streamoff)kFileBufferBytes) P.f.ignore(bytes);
+                    else P.f.seekg(bytes, std::ios::cur);
                 }
             }
             continue;
@@ -410,11 +414,13 @@ bool Reader::read(const std::function<void(const e57::Point*, size_t)>& sink,
         const bool color = pr >= 0 && pg >= 0 && pb >= 0;
         if (P.enc != Ply::Enc::Ascii && e.stride < 0)
             fail(_path, "PLY vertices with list properties are not read");
-        std::vector<uint8_t> buf(P.enc == Ply::Enc::Ascii ? 0 : (size_t)e.stride * kBatch);
+        const size_t rows = P.enc == Ply::Enc::Ascii ? kBatch :
+            std::max<size_t>(1, kFileBufferBytes / e.stride);
+        std::vector<uint8_t> buf(P.enc == Ply::Enc::Ascii ? 0 : (size_t)e.stride * rows);
         int64_t left = e.count;
         while (left > 0) {
             if (cancel && cancel->load()) return false;
-            const int64_t n = std::min<int64_t>(left, (int64_t)kBatch);
+            const int64_t n = std::min<int64_t>(left, (int64_t)rows);
             batch.clear();
             if (P.enc == Ply::Enc::Ascii) {
                 std::string line;
