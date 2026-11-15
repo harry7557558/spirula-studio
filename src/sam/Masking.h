@@ -60,7 +60,7 @@ struct MaskOptions {
 
     bool  video = true;           // track across frames vs. segment each alone
     bool  keep_prompted = false;  // white = the prompted objects
-    // Move every detection's boundary by this share of its own bounding-box
+    // Move each connected component's boundary by this share of its own bounding-box
     // mean side before the union. SIGNED: positive grows the region, covering
     // the halo a tight outline leaves; negative trims inside the outline.
     float dilate_ratio = 0.05f;
@@ -92,7 +92,7 @@ int dilate_radius_px(const Box& box, float dilate_ratio);
 // frame border rather than wrapping, and inward for a negative one.
 void accumulate_dilated(const Mask& mask, int radius, std::vector<uint8_t>& hit);
 
-// The union of `positive`, each detection moved by `dilate_ratio`, minus every
+// The union of `positive`, each component moved by `dilate_ratio`, minus every
 // pixel `negative` covers. The order is load-bearing and is why this is one
 // function: a negative phrase is an explicit keep and must beat the margin.
 void compose_hit(const Result& positive, const Result& negative,

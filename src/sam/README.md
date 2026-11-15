@@ -114,6 +114,8 @@ CLI, the GUI's dataset run and the GUI's preview all go through it, so what a
 user sees in the preview is what gets written.
 
 - several positive phrases, semicolon separated, unioned;
+- margins sized from each eight-connected mask component's bounding box,
+  independently within each detection, before union and negative-phrase veto;
 - negative phrases carved back out — a region matching one is KEPT even when it
   also matches a positive phrase;
 - the output says what to **keep**, so by default the prompted objects come out

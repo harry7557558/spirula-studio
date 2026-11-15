@@ -13,9 +13,7 @@
 namespace gui {
 namespace mask {
 
-// sam::Detection's box in plane pixels: a click's is its mask's inclusive extent,
-// a text match's the detector's continuous regressed box. It sizes the margin, as
-// on the dataset screen; unset, the set pixels' inclusive extent stands in.
+// sam::Detection's box in plane pixels.
 struct RegionBox {
     float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
     bool set = false;
@@ -34,7 +32,7 @@ struct AddRegion {
 // negative phrase is an explicit keep. Returns how many pixels it cleared.
 int64_t veto_regions(std::vector<AddRegion>& regions, const std::vector<AddRegion>& veto);
 
-// Unions `regions` (consumed), each grown by `margin` of its box
+// Unions `regions` (consumed), each component grown by `margin` of its box
 // (core/MaskMargin.h) and THEN vetoed, sam::compose_hit's order, into one W x H
 // nearest-resampled stencil. False, outputs untouched, when nothing landed.
 bool build_add_stencil(std::vector<AddRegion>& regions, int W, int H,

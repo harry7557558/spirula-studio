@@ -449,9 +449,7 @@ bool Masker::run(const nn::Image& image, sam::Mask& out, sam::Result* overlay_ou
     for (size_t i = positive_count + negative_count; i < phrase_results.size(); ++i)
         Impl::append(feat_found, phrase_results[i]);
 
-    // Every positive detection reached `all` as it was found, so the union and
-    // the margin happen once here. The boxes it measures the margin from are
-    // still in `scaled` pixels; the overlay below is what converts them.
+    // Component bounds and margins are measured in scaled-image pixels.
     compose_hit(all, neg, s.opts.dilate_ratio, hit);
 
     // Covered -> 0 (255 under `keep`), at the caller's resolution.

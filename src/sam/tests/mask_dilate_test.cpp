@@ -6,11 +6,14 @@
 // not a smaller one.
 
 #include "sam/Masking.h"
+#include "core/DistanceTransform.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -324,7 +327,97 @@ void test_inward_keeps_the_frame_edge() {
 
 }  // namespace
 
+void test_component_margins() {
+    const int W = 160, H = 120;
+    sam::Mask m = rect_mask(W, H, 0, 20, 60, 80);
+    m.data[100 * W + 140] = 255;
+    sam::Result pos, none;
+    pos.detections.push_back(detection(m, {0, 0, 159, 119}));
+    for (float ratio : {0.0f, 0.2f, -0.2f}) {
+        std::vector<uint8_t> hit(W * H, 0);
+        sam::compose_hit(pos, none, ratio, hit);
+        size_t wrong = 0;
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x) {
+                bool want;
+                if (ratio > 0)
+                    want = rect_distance(x, y, 0, 20, 60, 80) <= 6 ||
+                           rect_distance(x, y, 140, 100, 140, 100) <= 1;
+                else if (ratio < 0)
+                    want = (x <= 55 && y >= 25 && y <= 75) || (x == 140 && y == 100);
+                else
+                    want = m.data[y * W + x] > 127;
+                wrong += (hit[y * W + x] != 0) != want;
+            }
+        check(wrong == 0, "component margins: large border object and isolated speck, ratio " +
+                              std::to_string(ratio));
+    }
+
+    sam::Mask diagonal = rect_mask(64, 64, 0, 0, -1, -1);
+    for (int i = 20; i <= 40; ++i) diagonal.data[i * 64 + i] = 255;
+    pos.detections = {detection(diagonal, {})};
+    std::vector<uint8_t> hit(64 * 64, 0);
+    sam::compose_hit(pos, none, 0.4f, hit);
+    size_t wrong = 0;
+    for (int y = 0; y < 64; ++y)
+        for (int x = 0; x < 64; ++x) {
+            bool want = false;
+            for (int i = 20; i <= 40; ++i)
+                want |= (x - i) * (x - i) + (y - i) * (y - i) <= 16;
+            wrong += (hit[y * 64 + x] != 0) != want;
+        }
+    check(wrong == 0, "diagonally touching pixels share one component radius");
+
+    sam::Mask ring = rect_mask(100, 100, 20, 20, 80, 80);
+    for (int y = 21; y < 80; ++y)
+        for (int x = 21; x < 80; ++x) ring.data[y * 100 + x] = 0;
+    ring.data[50 * 100 + 50] = 255;
+    pos.detections = {detection(ring, {})};
+    hit.assign(100 * 100, 0);
+    sam::compose_hit(pos, none, 0.2f, hit);
+    wrong = 0;
+    for (int y = 0; y < 100; ++y)
+        for (int x = 0; x < 100; ++x) {
+            const bool want = rect_distance(x, y, 20, 20, 80, 20) <= 6 ||
+                              rect_distance(x, y, 20, 80, 80, 80) <= 6 ||
+                              rect_distance(x, y, 20, 20, 20, 80) <= 6 ||
+                              rect_distance(x, y, 80, 20, 80, 80) <= 6 ||
+                              rect_distance(x, y, 50, 50, 50, 50) <= 1;
+            wrong += (hit[y * 100 + x] != 0) != want;
+        }
+    check(wrong == 0, "a component inside another's bounding box keeps its own radius");
+}
+
+void test_distance_thresholds() {
+    std::mt19937 rng(345);
+    size_t wrong = 0;
+    for (int trial = 0; trial < 50; ++trial) {
+        const int w = 1 + rng() % 15, h = 1 + rng() % 15;
+        std::vector<uint8_t> mask(w * h);
+        for (auto& v : mask) v = rng() % 100 < (trial * 17) % 101;
+        if (trial < 2) std::fill(mask.begin(), mask.end(), trial);
+        for (float offset : {-3.5f, -2.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 2.0f, 3.5f}) {
+            auto got = mask;
+            edt::apply_mask_boundary_offset_in_place(got.data(), h, w, offset);
+            for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x) {
+                float fg = std::numeric_limits<float>::infinity(), bg = fg;
+                for (int j = 0; j < h; ++j) for (int i = 0; i < w; ++i) {
+                    const float d2 = (float)((x - i) * (x - i) + (y - j) * (y - j));
+                    float& d = mask[j * w + i] ? fg : bg;
+                    d = std::min(d, d2);
+                }
+                const bool want = offset == 0 || w * h == 1 ? mask[y * w + x] != 0
+                                  : std::sqrt(fg) - std::sqrt(bg) <= offset;
+                wrong += (got[y * w + x] != 0) != want;
+            }
+        }
+    }
+    check(wrong == 0, "distance thresholds match brute-force signed distances, including fractional offsets");
+}
+
 int main() {
+    test_distance_thresholds();
+    test_component_margins();
     test_radius_formula();
     test_default();
     test_scale_awareness();

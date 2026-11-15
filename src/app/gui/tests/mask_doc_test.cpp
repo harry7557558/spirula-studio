@@ -5753,7 +5753,7 @@ void test_held_region_roundtrip() {
     const mk::AddRegion rebox = mk::expand_region(mk::hold_region(boxed));
     check(rebox.box.set && rebox.box.x0 == 2.0f && rebox.box.y0 == 3.0f &&
               rebox.box.x1 == 50.0f && rebox.box.y1 == 40.0f,
-          "held region: the model's box survives the hold, so a re-apply sizes from it too");
+          "held region: the model's box survives the hold");
     const mk::HeldRegion none = mk::hold_region(disc_region(64, 48, 20.0f, 30.0f, 0.0f));
     check(none.box.empty() && none.mask.empty(), "held region: nothing set holds nothing");
 }
@@ -6027,9 +6027,7 @@ void test_add_stencil_veto_beats_margin() {
           "veto margin: every vetoed pixel stays clear of the grown outline");
 }
 
-// The margin is sized from the model's box when it has one: a text detection's
-// regressed box is not its mask's extent, and the dataset screen uses the box.
-void test_add_stencil_box_sizes_margin() {
+void test_add_stencil_component_sizes_margin() {
     const int W = 96, H = 64;
     mk::AddRegion g = disc_region(W, H, 48.0f, 32.0f, 6.0f);
     const mk::Rect e = extent(g.mask, W, H);
@@ -6041,7 +6039,11 @@ void test_add_stencil_box_sizes_margin() {
     check(from_box > from_extent,
           "box margin: the fixture's box and the mask's extent give different radii");
     std::vector<uint8_t> hit((size_t)W * H, 0);
-    margin::accumulate(g.mask.data(), W, H, from_box, hit);
+    margin::accumulate(g.mask.data(), W, H, from_extent, hit);
+    g.mask[2 * W + 2] = 255;
+    for (int y = 1; y <= 3; ++y)
+        for (int x = 1; x <= 3; ++x)
+            if (std::abs(x - 2) + std::abs(y - 2) <= 1) hit[y * W + x] = 1;
     std::vector<mk::AddRegion> r{g};
     gui::Stencil st;
     mk::Rect b;
@@ -6049,7 +6051,7 @@ void test_add_stencil_box_sizes_margin() {
     check(mk::build_add_stencil(r, W, H, st, b, set, ratio), "box margin: builds");
     bool same = st.in.size() == hit.size();
     for (size_t i = 0; same && i < hit.size(); i++) same = (st.in[i] != 0) == (hit[i] != 0);
-    check(same, "box margin: the radius comes from the model's box, not the mask's extent");
+    check(same, "component margin: the model box does not override the component extent");
 }
 
 // A click on the object whose add is on top inherits that add's mode unless a
@@ -8832,7 +8834,7 @@ int main() {
     test_session_sam_margin_after_prompt();
     test_veto_regions();
     test_add_stencil_veto_beats_margin();
-    test_add_stencil_box_sizes_margin();
+    test_add_stencil_component_sizes_margin();
     test_session_sam_click_mode();
     test_session_sam_redo_then_refine();
     test_session_sam_undo_then_refine();

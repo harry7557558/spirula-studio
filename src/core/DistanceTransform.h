@@ -4,7 +4,7 @@
 //
 // Header-only because its two callers link nothing in common: the dataset
 // decoder (src/data/DataManager.cpp) applies mask_boundary_offset as an image
-// arrives, and the masking margin (core/MaskMargin.h) grows one detection.
+// arrives, and the masking margin (core/MaskMargin.h) grows each component.
 
 #include <algorithm>
 #include <cmath>
@@ -122,24 +122,22 @@ inline void apply_mask_boundary_offset_in_place(uint8_t* mask, int h, int w,
     if (offset_px == 0.0f || h <= 0 || w <= 0 || (h == 1 && w == 1)) return;
 
     const int mx = std::max(h, w);
-    // new[] over vector: the row pass writes every element, so vector's
-    // value-initialising zero fill is 118 MB of pure memset at 3840^2.
-    std::unique_ptr<float[]>  d2_fg(new float[(size_t)h * w]);
-    std::unique_ptr<float[]>  d2_bg(new float[(size_t)h * w]);
+    // The row pass overwrites every distance; avoid zero-initializing it.
+    std::unique_ptr<float[]>  d2(new float[(size_t)h * w]);
     std::unique_ptr<float[]>  cols(new float[(size_t)kColBlock * h]);
     std::unique_ptr<float[]>  cols_out(new float[(size_t)kColBlock * h]);
     std::unique_ptr<int[]>    v_buf(new int[mx]);
     std::unique_ptr<double[]> z_buf(new double[(size_t)mx + 1]);
 
-    dt2d_squared(mask, h, w, /*src_value=*/1, d2_fg.get(),
-                 cols.get(), cols_out.get(), v_buf.get(), z_buf.get());
-    dt2d_squared(mask, h, w, /*src_value=*/0, d2_bg.get(),
+    // Inside pixels have zero foreground distance; outside pixels have zero
+    // background distance. Only the opposite set matters for the chosen sign.
+    const bool grow = offset_px > 0.0f;
+    dt2d_squared(mask, h, w, grow ? 1 : 0, d2.get(),
                  cols.get(), cols_out.get(), v_buf.get(), z_buf.get());
 
-    for (size_t i = 0; i < (size_t)h * w; ++i) {
-        float sd = std::sqrt(d2_fg[i]) - std::sqrt(d2_bg[i]);
-        mask[i] = (sd <= offset_px) ? 1 : 0;
-    }
+    for (size_t i = 0; i < (size_t)h * w; ++i)
+        mask[i] = grow ? (mask[i] || std::sqrt(d2[i]) <= offset_px)
+                       : (mask[i] && std::sqrt(d2[i]) >= -offset_px);
 }
 
 }  // namespace edt

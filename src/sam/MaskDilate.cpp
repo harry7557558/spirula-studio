@@ -46,7 +46,11 @@ void compose_hit(const Result& positive, const Result& negative,
                  float dilate_ratio, std::vector<uint8_t>& hit) {
     for (const Detection& d : positive.detections) {
         if (d.mask.data.size() != hit.size()) continue;
-        accumulate_dilated(d.mask, dilate_radius_px(d.box, dilate_ratio), hit);
+        const Mask& m = d.mask;
+        if (dilate_ratio == 0.0f || (size_t)m.width * m.height != m.data.size())
+            or_into(m, hit);
+        else
+            margin::accumulate_components(m.data.data(), m.width, m.height, dilate_ratio, hit);
     }
     // After, never before: the margin is a guess about where the object really
     // ends, and a negative phrase is the user saying it does not end there.

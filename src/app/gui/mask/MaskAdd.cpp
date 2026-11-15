@@ -103,16 +103,11 @@ bool build_add_stencil(std::vector<AddRegion>& regions, int W, int H,
         if (s.empty()) continue;
         reach[k] = s;
         if (margin <= 0.0f) continue;
-        const RegionBox b = g.box.set ? g.box
-                                      : RegionBox{(float)s.x0, (float)s.y0, (float)(s.x1 - 1),
-                                                  (float)(s.y1 - 1), true};
-        const int r = margin::radius_px(b.x0, b.y0, b.x1, b.y1, margin);
         std::vector<uint8_t> hit(g.mask.size(), 0);
-        margin::accumulate(g.mask.data(), g.w, g.h, r, hit);
+        margin::accumulate_components(g.mask.data(), g.w, g.h, margin, hit);
         for (uint8_t& v : hit) v = v ? 255 : 0;
         g.mask = std::move(hit);
-        reach[k] = Rect{std::max(0, s.x0 - r), std::max(0, s.y0 - r), std::min(g.w, s.x1 + r),
-                        std::min(g.h, s.y1 + r)};
+        reach[k] = extent(g.mask, g.w, Rect{0, 0, g.w, g.h}, n);
     }
     if (!veto.empty()) veto_regions(regions, veto);
     std::vector<uint8_t> plane;
