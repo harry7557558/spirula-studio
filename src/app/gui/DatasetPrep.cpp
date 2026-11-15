@@ -2256,12 +2256,13 @@ bool DatasetPrep::extract_video_streaming(const PrepJob& job, const PrepInput& i
     if (hold && _films.picks) _films.picks->set_dirs(row, images, skipped.string());
     if (row < _streamed.size()) _streamed[row] = hold && fx.blur_reject > 0.0f && _films.picks;
     if (_films.picks && !every_frame(job, in))
-        sinks.judged = [this, row, single, hold, skipped,
-                        images](const app::FramePick& p, const nn::Image& im) {
+        sinks.judged = [this, row, single, hold, skipped, images,
+                        ext = app::frame_file_ext(fx.file)](const app::FramePick& p,
+                                                            const nn::Image& im) {
             std::string path;
             if (single && (hold || p.verdict == app::PickVerdict::Kept)) {
                 char name[32];
-                std::snprintf(name, sizeof name, "%05lld.jpg", (long long)p.index);
+                std::snprintf(name, sizeof name, "%05lld%s", (long long)p.index, ext);
                 path = ((p.verdict == app::PickVerdict::Kept ? fs::path(images) : skipped) /
                         name).string();
             }
