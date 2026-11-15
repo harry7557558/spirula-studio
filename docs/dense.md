@@ -199,10 +199,10 @@ changes leave camera reconstruction reusable. Rebuilding cameras, frames,
 or applicable masks invalidates the cloud. To force matching again, use
 **Dense cloud again** under **Re-do one step**: that one run ignores saved
 pair predictions (`--rebuild true` on the command line).
-The planner checks output size and input metadata to offer reuse promptly.
-Before reusing a cloud, the background runner verifies input contents and
-the cloud checksum. Edits that preserve sizes and timestamps therefore still
-invalidate reuse. Processing hashes inputs freshly in every run and verifies
+The planner checks output presence and input metadata to offer reuse promptly.
+Before reusing a cloud, the background runner verifies input contents. Changes
+to source inputs that preserve sizes and timestamps still invalidate reuse.
+Edits to the output PLY remain usable without updating the manifest. Processing hashes inputs freshly in every run and verifies
 them again before publication. The fingerprint ledger avoids repeated hashing
 within a run; earlier size/timestamp entries do not establish content validity.
 
@@ -244,32 +244,34 @@ limited each phase. See `tools/perf/README.md`.
 
 ### Editing the cloud before training
 
-The dense cloud can be cleaned up before it seeds training: cropped to the
-subject, floaters deleted, stray background removed. Open it with **Preview
-dense cloud** (or open its `roma.ply` from File), edit it with the point tools,
-and choose **Save**, which writes back over the file it was opened from.
+Open **Edit Dense Cloud** to clean up a dataset's point cloud before training.
+With one version it opens the editor directly. With multiple versions it opens
+a chooser listing the current cloud, original backups, saved PLY copies and
+earlier reconstructions. Select a version and choose **Edit**, or **Delete
+version** to remove it after confirmation. Deleting the current cloud selects
+another version when available; deleting the last one leaves sparse seeding.
+Deletion removes the selected PLY. Compatibility exports at `dense/roma.ply`
+remain separately accessible by an explicit file path.
 
-Training checks every dense cloud against the checksum its manifest recorded,
-so that a damaged or half-written cloud is never used. Saving an edit from the
-editor re-signs the manifest: it records the new cloud's checksum, size and
-point count, and an `edited` entry with the time and the original's checksum.
-The dataset is then parsed again, and training accepts the edited cloud. The
-edit is written with double-precision coordinates, as the dense step writes
-them.
+The first in-place edit keeps the preceding cloud as `roma.original.ply` beside
+it. Later saves preserve that backup until it is edited or deleted explicitly.
+**Save a copy...** keeps another PLY in `dense/`. Versions are also available
+under the trainer's **Starting points**; **Open in trainer** starts from the
+version just edited or last saved in the editing session.
 
-The first edit keeps the untouched cloud as `roma.original.ply` beside the
-edited one. Later edits keep that file, so it always holds what the dense step
-produced. To go back, open `roma.original.ply` in the editor and choose **Save a
-copy...** onto `roma.ply`, which signs it like any edit; or use **Dense cloud
-again** (`--rebuild true`). Renaming files by hand fails the check. Running the
-dense step again
-publishes a new cloud and leaves the edited one in its own generation.
+PLY files can be edited, replaced or renamed in other software. Preview,
+training and dense reuse do not validate output or manifest checksums, and
+stale byte sizes or point counts in the manifest do not reject an edited
+cloud. The PLY parser reads the actual points and still reports invalid files.
+An explicitly selected `dense/roma.ply` is opened as that file, rather than
+redirected to the published generation. The automatic default follows
+`dense/current.json` when present.
 
-A cloud changed by any other program still fails the check. Open it in the
-editor and choose **Save** to sign it as an edit. Builds before this change
-saved edits without signing them; saving such a cloud again repairs it. If the
-dense folder's own `dense/roma.ply` still holds the original, that copy is kept
-as `roma.original.ply` before it is replaced.
+Dense seed clouds stay in the dataset's camera frame: their editor supports
+point cleanup, but blocks placement edits. Use **Edit Reconstruction** to move
+sparse points and cameras together. Selecting a saved sparse model under
+**Starting points** loads that model's cameras, including camera deletions,
+along with its points. Dense saves preserve double-precision coordinates.
 
 ### Time and memory strip
 
@@ -639,11 +641,9 @@ them, and with the defaults it differs only by the far isolated points.
 ## Outputs, caching, and cancellation
 
 Successful runs publish a cloud and manifest under `dense/generations/`, then
-atomically replace `dense/current.json`. Only a signed edit from the editor
-changes a published cloud afterwards (see "Editing the cloud before training"). First-party
-preview, planning, and training consumers resolve that record and verify the
-generation manifest and cloud checksums. Training freezes the selected generation
-for the session. Compatibility copies remain at `dense/roma.ply` and
+atomically replace `dense/current.json`. Preview, planning and automatic
+training resolve that record. Published PLYs can also be edited externally.
+Training reads the selected file at load time. Compatibility copies remain at `dense/roma.ply` and
 `dense/manifest.json`; datasets without a generation record still use those
 legacy paths. The cloud
 is binary little endian, with double coordinates and 8-bit sRGB colors.
@@ -651,11 +651,11 @@ The parser's centering is restored before export, including Nerfstudio's
 forward `applied_transform`, so the result is in the source file frame
 expected by `seed_pointcloud`.
 
-The manifest records settings, checkpoint and input fingerprints, cloud
-checksum, image/view/pair counts, rejection statistics, cell size, and
+The manifest records settings, checkpoint and input fingerprints,
+image/view/pair counts, rejection statistics, cell size, and
 elapsed time split into `prepare_seconds`, `match_seconds`, `finish_seconds`
 and final `verification_seconds`. The manifest's total covers processing
-through input/cloud verification; publication and process shutdown can add
+through input verification; publication and process shutdown can add
 to externally measured wall time.
 `model_load_seconds` and `inference_seconds` separate checkpoint loading and
 native matching within the matching phase. `reference_work_seconds` sums elapsed
@@ -680,8 +680,8 @@ decoding and reconstruction. Both generation files are complete before the
 current record changes, so interrupted publication preserves the preceding
 generation for readers. Compatibility copies are separate replacements;
 external consumers requiring a consistent pair should also resolve the
-current-generation record. The GUI child runner verifies the selected cloud
-checksum before reporting success. An exclusive workspace writer lock prevents
+current-generation record. The GUI child runner checks that the selected cloud
+exists before reporting success. An exclusive workspace writer lock prevents
 two dense processes from publishing to the same dataset concurrently.
 
 Each run keeps its temporary observation tiles and sorting files in a

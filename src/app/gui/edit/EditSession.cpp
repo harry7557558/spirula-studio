@@ -59,6 +59,7 @@ void EditSession::open(std::unique_ptr<EditDoc> doc, ViewportPanel* panel) {
     _moved_ever = false;
     _levelling_touched = false;
     _saved_over_source = false;
+    _trainer_saved_path.clear();
     _centres = Centres{};
     _attrs.clear();
     _attrs_layer = -1;
@@ -762,6 +763,7 @@ void EditSession::take_save_result() {
     const bool to_trainer = _train_after_save;
     _train_after_save = false;
     if (_save_error.empty()) {
+        _trainer_saved_path = _save_path;
         if (_on_saved) _on_saved(_doc->source_path(), _save_path, _save_placement);
         _doc->mark_saved();
         if (_save_path == _doc->source_path() ||

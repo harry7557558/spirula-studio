@@ -1,5 +1,6 @@
 #include "data/DatasetParser.h"
 #include "data/SparseEdit.h"
+#include "data/SeedPointCount.h"
 #include "config/TrainConfigJson.h"
 #include "i18n/catalog/Data.h"
 
@@ -130,7 +131,22 @@ int main() {
             model.seed_pointcloud = "sparse/edit";
             const auto edited = parse_colmap_dataset(root.string(), model);
             check(edited.points.num() == 2 && edited.points.xyz[0] == 7 && edited.c2w == native.c2w,
-                  "a model folder seeds with its own points and keeps the dataset's cameras");
+                  "an untransformed model copy preserves camera poses");
+            check(spirula::seed_point_count(root / "sparse/edit") == 2,
+                  "text model seeds report their point count");
+            fs::remove_all(root / "sparse/edit");
+            keep.points.assign(1, 1);
+            keep.drop_images.push_back("0.png");
+            spirula::Sim3 moved;
+            moved.t[0] = 10;
+            spirula::sparse_write_model(root.string(), (root / "sparse/edit").string(), keep, &moved);
+            const auto selected = parse_colmap_dataset(root.string(), model);
+            model.seed_pointcloud.clear();
+            model.recon_dir = "sparse/edit";
+            const auto direct = parse_colmap_dataset(root.string(), model);
+            check(selected.points.xyz == direct.points.xyz && selected.c2w == direct.c2w &&
+                  selected.num_cameras == 3 && selected.points.xyz[0] == 11,
+                  "a transformed model seed uses its saved cameras and camera deletions");
             fs::remove_all(root / "sparse/edit");
         }
         const double precise_xyz[] = {4000000.123456789, -3000000.987654321, 2000000.314159265};

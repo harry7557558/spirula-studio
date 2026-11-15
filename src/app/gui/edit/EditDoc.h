@@ -134,6 +134,7 @@ public:
     // One similarity of the positions() frame for every layer: the scene is
     // rigid. The VIEWER applies it; nothing here moves until a save bakes it.
     const spirula::Sim3& placement() const { return _placement; }
+    virtual bool placement_allowed() const { return true; }
     void set_placement(const spirula::Sim3& p) {
         _placement = p;
         _rev++;

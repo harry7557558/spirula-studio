@@ -2,6 +2,7 @@
 // session in EditSession.h.
 
 #include "app/gui/edit/EditSession.h"
+#include "i18n/catalog/Dense.h"
 
 #include "app/gui/NavCamera.h"
 #include "app/gui/ProgressView.h"
@@ -16,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <string>
 
 namespace msg = spirula::i18n::msg::edit;
@@ -716,8 +718,13 @@ void EditSession::draw_trainer_button(float full) {
     const int target = dense ? 0 : folder_target();
     ImGui::Spacing();
     if (ui::Button(msg::to_trainer, ImVec2(full, 0))) {
-        if (!_doc->dirty()) {
-            const auto [to, seed] = trainer_handoff(dense ? _doc->source_path() : dataset);
+        std::error_code ec;
+        // A PLY export does not carry the reconstruction's edited cameras.
+        const bool needs_model = !dense && !_trainer_saved_path.empty() &&
+            !std::filesystem::is_directory(_trainer_saved_path, ec);
+        if (!_doc->dirty() && !needs_model) {
+            const auto [to, seed] = trainer_handoff(_trainer_saved_path.empty()
+                ? (dense ? _doc->source_path() : dataset) : _trainer_saved_path);
             _to_trainer(to, dataset, seed);
         } else {
             _save_target = target;
@@ -733,13 +740,15 @@ void EditSession::draw_trainer_button(float full) {
                              ImGuiCond_Appearing);
     if (ui::BeginPopupModal(msg::to_trainer_title)) {
         _save_target = target;
-        ui::TextWrapped(msg::to_trainer_body, {_doc->default_save_path(target)});
+        ui::TextWrapped(msg::to_trainer_body);
+        ImGui::BeginDisabled(!can_save_in_place());
         if (ui::Button(msg::save_over)) {
             _train_after_save = true;
             save_in_place();
             ImGui::CloseCurrentPopup();
         }
-        if (can_save_copy() && !dense) {   // a copy elsewhere would not be the seed
+        ImGui::EndDisabled();
+        if (can_save_copy()) {
             ImGui::SameLine();
             if (ui::Button(msg::save_copy)) {
                 _train_after_save = true;
@@ -759,6 +768,10 @@ void EditSession::draw_trainer_button(float full) {
 
 void EditSession::draw_transform_tab(float full) {
     EditDoc& d = *_doc;
+    if (!d.placement_allowed()) {
+        ui::TextWrapped(spirula::i18n::msg::dense::edit_source_frame);
+        return;
+    }
     const ImGuiStyle& st = ImGui::GetStyle();
     const float half = (full - st.ItemSpacing.x) * 0.5f;
     const float third = (full - st.ItemSpacing.x * 2) / 3.0f;

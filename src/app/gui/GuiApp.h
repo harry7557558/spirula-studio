@@ -1104,6 +1104,16 @@ private:
     void draw_dense_advanced();
     void draw_train_mask_mode(float width);
     void draw_seed_cloud(TrainRunner::Phase ph);
+    void edit_dense_cloud(const DatasetFolders& folders);
+    void refresh_dense_versions(const std::string& dataset, bool force = false);
+    void draw_dense_versions();
+    void pump_dense_delete();
+    std::vector<std::pair<std::string, bool>> _dense_versions;
+    std::string _dense_versions_dataset, _dense_version_error, _dense_deleted_path, _dense_delete_selection;
+    double _dense_versions_at = -1.0;
+    int _dense_version_index = 0;
+    bool _dense_versions_open = false;
+    std::future<void> _dense_delete;
     // Edited copies beside the dataset's own clouds, for Starting points: the
     // other models in sparse/ and the other PLY files in dense/.
     struct SeedFile { std::string label, seed; bool dense = false; };

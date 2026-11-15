@@ -81,12 +81,12 @@ inline bool artifact_inputs_verified(const std::string& dataset,
     if (!std::filesystem::is_regular_file(files.manifest)) return false;
     const auto manifest = json_parse_file(files.manifest.string());
     if (manifest.get_double("reconstruction_revision",0) != reconstruction_revision) return false;
-    const auto* paths = manifest.find("input_paths"), *content = manifest.find("input_content_stamp"), *cloud = manifest.find("cloud_sha256");
-    if (!paths || !content || !cloud) return false;
+    const auto* paths = manifest.find("input_paths"), *content = manifest.find("input_content_stamp");
+    if (!paths || !content) return false;
     std::vector<std::string> inputs;
     for (const auto& path : paths->arr) inputs.push_back(path.as_string());
     return input_content_stamp(inputs,check_cancel) == content->as_string() &&
-           artifact_checksum_valid(files);
+           artifact_available(files);
     } catch (const std::exception&) {
         if (check_cancel) check_cancel();
         return false;
@@ -96,9 +96,10 @@ inline bool artifact_inputs_verified(const std::string& dataset,
 inline bool artifact_complete(const std::string& dataset, bool check_inputs = false) {
     try {
         const auto files = artifact_files(dataset);
+        if (!artifact_available(files)) return false;
+        if (!std::filesystem::is_regular_file(files.manifest)) return !check_inputs;
         const auto manifest = json_parse_file(files.manifest.string());
-        const auto* complete = manifest.find("complete"), *hash = manifest.find("cloud_sha256");
-        const auto* stats = manifest.find("statistics"), *bytes = manifest.find("cloud_bytes");
+        const auto* complete = manifest.find("complete");
         if (check_inputs) {
             if (manifest.get_double("reconstruction_revision",0) != reconstruction_revision) return false;
             const auto* paths = manifest.find("input_paths"), *stamp = manifest.find("input_stamp");
@@ -108,9 +109,7 @@ inline bool artifact_complete(const std::string& dataset, bool check_inputs = fa
                 if (input_stamp(inputs) != stamp->as_string()) return false;
             }
         }
-        return complete && complete->as_bool() && hash && hash->as_string().size() == 64 &&
-            stats && stats->get_double("exported", 0) > 0 && std::filesystem::is_regular_file(files.cloud) &&
-            (!bytes || bytes->as_int() == (int64_t)std::filesystem::file_size(files.cloud));
+        return complete && complete->as_bool();
     } catch (const std::exception&) { return false; }
 }
 

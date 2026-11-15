@@ -39,6 +39,7 @@ public:
     void revert_display() override;
     bool live_centers(dsparse::CenterTable& out) const override;
     spirula::Sim3 view_frame() const override;
+    bool placement_allowed() const override;
     bool up_hint(float up[3]) const override;
     bool colours(std::vector<float>& rgb) const override;
     bool colours_available() const override {

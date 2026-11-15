@@ -2,10 +2,10 @@
 
 #include "core/AtomicFile.h"
 #include "core/OwnedDirectory.h"
-#include "core/Sha256.h"
 #include "data/Json.h"
 #include "data/JsonWrite.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <ctime>
 #include <filesystem>
@@ -31,30 +31,29 @@ inline ArtifactFiles artifact_files(const std::string& dataset) {
     const auto current = root / "current.json";
     if (!fs::exists(current)) return {root / "roma.ply", root / "manifest.json", {}};
     const auto record = json_parse_file(current.string());
-    const auto* name_value = record.find("generation"), *expected_value = record.find("manifest_sha256");
-    const auto name = name_value ? name_value->as_string() : std::string{};
-    const auto expected = expected_value ? expected_value->as_string() : std::string{};
-    if (record.get_double("version", 0) != 1 || !generation_name(name) || expected.size() != 64)
+    const auto name = record.find("generation") ? record.find("generation")->as_string() : std::string{};
+    if (record.get_double("version", 0) != 1 || (!name.empty() && !generation_name(name)))
         throw std::runtime_error("invalid dense generation record");
+    auto relative = [&](const std::string& value) {
+        const fs::path path(value);
+        if (path.is_absolute()) throw std::runtime_error("invalid dense cloud path");
+        for (const auto& part : path)
+            if (part == "..") throw std::runtime_error("invalid dense cloud path");
+        return value.empty() ? fs::path{} : root / path;
+    };
+    if (const auto* cloud = record.find("cloud")) {
+        const auto* manifest = record.find("manifest");
+        return {relative(cloud->as_string()), relative(manifest ? manifest->as_string() : ""), name};
+    }
+    if (name.empty()) return {};
     const auto directory = root / "generations" / name;
-    const auto manifest = directory / "manifest.json";
-    if (sha256_file(manifest.string()) != expected) throw std::runtime_error("dense generation manifest checksum mismatch");
-    return {directory / "roma.ply", manifest, name};
+    return {directory / "roma.ply", directory / "manifest.json", name};
 }
 
-inline bool artifact_checksum_valid(const ArtifactFiles& files) {
-    try {
+inline bool artifact_available(const ArtifactFiles& files) {
     namespace fs = std::filesystem;
-    if (!fs::is_regular_file(files.cloud) || !fs::is_regular_file(files.manifest)) return false;
-    const auto manifest = json_parse_file(files.manifest.string());
-    const auto* bytes = manifest.find("cloud_bytes"), *statistics = manifest.find("statistics");
-    const auto* hash = manifest.find("cloud_sha256"), *complete = manifest.find("complete");
-    const auto expected = hash ? hash->as_string() : std::string{};
-    return complete && complete->as_bool() && expected.size() == 64 && statistics &&
-        statistics->get_double("exported", 0) > 0 &&
-        (!bytes || bytes->as_int() == (int64_t)fs::file_size(files.cloud)) &&
-        sha256_file(files.cloud.string()) == expected;
-    } catch (const std::exception&) { return false; }
+    std::error_code ec;
+    return fs::is_regular_file(files.cloud, ec) && fs::file_size(files.cloud, ec) > 0 && !ec;
 }
 
 inline void generation_marker(const std::filesystem::path& directory, const char* marker) {
@@ -112,9 +111,17 @@ inline void cleanup_abandoned_runs(const std::filesystem::path& cache) {
 }
 
 inline void write_current_generation(const std::filesystem::path& root, const ArtifactFiles& files) {
+    namespace fs = std::filesystem;
     JsonWriter record;
+    auto relative = [&](const fs::path& path) {
+        if (path.empty()) return std::string{};
+        const auto normal = fs::weakly_canonical(path.parent_path()) / path.filename();
+        const auto rel = normal.lexically_relative(fs::weakly_canonical(root));
+        if (rel.empty() || *rel.begin() == "..") throw std::runtime_error("invalid dense cloud path");
+        return rel.generic_string();
+    };
     record.object().field("version", 1).field("generation", files.generation)
-        .field("manifest_sha256", files.manifest.empty() ? std::string{} : sha256_file(files.manifest.string())).end();
+        .field("cloud", relative(files.cloud)).field("manifest", relative(files.manifest)).end();
     const auto temporary = root / ("current-" + files.generation + ".part");
     {
         std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
@@ -132,8 +139,8 @@ inline ArtifactFiles publish_generation(const std::string& dataset, const std::s
     if (!generation_name(generation) || fs::exists(directory)) throw std::runtime_error("invalid or repeated dense generation");
     ArtifactFiles previous;
     try { previous = artifact_files(dataset); } catch (const std::exception&) {}
-    if (previous.generation.empty() && artifact_checksum_valid(previous)) {
-        const auto old_name = "legacy-" + sha256_file(previous.manifest.string()).substr(0, 16) + "-" + generation;
+    if (previous.generation.empty() && artifact_available(previous) && fs::is_regular_file(previous.manifest)) {
+        const auto old_name = "legacy-" + generation;
         const auto old_directory = root / "generations" / old_name;
         if (!fs::create_directories(old_directory)) throw std::runtime_error("dense legacy generation already exists");
         fs::copy_file(previous.cloud, old_directory / "roma.ply");
@@ -157,7 +164,7 @@ inline ArtifactFiles publish_generation(const std::string& dataset, const std::s
     if (checkpoint) checkpoint("generation_cloud");
     replace_file(manifest, result.manifest);
     if (checkpoint) checkpoint("generation_manifest");
-    if (!artifact_checksum_valid(result)) throw std::runtime_error("cannot publish inconsistent dense generation");
+    if (!artifact_available(result)) throw std::runtime_error("cannot publish inconsistent dense generation");
     for (const auto& source : {result.cloud, result.manifest}) {
         const auto temporary = root / (source.filename().string() + "-" + generation + ".part");
         fs::copy_file(source, temporary, fs::copy_options::overwrite_existing);
@@ -187,29 +194,23 @@ inline bool is_dense_seed(const std::string& dataset, const std::string& seed) {
     const auto root = fs::path(dataset) / "dense";
     const auto file = fs::path(seed).is_absolute() ? fs::path(seed) : fs::path(dataset) / seed;
     if (same_artifact_path(file, root / "roma.ply")) return true;
+    try { if (same_artifact_path(file, artifact_files(dataset).cloud)) return true; }
+    catch (const std::exception&) {}
     return file.filename() == "roma.ply" && generation_name(file.parent_path().filename().string()) &&
         same_artifact_path(file.parent_path().parent_path(), root / "generations");
 }
 
-inline std::string verified_seed_path(const std::string& dataset, const std::string& seed) {
+inline std::string resolve_seed_path(const std::string& dataset, const std::string& seed) {
     namespace fs = std::filesystem;
     if (!is_dense_seed(dataset, seed)) return seed;
-    const auto root = fs::path(dataset) / "dense";
-    const auto file = fs::path(seed).is_absolute() ? fs::path(seed) : fs::path(dataset) / seed;
-    const bool current = same_artifact_path(file, root / "roma.ply");
-    const auto files = current ? artifact_files(dataset) : ArtifactFiles{file, file.parent_path() / "manifest.json", {}};
-    if (!fs::exists(files.manifest) && files.generation.empty()) return seed;
-    if (!artifact_checksum_valid(files)) throw std::runtime_error("dense cloud checksum mismatch");
-    return fs::absolute(files.cloud).lexically_normal().string();
+    return fs::absolute(fs::path(dataset) / seed).lexically_normal().string();
 }
 
-// The dense cloud an edit saved to `path` replaces, and its dataset: the current
-// generation for the dense folder's own roma.ply. False when `path` is not one.
 // The dataset folder whose dense cloud `path` is, from the path alone; "" otherwise.
 inline std::string dense_dataset_of(const std::filesystem::path& path) {
     namespace fs = std::filesystem;
     const fs::path file = fs::absolute(path).lexically_normal(), parent = file.parent_path();
-    if (file.filename() != "roma.ply") return {};
+    if (file.extension() != ".ply") return {};
     if (parent.filename() == "dense") return parent.parent_path().string();
     const auto generations = parent.parent_path();
     if (generations.filename() != "generations" || generations.parent_path().filename() != "dense" ||
@@ -220,21 +221,21 @@ inline std::string dense_dataset_of(const std::filesystem::path& path) {
 
 inline bool edited_artifact(const std::filesystem::path& path, std::string& dataset, ArtifactFiles& files) {
     namespace fs = std::filesystem;
+    if (path.filename() != "roma.ply") return false;
     dataset = dense_dataset_of(path);
     if (dataset.empty()) return false;
     const fs::path file = fs::absolute(path).lexically_normal(), parent = file.parent_path();
-    files = parent.filename() == "dense" ? artifact_files(dataset)
-                                         : ArtifactFiles{file, parent / "manifest.json", parent.filename().string()};
+    files = {file, parent / "manifest.json", parent.filename() == "dense" ? std::string{} : parent.filename().string()};
     return true;
 }
 
-// Replaces a dense cloud with an edit of it (`edited`, `points` long, on the same
-// volume) and re-signs the manifest so training accepts it. The first edit keeps
-// the untouched original beside it as roma.original.ply.
+// The first in-place edit keeps the preceding cloud as roma.original.ply.
 inline void commit_edit(const std::string& dataset, const ArtifactFiles& files,
                         const std::filesystem::path& edited, int64_t points) {
     namespace fs = std::filesystem;
-    JsonValue manifest = json_parse_file(files.manifest.string());
+    JsonValue manifest;
+    if (fs::is_regular_file(files.manifest)) manifest = json_parse_file(files.manifest.string());
+    else manifest.type = JsonValue::Type::Object;
     if (!manifest.is_object()) throw std::runtime_error("invalid dense manifest");
     auto set = [](JsonValue& object, const std::string& key, JsonValue value) {
         for (auto& [k, v] : object.obj)
@@ -243,37 +244,29 @@ inline void commit_edit(const std::string& dataset, const ArtifactFiles& files,
     };
     auto number = [](double v) { JsonValue j; j.type = JsonValue::Type::Number; j.num = v; return j; };
     auto text = [](const std::string& v) { JsonValue j; j.type = JsonValue::Type::String; j.str = v; return j; };
+    JsonValue complete;
+    complete.type = JsonValue::Type::Bool;
+    complete.b = true;
+    set(manifest, "complete", complete);
 
     const auto root = fs::absolute(dataset).lexically_normal() / "dense";
     bool current = false;
-    if (!files.generation.empty()) {
-        const auto record = json_parse_file((root / "current.json").string());
-        const auto* name = record.find("generation");
-        current = name && name->as_string() == files.generation;
-    }
-
-    // The original is kept from whichever copy still matches it: an edit saved
-    // by an older build overwrote the generation's file but not the folder copy.
+    try { current = same_artifact_path(files.cloud, artifact_files(dataset).cloud); }
+    catch (const std::exception&) {}
     JsonValue edit;
     if (const JsonValue* earlier = manifest.find("edited"); earlier && earlier->is_object()) edit = *earlier;
     edit.type = JsonValue::Type::Object;
-    const auto* hash = manifest.find("cloud_sha256");
     const fs::path original = files.cloud.parent_path() / "roma.original.ply";
-    if (!edit.has("original_sha256") && hash) {
-        std::vector<fs::path> copies{files.cloud};
-        if (current) copies.push_back(root / "roma.ply");
-        for (const fs::path& copy : copies) {
-            if (!fs::is_regular_file(copy) || sha256_file(copy.string()) != hash->as_string()) continue;
-            if (!fs::exists(original)) fs::rename(copy, original);
-            set(edit, "original_sha256", text(hash->as_string()));
-            set(edit, "original_cloud", text(original.filename().string()));
-            break;
-        }
-    }
+    if (!fs::exists(original) && fs::is_regular_file(files.cloud))
+        fs::copy_file(files.cloud, original);
+    set(edit, "original_cloud", text(original.filename().string()));
+    edit.obj.erase(std::remove_if(edit.obj.begin(), edit.obj.end(),
+        [](const auto& field) { return field.first == "original_sha256"; }), edit.obj.end());
+    manifest.obj.erase(std::remove_if(manifest.obj.begin(), manifest.obj.end(),
+        [](const auto& field) { return field.first == "cloud_sha256"; }), manifest.obj.end());
     replace_file(edited, files.cloud);
     set(edit, "points", number((double)points));
     set(edit, "unix_seconds", number((double)std::time(nullptr)));
-    set(manifest, "cloud_sha256", text(sha256_file(files.cloud.string())));
     set(manifest, "cloud_bytes", number((double)fs::file_size(files.cloud)));
     JsonValue statistics;
     if (const JsonValue* s = manifest.find("statistics"); s && s->is_object()) statistics = *s;
@@ -293,9 +286,7 @@ inline void commit_edit(const std::string& dataset, const ArtifactFiles& files,
     replace_file(temporary, files.manifest);
     if (!current) return;
 
-    // The current generation's record pins its manifest's checksum, and the
-    // dense folder keeps a copy of its files for older readers.
-    write_current_generation(root, files);
+    if (files.cloud.parent_path() == root) return;
     for (const auto& source : {files.cloud, files.manifest}) {
         const auto copy = root / (source.filename().string() + "-edit.part");
         fs::copy_file(source, copy, fs::copy_options::overwrite_existing);
@@ -303,15 +294,8 @@ inline void commit_edit(const std::string& dataset, const ArtifactFiles& files,
     }
 }
 
-inline std::string verified_dense_file(const std::string& path) {
-    namespace fs = std::filesystem;
-    const fs::path file = fs::absolute(path).lexically_normal(), parent = file.parent_path();
-    if (file.filename() != "roma.ply") return path;
-    if (parent.filename() == "dense") return verified_seed_path(parent.parent_path().string(), file.string());
-    const auto generations = parent.parent_path();
-    if (generations.filename() == "generations" && generations.parent_path().filename() == "dense")
-        return verified_seed_path(generations.parent_path().parent_path().string(), file.string());
-    return path;
+inline std::string resolve_dense_file(const std::string& path) {
+    return std::filesystem::absolute(path).lexically_normal().string();
 }
 
 }  // namespace spirula::dense

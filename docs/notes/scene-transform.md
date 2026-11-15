@@ -183,6 +183,12 @@ re-parses it and requires the parser's cameras and points to be the originals
 under the same similarity AND every point to land on the pixel it did before
 (measured: 5e-5 px).
 
+Dense seeds are in the dataset's camera frame. Their editor permits point
+cleanup but blocks placements, including saves of a nonidentity placement.
+Moving the reconstruction belongs to the sparse editor, which saves cameras
+and points together. A sparse model selected as a seed loads its own camera
+table and image poses rather than the dataset's default model's cameras.
+
 ### Opening it again
 
 The dataset preview levels a reconstruction by a GUESS at its up axis

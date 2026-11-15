@@ -1049,7 +1049,7 @@ void TrainerSession::load_dataset() {
         if (!cfg.seed_pointcloud.empty())
             log(lfmt(lmsg::dense_seed_automatic, {cfg.seed_pointcloud}));
     }
-    cfg.seed_pointcloud = spirula::dense::verified_seed_path(cfg.data, cfg.seed_pointcloud);
+    cfg.seed_pointcloud = spirula::dense::resolve_seed_path(cfg.data, cfg.seed_pointcloud);
     DatasetParserConfig pcfg;
     pcfg.recon_dir            = cfg.colmap_recon_dir;
     pcfg.seed_pointcloud      = parser_seed(cfg.seed_pointcloud);

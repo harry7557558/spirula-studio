@@ -379,6 +379,7 @@ private:
     bool _ask_train = false;
     // The dataset the trainer button would open, "" when there is none.
     std::string trainer_dataset() const;
+    std::string _trainer_saved_path;
     // The dataset whose dense cloud is being edited, or "".
     std::string dense_dataset() const;
     // The dataset to train after writing `saved`, and the starting points to

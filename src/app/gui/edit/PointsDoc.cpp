@@ -3,6 +3,7 @@
 #include "app/gui/edit/PointsDoc.h"
 
 #include "i18n/catalog/Edit.h"
+#include "i18n/catalog/Dense.h"
 #include "dense/Generation.h"
 
 #include <cstddef>
@@ -301,6 +302,8 @@ void PointsDoc::save(int target, const std::string& path,
                      std::atomic<int>* progress) {
     const std::vector<SaveTarget> t = save_targets();
     if (target < 0 || target >= (int)t.size()) return;
+    if (!placement_allowed() && !placement().is_identity())
+        throw std::runtime_error(spirula::i18n::msg::dense::edit_source_frame.get());
     if (t[(size_t)target].folder) {
         spirula::SparseKeep keep;
         keep.points = alive_of(kPoints);
@@ -338,7 +341,6 @@ void PointsDoc::save(int target, const std::string& path,
             _ds.points.rgb.empty() ? nullptr : _ds.points.rgb.data(),
             _ds.points.num(), keep.data(), &moved, coordinates);
     };
-    // A dense cloud is re-signed after the edit, or training refuses it.
     std::string dense_dataset;
     spirula::dense::ArtifactFiles dense;
     if (spirula::dense::edited_artifact(path, dense_dataset, dense)) {
@@ -346,9 +348,14 @@ void PointsDoc::save(int target, const std::string& path,
         write(part.string(), spirula::PlyCoordinates::Float64);
         spirula::dense::commit_edit(dense_dataset, dense, part, alive_count_of(kPoints));
     } else {
-        write(path, spirula::PlyCoordinates::Float32);
+        write(path, spirula::dense::dense_dataset_of(path).empty()
+            ? spirula::PlyCoordinates::Float32 : spirula::PlyCoordinates::Float64);
     }
     if (progress) (*progress)++;
+}
+
+bool PointsDoc::placement_allowed() const {
+    return spirula::dense::dense_dataset_of(source_path()).empty();
 }
 
 }  // namespace gui

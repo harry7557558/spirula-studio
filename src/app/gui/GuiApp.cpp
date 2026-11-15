@@ -5,6 +5,8 @@
 #include "roma/model/Fetch.h"
 #include "dense/ConfigFields.h"
 #include "dense/Artifact.h"
+#include "dense/Versions.h"
+#include "data/SeedPointCount.h"
 
 #include "core/ColorBasis.h"
 #include "core/ColorSpace.h"
@@ -342,6 +344,7 @@ void GuiApp::open_render_output_pick(const std::string& start, const std::string
 GuiApp::~GuiApp() = default;
 
 void GuiApp::shutdown() {
+    if (_dense_delete.valid()) _dense_delete.wait();
     save_settings();
     save_batch_list(_batch);
     _batch_active = false;
@@ -3586,6 +3589,7 @@ void GuiApp::frame() {
     _scale.update(ImGui::GetIO().DisplaySize);
 
     append_logs();
+    pump_dense_delete();
     run_pending_if_stopped();
     if (!_edit_train_dataset.empty()) open_edited_dataset();
     // vit-giant2 is two files, and so is ALIKED with LightGlue: both fetches
@@ -3728,6 +3732,7 @@ void GuiApp::frame() {
         _quit_after_render_save = false;
         if (!_compare.render().dirty()) request_close();
     }
+    draw_dense_versions();
     draw_preset_save_modal();
     draw_preset_delete_modal();
     draw_edit_exit_modal();
@@ -4388,7 +4393,7 @@ bool GuiApp::dataset_busy() const {
 }
 bool GuiApp::native_work_busy() const {
     const TrainRunner::Phase phase = _runner.phase();
-    return _mesh.busy() || dataset_busy() || scan_photos_busy() ||
+    return _dense_delete.valid() || _mesh.busy() || dataset_busy() || scan_photos_busy() ||
            phase == TrainRunner::Phase::Loading ||
            phase == TrainRunner::Phase::Preparing ||
            phase == TrainRunner::Phase::Training ||
@@ -7762,8 +7767,7 @@ GuiApp::DatasetFolders GuiApp::workspace_folders(const WorkspaceState& prior) co
     return f;
 }
 
-// The starting point count the automatic budget spreads from: the seed cloud's
-// PLY header when one is set, else the parsed dataset's points; -1 when unknown.
+// -1 leaves the automatic budget waiting for a parsed dataset.
 int64_t GuiApp::starting_points() {
     std::error_code ec;
     const std::string seed = _cfg.seed_pointcloud.empty() && dense_cloud_present()
@@ -7772,22 +7776,13 @@ int64_t GuiApp::starting_points() {
     if (!seed.empty()) {
         fs::path p = seed;
         if (p.is_relative()) p = fs::path(_cfg.data) / p;
+        p = spirula::seed_count_file(p);
         const auto time = fs::last_write_time(p, ec);
         if (ec) return -1;
         if (p.string() != _seed_count_path || time != _seed_count_time) {
             _seed_count_path = p.string();
             _seed_count_time = time;
-            _seed_count = -1;
-            if (fs::is_directory(p, ec)) {
-                // A model folder: points3D.bin opens with its point count.
-                std::ifstream in(p / "points3D.bin", std::ios::binary);
-                uint64_t n = 0;
-                if (in.read(reinterpret_cast<char*>(&n), sizeof n)) _seed_count = (int64_t)n;
-            } else {
-                std::ifstream in(p, std::ios::binary);
-                for (std::string line; std::getline(in, line) && line.rfind("end_header", 0) != 0;)
-                    if (line.rfind("element vertex ", 0) == 0) _seed_count = std::atoll(line.c_str() + 15);
-            }
+            _seed_count = spirula::seed_point_count(p);
         }
         return _seed_count;
     }
@@ -7905,14 +7900,10 @@ void GuiApp::draw_dataset_open_buttons(const DatasetFolders& f, bool model) {
             request_open_splat(f.dir);
         }
         ui::help_on_hover(emsg::sparse_edit_help);
-        if (f.dir == _workspace && workspace_state().dense) {
+        refresh_dense_versions(f.dir);
+        if (!_dense_versions.empty()) {
             ImGui::SameLine();
-            if (ui::Button(spirula::i18n::msg::dense::edit_cloud)) {
-                _edit_after_open = true;
-                _sparse_edit_src = f;
-                try { request_open_splat(spirula::dense::artifact_files(f.dir).cloud.string()); }
-                catch (const std::exception& e) { log(e.what()); }
-            }
+            if (ui::Button(spirula::i18n::msg::dense::edit_cloud)) edit_dense_cloud(f);
             ui::help_on_hover(spirula::i18n::msg::dense::edit_cloud_help);
         }
         ImGui::SameLine();
@@ -12016,6 +12007,107 @@ bool GuiApp::dense_cloud_present() {
     return _dense_probe_found;
 }
 
+void GuiApp::refresh_dense_versions(const std::string& dataset, bool force) {
+    const double now = ImGui::GetTime();
+    if (!force && dataset == _dense_versions_dataset && now - _dense_versions_at < 1.0) return;
+    const std::string selected = _dense_version_index >= 0 && _dense_version_index < (int)_dense_versions.size()
+        ? _dense_versions[(size_t)_dense_version_index].first : std::string{};
+    _dense_versions_dataset = dataset;
+    _dense_versions_at = now;
+    _dense_versions.clear();
+    if (!dataset.empty())
+        for (const auto& v : spirula::dense::cloud_versions(dataset))
+            _dense_versions.emplace_back(v.relative, v.current);
+    _dense_version_index = 0;
+    for (size_t i = 0; i < _dense_versions.size(); i++)
+        if (_dense_versions[i].first == selected) _dense_version_index = (int)i;
+}
+
+void GuiApp::edit_dense_cloud(const DatasetFolders& folders) {
+    if (native_work_busy()) return;
+    _sparse_edit_src = folders;
+    refresh_dense_versions(folders.dir, true);
+    _dense_version_error.clear();
+    if (_dense_versions.size() == 1) {
+        _edit_after_open = true;
+        request_open_splat((fs::path(folders.dir) / "dense" / _dense_versions[0].first).string());
+    } else if (!_dense_versions.empty()) _dense_versions_open = true;
+}
+
+void GuiApp::draw_dense_versions() {
+    namespace dm = spirula::i18n::msg::dense;
+    if (_dense_versions_open) {
+        _dense_versions_open = false;
+        ui::OpenPopup(dm::cloud_versions);
+    }
+    ImGui::SetNextWindowSize(ImVec2(px(560), 0), ImGuiCond_Appearing);
+    if (!ui::BeginPopupModal(dm::cloud_versions)) return;
+    refresh_dense_versions(_dense_versions_dataset);
+    ui::TextWrapped(dm::cloud_versions_help);
+    ImGui::BeginDisabled(native_work_busy());
+    ImGui::BeginChild("##dense_versions", ImVec2(0, px(190)), ImGuiChildFlags_Borders);
+    for (size_t i = 0; i < _dense_versions.size(); i++) {
+        const auto& [path, current] = _dense_versions[i];
+        const auto label = current ? i18n::format(dm::cloud_version_current, {path}) : path;
+        if (ui::SelectableRaw(label, _dense_version_index == (int)i)) _dense_version_index = (int)i;
+    }
+    ImGui::EndChild();
+    ImGui::BeginDisabled(_dense_versions.empty());
+    if (ui::Button(emsg::enter_edit)) {
+        const auto path = fs::path(_dense_versions_dataset) / "dense" /
+                          _dense_versions[(size_t)_dense_version_index].first;
+        _edit_after_open = true;
+        ImGui::CloseCurrentPopup();
+        request_open_splat(path.string());
+    }
+    ImGui::SameLine();
+    if (ui::Button(dm::delete_cloud_version)) {
+        _dense_delete_selection = _dense_versions[(size_t)_dense_version_index].first;
+        ui::OpenPopup(dm::delete_cloud_version);
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ui::Button(msg::cancel)) ImGui::CloseCurrentPopup();
+    ImGui::EndDisabled();
+    if (!_dense_version_error.empty()) ui::TextColoredWrappedRaw(kErr, _dense_version_error);
+    if (ui::BeginPopupModal(dm::delete_cloud_version)) {
+        const std::string path = _dense_delete_selection;
+        ui::TextWrapped(dm::delete_cloud_version_help, {path});
+        if (ui::Button(dm::delete_cloud_version)) {
+            const auto dataset = _dense_versions_dataset;
+            _dense_deleted_path = (fs::path(dataset) / "dense" / path).lexically_normal().string();
+            _dense_delete = std::async(std::launch::async, [dataset, path] {
+                spirula::dense::delete_cloud_version(dataset, path);
+            });
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ui::Button(msg::cancel)) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+    ImGui::EndPopup();
+}
+
+void GuiApp::pump_dense_delete() {
+    if (!_dense_delete.valid() ||
+        _dense_delete.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+    try {
+        _dense_delete.get();
+        _dense_version_error.clear();
+        refresh_dense_versions(_dense_versions_dataset, true);
+        _dense_probe_time = _seed_files_time = -1.0;
+        _seed_count_path.clear();
+        if (_cfg.data == _dense_versions_dataset) {
+            const auto seed = (fs::path(_cfg.data) / _cfg.seed_pointcloud).lexically_normal();
+            if (seed == fs::path(_dense_deleted_path)) {
+                _cfg.seed_pointcloud.clear();
+                _app_seed.clear();
+            }
+            _parse_dirty = true;
+        }
+    } catch (const std::exception& e) { _dense_version_error = e.what(); log(e.what()); }
+}
+
 // Probed at most once a second, as dense_cloud_present() is: the editor saves
 // these while the trainer shows the dataset.
 const std::vector<GuiApp::SeedFile>& GuiApp::dataset_seed_files() {
@@ -12034,11 +12126,10 @@ const std::vector<GuiApp::SeedFile>& GuiApp::dataset_seed_files() {
         std::sort(out.begin(), out.end());
         return out;
     };
-    for (const fs::path& f : entries(root / "dense", false)) {
-        const std::string name = f.filename().string();
-        if (f.extension() != ".ply" || name == "roma.ply" || name == "roma.original.ply") continue;
-        _seed_files.push_back({i18n::format(msg::seed_choice_dense_file, {f.stem().string()}),
-                               "dense/" + name, true});
+    for (const auto& v : spirula::dense::cloud_versions(_cfg.data)) {
+        if (v.current) continue;
+        const auto label = i18n::format(msg::seed_choice_dense_file, {v.relative});
+        _seed_files.push_back({label, "dense/" + v.relative, true});
     }
     // The model the dataset itself loads is "Sparse points" already.
     const std::string loaded = find_colmap_model(_cfg.data, _cfg.colmap_recon_dir);
@@ -12375,7 +12466,7 @@ void GuiApp::draw_train_controls() {
             }
             // A batch owns the runner between its tasks, so the queue's own
             // next row is what starts -- never a click here.
-            bool can_start = !_batch_active &&
+            bool can_start = !_batch_active && !native_work_busy() &&
                              (ph == TrainRunner::Phase::Ready ||
                               ph == TrainRunner::Phase::Done ||
                               ph == TrainRunner::Phase::TrainError);

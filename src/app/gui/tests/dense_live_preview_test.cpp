@@ -246,7 +246,7 @@ int main(int argc, char** argv) {
                         model.n_registered, (unsigned long long)model.n_points, colored, max_x - min_x, max_y - min_y);
             if (argc == 5) {
                 const auto artifact = spirula::dense::artifact_files(argv[4]);
-                require(spirula::dense::artifact_checksum_valid(artifact), "dataset cloud checksum mismatch");
+                require(spirula::dense::artifact_available(artifact), "dataset cloud is missing");
                 DatasetParserConfig parser;
                 parser.require_image_files = false; parser.center_mode = "camera-mean";
                 parser.seed_pointcloud = artifact.cloud.u8string();
