@@ -1414,7 +1414,8 @@ std::vector<std::string> plan_log_lines(Step step, const StepPlan& s,
                 return {L::plan_geometry_stale.get()};
             break;
         case Step::Dense:
-            return {spirula::i18n::msg::dense::title.get()};
+            if (makes(s.act)) return {spirula::i18n::msg::dense::title.get()};
+            break;
     }
     return {};
 }
