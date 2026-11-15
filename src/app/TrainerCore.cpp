@@ -1740,14 +1740,13 @@ void TrainerSession::save_checkpoint(int step, bool full) {
     if (run_path.filename().empty()) run_path = run_path.parent_path();
     const std::string run_name = run_path.filename().string();
     const fs::path native = ckpt / "splat.ply";
-    publish_ply_copy(native, ckpt / (run_name + ".ply"));
-    publish_ply_copy(native, out_dir / (run_name + ".ply"));
+    // Keep exactly one delivery beside the canonical checkpoint model.
+    const fs::path destination = ckpt / (run_name == "splat" ? "splat_export.ply" : run_name + ".ply");
     if (cfg.export_y_up) {
-        const fs::path destination = out_dir / (run_name + "_y_up.ply");
         fs::path temporary = destination;
         temporary += ".tmp";
-        // Right-handed Z-up to Y-up: (x, y, z) -> (x, z, -y).
-        const spirula::Sim3 rotation{1.0, {1, 0, 0, 0, 0, 1, 0, -1, 0}, {0, 0, 0}};
+        // PlayCanvas applies Rz(pi) on PLY import; bake its inverse after Rx(-pi/2).
+        const spirula::Sim3 rotation{1.0, {-1, 0, 0, 0, 0, -1, 0, -1, 0}, {0, 0, 0}};
         try {
             spirula::transform_splat_ply(native.string(), temporary.string(), rotation);
             spirula::replace_file(temporary, destination);
@@ -1756,6 +1755,8 @@ void TrainerSession::save_checkpoint(int step, bool full) {
             fs::remove(temporary, ec);
             throw;
         }
+    } else {
+        publish_ply_copy(native, destination);
     }
     std::error_code bg_ec;
     if (fs::is_regular_file(ckpt / "background.webp", bg_ec)) {
