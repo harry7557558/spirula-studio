@@ -171,8 +171,11 @@ dropped for now and noted as a limitation).
   separate query pool, tagged with the recording thread's scope
   (docs/notes/step-timing.md).
 - Errors: sticky `VkResult` + message; `last_error()` returns-and-clears
-  (cudaGetLastError semantics). Nothing is compiled out: failures always
-  set the sticky error, and allocation failures return nullptr.
+  (cudaGetLastError semantics). Allocation failures return nullptr.
+  A no-progress timeout is fatal: it prints the configured stall limit and
+  exits with failure without running destructors or exit handlers. A timeout
+  does not cancel queued work; driver teardown can otherwise wait forever.
+  `vk_stall_exit_test` checks this with an unsignaled queue semaphore.
 
 ## Kernel ABI
 

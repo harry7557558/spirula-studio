@@ -745,10 +745,14 @@ bool Context::wait(uint64_t value) {
             return false;
         }
         if (watch.stalled(current)) {
-            set_error("the GPU stopped responding: no work finished for a minute (the driver may have "
-                      "reset it, often after running out of GPU memory; SS_GPU_STALL_SECONDS sets the wait)",
-                      VK_ERROR_DEVICE_LOST);
-            return false;
+            // A timeout does not stop queued work. Driver teardown can wait on
+            // it forever, so neither stack unwinding nor atexit is safe here.
+            std::fprintf(stderr,
+                "Vulkan backend: the GPU stopped responding: no work finished for %.3g seconds "
+                "(SS_GPU_STALL_SECONDS); terminating without driver teardown\n",
+                watch.limit_seconds());
+            std::fflush(stderr);
+            std::_Exit(EXIT_FAILURE);
         }
     }
 }

@@ -99,6 +99,8 @@ struct MsCfg {
     float sat;            // blown-highlight cutoff; <= 0 disables it
     int loss = 0;         // PerceptualLoss
     int rgb_pattern = 0;
+    int mask_pattern = 0;
+    bool half_rgb = false;
 };
 
 void run_ms_cfg(Rng& r, const MsCfg& c) {
@@ -134,8 +136,17 @@ void run_ms_cfg(Rng& r, const MsCfg& c) {
                         rgb2[i] = 0.985f + 0.015f * r.uf(0.0f, 1.0f);
                     }
     }
-    float* render_rgb = upload(rgb1);
-    float* ref_rgb = upload(rgb2);
+    auto rgb_view = [&](const std::vector<float>& values) {
+        if (!c.half_rgb) return ttv(upload(values), {c.B, c.H, c.W, 3});
+        std::vector<uint16_t> half(values.size());
+        for (auto& x : half) {
+            const uint32_t bits = r.rng();
+            x = (uint16_t)(((10 + (bits >> 10) % 5) << 10) | (bits & 0x3ff));
+        }
+        return TorchTensorView{(uint64_t)upload(half), 2u, {c.B, c.H, c.W, 3}};
+    };
+    const auto render_rgb = rgb_view(rgb1);
+    const auto ref_rgb = rgb_view(rgb2);
     float* render_Ts = upload(r.vec(np, 0.0f, 1.0f));
 
     float* render_depth = nullptr;
@@ -176,6 +187,11 @@ void run_ms_cfg(Rng& r, const MsCfg& c) {
     if (c.with_alpha) {
         std::vector<uint8_t> m(npa);
         for (auto& x : m) x = r.uf(0, 1) < 0.8f ? 1 : 0;
+        if (c.mask_pattern != 0) {
+            for (int64_t i = 0; i < npa; ++i)
+                m[i] = c.mask_pattern == 1 && (i / (Ha * Wa)) % 3 != 0 &&
+                       (i % Wa) >= Wa / 8;
+        }
         ref_alpha = upload(m);
     }
 
@@ -223,8 +239,7 @@ void run_ms_cfg(Rng& r, const MsCfg& c) {
     auto run_once = [&]() -> LossValues {
         return compute_multi_scale_per_pixel_losses(
             c.num_scales,
-            ttv(render_rgb, {c.B, c.H, c.W, 3}),
-            ttv(ref_rgb, {c.B, c.H, c.W, 3}),
+            render_rgb, ref_rgb,
             render_depth ? ttv(render_depth, {c.B, c.H, c.W, 1}) : ttv_null(),
             ref_depth ? ttv(ref_depth, {c.B, Hd, Wd, 1}) : ttv_null(),
             render_normal ? ttv(render_normal, {c.B, c.H, c.W, 3})
@@ -466,6 +481,15 @@ int main(int argc, char** argv) {
          (int)PerceptualLoss::SsimBlurTolerant},
     };
     for (const MsCfg& c : cfgs) run_ms_cfg(r, c);
+    const char* masked_cases[] = {"robust_half_random", "robust_half_partial", "robust_half_empty"};
+    for (int mask = 0; mask <= 2; ++mask) {
+        MsCfg c{masked_cases[mask], 9, 67, 91, 4, 0, 0, 0, 0, 0, 0,
+            true, false, true, (int)DensifyLossMapMode::RobustEdgeAware,
+            0.85f, 0.5f, -1.0f, (int)PerceptualLoss::SsimBlurTolerant};
+        c.mask_pattern = mask;
+        c.half_rgb = true;
+        run_ms_cfg(r, c);
+    }
     run_quantile(r);
     run_normalize_clip(r);
     // Near-identical windows expose cancellation hidden by unrelated noise.

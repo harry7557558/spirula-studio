@@ -88,6 +88,11 @@ foreach(test_src ${SS_VULKAN_TESTS})
         $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
 endforeach()
 
+target_sources(vk_stall_exit_test PRIVATE ${SS_SRC}/app/gui/Subprocess.cpp)
+target_link_libraries(vk_stall_exit_test PRIVATE Threads::Threads)
+add_test(NAME vk_stall_exit_test COMMAND vk_stall_exit_test)
+set_tests_properties(vk_stall_exit_test PROPERTIES TIMEOUT 30)
+
 # Cross-backend parity tools (the same sources build in the CUDA branch, where
 # they dump the reference outputs these compare against). The portable engine
 # is what the host-only tests among them (split_faces_test) call into.
