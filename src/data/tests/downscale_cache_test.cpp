@@ -5,6 +5,7 @@
 
 #include "core/PngWrite.h"
 #include "data/DataManager.h"
+#include "data/DatasetParser.h"
 #include "data/DownscaleCache.h"
 
 #include "external/stb_image.h"
@@ -56,13 +57,15 @@ std::vector<uint8_t> read_bytes(const fs::path& p) {
 CacheMode g_mode = CacheMode::CPU;
 
 std::vector<uint8_t> fetch(const std::string& image, const fs::path& image_dir, bool cache,
-                           const float* over = nullptr, int turns = 0) {
+                           const float* over = nullptr, int turns = 0, int cap = 0,
+                           const std::string& rounding = "floor") {
     DataManagerConfig cfg;
     cfg.cache_mode = g_mode;
     cfg.load_masks = cfg.load_depths = cfg.load_normals = false;
     if (cache) {
         cfg.downscale_cache_divisor = D;
         cfg.image_dir = image_dir.string();
+        cfg.downscale_rounding_mode = rounding;
     }
     if (over) {
         cfg.composite_alpha = {1};
@@ -71,8 +74,14 @@ std::vector<uint8_t> fetch(const std::string& image, const fs::path& image_dir, 
     if (turns) cfg.exif_quarter_turns = {(uint8_t)turns};
     std::vector<float> viewmat(16, 0.0f);
     viewmat[0] = viewmat[5] = viewmat[10] = viewmat[15] = 1.0f;
-    const int w = (turns & 1 ? H : W) / D, h = (turns & 1 ? W : H) / D;
-    DataManager dm(cfg, {0}, {0}, {image}, {}, {}, {}, {w}, {h}, {}, {}, viewmat,
+    DatasetParserConfig parser;
+    parser.train_resolution_divisor = D;
+    parser.max_resolution = cap;
+    parser.downscale_rounding_mode = rounding;
+    double w = turns & 1 ? H : W, h = turns & 1 ? W : H;
+    double fx = 10, fy = 10, cx = 4, cy = 3;
+    dsparse::fit_camera_resolution(parser, image, {}, w, h, fx, fy, cx, cy, nullptr);
+    DataManager dm(cfg, {0}, {0}, {image}, {}, {}, {}, {(int)w}, {(int)h}, {}, {}, viewmat,
                    {10.0f, 10.0f, 4.0f, 3.0f}, std::vector<float>(8, 0.0f), {}, {}, {}, {},
                    {}, {}, {}, {0}, {});
     DecodedBatch b;
@@ -169,6 +178,44 @@ std::vector<uint8_t> jpeg_of(const std::vector<uint8_t>& px) {
     return dscache::encode(dscache::Format::Jpeg, px.data(), W, H, 3, 8);
 }
 
+void test_capped(const fs::path& root, const std::string& name,
+                 const std::vector<uint8_t>& file, bool sixteen) {
+    for (const char* rounding : {"floor", "ceil", "round"}) {
+        for (int turns : {0, 1}) {
+            const fs::path dir = root / name / rounding / std::to_string(turns);
+            const fs::path images = dir / "images";
+            const fs::path src = images / (file[0] == 0xFF ? "x.jpg" : "x.png");
+            const fs::path cached = dir / "images_2" / src.filename();
+            const std::string label = name + " " + rounding + " turn " + std::to_string(turns);
+            write_bytes(src, file);
+            fetch(src.string(), images, true, nullptr, turns, 0, rounding);
+            const auto uncapped = read_bytes(cached);
+            fs::remove(cached);
+            const auto first = fetch(src.string(), images, true, nullptr, turns, 4, rounding);
+            const int short_side = std::string(rounding) == "ceil" ? 4 : 3;
+            check(first.size() == (size_t)4 * short_side * 3 * (sixteen ? 2 : 1),
+                  label + ": capped dimensions");
+            check(read_bytes(cached) == uncapped, label + ": cap writes identical cache bytes");
+            check(fetch(src.string(), images, true, nullptr, turns, 4, rounding) == first,
+                  label + ": fresh and reused cache give identical capped pixels");
+            const int cw = dscache::scaled_side(W, D, rounding);
+            const int ch = dscache::scaled_side(H, D, rounding);
+            const auto fmt = dscache::format_of(src.string());
+            std::vector<uint8_t> flat8((size_t)cw * ch * 3, 200);
+            std::vector<uint16_t> flat16((size_t)cw * ch * 3, 200 * 257);
+            const auto replacement = dscache::encode(fmt,
+                sixteen ? (const void*)flat16.data() : (const void*)flat8.data(),
+                cw, ch, 3, sixteen ? 16 : 8);
+            write_bytes(cached, replacement);
+            const auto reused = fetch(src.string(), images, true, nullptr, turns, 4, rounding);
+            bool flat = !reused.empty();
+            for (uint8_t v : reused) flat &= v == 200;
+            check(flat, label + ": capped load reads existing cache pixels");
+            check(read_bytes(cached) == replacement, label + ": reused cache stays untouched");
+        }
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -194,6 +241,9 @@ int main() {
         test_format(root, "png8_turned", png::encode(pattern<uint8_t>(3, 255).data(), W, H, 3, 8),
                     false, 0, nullptr, 1);
         test_existing(root);
+        test_capped(root, "cap_png8", png::encode(pattern<uint8_t>(3, 255).data(), W, H, 3, 8), false);
+        test_capped(root, "cap_png16", png::encode(pattern<uint16_t>(3, 65535).data(), W, H, 3, 16), true);
+        test_capped(root, "cap_jpeg", jpeg_of(pattern<uint8_t>(3, 255)), false);
     }
     std::error_code ec;
     fs::remove_all(base, ec);

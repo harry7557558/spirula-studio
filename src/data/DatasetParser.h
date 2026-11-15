@@ -179,6 +179,7 @@ struct DatasetParserConfig {
     // Divide the training resolution by this factor, on top of that fit. 0 or
     // 1 trains at the images' own size.
     float       train_resolution_divisor = 0.0f;
+    int         max_resolution = 0;
     std::string downscale_rounding_mode = "floor";   // floor | ceil | round
 
     // Metashape inputs, relative to the dataset dir; empty = its unique

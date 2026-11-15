@@ -868,6 +868,9 @@ std::string train_config_error(const TrainConfig& c) {
         !error.empty()) return error;
     SS_CONFIG_FIELDS(SS_CHECK_CHOICE)
 #undef SS_CHECK_CHOICE
+    if (c.max_resolution < 0 || c.max_resolution > 32768)
+        return lfmt(lmsg::err_bad_flag_value,
+                    {"--max-resolution", std::to_string(c.max_resolution)});
     if (c.background_export_height < 1 || c.background_export_height > 8192)
         return lfmt(lmsg::err_bad_flag_value,
                     {"--background-export-height", std::to_string(c.background_export_height)});
@@ -1080,6 +1083,7 @@ void TrainerSession::load_dataset() {
     pcfg.auto_scale_poses     = cfg.auto_scale_poses;
     pcfg.probe_image_size        = probe_image_size;
     pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
+    pcfg.max_resolution = cfg.max_resolution;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
     pcfg.metashape_xml           = cfg.metashape_xml;
     pcfg.metashape_ply           = cfg.metashape_ply;
@@ -2273,6 +2277,7 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
     pcfg.auto_scale_poses     = cfg.auto_scale_poses;
     pcfg.probe_image_size        = probe_image_size;
     pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
+    pcfg.max_resolution = cfg.max_resolution;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
     pcfg.metashape_xml           = cfg.metashape_xml;
     pcfg.metashape_ply           = cfg.metashape_ply;
