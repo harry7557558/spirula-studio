@@ -1009,9 +1009,7 @@ void TrainerSession::set_alpha_config(DataManagerConfig& dm,
 
 void TrainerSession::set_downscale_cache(DataManagerConfig& dm) const {
     const float d = cfg.train_resolution_divisor;
-    // Integer-divisor caches cannot represent a per-image long-edge cap.
-    if (cfg.max_resolution > 0 || !cfg.cache_downscaled_images ||
-        !(d >= 2.0f) || d != std::floor(d)) return;
+    if (!cfg.cache_downscaled_images || !(d >= 2.0f) || d != std::floor(d)) return;
     dm.downscale_cache_divisor = (int)d;
     dm.image_dir = (fs::path(cfg.data) / cfg.image_dir).lexically_normal().string();
     dm.downscale_rounding_mode = cfg.downscale_rounding_mode;

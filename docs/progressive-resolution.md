@@ -175,6 +175,8 @@ dimensions with floor rounding. Intrinsics follow the realized dimensions.
 The cap also applies to evaluation and mesh cameras. Forecasts use these
 fitted images as their base; their pixel ratios describe progressive stages.
 
-The integer-divisor disk cache is bypassed when a cap is enabled, because
-its directory names and validation describe divisor-only dimensions.
-In-memory caching and progressive image loading remain available.
+The integer-divisor disk cache stores the divisor-only images, independent
+of the cap. Capped and uncapped runs write identical cache files and reuse
+the same cache. The cap is applied when loading those files into memory;
+progressive stages can then reduce them further. A cap without an integer
+divisor of at least 2 does not create a disk cache.
