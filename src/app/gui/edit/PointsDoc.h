@@ -33,9 +33,13 @@ public:
     void save(int target, const std::string& path,
               std::atomic<int>* progress) override;
     std::string default_save_path(int target) const override;
+    // Copies go beside the originals, where Starting points in the trainer
+    // lists them: a new model in sparse/, another PLY in dense/.
+    std::string copy_dir(int target) const override;
     void revert_display() override;
     bool live_centers(dsparse::CenterTable& out) const override;
     spirula::Sim3 view_frame() const override;
+    bool placement_allowed() const override;
     bool up_hint(float up[3]) const override;
     bool colours(std::vector<float>& rgb) const override;
     bool colours_available() const override {

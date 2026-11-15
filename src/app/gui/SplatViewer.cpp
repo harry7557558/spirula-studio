@@ -187,7 +187,7 @@ void SplatViewer::run(std::string path) {
         _unit = unit;
     };
     try {
-        path = spirula::dense::verified_dense_file(path);
+        path = spirula::dense::resolve_dense_file(path);
         // PLY faces distinguish meshes from point clouds before checkpoint lookup.
         if (meshing::is_mesh_path(path) &&
             (fs::path(path).extension() != ".ply" ||

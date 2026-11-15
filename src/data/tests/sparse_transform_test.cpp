@@ -7,6 +7,7 @@
 
 #include "data/DatasetParser.h"
 #include "data/SparseEdit.h"
+#include "data/SeedPointCount.h"
 
 #include <algorithm>
 #include <cmath>
@@ -286,6 +287,15 @@ int main() {
         for (int64_t i : all_cams) if (i != 2) c2.push_back(i);
         for (int64_t i : all_pts) if (i != 3 && i != 17) p2.push_back(i);
         compare(before, parse(dir), T2, c2, p2, tag + ", second save");
+        const auto copy = dir / "sparse/edit";
+        spirula::sparse_write_model(dir.string(), copy.string(), some, &T2, &base);
+        DatasetParserConfig seed_cfg;
+        seed_cfg.require_image_files = false;
+        seed_cfg.seed_pointcloud = "sparse/edit";
+        compare(before, parse_colmap_dataset(dir.string(), seed_cfg), T2, c2, p2,
+                tag + ", selected copy");
+        check(spirula::seed_point_count(copy) == (int64_t)p2.size(),
+              tag + ": selected copy reports its filtered point count");
     }
 
     {

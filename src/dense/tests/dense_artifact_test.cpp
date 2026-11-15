@@ -89,7 +89,7 @@ int main() {
         try { fixture.publish(interrupted, [](const char*) { throw std::runtime_error("interrupted"); }); }
         catch (const std::exception&) { stopped = true; }
         auto current = artifact_files(fixture.root.string());
-        require(stopped && current.generation.rfind("legacy-", 0) == 0 && artifact_checksum_valid(current),
+        require(stopped && current.generation.rfind("legacy-", 0) == 0 && artifact_available(current),
                 "interrupted migration lost the legacy cloud");
         require(spirula::sha256_file(current.cloud.string()) == spirula::sha256_file(legacy.cloud.string()),
                 "legacy migration changed cloud bytes");
@@ -102,11 +102,11 @@ int main() {
                 if (std::string(observed) == phase) throw std::runtime_error("interrupted");
             }); } catch (const std::exception&) { stopped = true; }
             current = artifact_files(fixture.root.string());
-            require(stopped && current.generation == first.generation && artifact_checksum_valid(current),
+            require(stopped && current.generation == first.generation && artifact_available(current),
                     "publication interruption exposed an inconsistent generation");
             require(!fs::exists(fixture.root / "dense" / "generations" / next.generation),
                     "publication interruption retained an abandoned generation");
-            require(verified_seed_path(fixture.root.string(), "dense/roma.ply") == first.cloud.string(),
+            require(automatic_seed(fixture.root.string()) == first.cloud.string(),
                     "training seed resolved a partially replaced compatibility cloud");
         }
         const auto second = fixture.publish(fixture.stage("second", "two"));
@@ -114,10 +114,10 @@ int main() {
             WorkingDirectory working(fixture.root.parent_path());
             const auto relative = fixture.root.filename();
             require(artifact_files(relative.string()).cloud == second.cloud &&
-                    verified_seed_path(relative.string(), "dense/roma.ply") == second.cloud.string() &&
-                    verified_dense_file((relative / "dense" / "roma.ply").string()) == second.cloud.string() &&
-                    verified_seed_path(relative.string(), "dense/generations/first/roma.ply") == first.cloud.string(),
-                    "relative dataset or seed did not resolve an absolute immutable generation");
+                    resolve_seed_path(relative.string(), "dense/roma.ply") == (fixture.root / "dense/roma.ply").string() &&
+                    resolve_dense_file((relative / "dense" / "roma.ply").string()) == (fixture.root / "dense/roma.ply").string() &&
+                    resolve_seed_path(relative.string(), "dense/generations/first/roma.ply") == first.cloud.string(),
+                    "relative dataset or seed did not resolve its explicit file");
         }
         const auto abandoned = fixture.root / "dense" / "generations" / "abandoned";
         fs::create_directories(abandoned); generation_marker(abandoned,".pending");
@@ -125,7 +125,7 @@ int main() {
         fs::create_directories(unowned);
         generation_marker(first.cloud.parent_path(),".pending");
         cleanup_pending_generations(fixture.root.string());
-        require(!fs::exists(abandoned) && fs::exists(unowned) && artifact_checksum_valid(first) && artifact_checksum_valid(second),
+        require(!fs::exists(abandoned) && fs::exists(unowned) && artifact_available(first) && artifact_available(second),
                 "recovery cleanup removed published/unowned data or retained abandoned work");
         {
             const auto cache = fixture.root / "dense" / "cache";
@@ -172,25 +172,25 @@ int main() {
         require(artifact_files(fixture.root.string()).generation == "second" && artifact_complete(fixture.root.string()),
                 "successful generation did not become current");
         require(is_dense_seed(fixture.root.string(), second.cloud.string()) &&
-                verified_dense_file(second.cloud.string()) == second.cloud.string() &&
-                verified_dense_file(legacy.cloud.string()) == second.cloud.string(),
-                "preview and training did not resolve the same generation");
-        require(verified_seed_path(fixture.root.string(), first.cloud.string()) == first.cloud.string(),
-                "an explicitly selected immutable generation was replaced by the current one");
+                resolve_dense_file(second.cloud.string()) == second.cloud.string() &&
+                resolve_dense_file(legacy.cloud.string()) == legacy.cloud.string(),
+                "explicit cloud paths were redirected");
+        require(resolve_seed_path(fixture.root.string(), first.cloud.string()) == first.cloud.string(),
+                "an explicitly selected published generation was replaced by the current one");
         { std::ofstream output(legacy.cloud); output << "edited compatibility cloud"; }
-        require(artifact_checksum_valid(second) && verified_dense_file(legacy.cloud.string()) == second.cloud.string(),
-                "compatibility export edits changed immutable generation contents");
+        require(artifact_available(second) && resolve_dense_file(legacy.cloud.string()) == legacy.cloud.string(),
+                "compatibility export edits changed published generation contents");
         { std::ofstream output(second.cloud); output << "bad"; }
         stopped = false;
-        try { verified_dense_file(second.cloud.string()); } catch (const std::exception&) { stopped = true; }
-        require(stopped && !artifact_checksum_valid(second), "same-size dense cloud corruption reached a consumer");
+        try { resolve_dense_file(second.cloud.string()); } catch (const std::exception&) { stopped = true; }
+        require(!stopped && artifact_complete(fixture.root.string()), "external dense cloud edit was refused");
         { std::ofstream output(second.cloud); output << "two"; }
         { std::ofstream output(second.manifest, std::ios::app); output << ' '; }
         stopped = false;
         try { artifact_files(fixture.root.string()); } catch (const std::exception&) { stopped = true; }
-        require(stopped && !artifact_complete(fixture.root.string()), "corrupt current manifest silently fell back to an alias");
+        require(!stopped && artifact_complete(fixture.root.string()), "an unchanged manifest with external whitespace was refused");
         const auto recovered = fixture.publish(fixture.stage("recovered", "three"));
-        require(artifact_checksum_valid(recovered), "a new successful run could not replace a corrupt generation record");
+        require(artifact_available(recovered), "a new successful run could not replace a corrupt generation record");
         {
             std::ofstream output(fixture.root / "dense" / "current.json");
             output << "{\"version\":1,\"generation\":\"../outside\",\"manifest_sha256\":\""
@@ -218,11 +218,11 @@ int main() {
                 const auto pending = linked.root / "dense" / "generations" / "pending-through-link";
                 fs::create_directories(pending); generation_marker(pending, ".pending");
                 cleanup_pending_generations(link.string());
-                require(artifact_checksum_valid(published) && !fs::exists(pending) && artifact_complete(link.string()),
+                require(artifact_available(published) && !fs::exists(pending) && artifact_complete(link.string()),
                         "a dataset reached through a linked parent folder could not publish or clean up");
             }
         }
-        std::printf("PASS dense writer lock, owned cleanup, immutable generations, interrupted publication, legacy migration, checksums, seed resolution, linked datasets and recovery\n");
+        std::printf("PASS dense writer lock, owned cleanup, published generations, interrupted publication, legacy migration, external edits, seed resolution, linked datasets and recovery\n");
         return 0;
     } catch (const std::exception& error) { std::fprintf(stderr, "FAIL: %s\n", error.what()); return 1; }
 }

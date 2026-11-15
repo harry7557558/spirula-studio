@@ -213,7 +213,7 @@ void EditSession::push_placement() {
 }
 
 void EditSession::set_placement(const Sim3& next, const Msg& name, bool carry) {
-    if (!_doc) return;
+    if (!_doc || !_doc->placement_allowed()) return;
     Sim3 clean = next;
     clean.orthonormalize();
     const Sim3 was = _doc->placement();
@@ -263,7 +263,7 @@ void EditSession::place_saved(const Sim3& step, const Msg& name, bool carry) {
 }
 
 void EditSession::begin_xform(XformKind kind) {
-    if (!_doc || busy() || _xform.active()) return;
+    if (!_doc || !_doc->placement_allowed() || busy() || _xform.active()) return;
     _xform_mode = kind;
     XformFrame f;
     float mx, my;
@@ -283,7 +283,7 @@ void EditSession::quarter_turn(int axis, bool negative) {
 }
 
 void EditSession::enter_transform() {
-    if (!_doc) return;
+    if (!_doc || !_doc->placement_allowed()) return;
     if (_tool.id() != ToolId::Transform) _xform_return = _tool.id();
     _tool.set_id(ToolId::Transform);
     _tab = 1;

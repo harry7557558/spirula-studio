@@ -1323,7 +1323,7 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
     manifest.field("version", 2).field("complete", true).field("generation", work.filename().string());
     manifest.field("reconstruction_revision",reconstruction_revision);
     manifest.field("coordinate_frame", "source file frame; seed_pointcloud compatible");
-    manifest.field("cloud", "roma.ply").field("cloud_sha256", spirula::sha256_file(temporary_ply.string()));
+    manifest.field("cloud", "roma.ply");
     manifest.field("cloud_bytes", (long long)fs::file_size(temporary_ply));
     if (initial_input_stamp != input_stamp(input_paths)) throw std::runtime_error("dense inputs changed during processing; rerun with stable inputs");
     if (initial_input_content != input_content_stamp(input_paths,[&] { check_cancel(cancel); }))

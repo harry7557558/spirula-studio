@@ -96,8 +96,8 @@ bool run_dense_step(const DenseJob& job, const std::string& dataset, const std::
         return false;
     }
     try {
-        if (!spirula::dense::artifact_checksum_valid(spirula::dense::artifact_files(dataset))) {
-            error = spirula::i18n::format(D::error, {"cloud checksum mismatch"}); return false;
+        if (!spirula::dense::artifact_available(spirula::dense::artifact_files(dataset))) {
+            error = spirula::i18n::format(D::error, {"cloud file is missing or empty"}); return false;
         }
     } catch (const std::exception& e) { error = spirula::i18n::format(D::error, {e.what()}); return false; }
     progress.mark(Stage::Dense, StageStatus::Done);

@@ -736,7 +736,12 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
                                     const DatasetParserConfig& cfg) {
     ColmapModelFmt fmt;
     std::string near_miss;
-    std::string recon_dir = find_colmap_recon(dataset_dir, cfg, &fmt,
+    DatasetParserConfig model_cfg = cfg;
+    std::error_code ec;
+    if (!cfg.seed_pointcloud.empty() &&
+        fs::is_directory(fs::path(dataset_dir) / cfg.seed_pointcloud, ec))
+        model_cfg.recon_dir = cfg.seed_pointcloud;
+    std::string recon_dir = find_colmap_recon(dataset_dir, model_cfg, &fmt,
                                               /*verbose=*/true, &near_miss);
     if (recon_dir.empty())
         throw std::runtime_error(

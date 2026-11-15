@@ -134,6 +134,7 @@ public:
     // One similarity of the positions() frame for every layer: the scene is
     // rigid. The VIEWER applies it; nothing here moves until a save bakes it.
     const spirula::Sim3& placement() const { return _placement; }
+    virtual bool placement_allowed() const { return true; }
     void set_placement(const spirula::Sim3& p) {
         _placement = p;
         _rev++;
@@ -240,6 +241,8 @@ public:
     // What "Save" (as opposed to "Save a copy") would overwrite in this
     // target's format, "" when there is no such file to write back to.
     virtual std::string default_save_path(int target) const { (void)target; return {}; }
+    // Where "Save a copy" opens, "" for wherever the picker was last.
+    virtual std::string copy_dir(int target) const { (void)target; return {}; }
 
     const std::string& source_path() const { return _source; }
 
