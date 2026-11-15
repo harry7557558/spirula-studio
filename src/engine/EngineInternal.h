@@ -71,6 +71,7 @@ void fused_bilagrid_tv_adam(
     int L, int H, int W,
     float lr,
     float tv_weight,
+    float grad_scale,                   // on the image gradient only
     int32_t adam_step,
     bool quantize,
     int  quant_bits,
@@ -128,6 +129,7 @@ void fused_bilagrid_tv_adagrad(
     int L, int H, int W,
     float lr,
     float tv_weight,
+    float grad_scale,
     bool quantize,
     int  quant_bits,
     bool value_quantize,
@@ -142,9 +144,11 @@ void bilagrid_affine_identity_init(
 void ppisp_original_default_init(
     float* params, int N, backend::Stream stream);
 
-// --- PPISP elementwise grad accumulation (PpispInit.cu). ---
+// --- PPISP elementwise grad accumulation (PpispInit.cu): ---
+// dst = dst * dst_scale + src; a null src only scales.
 void ppisp_add_into_grad(
-    const float* src, float* dst, size_t n, backend::Stream stream);
+    const float* src, float* dst, float dst_scale, size_t n,
+    backend::Stream stream);
 
 // --- Scatter per-image scalars into a per-camera table (BilagridInit.cu). ---
 void bilagrid_scatter_floats(
@@ -172,6 +176,10 @@ void _engine_bilagrid_backward_hook(
     TorchTensorView v_ref_depth,
     TorchTensorView v_ref_normal);
 void _ensure_bilagrid_optim_state();
+// Split-batch steps: `total` cameras over the step's passes (0 ends it), then
+// each pass's first row, after its set_camera_params. See BilagridStepRows.
+void _engine_bilagrid_step_rows(int64_t total);
+void _engine_bilagrid_pass_rows(int64_t row, TorchTensorView cam_indices);
 void _engine_bilagrid_tv_into(float* tv_buf3_device);
 
 // How many pyramid levels the per-pixel loss will actually use at this render

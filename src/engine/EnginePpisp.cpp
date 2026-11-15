@@ -227,10 +227,11 @@ float* _engine_ppisp_reg_loss_into(
             engine().ppisp.param_type, engine().ppisp.exposure_arithmetic_mean,
             v_params_tv);
 
-        // ppisp_grads += v_params_scratch (over all N * P floats).
+        // ppisp_grads = ppisp_grads * grad_scale + v_params_scratch: the
+        // passes' image gradient at the scale of one batch, the terms as is.
         size_t total = (size_t)N * engine().ppisp.num_params;
-        ppisp_add_into_grad(v_params_scratch,
-            engine().ppisp.grads.data_ptr(), total, kPpispStream);
+        ppisp_add_into_grad(v_params_scratch, engine().ppisp.grads.data_ptr(),
+            engine().optim.grad_scale, total, kPpispStream);
     }
 
     return losses_buf;
@@ -251,6 +252,11 @@ void engine_ppisp_optim_step(int step, const PpispStepConfig& cfg) {
     for (float w : cfg.reg_weights) if (w > 0.0f) { any_reg = true; break; }
     if (any_reg) {
         (void)_engine_ppisp_reg_loss_into(cfg.reg_weights, /*compute_grad=*/true);
+    } else if (engine().optim.grad_scale != 1.0f) {
+        ppisp_add_into_grad(nullptr, engine().ppisp.grads.data_ptr(),
+            engine().optim.grad_scale,
+            (size_t)engine().ppisp.params.size<0>() * engine().ppisp.num_params,
+            kPpispStream);
     }
 
     int64_t N = engine().ppisp.params.size<0>();

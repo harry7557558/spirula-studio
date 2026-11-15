@@ -391,6 +391,14 @@ struct ColorShiftRegState {
     float   cur_weight   = 0.0f;
     float   cur_beta     = 0.0f;
 };
+// A step whose batch runs as several passes keeps each pass's grid gradient
+// in its own rows of image_grad, for the one optimizer step at the end.
+struct BilagridStepRows {
+    int total = 0;               // cameras over all the passes; 0 = one pass
+    int row = 0;                 // the current pass's first row
+    uint32_t sized = 0;          // per grid type: image_grad holds this step's rows
+    std::vector<int32_t> cams;   // [total] grid index per row, -1 until its pass
+};
 struct BilagridDepth {
     DeviceTensor5D<float>      grids;
     DeviceTensor5D<float>      image_grad;
@@ -790,6 +798,7 @@ struct EngineState {
     // Per-image-in-batch camera indices for the current step (shared by
     // background, bilagrid, and PPISP). Empty -> kernels fall back to identity.
     DeviceVector<int32_t> bilagrid_cur_cam_indices;
+    BilagridStepRows bilagrid_rows;
 
     EngineBackground background;
     PpispState       ppisp;

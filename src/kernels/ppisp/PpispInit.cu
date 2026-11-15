@@ -47,22 +47,23 @@ void ppisp_original_default_init(
 __global__ void ppisp_add_into_grad_kernel(
     const float* __restrict__ src,
     float* __restrict__ dst,
+    float dst_scale,
     size_t n
 ) {
     size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
-    dst[i] += src[i];
+    dst[i] = dst[i] * dst_scale + (src ? src[i] : 0.0f);
 }
 
 
-// Elementwise dst += src over n floats.
+// Elementwise dst = dst * dst_scale + src over n floats; a null src adds nothing.
 void ppisp_add_into_grad(
-    const float* src, float* dst, size_t n, cudaStream_t stream
+    const float* src, float* dst, float dst_scale, size_t n, cudaStream_t stream
 ) {
     if (n == 0) return;
     const int BLK = 256;
     int blocks = (int)((n + BLK - 1) / BLK);
-    ppisp_add_into_grad_kernel<<<blocks, BLK, 0, stream>>>(src, dst, n);
+    ppisp_add_into_grad_kernel<<<blocks, BLK, 0, stream>>>(src, dst, dst_scale, n);
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 

@@ -379,6 +379,12 @@ std::map<std::string, float> _engine_train_step_after_setup(
 }
 
 
+// Keeps every pass's bilagrid gradient for the step's one optimizer step.
+struct BilagridRowsScope {
+    explicit BilagridRowsScope(int64_t total) { _engine_bilagrid_step_rows(total); }
+    ~BilagridRowsScope() { _engine_bilagrid_step_rows(0); }
+};
+
 // The mode this step's raster backward will use -- None when nothing asked
 // for a loss map, so the accumulator stays one lane wide.
 static DensifyAccumMode _step_accum_mode(const EngineStepConfig& cfg) {
@@ -493,6 +499,7 @@ static std::map<std::string, float> _engine_train_step_split_one_per_camera(
     engine().fwd.accum_mode = DensifyAccumMode::None;
 
     std::map<std::string, float> agg;
+    BilagridRowsScope bilagrid_rows(B);
 
     for (int64_t k = 0; k < B; ++k) {
         // First sub-batch: zero grad. Subsequent: skip the zero so atomic
@@ -517,6 +524,7 @@ static std::map<std::string, float> _engine_train_step_split_one_per_camera(
         // B times per step is safe (and matches the unsplit behavior of
         // capturing once over all cams in the batch).
         _set_cur_cam_indices(bgi_k);
+        _engine_bilagrid_pass_rows(k, bgi_k);
         engine_viewer_capture_thumbnails(bgi_k);
 
         auto ld = _engine_step_fwd_bwd_only(
@@ -630,6 +638,7 @@ std::map<std::string, float> engine_train_step_hetero(
 
     std::map<std::string, float> agg;
     int64_t kcam = 0;   // global camera index across the whole step
+    BilagridRowsScope bilagrid_rows(total_cams);
 
     for (const auto& s : subs) {
         const auto& vs = std::get<2>(s.viewmats);
@@ -654,6 +663,7 @@ std::map<std::string, float> engine_train_step_hetero(
                               cfg.loss.input_depth_is_ray_depth);
 
             _set_cur_cam_indices(bgi_c);
+            _engine_bilagrid_pass_rows(kcam, bgi_c);
             engine_viewer_capture_thumbnails(bgi_c);
 
             auto ld = _engine_step_fwd_bwd_only(
@@ -820,6 +830,7 @@ static std::map<std::string, float> _engine_train_step_split_warped(
     engine().fwd.accum_mode = DensifyAccumMode::None;
 
     std::map<std::string, float> agg;
+    BilagridRowsScope bilagrid_rows((int64_t)B_in * K);
 
     for (int64_t j = 0; j < B_in; ++j) {
         // Per-input-image slices (B_in axis).
@@ -873,6 +884,7 @@ static std::map<std::string, float> _engine_train_step_split_warped(
                                      axes_k);
 
             _set_cur_cam_indices(bgi_k);
+            _engine_bilagrid_pass_rows(row, bgi_k);
             engine_viewer_capture_thumbnails(bgi_k);
 
             // Reported as they come: the pass weights average to 1, so the

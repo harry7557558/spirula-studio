@@ -324,6 +324,8 @@ struct AddIntoGradParams {
     float* dst;
     uint total;
     uint wgs_per_row;
+    float dst_scale;
+    uint has_src;
 };
 
 [shader("compute")]
@@ -332,7 +334,7 @@ void ppisp_add_into_grad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                          uniform AddIntoGradParams p) {
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
     if (idx >= p.total) return;
-    p.dst[idx] += p.src[idx];
+    p.dst[idx] = p.dst[idx] * p.dst_scale + (p.has_src != 0 ? p.src[idx] : 0.0f);
 }
 
 struct ScatterFloatsParams {
