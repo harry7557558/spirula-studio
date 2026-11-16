@@ -140,6 +140,9 @@ void GuiApp::add_lidar_sources(const std::vector<std::string>& paths) {
         if (std::any_of(_lidar.begin(), _lidar.end(),
                         [&](const LidarInput& l) { return l.path == in.path; }))
             continue;
+        // A capture's recorded poses carry its cameras' factory mounts, 1.7 deg off on
+        // a PortalCam, so its photographs are refined unless the box is ticked again.
+        if (spirula::xbin::is_xbin_path(in.path)) _lidar_keep_poses = false;
         _lidar.push_back(std::move(in));
     }
     if (first_new < _lidar.size()) select_source(_lidar[first_new].path, true);
