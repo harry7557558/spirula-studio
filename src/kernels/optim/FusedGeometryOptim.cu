@@ -239,6 +239,8 @@ __global__ void fused_optim_3dgs_geometry_kernel(
         g1_scale = beta1 * g1_scale + (1.f - beta1) * v_scale;
         g2_scale = beta2 * g2_scale + (1.f - beta2) * v_scale*v_scale;
         float3 updated_scale = scale - lr_scales * g1_scale / (sqrtf(g2_scale * inv_bias_correction2) + eps);
+        // 2DGS: z stays at or below the disc, so a collapsed disc reads as dead.
+        if (surfel) updated_scale.z = fminf(updated_scale.z, fmaxf(updated_scale.x, updated_scale.y));
         scales[idx] = updated_scale;
         if constexpr (non_sh_quant) {
             nq_g1_scale = g1_scale;

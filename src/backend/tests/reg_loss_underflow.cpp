@@ -8,11 +8,12 @@
 // splat drops ~lr a step until the kMinLogScale floor stops it. -inf, which
 // mcmc_relocation used to manufacture, is covered too.
 //
-// Self-checking. Drives the shared backward through fused_optim_3dgs_geometry.
-// The 2DGS (surfel) cases also require the unused third scale to stay put.
+// Drives the shared backward through fused_optim_3dgs_geometry. In the 2DGS
+// cases the unused third scale stays put unless the disc sinks below it.
 
 #include <kernels/optim/Optimizer.cuh>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -152,8 +153,11 @@ static bool run_case(const Case& c) {
     if (c.surfel && !c.neg_inf) {
         std::vector<float> now = download(d_scales, 3 * N);
         int64_t moved = 0;
-        for (int64_t i = 0; i < N; i++) moved += now[3 * i + 2] != start[3 * i + 2];
-        if (moved) std::printf("  scales: %lld surfels' third axis moved\n",
+        for (int64_t i = 0; i < N; i++) {
+            const float disc = std::max(now[3 * i], now[3 * i + 1]);
+            moved += now[3 * i + 2] != std::min(start[3 * i + 2], disc);
+        }
+        if (moved) std::printf("  scales: %lld surfels' third axis off the rule\n",
                                (long long)moved);
         total += moved;
     }

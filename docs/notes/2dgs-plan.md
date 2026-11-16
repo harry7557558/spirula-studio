@@ -35,13 +35,10 @@ the 15% target.
 
 ## Next session
 
-1. **Densify check.** `densify_score_mode geom` and
-   `densify_score_blend_world_grad` read projection gradients; confirm they
-   behave for 2dgs (they work, untested in isolation).
-2. **Export and meshing (phase 6).** PLY round-trip of a 2dgs checkpoint
-   (third scale at -20 reads as flat discs); a 2dgs model through `src/mesh/`.
-   `RasterizationMomentsFwd` is still 3DGUT-only.
-3. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR;
+1. **Meshing (phase 6).** Mesh a 2dgs model through `src/mesh/` (3DGUT
+   moments, see phase 6) and score it as in "Preset weights"; write a 2dgs
+   moments kernel only if that falls short of the sweep's F.
+2. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR;
    re-check the preset weights and the `SettingCosts.h` row there (both
    come from one capture).
 
@@ -146,13 +143,16 @@ coming at the end.
 - 136 new instantiation TUs (89 are the raster backward).
 - `long_axis_split`: accepts `2dgs`; the seeded third scale is never longest.
 
-### 3. Engine wiring (done, but for the densify check in Next session)
+### 3. Engine wiring (done)
 - `EngineForward` / `EngineLoss` / `EngineOptim` / `EngineTrainStep`: add the
   `2dgs` branches next to `3dgut`; allocate the normal render; pass it as
   `pred_normal`.
-- Densify scoring: confirm the loss-map accumulation (`densify_accum_mode`)
-  behaves; `densify_score_blend_world_grad` and `geom` mode read projection
-  gradients and need a check.
+- Densify scoring needs no 2dgs case: `geom` only combines the per-camera
+  loss-map scores, and the world-grad score (`|dL/dmean| * exp(max log
+  scale)`, both backends) sees a disc axis, the third scale being -20.
+  Sparse seed, 3000 steps to 1M, 61 held-out views: 2dgs at 23.49 dB with
+  the default, 23.44 `geom`, 23.60 / 23.51 world-grad blend 0.5 / 1; 3dgut
+  24.02 / 24.04 default / blend 1. No NaNs.
 - First trainable milestone, on both backends: Mip-NeRF 360 within ~0.5 dB
   of 3DGS, step time within ~15%, CUDA and Vulkan renders in parity.
 
@@ -180,9 +180,20 @@ coming at the end.
   and a default that changed with the primitive would be a hidden rule.
 
 ### 6. Export and meshing
-- PLY export with the flattened `scale.z`; reload round-trip.
-- Meshing: feed rendered depth + normals of a 2DGS model to `src/mesh/`;
-  compare DTU Chamfer against meshing a 3DGS model.
+- PLY export (done): the checkpoint's `splat.ply` keeps `scale.z`, and
+  `--init-ply` re-seeds it for 2dgs. A 3000-step model (23.49 dB, 61
+  held-out views) reloaded for one step scores 23.26 as 2dgs, 23.46 as
+  3dgut, 22.71 as 3dgs; a 3dgut model loses 0.11 dB the same way.
+- Dead discs (fixed): relocation and the export call a splat dead when its
+  largest log scale is at the -40 floor, which a disc never reached with
+  `scale.z` at -20. A 3M-splat 30k-step model held 306k collapsed discs
+  (10%). The optimizers now keep `scale.z` at or below the disc's larger
+  axis, so a collapsed disc reads as dead.
+- Meshing: `src/mesh/` renders moments through 3DGUT whatever the
+  primitive. A flattened 3DGUT splat is evaluated at the ray-disc hit, and
+  renders as well as 2dgs above, so a 2dgs moments kernel may not be
+  needed; compare meshes before writing one. Then DTU Chamfer against
+  meshing a 3DGS model.
 
 ### 7. Validation and docs
 - Final table: 3DGS vs 2DGS on both backends — PSNR / SSIM / LPIPS, DTU

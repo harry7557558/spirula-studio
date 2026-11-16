@@ -267,6 +267,8 @@ void fused_optim_3dgs_geometry(uint3 wg: SV_GroupID,
             float3 new_scale = scale - lr_scales * g1v /
                                            (oq_sqrt3(g2v * ibc2) +
                                             float3(kAdamEps));
+            // 2DGS: z stays at or below the disc, so a collapsed disc reads as dead.
+            if (p.surfel != 0) new_scale.z = min(new_scale.z, max(new_scale.x, new_scale.y));
             p.scales[3 * gid] = new_scale.x;
             p.scales[3 * gid + 1] = new_scale.y;
             p.scales[3 * gid + 2] = new_scale.z;

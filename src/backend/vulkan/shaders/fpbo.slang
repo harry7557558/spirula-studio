@@ -361,6 +361,8 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         float3 new_scale =
             s.scale - p.lr_scales * ibc1 * g1v /
                           (oq_sqrt3(g2v * ibc2) + float3(kFpboEps));
+        // 2DGS: z stays at or below the disc, so a collapsed disc reads as dead.
+        if (p.surfel != 0) new_scale.z = min(new_scale.z, max(new_scale.x, new_scale.y));
         p.scales[3 * gid] = new_scale.x;
         p.scales[3 * gid + 1] = new_scale.y;
         p.scales[3 * gid + 2] = new_scale.z;
