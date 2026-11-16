@@ -588,6 +588,8 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         p.out_rgb[3 * pix_id_global + 2] = pix_rgb.z;
         if (p.out_depth_on != 0) p.out_depth[pix_id_global] = out_depth;
         if (kSurfel != 0) {
+            // composited in world space, stored in camera space
+            pix_normal = undo_transform_ray_d(R, pix_normal);
             p.out_normal[3 * pix_id_global + 0] = pix_normal.x;
             p.out_normal[3 * pix_id_global + 1] = pix_normal.y;
             p.out_normal[3 * pix_id_global + 2] = pix_normal.z;

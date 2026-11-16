@@ -31,6 +31,7 @@
 #include "dense/Artifact.h"
 #include "data/Knn.h"
 #include "kernels/loss/PcaReg.cuh"
+#include "primitives/Primitive2DGS.cuh"
 #include "sfm/core/Exif.h"
 
 #ifndef _WIN32
@@ -1479,6 +1480,8 @@ void TrainerSession::setup_engine() {
     ColorResolution color = resolve_color(cfg);
     SeedSplats seed = seed_world(color);
     int64_t cap = (int64_t)seed.opacities.size();
+    if (cfg.primitive == "2dgs")
+        for (int64_t i = 0; i < cap; i++) seed.scales[(size_t)i * 3 + 2] = kSurfelLogScaleZ;
     const int64_t K = ColorBasis{cfg.sh_degree, cfg.sb_lobes}.coeffs();
     auto tv = [](std::vector<float>& v, std::vector<int64_t> shape) -> TorchTensorView {
         return {(uint64_t)(uintptr_t)v.data(), (uint32_t)sizeof(float), std::move(shape)};

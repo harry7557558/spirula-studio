@@ -126,6 +126,7 @@ __global__ void fused_optim_3dgs_geometry_kernel(
     const float erank_reg_weight,
     const float erank_reg_weight_s3,
     const float quat_norm_reg_weight,
+    const bool surfel,
     const float dc_reg_weight,
     const float sh_reg_weight,
     const float max_screen_size,
@@ -192,7 +193,8 @@ __global__ void fused_optim_3dgs_geometry_kernel(
             scale_regularization_weight,
             erank_reg_weight,
             erank_reg_weight_s3,
-            quat_norm_reg_weight
+            quat_norm_reg_weight,
+            surfel
         );
         // Data gradient: decode from the block-wise quantized grad buffer when
         // present (3dgs/mip), else read the fp32 v_* buffer (3dgut geom / off).
@@ -464,6 +466,7 @@ void fused_optim_3dgs_geometry(
     const float max_gauss_ratio, const float scale_regularization_weight,
     const float mcmc_opacity_reg_weight, const float mcmc_scale_reg_weight,
     const float erank_reg_weight, const float erank_reg_weight_s3, const float quat_norm_reg_weight,
+    bool surfel,  // 2DGS: the scale regularizers see x and y only
     const float dc_reg_weight, const float sh_reg_weight,
     const float max_screen_size, const float max_screen_size_penalty,
     bool use_scale_agnostic_mean,
@@ -490,7 +493,7 @@ void fused_optim_3dgs_geometry(
         float*,
         float, float, float, float, float,
         const float, const float, const float, const float,
-        const float, const float, const float, const float,
+        const float, const float, const float, const bool, const float,
         const float, const float, const float, const float,
         const float,
         const NonShQuantState,
@@ -528,6 +531,7 @@ void fused_optim_3dgs_geometry(
         erank_reg_weight / (float)num_splats,
         erank_reg_weight_s3 / (float)num_splats,
         quat_norm_reg_weight / (float)num_splats,
+        surfel,
         2.0f * dc_reg_weight / 3.0f,
         2.0f * sh_reg_weight / (float)(3 * num_splats),
         max_screen_size, max_screen_size_penalty,

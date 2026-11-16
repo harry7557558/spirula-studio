@@ -1,10 +1,14 @@
 #pragma once
 
 // 2DGS surfels: 3DGUT's world and screen rows, projection backward and eval3d
-// rasterizer, with a ray-disc fragment that also renders normals. scale.z is
-// stored but ignored; it gets no gradient.
+// rasterizer, with a ray-disc fragment that also renders camera-space normals.
+// scale.z is stored but ignored; it gets no gradient.
 
 #include "primitives/Primitive3DGUT.cuh"
+
+// Seeded scale.z: below any disc axis, so splits and max-scale tests never
+// pick it, and above per_splat_losses.slang's kMinLogScale.
+constexpr float kSurfelLogScaleZ = -20.0f;
 
 template<int sh_degree>
 struct Vanilla2DGS : public Eval3DPrimitive<sh_degree, true> {

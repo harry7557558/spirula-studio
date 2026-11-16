@@ -480,7 +480,7 @@ void engine_observe_projective_depth() {
             (uint64_t)bound, (uint32_t)sizeof(float), std::vector<int64_t>{s.cur_num_splats, 1}));
         depth.angular_bound = bound;
     }
-    bool gut = s.primitive == "3dgut";
+    bool gut = engine_primitive_eval3d(s.primitive);
     int stride = gut ? SCRG_STRIDE : SCR2_STRIDE;
     int offset = gut ? SCRG_OPAC : SCR2_OPAC;
     int64_t count = s.packed ? s.fwd.gaussian_ids.size()
@@ -669,7 +669,8 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
             cfg.max_gauss_ratio, cfg.scale_regularization_weight,
             cfg.mcmc_opacity_reg_weight, cfg.mcmc_scale_reg_weight,
             cfg.erank_reg_weight, cfg.erank_reg_weight_s3,
-            cfg.quat_norm_reg_weight, cfg.dc_reg_weight, cfg.sh_reg_weight,
+            cfg.quat_norm_reg_weight, engine().primitive == "2dgs",
+            cfg.dc_reg_weight, cfg.sh_reg_weight,
             cfg.max_screen_size, cfg.max_screen_size_penalty,
             cfg.use_scale_agnostic_mean,
             // Both are set from the same resolved flag (a linear splat
@@ -685,7 +686,7 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
         call_dispatch(&fused_projection_bwd_optimizer_3dgs);
     } else if (engine().primitive == "mip") {
         call_dispatch(&fused_projection_bwd_optimizer_mip);
-    } else if (engine().primitive == "3dgut") {
+    } else if (engine_primitive_eval3d(engine().primitive)) {
         call_dispatch(&fused_projection_bwd_optimizer_3dgut);
     } else {
         throw std::runtime_error(
@@ -796,6 +797,7 @@ void engine_optim_step(int step, const OptimConfig& cfg) {
         cfg.max_gauss_ratio, cfg.scale_regularization_weight,
         cfg.mcmc_opacity_reg_weight, cfg.mcmc_scale_reg_weight,
         cfg.erank_reg_weight, cfg.erank_reg_weight_s3, cfg.quat_norm_reg_weight,
+        engine().primitive == "2dgs",
         cfg.dc_reg_weight, cfg.sh_reg_weight,
         cfg.max_screen_size, cfg.max_screen_size_penalty,
         cfg.use_scale_agnostic_mean,

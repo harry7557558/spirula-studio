@@ -230,7 +230,7 @@ int main(int argc, char** argv) {
                 1.6e-4f, 1e-3f, 5e-3f, 5e-2f, 2.5e-3f,
                 /*max_gauss_ratio=*/4.f, /*scale_reg=*/0.1f,
                 /*mcmc_op=*/0.05f, /*mcmc_scale=*/0.02f,
-                /*erank=*/0.1f, /*erank_s3=*/0.05f, /*quat_norm=*/0.1f,
+                /*erank=*/0.1f, /*erank_s3=*/0.05f, /*quat_norm=*/0.1f, /*surfel=*/false,
                 /*dc_reg=*/0.01f, /*sh_reg=*/0.01f,
                 /*max_screen_size=*/0.3f, /*max_screen_size_penalty=*/1.5f,
                 c.sam, ct, nq, visit, gq, {},

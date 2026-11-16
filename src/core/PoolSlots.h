@@ -164,6 +164,7 @@ enum class SaveClass : uint8_t {
   X(EngVDepth                      , "eng.v_depth",                       Image    , Never) \
   X(EngVTs                         , "eng.v_Ts",                          Image    , Never) \
   X(EngVDepthNormal                , "eng.v_depth_normal",                Image    , Never) \
+  X(EngVRenderNormal               , "eng.v_render_normal",               Image    , Never) \
   X(EngVRefDepth                   , "eng.v_ref_depth",                   Image    , Never) \
   X(EngVRefNormal                  , "eng.v_ref_normal",                  Image    , Never) \
   X(EngVRgbDist                    , "eng.v_rgb_dist",                    Image    , Never) \

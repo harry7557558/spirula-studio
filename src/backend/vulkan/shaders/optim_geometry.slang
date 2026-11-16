@@ -119,6 +119,8 @@ struct OptimGeoParams {
     uint32_t has_visit;
     uint32_t skip_unrendered_reg;
     uint32_t has_auxiliary_opacities;
+    uint32_t surfel;  // per_splat_losses_bwd's
+    uint32_t _pad0;
 };
 
 // Data gradient for a PRIMS-wide attribute: decode from the 16-bit
@@ -199,7 +201,7 @@ void fused_optim_3dgs_geometry(uint3 wg: SV_GroupID,
                              p.mcmc_scale_reg_weight, p.max_gauss_ratio,
                              p.scale_regularization_weight,
                              p.erank_reg_weight, p.erank_reg_weight_s3,
-                             p.quat_norm_reg_weight);
+                             p.quat_norm_reg_weight, p.surfel != 0);
 
         // data gradients (grad-quant codec or fp32 buffers)
         float gd_scale[3], gd_quat[4], gd_opac[1];

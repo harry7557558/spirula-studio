@@ -433,7 +433,7 @@ int main(int argc, char** argv) {
                /*lr_features_sh=*/1.25e-4f, /*lr_features_sb=*/2.5e-3f,
                /*max_gauss_ratio=*/10.f,
                /*scale_reg=*/0.1f, /*mcmc_op=*/0.01f, /*mcmc_scale=*/0.01f,
-               /*erank=*/0.1f, /*erank_s3=*/0.02f, /*quat_norm=*/0.01f,
+               /*erank=*/0.1f, /*erank_s3=*/0.02f, /*quat_norm=*/0.01f, /*surfel=*/false,
                /*dc_reg=*/0.02f, /*sh_reg=*/0.05f,
                /*max_screen_size=*/0.02f, /*max_screen_size_penalty=*/1.f,
                cfg.sam, cfg.ctl,

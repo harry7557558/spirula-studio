@@ -222,6 +222,7 @@ DeviceTensor3D<float3> _engine_appearance_replay();
 struct EngineStepConfig;
 enum class DistortionType;
 void _engine_arm_step_forward(const EngineStepConfig& cfg,
+                              const std::string& primitive,
                               DistortionType dist_type, bool image_stages);
 // PPISP and the colour grids the forward left to run, in the step's order.
 void _engine_step_image_stages(TorchTensorView cam_indices);

@@ -170,7 +170,7 @@ public:
         return {
             rgbs[idx],
             has_depth(type) ? (depths ? depths[idx] : 0.0f) : _default_depth,
-            has_normal(type) ? normals[idx] : _default_normal,
+            has_normal(type) ? (normals ? normals[idx] : float3{0.f, 0.f, 0.f}) : _default_normal,
         };
     }
 

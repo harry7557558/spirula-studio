@@ -4,6 +4,23 @@ Goal: `--primitive 2dgs`, a surfel primitive in the style of 2D Gaussian
 Splatting (Huang et al., SIGGRAPH 2024), trained by the same engine at close
 to 3DGS speed and memory, on both backends.
 
+## Status
+
+Phases 1-4 done: `--primitive 2dgs` trains on both backends, and every
+parity test passes CUDA vs Vulkan. First measurements (an action-cam fisheye
+capture, 427 views, 1M splats, 7000 steps, longer side 1344 px, Vulkan,
+61 held-out views):
+
+| primitive | PSNR | SSIM | train time | engine VRAM |
+|---|---|---|---|---|
+| 3dgs  | 24.43 | 0.900 | 135 s | 451 MB |
+| 3dgut | 24.26 | 0.901 | 159 s | 482 MB |
+| 2dgs  | 23.91 | 0.891 | 206 s | 536 MB |
+
+The raster backward is 60% of a 2DGS step: `evaluate_alpha_2dgs_vjp` and
+`evaluate_color_2dgs_vjp` each recompute the ray-disc hit. A fused VJP is the
+first optimization to try.
+
 ## Why it is cheaper than it looks
 
 - The **eval3d raster path** (`kernels/raster/RasterizationEval3D*`, Vulkan
@@ -26,31 +43,34 @@ to 3DGS speed and memory, on both backends.
 1. **Storage = 3DGS storage.** Keep `scales` as `float3` (log); the surfel uses
    `x, y` and ignores `z`. Then the optimizer, densify, codecs, checkpoints,
    `SplatPly`, `SplatMerge` and both viewers need no layout change. `scale.z`
-   gets zero gradient; it is set to `log(1e-3 * min(sx, sy))`-ish on export so
-   3DGS viewers draw flat discs.
+   gets zero gradient and is seeded at `kSurfelLogScaleZ` (-20), below any disc
+   axis, so splits and max-scale tests never pick it and 3DGS viewers draw flat
+   discs. The per-splat regularizers take a `surfel` flag and see `x, y` only.
 2. **Screen buffer = 3DGUT's layout** (`SCRG_*`). The projection computes the
    disc's screen bounds and sorting depth; the fragment is rebuilt from world
    data in the raster kernel, as 3DGUT does. Reusing the layout keeps
    `projective_depth`, the qgrad path and the fused projection-bwd optimizer
    reachable with a new primitive type rather than a new buffer format.
-3. **Fragment math** (shared Slang, `src/shaders/primitive_2dgs.slang`):
+3. **Fragment math** (shared Slang, `src/shaders/projection_utils.slang`; the
+   bounds are `projection_3dgs<..., surfel>` in `primitive_3dgs.slang`):
    - tangent frame `tu, tv, n` = columns of `R(quat)`; plane through `mean`
    - `t = dot(mean - o, n) / dot(d, n)`, `p = o + t d`,
      `u = dot(p - mean, tu) / sx`, `v = dot(p - mean, tv) / sy`
    - `G = max(exp(-(u²+v²)/2), G_lowpass)` where `G_lowpass` is the paper's
      screen-space fallback: ray-to-centre distance divided by the pixel
      footprint at that depth, so it works without a pinhole `K`
-   - outputs: `rgb`, `depth = t` (same convention as 3DGUT's eval — check
-     ray vs. axial below), `normal = -sign(dot(d, n)) * n` in world space
+   - outputs: `rgb`, `depth = t` (ray distance: `generate_ray` returns unit
+     directions, as for 3DGUT), `normal = -sign(dot(d, n)) * n` in world space
    - grazing rays (`|dot(d, n)|` small) fall to the low-pass term, not a NaN
-4. **Normal frame**: decide once whether the rendered normal is world or camera
-   space by matching what `depth_to_normal_forward` and the GT normal loaders
-   produce; convert in the fragment, not in the loss.
+4. **Normal frame**: normals composite in world space and the rasterizer
+   stores them in camera space, the frame of `depth_to_normal_forward`; the
+   backward rotates the gradient back. The normal distortion stays in world
+   space, which the loss allows because it reads only the channel mean.
 
 ## Phases
 
 ### 0. Baseline
-- Fork, branch `2dgs`.
+- Fork, branch `native-2dgs`.
 - Record 3DGS and 3DGUT numbers on a Mip-NeRF 360 scene and a DTU scan (PSNR,
   step time, peak VRAM) on both backends with `reference/python/benchmark.py`,
   so every later phase has something to compare against.
@@ -120,8 +140,7 @@ coming at the end.
 
 ## Open questions
 
-- Depth convention: is eval3d `depth` ray distance or axial `z`, and what do
-  the GT depth loaders and `depth_to_normal_forward` expect?
 - Is the screen-space low-pass needed with the engine's existing
   antialiasing / `kernel_cut`, or does it fight it?
-- Sorting: per-splat centre depth (as 3DGS) is what the paper uses; keep it.
+- Defaults: the paper's distortion and normal weights, re-tuned to this
+  engine's loss normalisation (phase 5).

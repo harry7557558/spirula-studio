@@ -181,7 +181,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(std::optional<float>, relative_scale, std::nullopt, "scene", "expert", "") \
                                                                              \
     /* ==== splats -- what a splat is and how the splats start out ==== */   \
-    X(std::string, primitive, "3dgs", "splats", "basic", "3dgs|mip|3dgut")   \
+    X(std::string, primitive, "3dgs", "splats", "basic", "3dgs|mip|3dgut|2dgs")   \
     X(int, sh_degree, 3, "splats", "basic", "")                              \
     X(int, sb_lobes, 0, "splats", "basic", "")                               \
     X(int, sh_degree_warmup_every, 0, "splats", "expert", "")             \

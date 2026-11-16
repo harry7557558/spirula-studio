@@ -181,17 +181,20 @@ void _rb_load_pixel_state(
 void _rb_load_normal_state(uint pix, bool inside, uint image_pix,
                            float* out_normal, float* dist_normal,
                            float* v_out_normal, float* v_dist_normal,
-                           uint state_flags) {
+                           uint state_flags, float3x3 R) {
     if (kSurfel == 0) return;
-    _rb_vnrm[pix] = inside && (state_flags & kRbNormalBound) != 0 ? float3(v_out_normal[3 * image_pix],
-                                    v_out_normal[3 * image_pix + 1],
-                                    v_out_normal[3 * image_pix + 2])
-                           : float3(0.0f);
+    // The stored normal is camera space (see the forward); the splats' are world.
+    float3 v_n = inside && (state_flags & kRbNormalBound) != 0
+        ? float3(v_out_normal[3 * image_pix], v_out_normal[3 * image_pix + 1],
+                 v_out_normal[3 * image_pix + 2])
+        : float3(0.0f);
+    _rb_vnrm[pix] = transform_ray_d(R, v_n);
     if (kDistType >= 3) {
         float3 C = float3(0.0f), Dv = float3(0.0f), v_d = float3(0.0f);
         if (inside) {
-            C = float3(out_normal[3 * image_pix], out_normal[3 * image_pix + 1],
-                       out_normal[3 * image_pix + 2]);
+            C = transform_ray_d(R, float3(out_normal[3 * image_pix],
+                                          out_normal[3 * image_pix + 1],
+                                          out_normal[3 * image_pix + 2]));
             Dv = float3(dist_normal[3 * image_pix],
                         dist_normal[3 * image_pix + 1],
                         dist_normal[3 * image_pix + 2]);
@@ -839,7 +842,7 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             p.state_flags, p.v_dist_rgb_per_depth);
         _rb_load_normal_state(pix, inside, img_off + gpix, p.out_normal,
                               p.dist_normal, p.v_out_normal, p.v_dist_normal,
-                              p.state_flags);
+                              p.state_flags, R);
     }
     { uint prev; InterlockedMax(_rb_binmax, uint(bin_local + 1), prev); }
     GroupMemoryBarrierWithGroupSync();
