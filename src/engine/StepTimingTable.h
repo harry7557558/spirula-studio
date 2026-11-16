@@ -216,6 +216,7 @@
   X("sort_scan.sort_hist_u64",                       Scope,       Scope) \
   X("sort_scan.sort_spine_global",                   Scope,       Scope) \
   X("sort_scan.sort_spine_local",                    Scope,       Scope) \
+  X("surfel_test.surfel_eval",                       Other,       Fixed) \
   X("test_kernels.dispatch_grid",                    Other,       Fixed) \
   X("test_kernels.dispatch_group_only",              Other,       Fixed) \
   X("test_kernels.iota_u32",                         Other,       Fixed) \
