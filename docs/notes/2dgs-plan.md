@@ -35,12 +35,12 @@ the 15% target.
 
 ## Next session
 
-1. **Meshing (phase 6).** Mesh a 2dgs model through `src/mesh/` (3DGUT
-   moments, see phase 6) and score it as in "Preset weights"; write a 2dgs
-   moments kernel only if that falls short of the sweep's F.
-2. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR;
+1. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR;
    re-check the preset weights and the `SettingCosts.h` row there (both
    come from one capture).
+2. **The sweep's 0.4 dB.** Today's `spirula train 2dgs` scores 23.31-23.33
+   dB where the sweep's 0.1 / 0.04 row says 23.75, with or without the
+   dead-disc fix; find what the sweep ran differently before quoting it.
 
 Build and test (both trees on one machine):
 
@@ -179,7 +179,7 @@ coming at the end.
   most of the mesh gain in the sweep below (F 0.539 to 0.674) for 0.6 dB,
   and a default that changed with the primitive would be a hidden rule.
 
-### 6. Export and meshing
+### 6. Export and meshing (done)
 - PLY export (done): the checkpoint's `splat.ply` keeps `scale.z`, and
   `--init-ply` re-seeds it for 2dgs. A 3000-step model (23.49 dB, 61
   held-out views) reloaded for one step scores 23.26 as 2dgs, 23.46 as
@@ -189,11 +189,14 @@ coming at the end.
   `scale.z` at -20. A 3M-splat 30k-step model held 306k collapsed discs
   (10%). The optimizers now keep `scale.z` at or below the disc's larger
   axis, so a collapsed disc reads as dead.
-- Meshing: `src/mesh/` renders moments through 3DGUT whatever the
+- The fix is neutral: `spirula train 2dgs`, 30k steps, 61 held-out views,
+  23.31 dB / 0.881 / mesh F 0.705 without it and 23.33 / 0.881 / 0.697
+  with it, collapsed discs 7150 and 15. Both sit 0.4 dB under the sweep's
+  23.75 / 0.899 below; that gap predates the fix and is unexplained.
+- Meshing (done): `src/mesh/` renders moments through 3DGUT whatever the
   primitive. A flattened 3DGUT splat is evaluated at the ray-disc hit, and
-  renders as well as 2dgs above, so a 2dgs moments kernel may not be
-  needed; compare meshes before writing one. Then DTU Chamfer against
-  meshing a 3DGS model.
+  the meshes above reach the sweep's F, so no 2dgs moments kernel. DTU
+  Chamfer against meshing a 3DGS model is left to phase 7.
 
 ### 7. Validation and docs
 - Final table: 3DGS vs 2DGS on both backends — PSNR / SSIM / LPIPS, DTU
