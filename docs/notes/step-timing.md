@@ -174,7 +174,11 @@ within ~5%):
 | 1 | | | 0.64 / 0.65 | 0.56 / 0.56 | |
 | 0 | | | 0.55 / 0.55 | 0.28 / 0.28 | |
 
-garden at 1/4 / bonsai at 1/2; blank is within noise of 1. The distortion
+garden at 1/4 / bonsai at 1/2; blank is within noise of 1. 2dgs was
+measured apart, on an action-cam fisheye capture (427 views, longer side
+1344 px), two runs of each primitive: 2.07 raster forward and 2.24 backward
+against 3dgs, where 3dgut read 1.77 / 1.74; the two 3dgs runs differed by
+9-16%. The distortion
 terms floater suppression adds weigh on the raster backward; its forward
 gets cheaper as `max_screen_size` caps how large a splat may grow, and strong
 adds the local-PCA regularizer. Calibration correction does not move the

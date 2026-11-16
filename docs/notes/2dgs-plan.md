@@ -35,25 +35,15 @@ the 15% target.
 
 ## Next session
 
-1. **Step-time cost row (phase 5).** The GUI's primitive lists know `2dgs`
-   (training combo, viewer, render panel; Auto renders a 2dgs model as
-   2dgs on any lens). `app/SettingCosts.h` still has no `2dgs` row, so the
-   timing card offers no "switch to 3dgs" saving for it. Measure as
-   docs/notes/step-timing.md does (`SS_STEP_TIMING_LOG=1`, default preset,
-   5000 steps to a 1M cap, last 300 steps, paired with 3dgs and 3dgut runs)
-   on an idle GPU: under load the cells read 5-8x high. The VRAM forecast
-   needs nothing: the normal render and its gradient are Image-category pool
-   slots, which it measures.
-2. **Densify check.** `densify_score_mode geom` and
+1. **Densify check.** `densify_score_mode geom` and
    `densify_score_blend_world_grad` read projection gradients; confirm they
    behave for 2dgs (they work, untested in isolation).
-3. **Export and meshing (phase 6).** PLY round-trip of a 2dgs checkpoint
+2. **Export and meshing (phase 6).** PLY round-trip of a 2dgs checkpoint
    (third scale at -20 reads as flat discs); a 2dgs model through `src/mesh/`.
    `RasterizationMomentsFwd` is still 3DGUT-only.
-4. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR;
-   re-check the preset weights there (they come from one capture).
-5. **Decision pending:** whether plain `--primitive 2dgs` should keep normal
-   consistency at 0.04 (see Open questions).
+3. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR;
+   re-check the preset weights and the `SettingCosts.h` row there (both
+   come from one capture).
 
 Build and test (both trees on one machine):
 
@@ -172,14 +162,22 @@ coming at the end.
   the `nodepth` backward, which skips the colour VJP that carries normals.
 - Parity rows in `projection_parity`, `render_parity`, `raster_bwd_parity`.
 
-### 5. Config, GUI, i18n (done but for the cost row)
+### 5. Config, GUI, i18n (done)
 - `TrainConfig.h`: `primitive` choices gain `2dgs`; the `2dgs` preset
   (`spirula train 2dgs`) sets depth distortion 0.1 and normal consistency
   0.04 (done, see "Preset weights").
-- `TrainFields.h` and the GUI primitive combo: names and help in all 13
-  languages, within the UI text budget.
-- `SettingCosts.h`, `TrainForecast` (the normal render is 3 more floats per
-  pixel), resume compatibility in `checkpoint/Resume.cpp`.
+- `TrainFields.h` and the GUI's primitive lists (training, viewer, render
+  panel): names and help in all 13 languages. The render panel's automatic
+  choice keeps a 2dgs model as 2dgs on any lens.
+- `SettingCosts.h`: 2.07 raster forward, 2.24 backward against 3dgs, from
+  one fisheye capture (docs/notes/step-timing.md); re-measure on garden /
+  bonsai in phase 7. The VRAM forecast needs nothing: the normal render and
+  its gradient are Image-category pool slots, which it measures.
+- Resume needs nothing: the primitive comes back from `config.json` and the
+  storage is 3DGS's (checked: a 2dgs run resumed at step 300 trains on).
+- Plain `--primitive 2dgs` keeps the shared normal consistency 0.04: it is
+  most of the mesh gain in the sweep below (F 0.539 to 0.674) for 0.6 dB,
+  and a default that changed with the primitive would be a hidden rule.
 
 ### 6. Export and meshing
 - PLY export with the flattened `scale.z`; reload round-trip.
@@ -223,6 +221,4 @@ on Mip-NeRF 360 / DTU (phase 7) before the PR.
 
 - Is the screen-space low-pass needed with the engine's existing
   antialiasing / `kernel_cut`, or does it fight it?
-- Should plain `--primitive 2dgs` keep normal consistency at 0.04? It costs
-  0.6 dB for the geometry; the default is shared with every primitive and
-  only 2dgs renders normals.
+

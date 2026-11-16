@@ -37,6 +37,8 @@ inline constexpr SettingCost kSettingCosts[] = {
     {"primitive", "3dgs",  1.00, 1.00, 1.00, 1.00, 1.0},
     {"primitive", "mip",   1.05, 1.03, 1.00, 1.00, 1.0},
     {"primitive", "3dgut", 1.61, 1.87, 1.00, 1.00, 1.0},
+    // A fisheye capture, not garden / bonsai: 3dgut read 1.77 / 1.74 there.
+    {"primitive", "2dgs",  2.07, 2.24, 1.00, 1.00, 1.0},
     // Colour coefficients, 15 / 8 / 3 / 0: projection evaluates them and the
     // optimizer steps them; at degree 0 it keeps no state for them at all.
     {"sh_degree", "3", 1.00, 1.00, 1.00, 1.00, 1.0},
