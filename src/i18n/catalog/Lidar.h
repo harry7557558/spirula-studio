@@ -362,6 +362,21 @@ SS_MSG(opt_info,
     RU("Описать файл облака точек и завершить работу"),
     TR("Bir nokta bulutu dosyasını tanımla ve dur"));
 
+SS_MSG(opt_trajectory,
+    EN("Build an XGRIDS capture's trajectory again from its LiDAR into a dataset, and stop. --extract does it once by itself"),
+    JA("XGRIDS キャプチャの軌跡を LiDAR から再構成してデータセットに書き、終了します。--extract は初回に自動で行います"),
+    ZH_HANS("用 LiDAR 重建 XGRIDS 采集的轨迹并写入数据集，然后退出。--extract 会自动做一次"),
+    ZH_HANT("用 LiDAR 重建 XGRIDS 擷取的軌跡並寫入資料集，然後結束。--extract 會自動做一次"),
+    KO("XGRIDS 캡처의 궤적을 LiDAR로 다시 구성해 데이터셋에 쓰고 멈춥니다. --extract는 처음 한 번 자동으로 합니다"),
+    DE("Die Trajektorie einer XGRIDS-Aufnahme aus ihrem LiDAR neu in einen Datensatz schreiben und beenden. --extract tut das einmal selbst"),
+    FR("Refaire la trajectoire d'une capture XGRIDS à partir de son LiDAR dans un jeu de données, puis s'arrêter. --extract le fait une fois seul"),
+    ES("Rehacer la trayectoria de una captura XGRIDS con su LiDAR en un conjunto de datos y terminar. --extract lo hace una vez solo"),
+    PT("Refazer a trajetória de uma captura XGRIDS a partir do LiDAR num conjunto de dados e parar. --extract faz isso uma vez sozinho"),
+    IT("Rifare la traiettoria di una cattura XGRIDS dal suo LiDAR in un dataset e fermarsi. --extract lo fa una volta da solo"),
+    NL("Het traject van een XGRIDS-opname opnieuw uit de LiDAR in een dataset schrijven en stoppen. --extract doet dit één keer zelf"),
+    RU("Построить траекторию съёмки XGRIDS заново по LiDAR в набор данных и завершить. --extract делает это один раз сам"),
+    TR("Bir XGRIDS çekiminin yörüngesini LiDAR'dan yeniden bir veri kümesine yaz ve dur. --extract bunu bir kez kendisi yapar"));
+
 SS_MSG(err_no_input,
     EN("{0}: name a dataset folder and at least one --cloud"),
     JA("{0}: データセットフォルダと、少なくとも 1 つの --cloud を指定してください"),
@@ -1287,6 +1302,21 @@ SS_MSG(step_scan_photos,
     IT("Foto della scansione"),   NL("Scanfoto's"),           RU("Фото скана"),
     TR("Tarama fotoğrafları"));
 
+SS_MSG(trajectory_making,
+    EN("Making the trajectory of {0} again from its LiDAR..."),
+    JA("{0} の軌跡を LiDAR から再構成しています..."),
+    ZH_HANS("正在用 LiDAR 重建 {0} 的轨迹..."),
+    ZH_HANT("正在用 LiDAR 重建 {0} 的軌跡..."),
+    KO("{0}의 궤적을 LiDAR로 다시 구성하는 중..."),
+    DE("Die Trajektorie von {0} wird aus ihrem LiDAR neu bestimmt..."),
+    FR("Trajectoire de {0} refaite à partir de son LiDAR..."),
+    ES("Rehaciendo la trayectoria de {0} con su LiDAR..."),
+    PT("Refazendo a trajetória de {0} a partir do LiDAR..."),
+    IT("Traiettoria di {0} rifatta dal suo LiDAR..."),
+    NL("Het traject van {0} wordt opnieuw bepaald uit de LiDAR..."),
+    RU("Траектория {0} строится заново по LiDAR..."),
+    TR("{0} yörüngesi LiDAR'dan yeniden oluşturuluyor..."));
+
 SS_MSG(scan_photos_taking,
     EN("Taking the photographs out of {0}..."),
     JA("{0} から写真を取り出しています..."),
@@ -1652,6 +1682,36 @@ SS_MSG(extracted_xbin,
     NL("Uit de scan gehaalde beelden: {0}   Pinhole: {1}   Fisheye: {2}"),
     RU("Изображений извлечено из скана: {0}   Обскура: {1}   Фишай: {2}"),
     TR("Taramadan alınan görüntü: {0}   İğne deliği: {1}   Balıkgözü: {2}"));
+
+SS_MSG(trajectory_built,
+    EN("Trajectory of {0} made again from its LiDAR. Loops: {1} of {2} tried. Distance from the device's: {3} m (median). Map sharper by: {4} %"),
+    JA("{0} の軌跡を LiDAR から再構成しました。ループ: {1} / 試行 {2}。デバイスの軌跡との距離: {3} m (中央値)。マップの鮮明化: {4} %"),
+    ZH_HANS("已用 LiDAR 重建 {0} 的轨迹。回环：{1}（尝试 {2}）。与设备轨迹的距离：{3} m（中位数）。地图清晰度提升：{4} %"),
+    ZH_HANT("已用 LiDAR 重建 {0} 的軌跡。迴圈：{1}（嘗試 {2}）。與裝置軌跡的距離：{3} m（中位數）。地圖清晰度提升：{4} %"),
+    KO("{0}의 궤적을 LiDAR로 다시 구성했습니다. 루프: {1} (시도 {2}). 장치 궤적과의 거리: {3} m (중앙값). 지도 선명도 향상: {4} %"),
+    DE("Trajektorie von {0} aus ihrem LiDAR neu bestimmt. Schleifen: {1} von {2} versucht. Abstand zu der des Geräts: {3} m (Median). Karte schärfer um: {4} %"),
+    FR("Trajectoire de {0} refaite à partir de son LiDAR. Boucles : {1} sur {2} essayées. Écart avec celle de l'appareil : {3} m (médiane). Carte plus nette de : {4} %"),
+    ES("Trayectoria de {0} rehecha con su LiDAR. Bucles: {1} de {2} probados. Distancia a la del dispositivo: {3} m (mediana). Mapa más nítido en: {4} %"),
+    PT("Trajetória de {0} refeita a partir do LiDAR. Laços: {1} de {2} tentados. Distância da do dispositivo: {3} m (mediana). Mapa mais nítido em: {4} %"),
+    IT("Traiettoria di {0} rifatta dal suo LiDAR. Anelli: {1} su {2} provati. Distanza da quella del dispositivo: {3} m (mediana). Mappa più nitida di: {4} %"),
+    NL("Traject van {0} opnieuw bepaald uit de LiDAR. Lussen: {1} van {2} geprobeerd. Afstand tot dat van het apparaat: {3} m (mediaan). Kaart scherper met: {4} %"),
+    RU("Траектория {0} построена заново по LiDAR. Петли: {1} из {2} опробованных. Расстояние до траектории устройства: {3} м (медиана). Карта чётче на: {4} %"),
+    TR("{0} yörüngesi LiDAR'dan yeniden oluşturuldu. Döngü: {1} / denenen {2}. Cihazınkine uzaklık: {3} m (ortanca). Haritadaki netlik artışı: %{4}"));
+
+SS_MSG(trajectory_device,
+    EN("Trajectory of {0}: the one from its LiDAR was not sharper, so the device's is kept. Occupied voxels: {1}, device's: {2}"),
+    JA("{0} の軌跡: LiDAR からの軌跡は鮮明にならなかったため、デバイスの軌跡を使用します。占有ボクセル: {1}、デバイス: {2}"),
+    ZH_HANS("{0} 的轨迹：LiDAR 重建的轨迹并不更清晰，保留设备轨迹。占用体素：{1}，设备：{2}"),
+    ZH_HANT("{0} 的軌跡：LiDAR 重建的軌跡並未更清晰，保留裝置軌跡。占用體素：{1}，裝置：{2}"),
+    KO("{0}의 궤적: LiDAR 궤적이 더 선명하지 않아 장치 궤적을 유지합니다. 점유 복셀: {1}, 장치: {2}"),
+    DE("Trajektorie von {0}: die aus dem LiDAR war nicht schärfer, die des Geräts bleibt. Belegte Voxel: {1}, Gerät: {2}"),
+    FR("Trajectoire de {0} : celle du LiDAR n'était pas plus nette, celle de l'appareil est gardée. Voxels occupés : {1}, appareil : {2}"),
+    ES("Trayectoria de {0}: la del LiDAR no era más nítida, se mantiene la del dispositivo. Vóxeles ocupados: {1}, dispositivo: {2}"),
+    PT("Trajetória de {0}: a do LiDAR não era mais nítida, a do dispositivo fica. Voxels ocupados: {1}, dispositivo: {2}"),
+    IT("Traiettoria di {0}: quella dal LiDAR non era più nitida, resta quella del dispositivo. Voxel occupati: {1}, dispositivo: {2}"),
+    NL("Traject van {0}: dat uit de LiDAR was niet scherper, dat van het apparaat blijft. Bezette voxels: {1}, apparaat: {2}"),
+    RU("Траектория {0}: построенная по LiDAR не чётче, остаётся траектория устройства. Занятые воксели: {1}, устройство: {2}"),
+    TR("{0} yörüngesi: LiDAR'dan gelen daha net değildi, cihazınki kalıyor. Dolu voksel: {1}, cihaz: {2}"));
 
 }  // namespace lidar
 }  // namespace msg

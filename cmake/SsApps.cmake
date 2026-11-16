@@ -133,6 +133,7 @@ list(APPEND SS_TOOL_SOURCES
      ${SS_SRC}/app/LidarAlign.cpp
      ${SS_SRC}/app/LidarDataset.cpp
      ${SS_SRC}/app/XbinAnchors.cpp
+     ${SS_SRC}/app/CaptureTrajectory.cpp
      ${SS_SRC}/app/ScanDepth.cpp
      ${SS_SRC}/app/DepthPng.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_E57=1)
@@ -548,6 +549,12 @@ add_executable(lidar_align_test
     ${SS_SRC}/app/ScanDepth.cpp
     ${SS_SRC}/app/DepthPng.cpp)
 ss_configure_app(lidar_align_test)
+
+# A capture's trajectory from its LiDAR: two drifting laps of a synthetic room.
+add_executable(capture_trajectory_test
+    ${SS_SRC}/app/tests/capture_trajectory_test.cpp
+    ${SS_SRC}/app/CaptureTrajectory.cpp)
+ss_configure_app(capture_trajectory_test)
 
 # The capture refinement on a synthetic rig: the SfM bundle adjustment.
 if(SS_BUILD_SFM)

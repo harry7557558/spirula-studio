@@ -2,6 +2,7 @@
 // geometry (app/LidarDataset.h). The dataset screen's Align step runs this as a
 // child process and reads its progress lines back, so every line is a Msg.
 
+#include "app/CaptureTrajectory.h"
 #include "app/LidarDataset.h"
 #include "app/XbinAnchors.h"
 #include "app/Tools.h"
@@ -47,6 +48,7 @@ void usage() {
     std::fprintf(stderr,
                  "    %s [--ffmpeg <exe>] --extract <scan.e57|scan.xbin> <dataset folder> [<subfolder>]\n",
                  prog.c_str());
+    std::fprintf(stderr, "    %s --trajectory <scan.xbin> <dataset folder>\n", prog.c_str());
     std::fprintf(stderr, "    %s --info <scan>\n\n", prog.c_str());
     for (const std::string& l : spirula::i18n::wrap(L::usage_about.get(), 80))
         std::fprintf(stderr, "    %s\n", l.c_str());
@@ -69,6 +71,7 @@ void usage() {
     help_row("--scanner-poses", L::opt_scanner_poses.get());
     help_row("--refine", L::opt_refine.get());
     help_row("--render-anchors", L::opt_render.get());
+    help_row("--trajectory <file> <dir>", L::opt_trajectory.get());
     help_row("--info <file>", L::opt_info.get());
     help_row("--ffmpeg <exe>", spirula::i18n::msg::samhelp::xh_ffmpeg.get());
 }
@@ -108,11 +111,19 @@ int spirula_lidar_main(int argc, char** argv) {
             if (a == "--info" && has_value) return info(argv[i + 1]);
             // Before --extract: it runs at once and takes the arguments after it.
             if (a == "--ffmpeg" && has_value) { decoder.ffmpeg_exe = argv[++i]; continue; }
+            if (a == "--trajectory" && i + 2 < argc) {
+                const std::string lidar = (std::filesystem::path(argv[i + 2]) / "lidar").string();
+                std::error_code ec;
+                std::filesystem::remove(app::lidar::trajectory_path(lidar, argv[i + 1]), ec);
+                app::lidar::ensure_trajectory(argv[i + 1], lidar, say);
+                return 0;
+            }
             if (a == "--extract" && i + 2 < argc) {
                 const std::string ds = argv[i + 2];
                 const std::string sub = i + 3 < argc
                     ? argv[i + 3] : std::filesystem::path(argv[i + 1]).stem().string();
                 if (spirula::xbin::is_xbin_path(argv[i + 1])) {
+                    app::lidar::ensure_trajectory(argv[i + 1], (std::filesystem::path(ds) / "lidar").string(), say);
                     long long pinhole = 0, fisheye = 0;
                     for (const app::lidar::XbinCameraFolder& f : app::lidar::extract_xbin_anchors(
                              argv[i + 1], (std::filesystem::path(ds) / "images").string(), sub,

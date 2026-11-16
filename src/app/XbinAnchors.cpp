@@ -1,5 +1,6 @@
 #include "app/XbinAnchors.h"
 
+#include "app/CaptureTrajectory.h"
 #include "app/FfmpegVideo.h"
 #include "app/LidarDataset.h"
 #include "app/gui/Subprocess.h"
@@ -311,6 +312,8 @@ std::vector<XbinCameraFolder> extract_xbin_anchors(const std::string& xbin_path,
                                                    const std::atomic<bool>* cancel,
                                                    const XbinProgress& progress) {
     spirula::xbin::Reader reader(xbin_path);
+    reader.set_correction(
+        read_trajectory(trajectory_path(fs::path(anchors_path).parent_path().string(), xbin_path)));
     std::vector<Anchor> anchors;
     std::error_code ec;
     if (fs::exists(anchors_path, ec)) anchors = read_anchors(anchors_path);

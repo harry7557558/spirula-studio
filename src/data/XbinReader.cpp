@@ -9,6 +9,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <sstream>
 #include <stdexcept>
@@ -706,12 +707,57 @@ int64_t Reader::points_estimate() const {
     return it == _impl->bytes.end() ? 0 : it->second / kBytesPerPoint;
 }
 
+namespace {
+
+struct LidarPoint {
+    double p[3];        // IMU frame, metres
+    int64_t time_us;
+    uint8_t intensity;
+};
+
+// One /lidar message: header field 1 (its field 2 the sweep's time), then a
+// point per field 2: x y z in mm (fields 1-3), intensity (4), time from the
+// sweep's in us (6). Points nearer than `min_range` to the sensor are left out.
+void parse_sweep(const uint8_t* d, size_t n, const double E[16], double min_range, double max_range,
+                 std::vector<LidarPoint>& out) {
+    out.clear();
+    int64_t sweep_us = 0;
+    Fields m(d, n);
+    while (m.next()) {
+        if (m.wire != 2) continue;
+        if (m.field == 1) {
+            Fields h(m.data, m.size);
+            while (h.next())
+                if (h.field == 2 && h.wire == 0) sweep_us = zigzag(h.value);
+            continue;
+        }
+        if (m.field != 2) continue;
+        int64_t v[7] = {};
+        Fields pt(m.data, m.size);
+        while (pt.next())
+            if (pt.wire == 0 && pt.field < 7) v[pt.field] = (int64_t)pt.value;
+        const double x = zigzag((uint64_t)v[1]) * 1e-3, y = zigzag((uint64_t)v[2]) * 1e-3,
+                     z = zigzag((uint64_t)v[3]) * 1e-3;
+        const double r2 = x * x + y * y + z * z;
+        if (r2 < min_range * min_range || r2 > max_range * max_range) continue;
+        LidarPoint& o = out.emplace_back();
+        o.p[0] = E[0] * x + E[1] * y + E[2] * z + E[3];
+        o.p[1] = E[4] * x + E[5] * y + E[6] * z + E[7];
+        o.p[2] = E[8] * x + E[9] * y + E[10] * z + E[11];
+        o.time_us = zigzag((uint64_t)v[6]);
+        o.intensity = (uint8_t)std::clamp<int64_t>(v[4], 0, 255);
+    }
+    for (LidarPoint& o : out) o.time_us += sweep_us;
+}
+
+}  // namespace
+
 bool Reader::read_points(const std::function<void(const e57::Point*, size_t)>& sink,
                          const std::atomic<bool>* cancel) {
     Impl& I = *_impl;
-    const double* E = I.imu_from_lidar;
     std::vector<e57::Point> batch;
     batch.reserve(kBatch);
+    std::vector<LidarPoint> pts;
     bool stopped = false;
     try {
         I.each_message(I.id_of(kTopicLidar), [&](const uint8_t* d, size_t n) {
@@ -719,33 +765,14 @@ bool Reader::read_points(const std::function<void(const e57::Point*, size_t)>& s
                 stopped = true;
                 return false;
             }
-            int64_t sweep_us = 0;
-            Fields m(d, n);
-            while (m.next()) {
-                if (m.wire != 2) continue;
-                if (m.field == 1) {
-                    Fields h(m.data, m.size);
-                    while (h.next())
-                        if (h.field == 2 && h.wire == 0) sweep_us = zigzag(h.value);
-                    continue;
-                }
-                if (m.field != 2) continue;
-                int64_t v[7] = {};
-                Fields pt(m.data, m.size);
-                while (pt.next())
-                    if (pt.wire == 0 && pt.field < 7) v[pt.field] = (int64_t)pt.value;
-                const double x = zigzag((uint64_t)v[1]) * 1e-3, y = zigzag((uint64_t)v[2]) * 1e-3,
-                             z = zigzag((uint64_t)v[3]) * 1e-3;
-                if (x * x + y * y + z * z < kMinRange * kMinRange) continue;
+            parse_sweep(d, n, I.imu_from_lidar, kMinRange, INFINITY, pts);
+            for (const LidarPoint& q : pts) {
                 double R[9], c[3];
-                if (!I.imu_pose(sweep_us + zigzag((uint64_t)v[6]), R, c)) continue;
-                const double p[3] = {E[0] * x + E[1] * y + E[2] * z + E[3],
-                                     E[4] * x + E[5] * y + E[6] * z + E[7],
-                                     E[8] * x + E[9] * y + E[10] * z + E[11]};
+                if (!I.imu_pose(q.time_us, R, c)) continue;
                 e57::Point& o = batch.emplace_back();
                 for (int r = 0; r < 3; r++)
-                    o.xyz[r] = R[r * 3] * p[0] + R[r * 3 + 1] * p[1] + R[r * 3 + 2] * p[2] + c[r];
-                o.rgb[0] = o.rgb[1] = o.rgb[2] = (uint8_t)std::clamp<int64_t>(v[4], 0, 255);
+                    o.xyz[r] = R[r * 3] * q.p[0] + R[r * 3 + 1] * q.p[1] + R[r * 3 + 2] * q.p[2] + c[r];
+                o.rgb[0] = o.rgb[1] = o.rgb[2] = q.intensity;
                 if (batch.size() == kBatch) {
                     sink(batch.data(), batch.size());
                     batch.clear();
@@ -759,6 +786,46 @@ bool Reader::read_points(const std::function<void(const e57::Point*, size_t)>& s
     if (stopped) return false;
     if (!batch.empty()) sink(batch.data(), batch.size());
     return true;
+}
+
+bool Reader::read_sweeps(double min_range, double max_range, const std::function<bool(const Sweep&)>& sink) {
+    Impl& I = *_impl;
+    std::vector<LidarPoint> pts;
+    Sweep s;
+    bool stopped = false;
+    try {
+        I.each_message(I.id_of(kTopicLidar), [&](const uint8_t* d, size_t n) {
+            parse_sweep(d, n, I.imu_from_lidar, std::max(min_range, kMinRange), max_range, pts);
+            if (pts.empty()) return true;
+            int64_t lo = pts[0].time_us, hi = lo;
+            for (const LidarPoint& q : pts) {
+                lo = std::min(lo, q.time_us);
+                hi = std::max(hi, q.time_us);
+            }
+            s.time_us = lo + (hi - lo) / 2;
+            double Rm[9], cm[3];
+            if (!I.imu_pose(s.time_us, Rm, cm)) return true;
+            s.xyz.clear();
+            for (const LidarPoint& q : pts) {
+                double R[9], c[3];
+                if (!I.imu_pose(q.time_us, R, c)) continue;
+                double w[3];
+                for (int r = 0; r < 3; r++)
+                    w[r] = R[r * 3] * q.p[0] + R[r * 3 + 1] * q.p[1] + R[r * 3 + 2] * q.p[2] + c[r] - cm[r];
+                for (int r = 0; r < 3; r++)
+                    s.xyz.push_back((float)(Rm[r] * w[0] + Rm[3 + r] * w[1] + Rm[6 + r] * w[2]));
+            }
+            if (!sink(s)) stopped = true;
+            return !stopped;
+        });
+    } catch (const std::runtime_error& e) {
+        fail(I.path, e.what());
+    }
+    return !stopped;
+}
+
+bool Reader::imu_pose(int64_t time_us, double R[9], double centre[3]) const {
+    return _impl->imu_pose(time_us, R, centre);
 }
 
 bool Reader::camera_pose(size_t cam, int64_t time_us, double R[9], double centre[3]) const {
@@ -786,6 +853,28 @@ std::array<double, 6> Correction::at(int64_t t) const {
         for (int k = 0; k < 6; k++) m[k] = (1 - s) * move[i - 1][k] + s * move[i][k];
     }
     return m;
+}
+
+Correction compose(const Correction& outer, const Correction& inner) {
+    if (outer.time_us.empty()) return inner;
+    if (inner.time_us.empty()) return outer;
+    Correction out;
+    std::set_union(outer.time_us.begin(), outer.time_us.end(), inner.time_us.begin(),
+                   inner.time_us.end(), std::back_inserter(out.time_us));
+    out.time_us.erase(std::unique(out.time_us.begin(), out.time_us.end()), out.time_us.end());
+    for (const int64_t t : out.time_us) {
+        const std::array<double, 6> o = outer.at(t), i = inner.at(t);
+        const Quat qo = quat_exp({o[0], o[1], o[2]});
+        const Vec3 r = quat_log(quat_mul(qo, quat_exp({i[0], i[1], i[2]})));
+        double R[9];
+        quat_to_R(qo, R);
+        std::array<double, 6>& m = out.move.emplace_back();
+        for (int k = 0; k < 3; k++) {
+            m[k] = r[k];
+            m[3 + k] = R[k * 3] * i[3] + R[k * 3 + 1] * i[4] + R[k * 3 + 2] * i[5] + o[3 + k];
+        }
+    }
+    return out;
 }
 
 void Reader::set_correction(Correction c) {

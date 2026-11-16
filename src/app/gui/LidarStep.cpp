@@ -1,6 +1,7 @@
 #include "app/gui/LidarStep.h"
 
 #include "app/AppPaths.h"
+#include "app/CaptureTrajectory.h"
 #include "app/FrameMask.h"
 #include "app/LidarDataset.h"
 #include "app/gui/Subprocess.h"
@@ -111,6 +112,13 @@ bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
         const std::vector<std::string> subs = scan_photo_subdirs(job.clouds);
         for (size_t i = 0; i < job.clouds.size(); i++) {
             const std::string& c = job.clouds[i];
+            if (spirula::xbin::is_xbin_path(c)) {
+                prog.enter(Stage::ScanPhotos, format(ldmsg::trajectory_making, {c}));
+                if (!app::lidar::ensure_trajectory(
+                        c, root.string(), [&](const std::string& l) { prog.note(l, false); },
+                        [&](double f) { prog.count(Stage::ScanPhotos, (int64_t)(1000 * f), 1000); }, &cancel))
+                    return false;
+            }
             if (!job.takes_photos(c)) continue;
             const std::string& sub = subs[i];
             const auto drawn = stencils.find(c);

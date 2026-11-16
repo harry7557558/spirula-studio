@@ -45,6 +45,14 @@ struct Correction {
     std::array<double, 6> at(int64_t t) const;   // needs one key or more
 };
 
+// `outer` applied after `inner`, keyed at the times of both. Either may be empty.
+Correction compose(const Correction& outer, const Correction& inner);
+
+struct Sweep {
+    int64_t time_us = 0;      // the middle of its points' times
+    std::vector<float> xyz;   // in the IMU frame at `time_us`, metres
+};
+
 class Reader {
 public:
     explicit Reader(const std::string& path);   // throws std::runtime_error
@@ -60,9 +68,16 @@ public:
     bool read_points(const std::function<void(const e57::Point*, size_t)>& sink,
                      const std::atomic<bool>* cancel = nullptr);
 
+    // Each sweep in recorded order, its points `min_range` to `max_range` from
+    // the sensor, each placed by the trajectory at its own time and then taken
+    // into the IMU frame at the sweep's middle. `sink` returns false to stop.
+    bool read_sweeps(double min_range, double max_range, const std::function<bool(const Sweep&)>& sink);
+
     // Camera-to-world rotation (row-major, OpenCV axes) and centre of camera
     // `cam` at `time_us`; false outside the trajectory.
     bool camera_pose(size_t cam, int64_t time_us, double R[9], double centre[3]) const;
+    // The same for the IMU, whose frame the trajectory is in.
+    bool imu_pose(int64_t time_us, double R[9], double centre[3]) const;
 
     // Moves every point and camera pose after this call: photographs placed
     // better than the device's own trajectory carry the scan with them.
