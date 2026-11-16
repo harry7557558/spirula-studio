@@ -886,14 +886,14 @@ FlipCov _fl_make_cov(float a, float rg, float by, float ex, float ey, float px, 
     return c;
 }
 
-// FusedSSIM.cu's flip_cov: the coverage entry's halves, or the closed form.
+// flip_mask_cov's seven coverages, or the closed form. Float32: float16 put the
+// all-kept gradient 8% of max off the closed form on an R9700 (docs/notes/flip.md).
 [ForceInline]
-FlipCov _fl_cov(uint* cov, bool has_cov, int b, int y, int x, int H, int W) {
+FlipCov _fl_cov(float* cov, bool has_cov, int b, int y, int x, int H, int W) {
     if (has_cov) {
-        int o = ((b * H + y) * W + x) * 4;
-        float2 v0 = unpack_half2(cov[o]), v1 = unpack_half2(cov[o + 1]);
-        float2 v2 = unpack_half2(cov[o + 2]), v3 = unpack_half2(cov[o + 3]);
-        return _fl_make_cov(v0.x, v0.y, v1.x, v1.y, v2.x, v2.y, v3.x);
+        int o = ((b * H + y) * W + x) * 7;
+        return _fl_make_cov(cov[o], cov[o + 1], cov[o + 2], cov[o + 3],
+                            cov[o + 4], cov[o + 5], cov[o + 6]);
     }
     if (x >= HALO && x < W - HALO && y >= HALO && y < H - HALO)
         return _fl_make_cov(1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f);
@@ -909,7 +909,7 @@ struct FlipCovParams {
     uint* masks;
     uint* img1;
     uint* img2;
-    uint* out;    // [B,H,W,4] half pairs
+    float* out;   // [B,H,W,7]: a, rg, by, ex, ey, px, py
     int B, H, W;
     int Bm, Hm, Wm;
     float sat;
@@ -945,21 +945,21 @@ void flip_mask_cov(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     int y = int(wg.y) * COV_T + ty;
     if (x >= p.W || y >= p.H) return;
     int j = (ty + HALO) * COV_T + tx;
-    int o = ((b * p.H + y) * p.W + x) * 4;
-    p.out[o] = pack_half2(float2(_fl_tap<kFlA>(X + kFlA * N + j, COV_T),
-                                 _fl_tap<kFlRG>(X + kFlRG * N + j, COV_T)));
-    p.out[o + 1] = pack_half2(float2(_fl_tap<kFlBY>(X + kFlBY * N + j, COV_T),
-                                     _fl_tap<kFlG>(X + kFlD * N + j, COV_T)));
-    p.out[o + 2] = pack_half2(float2(_fl_tap<kFlD>(X + kFlG * N + j, COV_T),
-                                     _fl_tap<kFlG>(X + kFlP * N + j, COV_T)));
-    p.out[o + 3] = pack_half2(float2(_fl_tap<kFlP>(X + kFlG * N + j, COV_T), 0.0f));
+    int o = ((b * p.H + y) * p.W + x) * 7;
+    p.out[o] = _fl_tap<kFlA>(X + kFlA * N + j, COV_T);
+    p.out[o + 1] = _fl_tap<kFlRG>(X + kFlRG * N + j, COV_T);
+    p.out[o + 2] = _fl_tap<kFlBY>(X + kFlBY * N + j, COV_T);
+    p.out[o + 3] = _fl_tap<kFlG>(X + kFlD * N + j, COV_T);
+    p.out[o + 4] = _fl_tap<kFlD>(X + kFlG * N + j, COV_T);
+    p.out[o + 5] = _fl_tap<kFlG>(X + kFlP * N + j, COV_T);
+    p.out[o + 6] = _fl_tap<kFlP>(X + kFlG * N + j, COV_T);
 }
 
 struct FlipParams {
     uint* img1;       // [B,H,W,3], read as kSsimFmts
     uint* img2;
     uint* masks;      // [Bm,Hm,Wm] bool bytes
-    uint* cov;        // [B,H,W,4] from flip_mask_cov, or fallback
+    float* cov;       // [B,H,W,7] from flip_mask_cov, or fallback
     float* dL_dimg1;  // [B,H,W,3], accumulated (+=)
     float* val;       // mean FLIP accumulator
     float* loss_map;  // [B,H,W,1], accumulated (+=)
