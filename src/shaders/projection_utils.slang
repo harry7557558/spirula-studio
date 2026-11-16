@@ -10,6 +10,8 @@ static const float ALPHA_THRESHOLD = 1.0f/255.0f;
 
 // Below this squared cosine a ray misses a surfel's plane; ~0.06 degrees.
 static const float SURFEL_GRAZING_COS2 = 1e-6f;
+// Normal-axis extent of a surfel's projected bounds, relative to its smaller scale.
+static const float SURFEL_BOUND_THICKNESS = 1e-3f;
 
 // This must match Common.cuh
 enum CameraModelType {
@@ -1028,6 +1030,14 @@ struct SurfelHit : IDifferentiable {
     float t_hit;   // ray parameter of the plane hit
     float t_mean;  // ray parameter of the point closest to the mean
 };
+
+// fx, fy: pixels per radian, or per world unit when orthographic.
+[CudaDeviceExport]
+float2 surfel_pix_size(int camera_model, float fx, float fy) {
+    float inv_f = 1.f / sqrt(fx * fy);
+    return camera_model == int(CameraModelType::ORTHOGRAPHIC) ?
+        float2(inv_f, 0.f) : float2(0.f, inv_f);
+}
 
 // pix_size: world size of one pixel at ray parameter t is pix_size.x +
 // pix_size.y * t * |ray_d| (perspective: (0, 1/f); orthographic: (1/f, 0)).

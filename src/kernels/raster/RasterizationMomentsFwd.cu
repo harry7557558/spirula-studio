@@ -83,6 +83,7 @@ __global__ void moments_fwd_kernel(
     };
     float3 cam_t = { viewmats[3], viewmats[7], viewmats[11] };
     float fx = intrin.x, fy = intrin.y, cx = intrin.z, cy = intrin.w;
+    const float2 pix_size = SlangProjectionUtils::surfel_pix_size((int)camera_model, fx, fy);
     CameraDistortionCoeffsT<distortion> dist_coeffs = dist_coeffs_buffer.load<distortion>(image_id);
 
     float3 ray_o = SlangProjectionUtils::transform_ray_o(R, cam_t);
@@ -156,10 +157,10 @@ __global__ void moments_fwd_kernel(
             if (done) continue;
             Prim::FragmentFwd splat = splat_batch[k];
 
-            float alpha = splat.evaluate_alpha(ray_o, ray_d);
+            float alpha = splat.evaluate_alpha(ray_o, ray_d, pix_size);
             if (alpha <= ALPHA_THRESHOLD) continue;
 
-            RenderOutput col = splat.evaluate_color(ray_o, ray_d);
+            RenderOutput col = splat.evaluate_color(ray_o, ray_d, pix_size);
             float z = col.depth;
             if (z <= 0.0f) continue;
 

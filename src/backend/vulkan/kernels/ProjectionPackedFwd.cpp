@@ -44,7 +44,7 @@ using vkk::resolve_sh_quant;
 std::tuple<DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
            DeviceVector<float>, std::vector<DeviceTensorFloatND>>
 launch_projection_packed_vk(
-    const bool eval3d, const bool antialiased,
+    const uint32_t eval_mode, const bool antialiased,
     const int64_t N,
     const std::vector<DeviceTensorFloatND>& in_splats,
     const ColorBasis color,
@@ -105,10 +105,10 @@ launch_projection_packed_vk(
 
     // Spec IDs: 0 = camera model, 1 = SH degree (unused by the mask),
     // 2 = antialiased, 3 = SH value bits (unused by the mask), 4 = SB lobes
-    // (unused by the mask), 5 = eval3d, 6 = distortion tier.
+    // (unused by the mask), 5 = eval mode (kEval3d), 6 = distortion tier.
     backend::vk::SpecList spec{cd.cam,      cs.sh_degree,
                                antialiased ? 1u : 0u, spec_bits,
-                               cs.sb_lobes, eval3d ? 1u : 0u,
+                               cs.sb_lobes, eval_mode,
                                cd.dist};
     vkk::dispatch("projection_fwd.projection_packed_mask", spec, per_row,
                   rows, 1, &mp, sizeof(mp));
@@ -131,7 +131,7 @@ launch_projection_packed_vk(
     DeviceVector<float> sorting_depths;
     sorting_depths.resize(PoolSlot::ProjDepths, nnz);
     std::vector<DeviceTensorFloatND> splats_screen =
-        eval3d ? Vanilla3DGUT<0>::ScreenBuffer::empty_pool(
+        eval_mode != 0 ? Vanilla3DGUT<0>::ScreenBuffer::empty_pool(
                      nnz, PoolSlot::ProjScreen)
                : Vanilla3DGS<0>::ScreenBuffer::empty_pool(
                      nnz, PoolSlot::ProjScreen);
@@ -155,7 +155,7 @@ launch_projection_packed_vk(
         p.out_aabb = (uint64_t)aabb.data_ptr();
         p.out_depths = (uint64_t)sorting_depths.data_ptr();
         p.out_radii = (uint64_t)radii.data_ptr();
-        if (eval3d) {
+        if (eval_mode != 0) {
             Vanilla3DGUT<0>::ScreenBuffer sb(splats_screen);
             p.s_screen = (uint64_t)sb.raw_data();
         } else {
@@ -185,7 +185,7 @@ launch_projection_packed_vk(
 
 /* API definitions matching kernels/projection/ProjectionPackedFwd.cuh */
 
-#define _SS_DEF_PACKED(name, eval3d, antialiased)                        \
+#define _SS_DEF_PACKED(name, eval_mode, antialiased)                     \
 std::tuple<                                                                  \
     DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,      \
     DeviceVector<float>, std::vector<DeviceTensorFloatND>                    \
@@ -208,14 +208,15 @@ std::tuple<                                                                  \
     const int64_t sh_bounds_stride                                           \
 ) {                                                                          \
     return launch_projection_packed_vk(                                      \
-        eval3d, antialiased, num_splats, in_splats, color,                   \
+        eval_mode, antialiased, num_splats, in_splats, color,                \
         viewmats, intrins, image_width, image_height, camera_model,          \
         distortion, dist_coeffs, radii, sh_value_packed, sh_value_bounds,    \
         num_sh_buffer, sh_value_bits, sh_bounds_stride);                     \
 }
 
-_SS_DEF_PACKED(projection_3dgs_packed_forward, false, false)
-_SS_DEF_PACKED(projection_mip_packed_forward, false, true)
-_SS_DEF_PACKED(projection_3dgut_packed_forward, true, false)
+_SS_DEF_PACKED(projection_3dgs_packed_forward, 0u, false)
+_SS_DEF_PACKED(projection_mip_packed_forward, 0u, true)
+_SS_DEF_PACKED(projection_3dgut_packed_forward, 1u, false)
+_SS_DEF_PACKED(projection_2dgs_packed_forward, 2u, false)
 
 #undef _SS_DEF_PACKED

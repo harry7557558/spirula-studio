@@ -417,7 +417,7 @@ float add_blur(const float eps2d, inout float2x2 covar, out float compensation) 
 [Differentiable]
 void projection_3dgs<
     let camera_model: CameraModelType, D : ICameraDistortion,
-    let assume_valid: bool, let eval3d: bool
+    let assume_valid: bool, let eval3d: bool, let surfel: bool
 >(
     _projection_3dgs_ARGS(D.kNumParams)
 ) {
@@ -448,17 +448,22 @@ void projection_3dgs<
     float2x2 covar2d = float2x2(0.0f);
     opacity = 1.0 / (1.0 + exp(-in_opacity));
 
+    // A surfel's bounds are a 3DGUT gaussian's with the normal axis flattened.
+    float3 bound_scale = exp(scale);
+    if (surfel)
+        bound_scale.z = SURFEL_BOUND_THICKNESS * min(bound_scale.x, bound_scale.y);
+
     bool is_valid = true;
     if (camera_model == CameraModelType::ORTHOGRAPHIC) {
         float3x3 covar, covar_c;
-        quat_scale_to_covar(normalize(quat), exp(scale), covar);
+        quat_scale_to_covar(normalize(quat), bound_scale, covar);
         covarW2C(R, covar, covar_c);
         mean2d = float2(fx * mean_c.x + cx, fy * mean_c.y + cy);
         covar2d = float2x2(fx * fx * covar_c[0][0], fx * fy * covar_c[0][1],
                           fx * fy * covar_c[1][0], fy * fy * covar_c[1][1]);
     }
     else if (eval3d) {
-        SigmaPoints sigmas = world_gaussian_sigma_points(mean, exp(scale), normalize(quat), R, t);
+        SigmaPoints sigmas = world_gaussian_sigma_points(mean, bound_scale, normalize(quat), R, t);
         // SigmaPoints sigmas = world_gaussian_sigma_points(mean, exp(scale), quat, R, t);
 
         if (camera_model == CameraModelType::PINHOLE)
@@ -536,7 +541,8 @@ void projection_3dgs<
     }
 
     float compensation;
-    const float eps2d = (antialiased ? 0.1 : 0.3);
+    // Surfel: variance 0.5 px^2 is the low-pass's, so its cutoff matches the bounds.
+    const float eps2d = surfel ? 0.5 : (antialiased ? 0.1 : 0.3);
     float det = add_blur(eps2d, covar2d, compensation);
     if (!assume_valid && det <= 0.f) {
         aabb_xyxy = float4(0.0f);
@@ -592,12 +598,12 @@ void projection_3dgs<
 // One export per (camera model, distortion tier) the CUDA instantiation table
 // compiles -- slangc cannot export a generic. Keep this list and kCameraVariants
 // in tools/codegen/generate_kernel_instantiation.py in step.
-#define _DEF_projection_3dgs(funname, MODEL, D, NC, AV, E3D) \
+#define _DEF_projection_3dgs(funname, MODEL, D, NC, AV, E3D, SURF) \
     [CudaDeviceExport] \
     [ForceInline] \
     [Differentiable] \
     void funname(_projection_3dgs_ARGS(NC)) { \
-        return projection_3dgs<MODEL, D, AV, E3D>( \
+        return projection_3dgs<MODEL, D, AV, E3D, SURF>( \
             antialiased, \
             mean, quat, scale, in_opacity, R, t, \
             fx, fy, cx, cy, dist_coeffs, \
@@ -606,20 +612,27 @@ void projection_3dgs<
         ); \
     }
 
-#define _DEF_projection_3dgs_tiers(base, MODEL, E3D) \
-    _DEF_projection_3dgs(base##_none, MODEL, DistNone, 1, false, E3D) \
-    _DEF_projection_3dgs(base##_opencv, MODEL, DistOpenCV, 4, false, E3D) \
-    _DEF_projection_3dgs(base##_prism, MODEL, DistThinPrism, 8, false, E3D)
+#define _DEF_projection_3dgs_tiers(base, MODEL, E3D, SURF) \
+    _DEF_projection_3dgs(base##_none, MODEL, DistNone, 1, false, E3D, SURF) \
+    _DEF_projection_3dgs(base##_opencv, MODEL, DistOpenCV, 4, false, E3D, SURF) \
+    _DEF_projection_3dgs(base##_prism, MODEL, DistThinPrism, 8, false, E3D, SURF)
 
-_DEF_projection_3dgs_tiers(projection_3dgs_persp, CameraModelType::PINHOLE, false)
-_DEF_projection_3dgs_tiers(projection_3dgs_fisheye, CameraModelType::FISHEYE, false)
-_DEF_projection_3dgs_tiers(projection_3dgs_equisolid, CameraModelType::EQUISOLID, false)
-_DEF_projection_3dgs(projection_3dgs_equirect_none, CameraModelType::EQUIRECTANGULAR, DistNone, 1, false, false)
+_DEF_projection_3dgs_tiers(projection_3dgs_persp, CameraModelType::PINHOLE, false, false)
+_DEF_projection_3dgs_tiers(projection_3dgs_fisheye, CameraModelType::FISHEYE, false, false)
+_DEF_projection_3dgs_tiers(projection_3dgs_equisolid, CameraModelType::EQUISOLID, false, false)
+_DEF_projection_3dgs(projection_3dgs_equirect_none, CameraModelType::EQUIRECTANGULAR, DistNone, 1, false, false, false)
 
-_DEF_projection_3dgs_tiers(projection_3dgut_persp, CameraModelType::PINHOLE, true)
-_DEF_projection_3dgs_tiers(projection_3dgut_fisheye, CameraModelType::FISHEYE, true)
-_DEF_projection_3dgs_tiers(projection_3dgut_equisolid, CameraModelType::EQUISOLID, true)
-_DEF_projection_3dgs(projection_3dgut_equirect_none, CameraModelType::EQUIRECTANGULAR, DistNone, 1, false, true)
+_DEF_projection_3dgs_tiers(projection_3dgut_persp, CameraModelType::PINHOLE, true, false)
+_DEF_projection_3dgs_tiers(projection_3dgut_fisheye, CameraModelType::FISHEYE, true, false)
+_DEF_projection_3dgs_tiers(projection_3dgut_equisolid, CameraModelType::EQUISOLID, true, false)
+_DEF_projection_3dgs(projection_3dgut_equirect_none, CameraModelType::EQUIRECTANGULAR, DistNone, 1, false, true, false)
+
+// 2DGS: forward only. Its screen gradients are 3DGUT's (opacity and colour),
+// so the backward reuses the 3DGUT exports.
+_DEF_projection_3dgs_tiers(projection_2dgs_persp, CameraModelType::PINHOLE, true, true)
+_DEF_projection_3dgs_tiers(projection_2dgs_fisheye, CameraModelType::FISHEYE, true, true)
+_DEF_projection_3dgs_tiers(projection_2dgs_equisolid, CameraModelType::EQUISOLID, true, true)
+_DEF_projection_3dgs(projection_2dgs_equirect_none, CameraModelType::EQUIRECTANGULAR, DistNone, 1, false, true, true)
 
 
 /* Backward Projection */
@@ -631,12 +644,12 @@ interface _DiffProjection3DGS<let NC : int>
     static void projection(_projection_3dgs_ARGS(NC));
 };
 
-#define _DEF_projection_3dgs_interface(_InterfaceName, MODEL, D, NC, AV, E3D) \
+#define _DEF_projection_3dgs_interface(_InterfaceName, MODEL, D, NC, AV, E3D, SURF) \
     struct _InterfaceName : _DiffProjection3DGS<NC> { \
         [ForceInline] \
         [Differentiable] \
         static void projection(_projection_3dgs_ARGS(NC)) { \
-            return projection_3dgs<MODEL, D, AV, E3D>( \
+            return projection_3dgs<MODEL, D, AV, E3D, SURF>( \
                 antialiased, \
                 mean, quat, scale, in_opacity, R, t, \
                 fx, fy, cx, cy, dist_coeffs, \
@@ -647,19 +660,19 @@ interface _DiffProjection3DGS<let NC : int>
     };
 
 #define _DEF_projection_3dgs_interface_tiers(base, MODEL, E3D) \
-    _DEF_projection_3dgs_interface(base##_none, MODEL, DistNone, 1, true, E3D) \
-    _DEF_projection_3dgs_interface(base##_opencv, MODEL, DistOpenCV, 4, true, E3D) \
-    _DEF_projection_3dgs_interface(base##_prism, MODEL, DistThinPrism, 8, true, E3D)
+    _DEF_projection_3dgs_interface(base##_none, MODEL, DistNone, 1, true, E3D, false) \
+    _DEF_projection_3dgs_interface(base##_opencv, MODEL, DistOpenCV, 4, true, E3D, false) \
+    _DEF_projection_3dgs_interface(base##_prism, MODEL, DistThinPrism, 8, true, E3D, false)
 
 _DEF_projection_3dgs_interface_tiers(_DiffProjection3DGS_3dgs_persp, CameraModelType::PINHOLE, false)
 _DEF_projection_3dgs_interface_tiers(_DiffProjection3DGS_3dgs_fisheye, CameraModelType::FISHEYE, false)
 _DEF_projection_3dgs_interface_tiers(_DiffProjection3DGS_3dgs_equisolid, CameraModelType::EQUISOLID, false)
-_DEF_projection_3dgs_interface(_DiffProjection3DGS_3dgs_equirect_none, CameraModelType::EQUIRECTANGULAR, DistNone, 1, true, false)
+_DEF_projection_3dgs_interface(_DiffProjection3DGS_3dgs_equirect_none, CameraModelType::EQUIRECTANGULAR, DistNone, 1, true, false, false)
 
 _DEF_projection_3dgs_interface_tiers(_DiffProjection3DGS_3dgut_persp, CameraModelType::PINHOLE, true)
 _DEF_projection_3dgs_interface_tiers(_DiffProjection3DGS_3dgut_fisheye, CameraModelType::FISHEYE, true)
 _DEF_projection_3dgs_interface_tiers(_DiffProjection3DGS_3dgut_equisolid, CameraModelType::EQUISOLID, true)
-_DEF_projection_3dgs_interface(_DiffProjection3DGS_3dgut_equirect_none, CameraModelType::EQUIRECTANGULAR, DistNone, 1, true, true)
+_DEF_projection_3dgs_interface(_DiffProjection3DGS_3dgut_equirect_none, CameraModelType::EQUIRECTANGULAR, DistNone, 1, true, true, false)
 
 
 #define _projection_3dgs_vjp_ARGS(NC) \
@@ -731,5 +744,6 @@ _DEF_projection_3dgs_vjp_tiers(projection_3dgut_equisolid, _DiffProjection3DGS_3
 _DEF_projection_3dgs_vjp(projection_3dgut_equirect_none_vjp, _DiffProjection3DGS_3dgut_equirect_none, 1)
 
 
-_DEF_projection_3dgs(projection_3dgs_ortho_none, CameraModelType::ORTHOGRAPHIC, DistNone, 1, false, false)
-_DEF_projection_3dgs(projection_3dgut_ortho_none, CameraModelType::ORTHOGRAPHIC, DistNone, 1, false, true)
+_DEF_projection_3dgs(projection_3dgs_ortho_none, CameraModelType::ORTHOGRAPHIC, DistNone, 1, false, false, false)
+_DEF_projection_3dgs(projection_3dgut_ortho_none, CameraModelType::ORTHOGRAPHIC, DistNone, 1, false, true, false)
+_DEF_projection_3dgs(projection_2dgs_ortho_none, CameraModelType::ORTHOGRAPHIC, DistNone, 1, false, true, true)

@@ -1,7 +1,7 @@
 #pragma once
 
-// (camera model, distortion tier) -> the matching projection_3dgs / 3dgut
-// export in shaders/primitive_3dgs.slang.
+// (camera model, distortion tier) -> the matching projection_3dgs / 3dgut /
+// 2dgs export in shaders/primitive_3dgs.slang.
 //
 // Only the pairs the CUDA build instantiates exist here; the set matches
 // camera_distortion_is_compiled() in core/CameraModel.h, the export list in
@@ -36,11 +36,14 @@ struct Slang3DGSProj<CameraModelType::MODEL, CameraDistortionType::TIER> {      
     ) {                                                                            \
         Slang3DGS::projection_3dgs_##MODEL_SUFFIX##TIER_SUFFIX(antialiased, args...); \
     }                                                                              \
-    template<typename... Args>                                                     \
-    static __device__ __forceinline__ void fwd_3d(                                 \
+    template<bool surfel, typename... Args>                                        \
+    static __device__ __forceinline__ void fwd_eval3d(                             \
         bool antialiased, Args... args                                             \
     ) {                                                                            \
-        Slang3DGS::projection_3dgut_##MODEL_SUFFIX##TIER_SUFFIX(antialiased, args...); \
+        if constexpr (surfel)                                                      \
+            Slang3DGS::projection_2dgs_##MODEL_SUFFIX##TIER_SUFFIX(antialiased, args...); \
+        else                                                                       \
+            Slang3DGS::projection_3dgut_##MODEL_SUFFIX##TIER_SUFFIX(antialiased, args...); \
     }                                                                              \
     template<typename... Args>                                                     \
     static __device__ __forceinline__ void vjp_2d(                                 \
@@ -72,9 +75,12 @@ struct Slang3DGSProj<CameraModelType::ORTHOGRAPHIC, CameraDistortionType::None> 
     static __device__ __forceinline__ void fwd_2d(bool antialiased, Args... args) {
         Slang3DGS::projection_3dgs_ortho_none(antialiased, args...);
     }
-    template<typename... Args>
-    static __device__ __forceinline__ void fwd_3d(bool antialiased, Args... args) {
-        Slang3DGS::projection_3dgut_ortho_none(antialiased, args...);
+    template<bool surfel, typename... Args>
+    static __device__ __forceinline__ void fwd_eval3d(bool antialiased, Args... args) {
+        if constexpr (surfel)
+            Slang3DGS::projection_2dgs_ortho_none(antialiased, args...);
+        else
+            Slang3DGS::projection_3dgut_ortho_none(antialiased, args...);
     }
 };
 

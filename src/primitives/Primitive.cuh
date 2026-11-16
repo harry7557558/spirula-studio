@@ -14,13 +14,9 @@ enum class RenderOutputType {
     RGB, RGB_D, RGB_DN
 };
 
-// Channel set for the distortion regularizer image D = W*S - C^2. Depth is
-// always present when distortion is active (it is the primary 2DGS term); rgb
-// and normal are independently optional. `None` disables distortion. DN /
-// RGB_DN require a normal-rendering primitive: they are defined and handled in
-// the kernels but not instantiated for RGB_D primitives (placeholders until a
-// normal-rendering primitive exists). Channels must be a subset of the
-// primitive's RenderOutputType.
+// Channel set for the distortion regularizer D = W*S - C^2: depth always (the
+// 2DGS term), rgb and normal optional. A subset of the primitive's
+// RenderOutputType, so DN / RGB_DN are 2DGS only.
 enum class DistortionType {
     None, D, RGB_D, DN, RGB_DN
 };

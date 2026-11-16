@@ -166,9 +166,8 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     engine_max_weight_begin_step(step, max_steps, cfg.densify);
 
     // Pick the distortion channel set from the per-channel weights, restricted
-    // to the channels this primitive renders (normal is honored only once a
-    // normal-rendering primitive exists). 3dgs/mip and 3dgut all consume the
-    // distortion gradient in their backward.
+    // to the channels this primitive renders (normal only for 2dgs). Every
+    // primitive consumes the distortion gradient in its backward.
     const DistortionType dist_type = engine_distortion_type(
         engine_primitive_pixel_type(primitive),
         cfg.loss.weights[(int)LossWeightIndex::RgbDistReg],
