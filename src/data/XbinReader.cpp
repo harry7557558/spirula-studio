@@ -221,6 +221,15 @@ Vec3 quat_log(Quat q) {
     return {q[0] * k, q[1] * k, q[2] * k};
 }
 
+// Row-major rotation of a quaternion that need not be normalised.
+void quat_to_R(const Quat& q, double R[9]) {
+    const double n = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+    const double x = q[0] / n, y = q[1] / n, z = q[2] / n, w = q[3] / n;
+    R[0] = 1 - 2 * (y * y + z * z); R[1] = 2 * (x * y - z * w);     R[2] = 2 * (x * z + y * w);
+    R[3] = 2 * (x * y + z * w);     R[4] = 1 - 2 * (x * x + z * z); R[5] = 2 * (y * z - x * w);
+    R[6] = 2 * (x * z - y * w);     R[7] = 2 * (y * z + x * w);     R[8] = 1 - 2 * (x * x + y * y);
+}
+
 // The index i, in [1, n), with t[i - 1] <= x <= t[i]; t ascending, n >= 2.
 size_t bracket(const std::vector<int64_t>& t, int64_t x) {
     const size_t i = (size_t)(std::upper_bound(t.begin(), t.end(), x) - t.begin());
@@ -354,6 +363,7 @@ struct Reader::Impl {
     std::vector<std::array<double, 16>> cam0_from_cam;
     std::vector<uint32_t> camera_topic;
     std::string device_name;
+    Correction correction;
 
     // The id of the topic named `name`, or one no chunk has.
     uint32_t id_of(const std::string& name) const {
@@ -426,17 +436,25 @@ struct Reader::Impl {
         const Quat& a = att[i - 1];
         const Quat& b = att[i];
         const double sign = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3] < 0 ? -1 : 1;
-        double q[4], n = 0;
-        for (int k = 0; k < 4; k++) {
-            q[k] = (1 - s) * a[k] + s * sign * b[k];
-            n += q[k] * q[k];
-        }
-        n = std::sqrt(n);
-        const double x = q[0] / n, y = q[1] / n, z = q[2] / n, w = q[3] / n;
-        R[0] = 1 - 2 * (y * y + z * z); R[1] = 2 * (x * y - z * w);     R[2] = 2 * (x * z + y * w);
-        R[3] = 2 * (x * y + z * w);     R[4] = 1 - 2 * (x * x + z * z); R[5] = 2 * (y * z - x * w);
-        R[6] = 2 * (x * z - y * w);     R[7] = 2 * (y * z + x * w);     R[8] = 1 - 2 * (x * x + y * y);
+        Quat q;
+        for (int k = 0; k < 4; k++) q[k] = (1 - s) * a[k] + s * sign * b[k];
+        quat_to_R(q, R);
+        correct(t, R, c);
         return true;
+    }
+
+    void correct(int64_t t, double R[9], double c[3]) const {
+        if (correction.time_us.empty()) return;
+        const std::array<double, 6> m = correction.at(t);
+        double L[9], R0[9], c0[3];
+        quat_to_R(quat_exp({m[0], m[1], m[2]}), L);
+        std::memcpy(R0, R, sizeof R0);
+        std::memcpy(c0, c, sizeof c0);
+        for (int r = 0; r < 3; r++) {
+            for (int k = 0; k < 3; k++)
+                R[r * 3 + k] = L[r * 3] * R0[k] + L[r * 3 + 1] * R0[3 + k] + L[r * 3 + 2] * R0[6 + k];
+            c[r] = L[r * 3] * c0[0] + L[r * 3 + 1] * c0[1] + L[r * 3 + 2] * c0[2] + m[3 + r];
+        }
     }
 };
 
@@ -758,6 +776,22 @@ bool Reader::camera_pose(size_t cam, int64_t time_us, double R[9], double centre
         centre[r] = T[r * 4 + 3];
     }
     return true;
+}
+
+std::array<double, 6> Correction::at(int64_t t) const {
+    std::array<double, 6> m = move.front();
+    if (time_us.size() > 1 && t > time_us.front()) {
+        const size_t i = bracket(time_us, t);
+        const double s = std::clamp((double)(t - time_us[i - 1]) / (double)(time_us[i] - time_us[i - 1]), 0.0, 1.0);
+        for (int k = 0; k < 6; k++) m[k] = (1 - s) * move[i - 1][k] + s * move[i][k];
+    }
+    return m;
+}
+
+void Reader::set_correction(Correction c) {
+    if (c.time_us.size() != c.move.size() || !std::is_sorted(c.time_us.begin(), c.time_us.end()))
+        throw std::invalid_argument("a trajectory correction needs one move for each ascending key time");
+    _impl->correction = std::move(c);
 }
 
 void Reader::read_frames(size_t cam, const std::function<bool(const Frame&)>& sink) {

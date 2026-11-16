@@ -148,7 +148,8 @@ if(SS_BUILD_SFM)
     list(APPEND SS_TOOL_SOURCES
          ${SS_SRC}/app/cli/sfm_main.cpp
          ${SS_SRC}/app/cli/sfm_ba.cpp
-         ${SS_SRC}/app/AnchorRefine.cpp)
+         ${SS_SRC}/app/AnchorRefine.cpp
+         ${SS_SRC}/app/ScanCorrection.cpp)
     list(APPEND SS_TOOL_DEFS SS_TOOL_SFM=1)
     list(APPEND SS_TOOL_LIBS ss_sfm)
 endif()
@@ -555,6 +556,12 @@ if(SS_BUILD_SFM)
         ${SS_SRC}/app/AnchorRefine.cpp)
     ss_configure_app(anchor_refine_test)
     target_link_libraries(anchor_refine_test PRIVATE ss_sfm)
+
+    # A capture's scan following its refined photographs: drift, mount, outliers.
+    add_executable(scan_correction_test
+        ${SS_SRC}/app/tests/scan_correction_test.cpp
+        ${SS_SRC}/app/ScanCorrection.cpp)
+    ss_configure_app(scan_correction_test)
 endif()
 
 add_executable(system_recorder_test

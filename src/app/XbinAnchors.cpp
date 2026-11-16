@@ -358,6 +358,7 @@ std::vector<XbinCameraFolder> extract_xbin_anchors(const std::string& xbin_path,
             a.name = rel + "/" + frame_name(counters[i]);
             a.scan = xbin_path;
             a.rendered = place_only;
+            a.time_us = times[i];
             for (int i = 0; i < 9; i++) a.R[i] = R[i];
             a.centre = {c[0], c[1], c[2]};
             a.camera_model = cam.fisheye ? kColmapOpenCVFisheye : kColmapOpenCV;

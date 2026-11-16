@@ -348,6 +348,25 @@ void check_capture(const fs::path& dir, const fs::path& path) {
     check(r.camera_pose(1, 1250000, R, c) && close_to(c[0], 0.76), "camera_pose is camera -> camera_0");
     check(!r.camera_pose(0, 500000, R, c), "no pose before the trajectory");
 
+    // A correction: 20 cm along y at 1 s, a quarter turn about z at 2 s.
+    spirula::xbin::Correction corr;
+    corr.time_us = {1000000, 2000000};
+    corr.move = {{0, 0, 0, 0, 0.2, 0}, {0, 0, 1.5707963267948966, 0, 0, 0}};
+    r.set_correction(corr);
+    check(r.camera_pose(0, 1000000, R, c) && close_to(c[0], 0.01) && close_to(c[1], 0.2) && close_to(R[0], 1),
+          "a correction key moves the camera");
+    check(r.camera_pose(0, 1250000, R, c) && close_to(R[3], std::sin(0.25 * 1.5707963267948966)) &&
+              close_to(c[1], 0.15 + std::sin(0.25 * 1.5707963267948966) * 0.26, 1e-3),
+          "between two keys the move is blended");
+    std::vector<spirula::e57::Point> moved;
+    r.read_points([&](const spirula::e57::Point* p, size_t n) { moved.insert(moved.end(), p, p + n); });
+    // The sweep at 1.5 s: half way, an eighth turn and 10 cm.
+    check(moved.size() == 2 && close_to(moved[0].xyz[0], 2.51 * std::cos(0.7853981633974483), 1e-3) &&
+              close_to(moved[0].xyz[1], 2.51 * std::sin(0.7853981633974483) + 0.1, 1e-3),
+          "points move by the blend at their own time");
+    r.set_correction({});
+    check(r.camera_pose(0, 1250000, R, c) && close_to(c[0], 0.26) && close_to(c[1], 0), "an empty correction is the device's trajectory");
+
     std::vector<spirula::xbin::Frame> frames;
     r.read_frames(2, [&](const spirula::xbin::Frame& f) { frames.push_back(f); return true; });
     check(frames.size() == 1 && frames[0].time_us == 1250032 && frames[0].h264.size() == 16 &&

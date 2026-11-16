@@ -9,6 +9,7 @@
 
 #include "data/E57Reader.h"
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -34,6 +35,16 @@ struct Frame {
     std::vector<uint8_t> h264;  // one intra-coded access unit, Annex B
 };
 
+// A rigid move of the device's world at each key time: x' = Exp(r) x + t, with
+// r (rad) and t (metres) in `move` as r0 r1 r2 t0 t1 t2. Between two keys the
+// move is blended linearly, past the ends the nearest key holds.
+struct Correction {
+    std::vector<int64_t> time_us;            // ascending
+    std::vector<std::array<double, 6>> move;
+
+    std::array<double, 6> at(int64_t t) const;   // needs one key or more
+};
+
 class Reader {
 public:
     explicit Reader(const std::string& path);   // throws std::runtime_error
@@ -52,6 +63,11 @@ public:
     // Camera-to-world rotation (row-major, OpenCV axes) and centre of camera
     // `cam` at `time_us`; false outside the trajectory.
     bool camera_pose(size_t cam, int64_t time_us, double R[9], double centre[3]) const;
+
+    // Moves every point and camera pose after this call: photographs placed
+    // better than the device's own trajectory carry the scan with them.
+    // An empty correction is the device's trajectory again.
+    void set_correction(Correction c);
 
     // One camera's frames in recorded order; `sink` returns false to stop.
     void read_frames(size_t cam, const std::function<bool(const Frame&)>& sink);
