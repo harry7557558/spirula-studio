@@ -364,6 +364,15 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
             v_ray_d += v_ray_d_t;
         }
 
+        __device__ __forceinline__ void evaluate_vjp(
+            float3 ray_o, float3 ray_d, float2 pix_size,
+            float v_alpha, RenderOutput v_render,
+            FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
+        ) const {
+            evaluate_alpha_vjp(ray_o, ray_d, pix_size, v_alpha, v_frag, v_ray_o, v_ray_d);
+            evaluate_color_vjp(ray_o, ray_d, pix_size, v_render, v_frag, v_ray_o, v_ray_d);
+        }
+
     };
 
 #endif  // #ifdef __CUDACC__

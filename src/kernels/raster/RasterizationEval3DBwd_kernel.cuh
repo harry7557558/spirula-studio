@@ -564,13 +564,11 @@ __global__ void rasterize_to_pixels_bwd_kernel(
 
             // backward diff splat
         #if IS_EVAL3D
-            float3 v_ray_o_alpha = make_float3(0), v_ray_d_alpha = make_float3(0);
-            float3 v_ray_o_color = make_float3(0), v_ray_d_color = make_float3(0);
+            float3 v_ray_o_splat = make_float3(0), v_ray_d_splat = make_float3(0);
         #endif
             {
             #if IS_EVAL3D
-                splat.evaluate_alpha_vjp(ray_o, ray_d, pix_size, v_alpha, v_splat, v_ray_o_alpha, v_ray_d_alpha);
-                splat.evaluate_color_vjp(ray_o, ray_d, pix_size, v_color, v_splat, v_ray_o_color, v_ray_d_color);
+                splat.evaluate_vjp(ray_o, ray_d, pix_size, v_alpha, v_color, v_splat, v_ray_o_splat, v_ray_d_splat);
             #else
                 splat.evaluate_alpha_vjp(px, py, v_alpha, v_splat, kernel_cut);
                 splat.evaluate_color_vjp(px, py, v_color, v_splat);
@@ -592,8 +590,8 @@ __global__ void rasterize_to_pixels_bwd_kernel(
 
         #if IS_EVAL3D
             if (output_viewmat_grad) {
-                total_v_ray_o += v_ray_o_alpha + v_ray_o_color;
-                shared_v_ray_d[pix_id] += v_ray_d_alpha + v_ray_d_color;
+                total_v_ray_o += v_ray_o_splat;
+                shared_v_ray_d[pix_id] += v_ray_d_splat;
             }
         #endif
 

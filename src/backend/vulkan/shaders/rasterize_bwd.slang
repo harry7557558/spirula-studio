@@ -687,23 +687,22 @@ void _rb3_step(Raster3dgutBwdParams p, int pix_id, int splat_idx,
     if (splat_idx > asint(rb.w)) return;
     float3 ray_d = rb.xyz;
 
-    float alpha = kSurfel != 0
-        ? evaluate_alpha_2dgs(splat.mean, splat.iscl_rot, splat.opacity,
-                              ray_o, ray_d, pix_size)
-        : evaluate_alpha_3dgs(splat.mean, splat.iscl_rot, splat.opacity,
-                              ray_o, ray_d);
-    if (alpha <= ALPHA_THRESHOLD || dot(ray_d, ray_d) == 0.0f) return;
-
+    float alpha;
     float3 c_rgb;
     float c_depth;
     float3 c_normal = float3(0.0f);
-    if (kSurfel != 0)
-        evaluate_color_2dgs(splat.mean, splat.iscl_rot, splat.opacity,
-                            splat.rgb, ray_o, ray_d, pix_size, c_rgb, c_depth,
-                            c_normal);
-    else
+    if (kSurfel != 0) {
+        alpha = evaluate_2dgs(splat.mean, splat.iscl_rot, splat.opacity,
+                              splat.rgb, ray_o, ray_d, pix_size, c_rgb, c_depth,
+                              c_normal);
+        if (alpha <= ALPHA_THRESHOLD || dot(ray_d, ray_d) == 0.0f) return;
+    } else {
+        alpha = evaluate_alpha_3dgs(splat.mean, splat.iscl_rot, splat.opacity,
+                                    ray_o, ray_d);
+        if (alpha <= ALPHA_THRESHOLD || dot(ray_d, ray_d) == 0.0f) return;
         evaluate_color_3dgs(splat.mean, splat.iscl_rot, splat.opacity,
                             splat.rgb, ray_o, ray_d, c_rgb, c_depth);
+    }
     if (c_depth <= 0.0f) return;
     float4 color = float4(c_rgb, c_depth);
 
@@ -715,40 +714,38 @@ void _rb3_step(Raster3dgutBwdParams p, int pix_id, int splat_idx,
     float3 v_mean;
     float3x3 v_ir;
     float v_op;
+    float3 v_rgb;
     float3 v_ray_o_a, v_ray_d_a;
-    if (kSurfel != 0)
-        evaluate_alpha_2dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity,
-                                ray_o, ray_d, pix_size, v_alpha, v_mean, v_ir,
-                                v_op, v_ray_o_a, v_ray_d_a);
-    else
+    float3 v_ray_o_c = float3(0.0f), v_ray_d_c = float3(0.0f);
+#ifdef SS_RASTER_NODEPTH
+    v_color.w = 0.0f;
+    v_normal = float3(0.0f);
+#endif
+    if (kSurfel != 0) {
+        evaluate_2dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity, splat.rgb,
+                          ray_o, ray_d, pix_size, v_alpha, v_color.xyz,
+                          v_color.w, v_normal, v_mean, v_ir, v_op, v_rgb,
+                          v_ray_o_a, v_ray_d_a);
+    } else {
         evaluate_alpha_3dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity,
                                 ray_o, ray_d, v_alpha, v_mean, v_ir, v_op,
                                 v_ray_o_a, v_ray_d_a);
-    v_splat.mean += v_mean;
-    v_splat.iscl_rot += v_ir;
-    v_splat.opacity += v_op;
-
 #ifdef SS_RASTER_NODEPTH
-    float3 v_ray_o_c = float3(0.0f), v_ray_d_c = float3(0.0f);
-    v_splat.rgb += v_color.xyz;
+        v_rgb = v_color.xyz;
 #else
-    float3 v_rgb;
-    float3 v_ray_o_c, v_ray_d_c;
-    if (kSurfel != 0)
-        evaluate_color_2dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity,
-                                splat.rgb, ray_o, ray_d, pix_size, v_color.xyz,
-                                v_color.w, v_normal, v_mean, v_ir, v_op, v_rgb,
-                                v_ray_o_c, v_ray_d_c);
-    else
+        v_splat.mean += v_mean;
+        v_splat.iscl_rot += v_ir;
+        v_splat.opacity += v_op;
         evaluate_color_3dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity,
                                 splat.rgb, ray_o, ray_d, v_color.xyz,
                                 v_color.w, v_mean, v_ir, v_op, v_rgb,
                                 v_ray_o_c, v_ray_d_c);
+#endif
+    }
     v_splat.mean += v_mean;
     v_splat.iscl_rot += v_ir;
     v_splat.opacity += v_op;
     v_splat.rgb += v_rgb;
-#endif
 
     if (kAccumWeight != 0 || kMaxWeight != 0) {
         float T0 = _rb_Tg[pix_id].x;

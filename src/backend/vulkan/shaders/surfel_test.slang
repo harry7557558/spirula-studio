@@ -44,25 +44,22 @@ void surfel_eval(uint3 tid: SV_DispatchThreadID, uniform SurfelTestParams p) {
     float3 c; float depth; float3 normal;
     evaluate_color_2dgs(mean, M, opacity, rgb, ray_o, ray_d, pix, c, depth, normal);
 
-    float3 vm_a, vro_a, vrd_a; float3x3 vM_a; float vo_a;
-    evaluate_alpha_2dgs_vjp(mean, M, opacity, ray_o, ray_d, pix, v_alpha,
-                            vm_a, vM_a, vo_a, vro_a, vrd_a);
-    float3 vm_c, vro_c, vrd_c, v_rgb; float3x3 vM_c; float vo_c;
-    evaluate_color_2dgs_vjp(mean, M, opacity, rgb, ray_o, ray_d, pix,
-                            v_rgb_in, v_depth, v_normal,
-                            vm_c, vM_c, vo_c, v_rgb, vro_c, vrd_c);
+    float3 v_mean, v_ray_o, v_ray_d, v_rgb; float3x3 vM; float v_opacity;
+    evaluate_2dgs_vjp(mean, M, opacity, rgb, ray_o, ray_d, pix,
+                      v_alpha, v_rgb_in, v_depth, v_normal,
+                      v_mean, vM, v_opacity, v_rgb, v_ray_o, v_ray_d);
     float4 v_quat; float3 v_scale;
-    compute_2dgs_iscl_rot_vjp(quat, scale, vM_a + vM_c, v_quat, v_scale);
+    compute_2dgs_iscl_rot_vjp(quat, scale, vM, v_quat, v_scale);
 
     out[0] = alpha;
     st3(out, 1, c);
     out[4] = depth;
     st3(out, 5, normal);
-    st3(out, 8, vm_a + vm_c);
+    st3(out, 8, v_mean);
     out[11] = v_quat.x; out[12] = v_quat.y; out[13] = v_quat.z; out[14] = v_quat.w;
     st3(out, 15, v_scale);
-    out[18] = vo_a + vo_c;
+    out[18] = v_opacity;
     st3(out, 19, v_rgb);
-    st3(out, 22, vro_a + vro_c);
-    st3(out, 25, vrd_a + vrd_c);
+    st3(out, 22, v_ray_o);
+    st3(out, 25, v_ray_d);
 }

@@ -1083,50 +1083,40 @@ float evaluate_alpha_2dgs(
     return opacity * (h.g >= h.g_lp ? h.g : h.g_lp);
 }
 
-[CudaDeviceExport]
-void evaluate_alpha_2dgs_vjp(
-    float3 mean, float3x3 iscl_rot, float opacity,
-    float3 ray_o, float3 ray_d, float2 pix_size, float v_alpha,
-    out float3 v_mean, out float3x3 v_iscl_rot, out float v_opacity,
-    out float3 v_ray_o, out float3 v_ray_d
-) {
-    DifferentialPair<float3> dp_mean = diffPair(mean);
-    DifferentialPair<float3x3> dp_iscl_rot = diffPair(iscl_rot);
-    DifferentialPair<float> dp_opacity = diffPair(opacity);
-    DifferentialPair<float3> dp_ray_o = diffPair(ray_o);
-    DifferentialPair<float3> dp_ray_d = diffPair(ray_d);
-    bwd_diff(evaluate_alpha_2dgs)(
-        dp_mean, dp_iscl_rot, dp_opacity,
-        dp_ray_o, dp_ray_d, pix_size, v_alpha
-    );
-    v_mean = dp_mean.d;
-    v_iscl_rot = dp_iscl_rot.d;
-    v_opacity = dp_opacity.d;
-    v_ray_o = dp_ray_o.d;
-    v_ray_d = dp_ray_d.d;
-}
-
 // Where the low-pass wins, depth is the mean's, as in the 2DGS reference
 // rasterizer. The normal faces the ray.
 [CudaDeviceExport]
 [Differentiable]
-void evaluate_color_2dgs(
+float evaluate_2dgs(
     float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
     float3 ray_o, float3 ray_d, no_diff float2 pix_size,
     out float3 out_rgb, out float depth, out float3 normal
 ) {
     out_rgb = rgb;
     SurfelHit h = surfel_ray_hit(mean, iscl_rot, ray_o, ray_d, pix_size);
-    depth = h.g >= h.g_lp ? h.t_hit : h.t_mean;
+    bool on_disc = h.g >= h.g_lp;
+    depth = on_disc ? h.t_hit : h.t_mean;
     float3 n = float3(iscl_rot[2][0], iscl_rot[2][1], iscl_rot[2][2]);
     normal = dot(n, ray_d) > 0.f ? -n : n;
+    return opacity * (on_disc ? h.g : h.g_lp);
 }
 
 [CudaDeviceExport]
-void evaluate_color_2dgs_vjp(
+void evaluate_color_2dgs(
     float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
     float3 ray_o, float3 ray_d, float2 pix_size,
-    float3 v_out_rgb, float v_depth, float3 v_normal,
+    out float3 out_rgb, out float depth, out float3 normal
+) {
+    evaluate_2dgs(mean, iscl_rot, opacity, rgb, ray_o, ray_d, pix_size,
+                  out_rgb, depth, normal);
+}
+
+// Alpha and colour in one VJP: the ray-disc hit is computed once.
+[CudaDeviceExport]
+void evaluate_2dgs_vjp(
+    float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
+    float3 ray_o, float3 ray_d, float2 pix_size,
+    float v_alpha, float3 v_out_rgb, float v_depth, float3 v_normal,
     out float3 v_mean, out float3x3 v_iscl_rot, out float v_opacity, out float3 v_rgb,
     out float3 v_ray_o, out float3 v_ray_d
 ) {
@@ -1136,9 +1126,9 @@ void evaluate_color_2dgs_vjp(
     DifferentialPair<float3> dp_rgb = diffPair(rgb);
     DifferentialPair<float3> dp_ray_o = diffPair(ray_o);
     DifferentialPair<float3> dp_ray_d = diffPair(ray_d);
-    bwd_diff(evaluate_color_2dgs)(
+    bwd_diff(evaluate_2dgs)(
         dp_mean, dp_iscl_rot, dp_opacity, dp_rgb,
-        dp_ray_o, dp_ray_d, pix_size, v_out_rgb, v_depth, v_normal
+        dp_ray_o, dp_ray_d, pix_size, v_out_rgb, v_depth, v_normal, v_alpha
     );
     v_mean = dp_mean.d;
     v_iscl_rot = dp_iscl_rot.d;

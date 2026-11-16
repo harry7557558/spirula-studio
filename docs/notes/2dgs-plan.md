@@ -13,6 +13,8 @@ on both backends, and every parity test passes CUDA vs Vulkan.
 - `bdf5a0eb` regenerated `projection_utils.cuh`
 - `4e5d0c4f` projection and rasterizer, both backends, parity rows
 - `a460ad56` engine wiring, normals in the loss, surfel regularizers
+- fused alpha + colour VJP (`evaluate_2dgs_vjp`): one ray-disc hit per
+  backward fragment instead of two
 
 First measurements (an action-cam fisheye capture, 427 views, 1M splats, 7000
 steps, longer side 1344 px, 61 held-out views):
@@ -21,35 +23,31 @@ steps, longer side 1344 px, 61 held-out views):
 |---|---|---|---|---|---|
 | 3dgs  | Vulkan | 24.43 | 0.900 | 135 s | 451 MB |
 | 3dgut | Vulkan | 24.26 | 0.901 | 159 s | 482 MB |
-| 2dgs  | Vulkan | 23.91 | 0.891 | 206 s | 536 MB |
-| 2dgs  | CUDA   | 23.77 | 0.890 | 224 s | 544 MB |
+| 2dgs  | Vulkan | 23.89 | 0.891 | 173 s | 536 MB |
+| 2dgs  | CUDA   | 23.85 | 0.890 | 199 s | 544 MB |
 
-Quality is where the paper puts 2DGS against 3DGS; speed misses the 15%
-target (1.3x 3dgut). The raster backward is 60% of a 2DGS step:
-`evaluate_alpha_2dgs_vjp` and `evaluate_color_2dgs_vjp` each recompute the
-ray-disc hit.
+Quality is where the paper puts 2DGS against 3DGS. The fused VJP took the
+Vulkan raster backward from 12.5 to 9.8 ms a step (`SS_PROFILE=1`, 2000
+steps) and the 2dgs rows from 206 / 224 s, so Vulkan is 1.09x 3dgut, inside
+the 15% target.
 
 ## Next session
 
-1. **Speed.** One Slang VJP for alpha + colour that computes the surfel hit
-   once; use it in `Primitive2DGS.cuh`'s `FragmentBwd` and in
-   `rasterize_bwd.slang`'s `_rb3_step`. Re-run `raster_bwd_parity` (CUDA dump,
-   Vulkan compare) and re-time with `SS_PROFILE=1`.
-2. **Defaults (phase 5).** Pick distortion / normal-consistency weights for
+1. **Defaults (phase 5).** Pick distortion / normal-consistency weights for
    2dgs (paper: depth distortion 1000 bounded / 100 unbounded, normal 0.05
    from step 7000), re-tuned to this engine's loss normalisation; a preset in
    `TrainConfig.h` like the `mip` one.
-3. **GUI and costs (phase 5).** The primitive lists in `app/gui/GuiApp.cpp`,
+2. **GUI and costs (phase 5).** The primitive lists in `app/gui/GuiApp.cpp`,
    `app/gui/ViewportPanel.h`, `app/gui/render/RenderPanel.cpp` and
    `app/SettingCosts.h` do not know `2dgs` yet; the forecast does not count
    the normal render and its gradient (3 + 3 floats a pixel).
-4. **Densify check.** `densify_score_mode geom` and
+3. **Densify check.** `densify_score_mode geom` and
    `densify_score_blend_world_grad` read projection gradients; confirm they
    behave for 2dgs (they work, untested in isolation).
-5. **Export and meshing (phase 6).** PLY round-trip of a 2dgs checkpoint
+4. **Export and meshing (phase 6).** PLY round-trip of a 2dgs checkpoint
    (third scale at -20 reads as flat discs); a 2dgs model through `src/mesh/`.
    `RasterizationMomentsFwd` is still 3DGUT-only.
-6. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR.
+5. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR.
 
 Build and test (both trees on one machine):
 
@@ -120,8 +118,9 @@ the pinned 2026.12.0.1 rejects `primitive_3dgs.slang:587` for the CUDA target.
   so every later phase has something to compare against.
 
 ### 1. Shared math + gradient test (done)
-- `evaluate_alpha_2dgs`, `evaluate_color_2dgs` (rgb, depth, normal) and their
-  `_vjp`s in `projection_utils.slang`.
+- `evaluate_2dgs` (alpha, rgb, depth, normal) and its `_vjp` in
+  `projection_utils.slang`; `evaluate_alpha_2dgs` / `evaluate_color_2dgs`
+  for the forward.
 - `surfel_grad_test` (Vulkan): exact dual-number gradients of a host model;
   the device is held to the error distribution of the same model in fp32,
   because near grazing and for millimetre low-pass footprints fp32 itself

@@ -120,22 +120,6 @@ struct Vanilla2DGS : public Eval3DPrimitive<sh_degree, true> {
                 mean, iscl_rot, opacity, ray_o, ray_d, pix_size);
         }
 
-        __device__ __forceinline__ void evaluate_alpha_vjp(
-            float3 ray_o, float3 ray_d, float2 pix_size, float v_alpha,
-            FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
-        ) const {
-            float3 v_mean; float3x3 v_iscl_rot; float v_opacity;
-            float3 v_ray_o_t, v_ray_d_t;
-            SlangProjectionUtils::evaluate_alpha_2dgs_vjp(
-                mean, iscl_rot, opacity, ray_o, ray_d, pix_size, v_alpha,
-                &v_mean, &v_iscl_rot, &v_opacity, &v_ray_o_t, &v_ray_d_t);
-            v_frag.mean += v_mean;
-            v_frag.iscl_rot = v_frag.iscl_rot + v_iscl_rot;
-            v_frag.opacity += v_opacity;
-            v_ray_o += v_ray_o_t;
-            v_ray_d += v_ray_d_t;
-        }
-
         __device__ __forceinline__ RenderOutput evaluate_color(
             float3 ray_o, float3 ray_d, float2 pix_size
         ) const {
@@ -146,15 +130,16 @@ struct Vanilla2DGS : public Eval3DPrimitive<sh_degree, true> {
             return { out_rgb, out_depth, out_normal };
         }
 
-        __device__ __forceinline__ void evaluate_color_vjp(
-            float3 ray_o, float3 ray_d, float2 pix_size, RenderOutput v_render,
+        __device__ __forceinline__ void evaluate_vjp(
+            float3 ray_o, float3 ray_d, float2 pix_size,
+            float v_alpha, RenderOutput v_render,
             FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
         ) const {
             float3 v_mean; float3x3 v_iscl_rot; float v_opacity; float3 v_rgb;
             float3 v_ray_o_t, v_ray_d_t;
-            SlangProjectionUtils::evaluate_color_2dgs_vjp(
+            SlangProjectionUtils::evaluate_2dgs_vjp(
                 mean, iscl_rot, opacity, rgb, ray_o, ray_d, pix_size,
-                v_render.rgb, v_render.depth, v_render.normal,
+                v_alpha, v_render.rgb, v_render.depth, v_render.normal,
                 &v_mean, &v_iscl_rot, &v_opacity, &v_rgb, &v_ray_o_t, &v_ray_d_t);
             v_frag.mean += v_mean;
             v_frag.iscl_rot = v_frag.iscl_rot + v_iscl_rot;
