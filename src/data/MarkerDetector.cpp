@@ -4,6 +4,8 @@
 #include "apriltag.h"
 #include "tag36h10.h"
 #include "tag36h11.h"
+#include "tagStandard41h12.h"
+#include "tagStandard52h13.h"
 #include "tagAruco4x4_1000.h"
 #include "tagAruco5x5_1000.h"
 #include "tagAruco6x6_1000.h"
@@ -24,6 +26,8 @@ const char* marker_family_name(MarkerFamily family) {
     case MarkerFamily::Auto: return "auto";
     case MarkerFamily::Tag36h10: return "tag36h10";
     case MarkerFamily::Tag36h11: return "tag36h11";
+    case MarkerFamily::TagStandard41h12: return "tagStandard41h12";
+    case MarkerFamily::TagStandard52h13: return "tagStandard52h13";
     case MarkerFamily::Aruco4x4: return "aruco4x4_1000";
     case MarkerFamily::Aruco5x5: return "aruco5x5_1000";
     case MarkerFamily::Aruco6x6: return "aruco6x6_1000";
@@ -82,6 +86,8 @@ struct MarkerDetector::Impl {
             switch (family) {
             case MarkerFamily::Tag36h10: tf = tag36h10_create(); break;
             case MarkerFamily::Tag36h11: tf = tag36h11_create(); break;
+            case MarkerFamily::TagStandard41h12: tf = tagStandard41h12_create(); break;
+            case MarkerFamily::TagStandard52h13: tf = tagStandard52h13_create(); break;
             case MarkerFamily::Aruco4x4: tf = tagAruco4x4_1000_create(); break;
             case MarkerFamily::Aruco5x5: tf = tagAruco5x5_1000_create(); break;
             case MarkerFamily::Aruco6x6: tf = tagAruco6x6_1000_create(); break;
@@ -92,7 +98,7 @@ struct MarkerDetector::Impl {
             if (tf) {
                 families.emplace_back(family, tf);
                 // Dense ArUco dictionaries need exact decoding to avoid ID collisions.
-                const int bits = family <= MarkerFamily::Tag36h11 ? 2 : 0;
+                const int bits = family < MarkerFamily::Aruco4x4 ? 2 : 0;
                 apriltag_detector_add_family_bits(td, tf, bits);
             }
         }
