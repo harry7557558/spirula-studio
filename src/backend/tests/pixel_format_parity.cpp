@@ -202,8 +202,9 @@ void check_half_stages(std::mt19937& rng) {
         std::snprintf(what, sizeof(what), "appearance chain, float16 raw copy, %d image(s)", nb);
         expect_equal(download_half(raw16, 3 * np), rgb16f, 0.0, what);
 
-        // The three colour grids: float16 in gives what float in gives, and
-        // float16 out is float out rounded.
+        // The three colour grids: float16 in gives what float in gives, to fp32
+        // rounding (each input format is its own pipeline; on an R9700 they
+        // differ by up to one ulp), and float16 out is float out rounded.
         for (int fam = 0; fam < 3; fam++) {
             const char* name = fam == 0 ? "affine" : fam == 1 ? "ppisp" : "loglinear";
             const int C = fam == 0 ? 12 : 9;
@@ -233,7 +234,7 @@ void check_half_stages(std::mt19937& rng) {
             backend::device_synchronize();
             const std::vector<float> gref = download(gf, 3 * np);
             std::snprintf(what, sizeof(what), "%s grid, float16 in, %d image(s)", name, nb);
-            expect_equal(download(gff, 3 * np), gref, 0.0, what);
+            expect_equal(download(gff, 3 * np), gref, 1e-6, what);
             std::snprintf(what, sizeof(what), "%s grid, float16 out, %d image(s)", name, nb);
             expect_rounded(download_half(gh, 3 * np), gref, what);
 
@@ -273,7 +274,7 @@ void check_half_stages(std::mt19937& rng) {
                 // The grid gradient is summed with atomics.
                 std::snprintf(what, sizeof(what), "%s grid backward v%d, float16 in, %d image(s)",
                               name, version, nb);
-                expect_equal(v_rgb[1], v_rgb[0], 0.0, what);
+                expect_equal(v_rgb[1], v_rgb[0], 1e-6, what);
                 expect_equal(v_grid[1], v_grid[0], 1e-5, what);
             }
             for (void* q : {(void*)d_grid, gf, gff, gh, (void*)d_vout}) backend::device_free(q);
