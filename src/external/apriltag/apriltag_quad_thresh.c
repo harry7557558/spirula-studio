@@ -960,7 +960,17 @@ int fit_quad(
 
         area += sqrt(p*(p-length[0])*(p-length[1])*(p-length[2]));
 
-        if (area < 0.95*tag_width*tag_width) {
+        // Spirula: only families with this quad's border polarity set its minimum size.
+        int min_width = 1000000;
+        for (int i = 0; i < zarray_size(td->tag_families); i++) {
+            apriltag_family_t* family;
+            zarray_get(td->tag_families, i, &family);
+            if (family->reversed_border == quad->reversed_border)
+                min_width = imin(min_width, family->width_at_border);
+        }
+        if (td->quad_decimate > 1)
+            min_width /= td->quad_decimate;
+        if (area < 0.95*imax(min_width, 3)*imax(min_width, 3)) {
             res = 0;
             goto finish;
         }
