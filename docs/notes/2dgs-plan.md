@@ -6,20 +6,64 @@ to 3DGS speed and memory, on both backends.
 
 ## Status
 
-Phases 1-4 done: `--primitive 2dgs` trains on both backends, and every
-parity test passes CUDA vs Vulkan. First measurements (an action-cam fisheye
-capture, 427 views, 1M splats, 7000 steps, longer side 1344 px, Vulkan,
-61 held-out views):
+Phases 1-4 done (branch `native-2dgs`): `--primitive 2dgs` trains end to end
+on both backends, and every parity test passes CUDA vs Vulkan.
 
-| primitive | PSNR | SSIM | train time | engine VRAM |
-|---|---|---|---|---|
-| 3dgs  | 24.43 | 0.900 | 135 s | 451 MB |
-| 3dgut | 24.26 | 0.901 | 159 s | 482 MB |
-| 2dgs  | 23.91 | 0.891 | 206 s | 536 MB |
+- `23100e62` surfel math in shared Slang + `surfel_grad_test`
+- `bdf5a0eb` regenerated `projection_utils.cuh`
+- `4e5d0c4f` projection and rasterizer, both backends, parity rows
+- `a460ad56` engine wiring, normals in the loss, surfel regularizers
 
-The raster backward is 60% of a 2DGS step: `evaluate_alpha_2dgs_vjp` and
-`evaluate_color_2dgs_vjp` each recompute the ray-disc hit. A fused VJP is the
-first optimization to try.
+First measurements (an action-cam fisheye capture, 427 views, 1M splats, 7000
+steps, longer side 1344 px, 61 held-out views):
+
+| primitive | backend | PSNR | SSIM | train time | engine VRAM |
+|---|---|---|---|---|---|
+| 3dgs  | Vulkan | 24.43 | 0.900 | 135 s | 451 MB |
+| 3dgut | Vulkan | 24.26 | 0.901 | 159 s | 482 MB |
+| 2dgs  | Vulkan | 23.91 | 0.891 | 206 s | 536 MB |
+| 2dgs  | CUDA   | 23.77 | 0.890 | 224 s | 544 MB |
+
+Quality is where the paper puts 2DGS against 3DGS; speed misses the 15%
+target (1.3x 3dgut). The raster backward is 60% of a 2DGS step:
+`evaluate_alpha_2dgs_vjp` and `evaluate_color_2dgs_vjp` each recompute the
+ray-disc hit.
+
+## Next session
+
+1. **Speed.** One Slang VJP for alpha + colour that computes the surfel hit
+   once; use it in `Primitive2DGS.cuh`'s `FragmentBwd` and in
+   `rasterize_bwd.slang`'s `_rb3_step`. Re-run `raster_bwd_parity` (CUDA dump,
+   Vulkan compare) and re-time with `SS_PROFILE=1`.
+2. **Defaults (phase 5).** Pick distortion / normal-consistency weights for
+   2dgs (paper: depth distortion 1000 bounded / 100 unbounded, normal 0.05
+   from step 7000), re-tuned to this engine's loss normalisation; a preset in
+   `TrainConfig.h` like the `mip` one.
+3. **GUI and costs (phase 5).** The primitive lists in `app/gui/GuiApp.cpp`,
+   `app/gui/ViewportPanel.h`, `app/gui/render/RenderPanel.cpp` and
+   `app/SettingCosts.h` do not know `2dgs` yet; the forecast does not count
+   the normal render and its gradient (3 + 3 floats a pixel).
+4. **Densify check.** `densify_score_mode geom` and
+   `densify_score_blend_world_grad` read projection gradients; confirm they
+   behave for 2dgs (they work, untested in isolation).
+5. **Export and meshing (phase 6).** PLY round-trip of a 2dgs checkpoint
+   (third scale at -20 reads as flat discs); a 2dgs model through `src/mesh/`.
+   `RasterizationMomentsFwd` is still 3DGUT-only.
+6. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR.
+
+Build and test (both trees on one machine):
+
+```bash
+bash build_develop.bash -DSS_BACKEND=vulkan -DSS_BUILD_BACKEND_TESTS=ON
+bash build_develop.bash -DSS_BACKEND=cuda -DSS_BUILD_BACKEND_TESTS=ON
+./build_vulkan/surfel_grad_test && ./build_vulkan/reg_loss_underflow
+for t in projection_parity render_parity raster_bwd_parity optimgeo_parity fpbo_parity; do
+  ./build_cuda/$t dump /tmp/$t.bin && ./build_vulkan/$t compare /tmp/$t.bin; done
+```
+
+Editing anything under `src/shaders/` needs `src/shaders/build.bash` (see
+docs/codegen.md) with the slangc that made the committed headers, 2026.2.1:
+the pinned 2026.12.0.1 rejects `primitive_3dgs.slang:587` for the CUDA target.
 
 ## Why it is cheaper than it looks
 
@@ -69,37 +113,40 @@ first optimization to try.
 
 ## Phases
 
-### 0. Baseline
+### 0. Baseline (partly done: 3dgs / 3dgut measured on one capture)
 - Fork, branch `native-2dgs`.
 - Record 3DGS and 3DGUT numbers on a Mip-NeRF 360 scene and a DTU scan (PSNR,
   step time, peak VRAM) on both backends with `reference/python/benchmark.py`,
   so every later phase has something to compare against.
 
-### 1. Shared math + gradient test
-- `primitive_2dgs.slang`: bounds/projection, `evaluate_alpha_2dgs`,
-  `evaluate_color_2dgs` (rgb, depth, normal) and their `_vjp`s.
-- Unit test: VJPs against central finite differences, including grazing and
-  near-centre rays, compiled for both backends.
+### 1. Shared math + gradient test (done)
+- `evaluate_alpha_2dgs`, `evaluate_color_2dgs` (rgb, depth, normal) and their
+  `_vjp`s in `projection_utils.slang`.
+- `surfel_grad_test` (Vulkan): exact dual-number gradients of a host model;
+  the device is held to the error distribution of the same model in fp32,
+  because near grazing and for millimetre low-pass footprints fp32 itself
+  loses up to ~1%. Central differences were too coarse there and were
+  dropped as the reference. CUDA is covered by the raster parity rows.
 
 Both backends are required: Vulkan is where training is iterated on, CUDA is
 where long runs happen. Phases 2 and 4 therefore land together, and the
 parity tests (CUDA vs Vulkan on one machine) gate each step rather than
 coming at the end.
 
-### 2. CUDA backend
+### 2. CUDA backend (done)
 - `primitives/Primitive2DGS.cuh`: `pixelType = RGB_DN`, `World` / `Screen`
   from the 3DGUT bases, `FragmentFwd` / `FragmentBwd` calling the Slang math.
 - Projection fwd / packed fwd / bwd / qgrad for the new type; fused
   projection-bwd optimizer dispatch.
 - Raster: instantiate eval3d fwd/bwd and moments for 2DGS, with `DN` and
   `RGB_DN` distortion enabled for this primitive only.
-- Run codegen (`generate_headers.py`, `generate_kernel_instantiation.py`,
-  `generate_backend_api.py`); watch the instantiation count (FPBO is already
-  133 TUs).
-- `long_axis_split`: accept `2dgs`; splitting along the longest axis is
-  already in-plane because `z` is tiny.
+- Projection backward, qgrad and the fused optimizer are 3DGUT's: the eval3d
+  raster writes geometry gradients to the world buffer, so the screen
+  gradients are only opacity and colour, identical for both.
+- 136 new instantiation TUs (89 are the raster backward).
+- `long_axis_split`: accepts `2dgs`; the seeded third scale is never longest.
 
-### 3. Engine wiring
+### 3. Engine wiring (done, but for the densify check in Next session)
 - `EngineForward` / `EngineLoss` / `EngineOptim` / `EngineTrainStep`: add the
   `2dgs` branches next to `3dgut`; allocate the normal render; pass it as
   `pred_normal`.
@@ -109,17 +156,14 @@ coming at the end.
 - First trainable milestone, on both backends: Mip-NeRF 360 within ~0.5 dB
   of 3DGS, step time within ~15%, CUDA and Vulkan renders in parity.
 
-### 4. Vulkan backend
-- `rasterize_fwd.slang` / `rasterize_bwd.slang`: a `2dgs` entry beside
-  `rasterize_fwd_3dgut`; the shader header says every primitive is RGB_D, so
-  the normal output channel and `dist_spec` DN variants are new work.
-- Projection shaders and launchers (`backend/vulkan/kernels/*.cpp`).
-- A row in `engine/StepTimingTable.h` per new kernel.
-- Parity: extend `engine_render_parity` and the raster parity tests to the
-  new primitive; `generate_vulkan_stubs.py` stays clean.
+### 4. Vulkan backend (done)
+- `kSurfel` on the eval3d raster entries rather than new entries (no new
+  `StepTimingTable.h` rows); `kEval3d` 0/1/2 in projection. 2dgs never takes
+  the `nodepth` backward, which skips the colour VJP that carries normals.
+- Parity rows in `projection_parity`, `render_parity`, `raster_bwd_parity`.
 
-### 5. Config, GUI, i18n
-- `TrainConfig.h`: `primitive` choices gain `2dgs`; a preset with 2DGS defaults
+### 5. Config, GUI, i18n (choices and help text done)
+- `TrainConfig.h`: `primitive` choices gain `2dgs` (done); a preset with 2DGS defaults
   (paper: depth distortion 1000 bounded / 100 unbounded, normal consistency
   0.05 from step 7000), re-tuned to this engine's loss normalisation.
 - `TrainFields.h` and the GUI primitive combo: names and help in all 13
