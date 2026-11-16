@@ -33,21 +33,18 @@ the 15% target.
 
 ## Next session
 
-1. **Defaults (phase 5).** Pick distortion / normal-consistency weights for
-   2dgs (paper: depth distortion 1000 bounded / 100 unbounded, normal 0.05
-   from step 7000), re-tuned to this engine's loss normalisation; a preset in
-   `TrainConfig.h` like the `mip` one.
-2. **GUI and costs (phase 5).** The primitive lists in `app/gui/GuiApp.cpp`,
+1. **GUI and costs (phase 5).** The primitive lists in `app/gui/GuiApp.cpp`,
    `app/gui/ViewportPanel.h`, `app/gui/render/RenderPanel.cpp` and
-   `app/SettingCosts.h` do not know `2dgs` yet; the forecast does not count
-   the normal render and its gradient (3 + 3 floats a pixel).
-3. **Densify check.** `densify_score_mode geom` and
+   `app/SettingCosts.h` do not know `2dgs` yet, so the `2dgs` preset shows
+   `3dgs` in the GUI's primitive combo; the forecast does not count the
+   normal render and its gradient (3 + 3 floats a pixel).
+2. **Densify check.** `densify_score_mode geom` and
    `densify_score_blend_world_grad` read projection gradients; confirm they
    behave for 2dgs (they work, untested in isolation).
-4. **Export and meshing (phase 6).** PLY round-trip of a 2dgs checkpoint
+3. **Export and meshing (phase 6).** PLY round-trip of a 2dgs checkpoint
    (third scale at -20 reads as flat discs); a 2dgs model through `src/mesh/`.
    `RasterizationMomentsFwd` is still 3DGUT-only.
-5. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR.
+4. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR.
 
 Build and test (both trees on one machine):
 
@@ -162,9 +159,9 @@ coming at the end.
 - Parity rows in `projection_parity`, `render_parity`, `raster_bwd_parity`.
 
 ### 5. Config, GUI, i18n (choices and help text done)
-- `TrainConfig.h`: `primitive` choices gain `2dgs` (done); a preset with 2DGS defaults
-  (paper: depth distortion 1000 bounded / 100 unbounded, normal consistency
-  0.05 from step 7000), re-tuned to this engine's loss normalisation.
+- `TrainConfig.h`: `primitive` choices gain `2dgs`; the `2dgs` preset
+  (`spirula train 2dgs`) sets depth distortion 0.1 and normal consistency
+  0.04 (done, see "Preset weights").
 - `TrainFields.h` and the GUI primitive combo: names and help in all 13
   languages, within the UI text budget.
 - `SettingCosts.h`, `TrainForecast` (the normal render is 3 more floats per
@@ -181,9 +178,36 @@ coming at the end.
 - Move what stays true from this plan into `docs/architecture.md`
   ("Primitives") and a `docs/notes/2dgs.md`; delete this plan.
 
+## Preset weights
+
+The paper's weights do not carry over: this engine's distortion is in log
+depth (`W*S - C^2`), its normal loss adds `sqrt((1 - cos) / 2)` to the
+paper's `(1 - cos) / 2` and so pulls far harder near agreement, and both
+ramp in linearly over `distortion_reg_warmup` (6000 steps).
+
+Sweep on the action-cam capture (30k steps, 1M splats, Vulkan, 61 held-out
+views). Geometry: `spirula mesh` against the capture's dense matching cloud,
+tolerance 0.5% of its 5-95% extent; one run each, so F moves by ~0.02
+between runs of one setting.
+
+| distortion | normal | PSNR | SSIM | mesh F | precision | recall |
+|---|---|---|---|---|---|---|
+| 0   | 0    | 24.40 | 0.908 | 0.539 | 0.684 | 0.445 |
+| 0.1 | 0.01 | 24.03 | 0.904 | 0.625 | 0.764 | 0.530 |
+| 0.1 | 0.02 | 23.88 | 0.902 | 0.607 | 0.791 | 0.492 |
+| 0.3 | 0.02 | 23.84 | 0.902 | 0.606 | 0.796 | 0.490 |
+| 0   | 0.04 | 23.79 | 0.900 | 0.674 | 0.799 | 0.583 |
+| 0.1 | 0.04 | 23.75 | 0.899 | 0.694 | 0.829 | 0.597 |
+| 1.0 | 0.04 | 23.67 | 0.898 | 0.667 | 0.843 | 0.552 |
+
+The preset takes the best mesh, 0.1 / 0.04. Distortion 0.1 adds 8% GPU time
+a step (`SS_PROFILE=1`, 2000 steps; the raster backward +26%). To validate
+on Mip-NeRF 360 / DTU (phase 7) before the PR.
+
 ## Open questions
 
 - Is the screen-space low-pass needed with the engine's existing
   antialiasing / `kernel_cut`, or does it fight it?
-- Defaults: the paper's distortion and normal weights, re-tuned to this
-  engine's loss normalisation (phase 5).
+- Should plain `--primitive 2dgs` keep normal consistency at 0.04? It costs
+  0.6 dB for the geometry; the default is shared with every primitive and
+  only 2dgs renders normals.

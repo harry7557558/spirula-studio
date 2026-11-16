@@ -468,6 +468,7 @@ inline constexpr TrainPresetInfo kTrainPresets[] = {
     {"hdr"},
     {"synthetic"},
     {"meshing"},
+    {"2dgs"},
     // {"academic-baseline"},  // hidden by default, uncomment to enable
 };
 
@@ -558,6 +559,12 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.median_render_normal_reg_weight = 0.01f;
         c.erank_reg = 0.01f;
         c.erank_reg_s3 = 0.01f;
+        return true;
+    }
+    if (name == "2dgs") {
+        c.primitive = "2dgs";
+        c.depth_distortion_reg = 0.1f;
+        c.normal_reg_weight = 0.04f;
         return true;
     }
     if (name == "academic-baseline") {
