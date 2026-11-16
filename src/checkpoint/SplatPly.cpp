@@ -3,6 +3,7 @@
 #include "core/BufferedFile.h"
 #include "checkpoint/SplatPly.h"
 
+#include "checkpoint/SplatPlyMetadata.h"
 #include "checkpoint/SplatTransform.h"
 #include "core/SphericalBeta.h"
 
@@ -85,12 +86,8 @@ PlyHeader read_header(std::istream& f) {
             h.binary_le = tok == "binary_little_endian";
             h.ascii = tok == "ascii";
         } else if (tok == "comment") {
-            std::string rem;
-            std::getline(ss, rem);
-            if (rem.find("SplatRenderMode: mip") != std::string::npos ||
-                rem.find("antialiased 1") != std::string::npos) {
-                h.primitive = "mip";
-            }
+            if (const auto mode = mip_from_ply_comment(line))
+                h.primitive = *mode ? "mip" : "";
         } else if (tok == "element") {
             std::string name;
             int64_t count = 0;
