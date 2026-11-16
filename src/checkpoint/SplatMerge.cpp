@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
 
 namespace fs = std::filesystem;
@@ -66,6 +67,7 @@ SplatCloud merge_partition_splats(const ScenePartition& p, const std::vector<std
     std::vector<SplatCloud> clouds((size_t)p.num_parts);
     std::vector<std::vector<uint8_t>> keeps((size_t)p.num_parts);
     ColorBasis basis;
+    std::optional<bool> mip;
     for (int k = 0; k < p.num_parts; k++) {
         if (k >= (int)part_paths.size() || part_paths[(size_t)k].empty()) continue;
         auto [ply, run_dir] = find_splat_ply(part_paths[(size_t)k]);
@@ -119,6 +121,13 @@ SplatCloud merge_partition_splats(const ScenePartition& p, const std::vector<std
             keep[(size_t)i] = p.field && p.field->label(q, np) == k;
         }
         st.kept = std::count(keep.begin(), keep.end(), (uint8_t)1);
+        if (st.kept > 0) {
+            const bool part_mip = c.primitive == "mip";
+            if (mip && *mip != part_mip)
+                throw std::runtime_error("cannot merge Mip-trained and classic or untagged "
+                                         "splats in one PLY: " + ply);
+            mip = part_mip;
+        }
         basis.sh_degree = std::max(basis.sh_degree, c.sh_degree);
         basis.sb_lobes = std::max(basis.sb_lobes, c.sb_lobes);
         if (log) {
@@ -132,9 +141,9 @@ SplatCloud merge_partition_splats(const ScenePartition& p, const std::vector<std
     out.num = 0;
     out.sh_degree = basis.sh_degree;
     out.sb_lobes = basis.sb_lobes;
+    if (mip.value_or(false)) out.primitive = "mip";
     for (int k = 0; k < p.num_parts; k++) {
-        if (clouds[(size_t)k].num == 0 && keeps[(size_t)k].empty()) continue;
-        if (clouds[(size_t)k].primitive == "mip") out.primitive = "mip";
+        if (stats.parts[(size_t)k].kept == 0) continue;
         pad_color(clouds[(size_t)k], basis);
         append(out, clouds[(size_t)k], keeps[(size_t)k]);
         clouds[(size_t)k] = SplatCloud{};

@@ -418,6 +418,34 @@ int main() {
         std::vector<std::string> one = {runs[0], ""};
         SplatCloud half = merge_partition_splats(p, one, st);
         check(half.num == st.parts[0].kept && st.parts[1].ply.empty(), "a missing part is skipped");
+
+        c1.primitive = "mip";
+        write_splat_ply(c1, (r1 / "splat.ply").string());
+        bool mixed_rejected = false;
+        try {
+            merge_partition_splats(p, runs, st);
+        } catch (const std::runtime_error& e) {
+            mixed_rejected = std::string(e.what()).find("cannot merge Mip-trained") != std::string::npos;
+        }
+        check(mixed_rejected, "parts that retain both render modes cannot write one PLY");
+
+        c0.primitive = "mip";
+        write_splat_ply(c0, (r0 / "splat.ply").string());
+        const SplatCloud all_mip = merge_partition_splats(p, runs, st);
+        check(all_mip.num == merged.num && all_mip.primitive == "mip",
+              "a merge of Mip-trained parts retains their render mode");
+
+        const auto part1_frames = p.frames_of(1);
+        const float other_x = p.frame_centers[(size_t)part1_frames[part1_frames.size() / 2] * 3];
+        SplatCloud clipped = splats_along_x(other_x - 1, other_x + 1, 64, 0, 0.0f);
+        clipped.primitive = "mip";
+        c1.primitive.clear();
+        write_splat_ply(clipped, (r0 / "splat.ply").string());
+        write_splat_ply(c1, (r1 / "splat.ply").string());
+        const SplatCloud retained_classic = merge_partition_splats(p, runs, st);
+        check(st.parts[0].read > 0 && st.parts[0].kept == 0 &&
+                  retained_classic.num > 0 && retained_classic.primitive.empty(),
+              "a clipped Mip part does not change the retained classic render mode");
     }
     fs::remove_all(tmp, ec);
 
