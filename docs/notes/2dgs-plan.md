@@ -6,15 +6,17 @@ to 3DGS speed and memory, on both backends.
 
 ## Status
 
-Phases 1-4 done (branch `native-2dgs`): `--primitive 2dgs` trains end to end
-on both backends, and every parity test passes CUDA vs Vulkan.
+Phases 1-4 and the phase-5 preset done (branch `native-2dgs`): `--primitive
+2dgs` and `spirula train 2dgs` train end to end on both backends, and every
+parity test passes CUDA vs Vulkan.
 
 - `23100e62` surfel math in shared Slang + `surfel_grad_test`
 - `bdf5a0eb` regenerated `projection_utils.cuh`
 - `4e5d0c4f` projection and rasterizer, both backends, parity rows
 - `a460ad56` engine wiring, normals in the loss, surfel regularizers
-- fused alpha + colour VJP (`evaluate_2dgs_vjp`): one ray-disc hit per
-  backward fragment instead of two
+- `ed2caea0` fused alpha + colour VJP (`evaluate_2dgs_vjp`): one ray-disc
+  hit per backward fragment instead of two
+- `eb8d9c92` `2dgs` training preset (see "Preset weights")
 
 First measurements (an action-cam fisheye capture, 427 views, 1M splats, 7000
 steps, longer side 1344 px, 61 held-out views):
@@ -33,18 +35,23 @@ the 15% target.
 
 ## Next session
 
-1. **GUI and costs (phase 5).** The primitive lists in `app/gui/GuiApp.cpp`,
+1. **GUI and costs (phase 5).** The primitive lists in `app/gui/GuiApp.cpp`
+   (the combo index near `_cfg.primitive == "mip" ? 1`),
    `app/gui/ViewportPanel.h`, `app/gui/render/RenderPanel.cpp` and
    `app/SettingCosts.h` do not know `2dgs` yet, so the `2dgs` preset shows
    `3dgs` in the GUI's primitive combo; the forecast does not count the
-   normal render and its gradient (3 + 3 floats a pixel).
+   normal render and its gradient (3 + 3 floats a pixel). Labels and help in
+   all 13 languages; `python3 tools/check_ui_text.py` before committing.
 2. **Densify check.** `densify_score_mode geom` and
    `densify_score_blend_world_grad` read projection gradients; confirm they
    behave for 2dgs (they work, untested in isolation).
 3. **Export and meshing (phase 6).** PLY round-trip of a 2dgs checkpoint
    (third scale at -20 reads as flat discs); a 2dgs model through `src/mesh/`.
    `RasterizationMomentsFwd` is still 3DGUT-only.
-4. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR.
+4. **Validation (phase 7)** on Mip-NeRF 360 / DTU, then docs and the PR;
+   re-check the preset weights there (they come from one capture).
+5. **Decision pending:** whether plain `--primitive 2dgs` should keep normal
+   consistency at 0.04 (see Open questions).
 
 Build and test (both trees on one machine):
 
@@ -52,6 +59,7 @@ Build and test (both trees on one machine):
 bash build_develop.bash -DSS_BACKEND=vulkan -DSS_BUILD_BACKEND_TESTS=ON
 bash build_develop.bash -DSS_BACKEND=cuda -DSS_BUILD_BACKEND_TESTS=ON
 ./build_vulkan/surfel_grad_test && ./build_vulkan/reg_loss_underflow
+./build_vulkan/train_config_test && ./build_cuda/train_config_test
 for t in projection_parity render_parity raster_bwd_parity optimgeo_parity fpbo_parity; do
   ./build_cuda/$t dump /tmp/$t.bin && ./build_vulkan/$t compare /tmp/$t.bin; done
 ```
@@ -59,6 +67,10 @@ for t in projection_parity render_parity raster_bwd_parity optimgeo_parity fpbo_
 Editing anything under `src/shaders/` needs `src/shaders/build.bash` (see
 docs/codegen.md) with the slangc that made the committed headers, 2026.2.1:
 the pinned 2026.12.0.1 rejects `primitive_3dgs.slang:587` for the CUDA target.
+
+Short benchmark runs need `--num-iterations N`: `--max-steps` does not stop
+training. `SS_PROFILE=1` prints GPU time per kernel at the end of a run; wall
+time on a laptop GPU varies 5-40% with temperature, so compare GPU time.
 
 ## Why it is cheaper than it looks
 
@@ -187,7 +199,8 @@ ramp in linearly over `distortion_reg_warmup` (6000 steps).
 
 Sweep on the action-cam capture (30k steps, 1M splats, Vulkan, 61 held-out
 views). Geometry: `spirula mesh` against the capture's dense matching cloud,
-tolerance 0.5% of its 5-95% extent; one run each, so F moves by ~0.02
+tolerance 0.5% of its 5-95% extent, 1M points sampled each way, precision
+= mesh points within it, recall = cloud points within it; one run each, so F moves by ~0.02
 between runs of one setting.
 
 | distortion | normal | PSNR | SSIM | mesh F | precision | recall |
