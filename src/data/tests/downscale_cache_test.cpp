@@ -106,14 +106,14 @@ void test_paths(const fs::path& root) {
     write_bytes(images / "a.png", png::encode(pattern<uint8_t>(3, 255).data(), W, H, 3, 8));
     write_bytes(images / "cam0" / "b.png", read_bytes(images / "a.png"));
     write_bytes(images / "c.bmp", {'B', 'M', 0, 0});
-    check(dscache::path_for((images / "a.png").string(), images.string(), 2) ==
-              (root / "paths" / "images_2" / "a.png").string(),
+    check(fs::path(dscache::path_for((images / "a.png").string(), images.string(), 2)) ==
+              root / "paths" / "images_2" / "a.png",
           "flat image -> images_2/a.png");
-    check(dscache::path_for((images / "cam0" / "b.png").string(), images.string() + "/", 4) ==
-              (root / "paths" / "images_4" / "cam0" / "b.png").string(),
+    check(fs::path(dscache::path_for((images / "cam0" / "b.png").string(), images.string() + "/", 4)) ==
+              root / "paths" / "images_4" / "cam0" / "b.png",
           "nested image keeps its subfolder under images_4/");
-    check(dscache::path_for((images / "cam0" / "b.png").string(), "", 3) ==
-              (images / "cam0_3" / "b.png").string(),
+    check(fs::path(dscache::path_for((images / "cam0" / "b.png").string(), "", 3)) ==
+              images / "cam0_3" / "b.png",
           "outside the image dir: <parent>_3/");
     check(dscache::path_for((images / "c.bmp").string(), images.string(), 2).empty(),
           "BMP is not cached");
