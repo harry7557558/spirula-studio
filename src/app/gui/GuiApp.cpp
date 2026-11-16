@@ -12334,14 +12334,16 @@ void GuiApp::draw_basic_options() {
     {
         // Primitive names are the config's own values, written into
         // config.json and accepted by `--primitive`; they are not translated.
-        static const char* prims[] = {"3dgs", "mip", "3dgut"};
-        int pi = _cfg.primitive == "mip" ? 1 : _cfg.primitive == "3dgut" ? 2 : 0;
+        static const char* prims[] = {"3dgs", "mip", "3dgut", "2dgs"};
+        int pi = 0;
+        for (int k = 0; k < 4; k++)
+            if (_cfg.primitive == prims[k]) pi = k;
         ImGui::SetNextItemWidth(w);
-        if (ui::ComboRaw(ui::detail::label(msg::opt_primitive), &pi, prims, 3)) {
+        if (ui::ComboRaw(ui::detail::label(msg::opt_primitive), &pi, prims, 4)) {
             _cfg.primitive = prims[pi];
             _cfg_ui.touched.insert("primitive");
         }
-        ui::help_on_hover(msg::opt_primitive_help);
+        ui::help_on_hover(spirula::i18n::msg::field::primitive_help);
         if (_cfg.primitive == "3dgut")
             ui::TextColoredWrapped(kWarn, msg::opt_primitive_3dgut_warn);
     }

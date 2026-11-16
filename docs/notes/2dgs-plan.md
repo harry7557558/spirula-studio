@@ -35,13 +35,15 @@ the 15% target.
 
 ## Next session
 
-1. **GUI and costs (phase 5).** The primitive lists in `app/gui/GuiApp.cpp`
-   (the combo index near `_cfg.primitive == "mip" ? 1`),
-   `app/gui/ViewportPanel.h`, `app/gui/render/RenderPanel.cpp` and
-   `app/SettingCosts.h` do not know `2dgs` yet, so the `2dgs` preset shows
-   `3dgs` in the GUI's primitive combo; the forecast does not count the
-   normal render and its gradient (3 + 3 floats a pixel). Labels and help in
-   all 13 languages; `python3 tools/check_ui_text.py` before committing.
+1. **Step-time cost row (phase 5).** The GUI's primitive lists know `2dgs`
+   (training combo, viewer, render panel; Auto renders a 2dgs model as
+   2dgs on any lens). `app/SettingCosts.h` still has no `2dgs` row, so the
+   timing card offers no "switch to 3dgs" saving for it. Measure as
+   docs/notes/step-timing.md does (`SS_STEP_TIMING_LOG=1`, default preset,
+   5000 steps to a 1M cap, last 300 steps, paired with 3dgs and 3dgut runs)
+   on an idle GPU: under load the cells read 5-8x high. The VRAM forecast
+   needs nothing: the normal render and its gradient are Image-category pool
+   slots, which it measures.
 2. **Densify check.** `densify_score_mode geom` and
    `densify_score_blend_world_grad` read projection gradients; confirm they
    behave for 2dgs (they work, untested in isolation).
@@ -170,7 +172,7 @@ coming at the end.
   the `nodepth` backward, which skips the colour VJP that carries normals.
 - Parity rows in `projection_parity`, `render_parity`, `raster_bwd_parity`.
 
-### 5. Config, GUI, i18n (choices and help text done)
+### 5. Config, GUI, i18n (done but for the cost row)
 - `TrainConfig.h`: `primitive` choices gain `2dgs`; the `2dgs` preset
   (`spirula train 2dgs`) sets depth distortion 0.1 and normal consistency
   0.04 (done, see "Preset weights").
