@@ -1035,6 +1035,7 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
                                            (long long)r.moments}));
             log(format(lmsg::refine_done, {(long long)r.points, fixed(r.error_px, 2),
                                            fixed(r.moved_m, 3), fixed(r.turned_deg, 2)}));
+            log(format(lmsg::refine_block, {fixed(r.block_scale, 4), fixed(r.block_turn_deg, 2)}));
             follow_photos(opt.clouds, before, anchors, ds, corrections, log);
         }
 #else

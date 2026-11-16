@@ -637,6 +637,21 @@ SS_MSG(scan_follows_untimed,
     RU("У фото {0} нет времени съёмки, поэтому скан остаётся на траектории устройства; извлеките фото заново, чтобы скан сдвинулся вместе с ними"),
     TR("{0} fotoğraflarında çekim zamanı yok, bu yüzden taraması cihazın yörüngesinde kalıyor; taramayı onlarla taşımak için fotoğrafları yeniden çıkarın"));
 
+SS_MSG(refine_block,
+    EN("The refined photos were put back on the scanner's trajectory by a scale of {0} and a turn of {1} deg"),
+    JA("補正済み写真をスキャナーの軌跡に戻しました: 縮尺 {0}、回転 {1} 度"),
+    ZH_HANS("已将修正后的照片放回扫描仪轨迹：缩放 {0}，旋转 {1} 度"),
+    ZH_HANT("已將修正後的相片放回掃描器軌跡：縮放 {0}，旋轉 {1} 度"),
+    KO("보정된 사진을 스캐너 궤적으로 되돌림: 배율 {0}, 회전 {1}도"),
+    DE("Die verfeinerten Fotos wurden mit Maßstab {0} und Drehung {1} Grad auf die Trajektorie des Scanners zurückgesetzt"),
+    FR("Les photos affinées ont été remises sur la trajectoire du scanner : échelle {0}, rotation {1} degrés"),
+    ES("Las fotos refinadas se devolvieron a la trayectoria del escáner: escala {0}, giro {1} grados"),
+    PT("As fotos refinadas voltaram para a trajetória do scanner: escala {0}, giro {1} graus"),
+    IT("Le foto affinate sono state riportate sulla traiettoria dello scanner: scala {0}, rotazione {1} gradi"),
+    NL("De verfijnde foto's zijn teruggezet op het traject van de scanner: schaal {0}, draaiing {1} graden"),
+    RU("Уточнённые фото возвращены на траекторию сканера: масштаб {0}, поворот {1} град."),
+    TR("İyileştirilmiş fotoğraflar tarayıcının yörüngesine geri kondu: ölçek {0}, dönme {1} derece"));
+
 SS_MSG(refine_none,
     EN("No photograph of the scans has features in {0}: the scanner's poses are used as they are"),
     JA("{0} にはスキャンの写真の特徴点がありません。スキャナーの姿勢をそのまま使います"),

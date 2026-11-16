@@ -40,6 +40,33 @@ double median(std::vector<double> v) {
     return v[v.size() / 2];
 }
 
+// The similarity about the vertical taking `a` onto `b` in least squares: heading,
+// scale and shift. Tilt is left to the gravity priors, which hold it.
+sfm::Sim3 level_similarity(const std::vector<Vec3>& a, const std::vector<Vec3>& b) {
+    Vec3 ma, mb;
+    for (size_t i = 0; i < a.size(); i++) {
+        ma = ma + a[i] * (1.0 / a.size());
+        mb = mb + b[i] * (1.0 / a.size());
+    }
+    double sc = 0, ss = 0;
+    for (size_t i = 0; i < a.size(); i++) {
+        const Vec3 p = a[i] - ma, q = b[i] - mb;
+        sc += p.x * q.x + p.y * q.y;
+        ss += p.x * q.y - p.y * q.x;
+    }
+    sfm::Sim3 S;
+    S.R = sfm::angleAxisToRotation({0, 0, std::atan2(ss, sc)});
+    double num = 0, den = 0;
+    for (size_t i = 0; i < a.size(); i++) {
+        const Vec3 p = sfm::mul(S.R, a[i] - ma), q = b[i] - mb;
+        num += p.dot(q);
+        den += p.dot(p);
+    }
+    S.scale = den > 0 ? num / den : 1.0;
+    S.t = mb - sfm::mul(S.R, ma) * S.scale;
+    return S;
+}
+
 double angle_deg(const Mat3& a, const Mat3& b) {
     const Mat3 d = sfm::mul(sfm::transpose(a), b);
     const double c = std::max(-1.0, std::min(1.0, 0.5 * (d[0] + d[4] + d[8] - 1.0)));
@@ -218,6 +245,24 @@ RefineResult refine_anchors(std::vector<Anchor>& anchors, const sfm::MatchesData
         st = sfm::triangulateKnownPoses(rec, db, features, image_of, ko);
         if (st.points == 0) return res;
         sfm::runGlobalBA(rec, bo);
+    }
+    // The priors' Huber tails let the block drift in scale and heading: 4.4 % and 1.06 deg
+    // (0.07 tilt) on a 260 s outdoor capture, read by its scan as depth 4 % short. One
+    // level similarity puts it back on the trajectory; geometry and lenses stay.
+    {
+        std::vector<Vec3> refined, device;
+        for (size_t k = 0; k < placed.size(); k++) {
+            const sfm::Image& im = rec.images.at((uint32_t)k + 1);
+            if (im.numPoint3D() == 0) continue;
+            refined.push_back(sfm::cameraCenter(im.pose));
+            device.push_back(anchors[placed[k].anchor].centre);
+        }
+        if (refined.size() >= 3) {
+            const sfm::Sim3 S = level_similarity(refined, device);
+            for (auto& [id, im] : rec.images) im.pose = sfm::transformPose(S, im.pose);
+            res.block_scale = S.scale;
+            res.block_turn_deg = angle_deg(S.R, sfm::mat3Identity());
+        }
     }
     rec.points3D.clear();
     st = sfm::triangulateKnownPoses(rec, db, features, image_of, ko);

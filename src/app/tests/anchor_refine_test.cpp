@@ -200,6 +200,27 @@ int main() {
     std::printf("     rig %.3f deg off the truth, from 0.8\n", rig);
     expect(rig < 0.2, "a factory rig 0.8 deg off comes back within 0.2 deg of the truth");
 
+    // A trajectory 3 % larger than the world the photographs show: the refined
+    // block must come out at the trajectory's scale, not keep its own.
+    std::vector<app::lidar::Anchor> grown = device;
+    Vec3 mid;
+    for (const app::lidar::Anchor& a : grown) mid = mid + a.centre * (1.0 / grown.size());
+    for (app::lidar::Anchor& a : grown) a.centre = mid + (a.centre - mid) * 1.03;
+    const std::vector<app::lidar::Anchor> trajectory = grown;
+    app::lidar::refine_anchors(grown, db, features, app::lidar::RefineOptions{});
+    Vec3 mr, mt;
+    for (size_t i = 0; i < grown.size(); i++) {
+        mr = mr + grown[i].centre * (1.0 / grown.size());
+        mt = mt + trajectory[i].centre * (1.0 / grown.size());
+    }
+    double num = 0, den = 0;
+    for (size_t i = 0; i < grown.size(); i++) {
+        num += (grown[i].centre - mr).dot(trajectory[i].centre - mt);
+        den += (grown[i].centre - mr).dot(grown[i].centre - mr);
+    }
+    std::printf("     refined block against a trajectory 3 %% larger: scale %.4f\n", num / den);
+    expect(std::fabs(num / den - 1) < 0.003, "the refined block keeps the trajectory's scale");
+
     std::printf("%s (%d failures)\n", g_failures ? "FAILED" : "PASSED", g_failures);
     return g_failures ? 1 : 0;
 }

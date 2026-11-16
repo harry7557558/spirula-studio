@@ -32,6 +32,7 @@ struct RefineResult {
     int64_t photos = 0, matched = 0, moments = 0, points = 0;
     double error_px = 0;                  // median reprojection, source pixels
     double moved_m = 0, turned_deg = 0;   // medians against the device's poses
+    double block_scale = 1, block_turn_deg = 0;   // the similarity that put the block back
 };
 
 // Refines, in place, the anchors that carry a lens: poses and, per folder, lens.

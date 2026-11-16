@@ -237,6 +237,43 @@ taken for it. Every case above was exercised on the FJD workspace
   point held it was 5.7 cm and 0.66 deg. Next to other photographs the
   capture keeps the joint reconstruction and its fit.
 
+  The device's `poses.csv` is a real-time trajectory, and on a long walk it
+  drifts: 47 cm (median, after one rigid fit) from LCC Studio's own on a
+  975 s capture. So a capture's trajectory is made again from its LiDAR
+  (`app/CaptureTrajectory.h`) and kept in the dataset as
+  `lidar/<capture>.trajectory.csv`, moves of the device's world keyed once a
+  second (`xbin::Correction`). Extract, the dataset screen's scan-photo stage
+  and the align step each make it once; `spirula lidar --trajectory` makes
+  it again. Each sweep, deskewed by the device's own motion
+  (`Reader::read_sweeps`), goes to a node of one second; each node's submap is
+  registered to the next three and to the places walked again (GICP on
+  `data/Knn.h`, Levenberg-Marquardt as small_gicp's, covariances from the 27
+  voxels around a point, the source thinned to 3000 points), and one pose
+  graph (Cauchy weights, conjugate gradients on the 6x6 blocks) takes the
+  device's motion, the registrations and the loops, with each node's roll and
+  pitch held near the device's. One turn about the vertical and one shift
+  bring the result back onto the device's frame, and it is kept only when
+  its map is sharper (occupied 5 cm voxels of every tenth sweep). Measured
+  offline on every fifth sweep, each point placed at its own time, and the
+  distance of two walls where the walk passed twice:
+
+  | Capture | device | LCC Studio | this |
+  |---|---|---|---|
+  | 260 s outdoor | 2,541,792, 7.1 cm | 2,211,189, 1.9 cm | 2,191,390, 1.7 cm |
+  | 975 s indoor | 8,209,836, 5.4 cm | 6,908,902, 1.5 cm | 7,083,392, 1.5 cm |
+
+  The align step poses every capture anchor from that trajectory before
+  `--refine`, so an `anchors.json` older than the file is still right. The
+  refinement's priors have Huber tails, so its photographs could drift as a
+  block: on the 260 s capture by a scale of 0.956 and 1.06 deg about the
+  vertical (0.07 deg of tilt), which its scan read as depth maps 5 % short.
+  One similarity about the vertical (heading, scale, shift) now puts the
+  block back on the trajectory: the photographs then sit 1.9 cm from it and
+  the scan agrees with them to 2.9 cm (median, at places walked twice). What
+  the refinement still moved each instant then moves the scan too, smoothed
+  over 6 s (`app/ScanCorrection.h`), on top of the LiDAR trajectory
+  (`xbin::compose`): 2,182,175 voxels on the 260 s capture.
+
 ## Measurements (2026-10-04, RTX 5070)
 
 | capture | anchors | anchor fit | after ICP | notes |
