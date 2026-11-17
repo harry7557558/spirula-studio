@@ -376,7 +376,7 @@ if(SS_SEPARATE_TOOLS)
         # it. It is a leaf (cmake/SsI18n.cmake), so this costs nothing.
         add_executable(${name} ${SS_SRC}/app/Main.cpp ${sources})
         target_include_directories(${name} PRIVATE ${SS_SRC} ${CMAKE_BINARY_DIR})
-        target_link_libraries(${name} PRIVATE ${libs} ss_i18n)
+        target_link_libraries(${name} PRIVATE ${libs} ss_i18n ss_license)
         target_compile_definitions(${name} PRIVATE
             ${defs} SS_VERSION="${SS_VERSION}" ${SS_I18N_DEFS})
         target_compile_options(${name} PRIVATE

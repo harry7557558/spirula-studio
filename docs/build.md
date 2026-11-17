@@ -16,6 +16,12 @@ compiling its own copy.
 
 Always build through the dev scripts.
 
+`spirula --licenses` prints the embedded AprilTag BSD-2-Clause license and
+the OpenCV Apache-2.0 license for its ArUco tables, including their copyright
+notices. These texts travel with the executable on both backends, including
+headless builds. `tools/gen_license_texts.py` reads the vendored license files
+directly; regenerate its committed output when those files change.
+
 ## CMake layout
 
 `CMakeLists.txt` is just the running order; the logic lives in `cmake/`:

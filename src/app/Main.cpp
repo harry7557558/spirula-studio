@@ -11,6 +11,7 @@
 #include "app/CrashLog.h"
 #include "app/Tools.h"
 #include "checkpoint/BackgroundExport.h"
+#include "core/LicenseTexts.h"
 #include "i18n/Locale.h"
 #include "i18n/catalog/Cli.h"
 #include "i18n/catalog/BackgroundExport.h"
@@ -145,6 +146,7 @@ void print_usage() {
                 cmsg::usage_open_target.get());
 #endif
     std::printf("  spirula <command> [options]\n\n");
+    std::printf("  spirula --licenses             %s\n\n", cmsg::usage_licenses.get());
     std::printf("%s\n", cmsg::usage_commands.get());
     for (const Tool& t : tools())
         std::printf("  %-10s %s\n", t.name, t.summary->get());
@@ -172,24 +174,8 @@ int main(int argc, char** argv) {
     // Metal device opens; children inherit it, and a value already set is kept.
     setenv("AGX_RELAX_CDM_CTXSTORE_TIMEOUT", "1", 0);
 #endif
-    // Stop FULL buffering of stdout whenever it is NOT a terminal. Every tool
-    // here is routinely run as a CHILD PROCESS with its output piped to a live
-    // log -- the GUI does it for reconstruction, masking and meshing -- and the
-    // C runtime's default for a pipe is full buffering, which holds 4 KB of
-    // progress back until the buffer fills or the process exits. A run that
-    // prints one line a minute then appears to print nothing at all for the
-    // first hour, which is exactly the failure it looks like.
-    //
-    // The two runtimes need different modes for the same result, and the
-    // Windows one is unforgiving about both halves:
-    //   * its CRT has no line buffering at all -- `_IOLBF` is documented to be
-    //     treated as `_IOFBF` -- so asking for it would leave the stall in
-    //     place;
-    //   * and it rejects a zero size for the buffered modes, through an
-    //     invalid-parameter handler that is `__fastfail`. The process then dies
-    //     at this line with status 0xC0000409 and NOTHING on either stream --
-    //     which reads, from the parent, as a tool that failed instantly for no
-    //     reason. Only `_IONBF` is allowed a zero size there.
+    // Pipes feed the GUI's live log. Windows has no line buffering, and only
+    // _IONBF accepts a zero buffer size without aborting in its CRT.
     if (!isatty(fileno(stdout))) {
 #ifdef _WIN32
         std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -201,13 +187,16 @@ int main(int argc, char** argv) {
     use_utf8_console();
 #endif
 
-    // --lang is handled here and removed from argv, so no tool's own parser
-    // has to know about it. The chain that decides the language is in
-    // src/i18n/Locale.h; the GUI re-runs it once it has read its settings
-    // file, which is a step below --lang and the environment.
     const char* lang = spirula::i18n::take_lang_arg(&argc, argv);
     spirula::i18n::init(lang, nullptr);
     spirula::i18n::set_terminal_output(true);
+
+    if (argc == 2 && std::strcmp(argv[1], "--licenses") == 0) {
+        std::printf("AprilTag\n\n%s\nArUco (OpenCV)\nCopyright 2025 OpenCV\n\n%s",
+                    spirula::license::kAprilTagBsd,
+                    spirula::license::kAprilTagOpenCvApache);
+        return std::fflush(stdout) == 0 ? 0 : 1;
+    }
 
 #ifdef SS_TOOL_SAM
     // --accept-license, anywhere in argv and for every command: how a terminal
@@ -232,10 +221,7 @@ int main(int argc, char** argv) {
     // its parent an exit status and nothing else.
     app::install_crash_log(app::config_dir());
 
-    // An explicit subcommand wins over the argv[0] hint, so a binary that was
-    // renamed or symlinked still answers to every tool it holds. No subcommand
-    // name collides with an argument any of them takes, so `spirula-sfm auto`
-    // falls through to the name check below and reaches the SfM tool.
+    // Explicit subcommands take precedence over the argv[0] alias.
     if (argc > 1) {
         if (const Tool* t = find_tool(argv[1])) {
             // The tool sees "spirula sfm" as its program name, so its own usage
