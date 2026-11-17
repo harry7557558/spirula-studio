@@ -2902,11 +2902,12 @@ void GuiApp::draw_stencil_rows(const MaskingPanel& p) {
         auto open_panel = [&] {
             if (scan) {
                 _mask_try_scan = (int)t.scans[row.input - t.inputs];
-                open_scan_mask_preview((size_t)_mask_try_scan);
+                open_scan_mask_preview((size_t)_mask_try_scan, row.camera);
             } else {
                 _mask_try_scan = -1;
                 *p.preview_input = (int)row.input;
                 p.open_preview();
+                if (_segment.is_open()) _segment.edit_camera(row.camera);
             }
         };
         ImGui::TableNextRow();
@@ -3023,12 +3024,13 @@ bool GuiApp::scan_photos_busy() const {
            _scan_photos.wait_for(std::chrono::seconds(0)) != std::future_status::ready;
 }
 
-void GuiApp::open_scan_mask_preview(size_t scan) {
+void GuiApp::open_scan_mask_preview(size_t scan, std::optional<std::string> camera) {
     if (native_work_busy() || scan >= _lidar.size() || _workspace.empty()) return;
     std::vector<std::string> clouds;
     for (const LidarInput& l : _lidar) clouds.push_back(l.path);
     const std::string ws = _workspace;
     _scan_photos_for = scan;
+    _scan_camera = std::move(camera);
     log(i18n::format(ldmsg::scan_photos_extracting, {_lidar[scan].path}));
     _scan_photos = std::async(std::launch::async, [clouds, scan, ws] {
         std::string dir, err;
@@ -3041,6 +3043,7 @@ void GuiApp::pump_scan_photos() {
     if (!_scan_photos.valid() || scan_photos_busy()) return;
     const auto [dir, err] = _scan_photos.get();
     const std::optional<SegmentPanel::EditRequest> edit = std::exchange(_scan_edit, std::nullopt);
+    const std::optional<std::string> camera = std::exchange(_scan_camera, std::nullopt);
     const size_t scan = _scan_photos_for;
     if (scan >= _lidar.size()) return;   // removed meanwhile (forget_scan)
     if (!err.empty()) {
@@ -3055,6 +3058,7 @@ void GuiApp::pump_scan_photos() {
     PrepInput photos;
     photos.path = dir;
     open_segment(preview_source_for(photos, ""));
+    if (camera) _segment.edit_camera(*camera);
     if (edit) _segment.edit_saved(*edit);
 }
 

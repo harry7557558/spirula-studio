@@ -124,7 +124,7 @@ bool MaskDoc::load(const std::string& layer_root, const std::string& mask_root,
     _last = Rect{};
     if (!recomposite_frame(layer_root, mask_root, key, idx, _state, error)) return false;
     const std::string base_path = layer_file(layer_root, key, Layer::Base);
-    const std::string mask_path = mask_file(mask_root, key);
+    const std::string mask_path = mask_file(mask_root, key, idx.mask_paths);
     std::error_code ec;
     const std::string src = fs::exists(base_path, ec) ? base_path
                           : fs::exists(mask_path, ec) ? mask_path : std::string();
@@ -342,7 +342,7 @@ bool propagate_to(const std::string& layer_root, const std::string& mask_root,
     refused = PropagateRefusal{};
     int w = 0, h = 0;
     std::string from;
-    if (!frame_size(layer_root, mask_root, key, image_file, w, h, from)) {
+    if (!frame_size(layer_root, mask_root, key, image_file, w, h, from, idx.mask_paths)) {
         error = from;
         return false;
     }

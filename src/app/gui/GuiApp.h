@@ -1052,6 +1052,7 @@ private:
     void draw_stencil_set_dialogs();
     // The panel a scan's Edit opens only once its photographs are out.
     std::optional<SegmentPanel::EditRequest> _scan_edit;
+    std::optional<std::string> _scan_camera;
     void load_stencil_sets();
     std::vector<StencilRow> stencil_table_rows(const std::vector<PrepInput>& inputs) const;
     // The table as drawn: the inputs' rows, then those of each scan whose
@@ -1069,7 +1070,7 @@ private:
     void refresh_frame_shapes(const std::vector<PrepInput>& inputs, std::string& frame_shapes);
     void draw_stencil_rows(const MaskingPanel& p);
     // Try the mask on a scan's photographs, extracted first on a worker.
-    void open_scan_mask_preview(size_t scan);
+    void open_scan_mask_preview(size_t scan, std::optional<std::string> camera = std::nullopt);
     void pump_scan_photos();
     bool scan_photos_busy() const;
     std::future<std::pair<std::string, std::string>> _scan_photos;   // folder, error

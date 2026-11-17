@@ -81,6 +81,7 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model,
     _folder_idx = std::max(_src.lens, 0);
     _frame_idx = 0;
     _target_frame = std::move(initial);
+    _camera_request.reset();
     _frame_dirty = true;
     _needs_run = true;
     _border = app::BorderDetect{};
@@ -1439,20 +1440,34 @@ void SegmentPanel::start_editing(app::FrameStencil& s, const StencilPreset& set)
     _save_name = set.name;
 }
 
-void SegmentPanel::show_camera(const std::string& camera) {
+bool SegmentPanel::show_camera(const std::string& camera) {
+    if (std::find(_cameras.begin(), _cameras.end(), camera) == _cameras.end()) return false;
+    if (shown_camera() == camera) return true;
     if (_src.is_video) {
         const auto it = std::find(_folders.begin(), _folders.end(), camera);
-        if (it == _folders.end()) return;
+        if (it == _folders.end()) return false;
         _folder_idx = (int)(it - _folders.begin());
     } else {
+        std::string sub = camera;
+        if (_src.look.packed_lenses >= 2) {
+            for (size_t i = 0; i < _folders.size(); i++) {
+                const std::string& lens = _folders[i];
+                if (camera == lens || camera.compare(0, lens.size() + 1, lens + "/") == 0) {
+                    _folder_idx = (int)i;
+                    sub = camera == lens ? std::string() : camera.substr(lens.size() + 1);
+                    break;
+                }
+            }
+        }
         const auto it = std::find_if(_frames.begin(), _frames.end(), [&](const PreviewFrame& f) {
-            return file_camera(f.path) == camera;
+            return camera_of(f.path) == sub;
         });
-        if (it == _frames.end()) return;
+        if (it == _frames.end()) return false;
         _frame_idx = (int)(it - _frames.begin());
     }
     _frame_dirty = true;
     _needs_run = true;
+    return true;
 }
 
 void SegmentPanel::draw_saved_areas(app::FrameStencil& s) {
@@ -1720,10 +1735,14 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
             }
         }
     }
+    if (_camera_request && !_listing.load()) {
+        if (show_camera(*_camera_request) && _cameras.size() > 1 && !stencil.per_camera())
+            set_per_camera(stencil, true);
+        _camera_request.reset();
+    }
     if (_edit_request && !_listing.load()) {
         const EditRequest request = std::move(*_edit_request);
         _edit_request.reset();
-        show_camera(request.camera);
         start_editing(stencil, request.set);
     }
     upload_preview();

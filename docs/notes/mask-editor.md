@@ -119,18 +119,25 @@ saves the open frame and unloads SAM.
 
 ## On disk
 
-Corrections live in `<dataset>/mask_edits/`, which mirrors `masks/`:
+Corrections live in `<dataset>/mask_edits/`, keyed by the image paths:
 
 | file | holds |
 |---|---|
-| `<key>.base.png` | a byte copy of `masks/<key>.png` as the run wrote it, made on the first save |
+| `<key>.base.png` | a byte copy of the original mask, made on the first save |
 | `<key>.drop.png` | 255 where the user forced drop |
 | `<key>.keep.png` | 255 where the user forced keep |
-| `index.json` | the mask folder and its polarity, and per frame the FNV-1a fingerprints of the base and of the last composite, the kept fraction and the save time |
+| `index.json` | the mask folder and its polarity, and per frame the mask's relative path when nonstandard, FNV-1a fingerprints of the base and last composite, kept fraction and save time |
 | `kept.json` | find missing's cache of kept fractions, keyed by the mask's fingerprint |
 
 `<key>` is the image's path under the image folder without its extension
-(`cam0/00023`). The mask written into `masks/<key>.png` is
+(`cam0/00023`). Imported masks use the same filename lookup as the source
+preview and dataset parsers, including `image.jpg.png`, tagged names and flat
+mask folders. The index records a nonstandard filename in the frame's `mask`
+field; older entries default to `<key>.png`. Saving, propagating and reverting
+write back to that file. Corrected composites use lossless PNG encoding, and
+reverting restores the original bytes.
+
+The mask written back to the mask folder is
 
     final = keep ? 255 : drop ? 0 : base
 

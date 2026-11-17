@@ -34,7 +34,9 @@ std::string normalize_dir(const std::string& dir);
 // at the root itself). Lexical, as group_frames_by_camera keys it.
 std::string frame_key(const std::string& image_root, const std::string& file);
 
-std::string mask_file(const std::string& mask_root, const std::string& key);
+using MaskPaths = std::map<std::string, std::string>;   // frame key -> path under mask_root
+std::string mask_file(const std::string& mask_root, const std::string& key,
+                      const MaskPaths& paths = {});
 
 enum class Layer { Base, Drop, Keep };
 std::string layer_file(const std::string& layer_root, const std::string& key,
@@ -60,7 +62,7 @@ std::string utc_now_iso();
 
 struct IndexEntry {
     uint64_t base_fp = 0;        // of .base.png; 0 while no base exists
-    uint64_t composite_fp = 0;   // of masks/<key>.png as last written; 0 if never
+    uint64_t composite_fp = 0;   // of the mask last written; 0 if never
     float kept = 0.0f;
     std::string saved_at;        // UTC, "2026-09-21T10:00:00Z"
 };
@@ -71,6 +73,7 @@ struct LayerIndex {
     // a file under mask_root, and every write into it, goes through it.
     bool mask_flipped = false;
     std::map<std::string, IndexEntry> frames;
+    MaskPaths mask_paths;
     // save() writes nothing: one worker's copy of a frame's entry, merged later.
     bool in_memory = false;
     // A missing file is an empty index and succeeds; a corrupt one fails.
@@ -93,9 +96,7 @@ struct FrameLayers {
 bool read_layers(const std::string& layer_root, const std::string& key, int w,
                  int h, FrameLayers& out, std::string& warning);   // warning: ", "-joined paths
 
-// Writes .drop.png and .keep.png, copies masks/<key>.png to .base.png on the
-// first save (when it exists), writes the composite of `base` under the
-// layers into masks/ when `write_composite`, and records the index entry.
+// The first save preserves the original mask's bytes, including its polarity.
 bool save_frame(const std::string& layer_root, const std::string& mask_root,
                 const std::string& key, int w, int h, const uint8_t* base,
                 const uint8_t* drop, const uint8_t* keep, bool write_composite,
@@ -111,8 +112,7 @@ bool recomposite_frame(const std::string& layer_root, const std::string& mask_ro
 // named in `error`. -1 only if the index itself could not be loaded.
 int recomposite_all(const std::string& layer_root, std::string& error);
 
-// masks/<key>.png becomes the byte copy in .base.png again; the three layer
-// files and the entry go. Without a base, only the layers and the entry go.
+// Without a base, only the layers and the index entry are removed.
 bool revert_frame(const std::string& layer_root, const std::string& mask_root,
                   const std::string& key, LayerIndex& idx, std::string& error);
 // A failing frame does not stop the rest: returns the count reverted, with
@@ -127,7 +127,7 @@ int revert_all(const std::string& layer_root, std::string& error);
 // `from` is the file the size came from, or the one that failed.
 bool frame_size(const std::string& layer_root, const std::string& mask_root,
                 const std::string& key, const std::string& image_file, int& w, int& h,
-                std::string& from);
+                std::string& from, const MaskPaths& paths = {});
 
 // What a target's layer files and entry were before a propagate, so it can
 // be put back. Absent files are recorded as absent.
@@ -172,7 +172,7 @@ struct KeptCache {
 // drop) match, else decoded and cached. False with kept = -1 when the mask is
 // absent, unreadable or not a regular file.
 bool kept_fraction_of(const std::string& mask_root, const std::string& key, bool flipped,
-                      KeptCache& cache, float& kept);
+                      KeptCache& cache, float& kept, const MaskPaths& paths = {});
 
 }  // namespace mask
 }  // namespace gui

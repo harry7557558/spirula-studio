@@ -3116,6 +3116,79 @@ void test_session_flipped_polarity() {
           "the other convention over recorded corrections is refused");
 }
 
+void test_session_imported_mask_names() {
+    for (bool flipped : {false, true}) {
+        Fixture f = make_dataset(flipped ? "imported_names_flipped" : "imported_names",
+                                 64, 48, {"cam0/a", "cam0/b", "cam1/c"});
+        const std::vector<std::string> names = {"cam0/a.jpg.png", "cam0/b.jpg.mask.png", "c_mask.PNG"};
+        std::vector<std::vector<uint8_t>> original;
+        for (size_t i = 0; i < names.size(); i++) {
+            fs::rename(f.masks / (f.keys[i] + ".png"), f.masks / names[i]);
+            original.push_back(file_bytes(f.masks / names[i]));
+        }
+        mk::MaskSession s;
+        std::string err;
+        check(s.open(f.root.string(), f.images.string(), f.masks.string(), flipped, err),
+              "imported masks open: " + err);
+        settle(s);
+        wait_scanned(s);
+        for (size_t i = 0; i < names.size(); i++) {
+            s.go_to((int)i);
+            settle(s);
+            std::vector<uint8_t> expected = synth_mask(64, 48, (uint32_t)i);
+            if (flipped) mk::flip_polarity(expected.data(), expected.size());
+            check(s.doc() && s.doc()->composite() == expected && !s.health((int)i).missing_mask,
+                  "imported mask displayed and scanned: " + names[i]);
+        }
+        s.go_to(0);
+        settle(s);
+        keep_box(s);
+        s.save();
+        settle(s);
+        s.propagate(mk::PropagateScope::Next, 0, 0);
+        settle(s);
+        check(s.error().empty() && file_bytes(f.masks / names[1]) != original[1],
+              "propagation updates the imported target: " + s.error());
+        s.undo_propagate();
+        settle(s);
+        check(file_bytes(f.masks / names[1]) == original[1], "undo restores the imported target bytes");
+        s.close();
+        check(file_bytes(f.masks / names[0]) != original[0] &&
+                  file_bytes(f.layer / "cam0/a.base.png") == original[0] &&
+                  !fs::exists(f.masks / "cam0/a.png"),
+              "saving updates the original filename and preserves its base");
+
+        mk::LayerIndex idx;
+        check(idx.load(f.layer.string(), err) && idx.mask_paths.count("cam0/a") &&
+                  idx.mask_paths.at("cam0/a") == names[0],
+              "the original mask path survives an index reload");
+        const auto regenerated = synth_mask(64, 48, 99);
+        write_png_gray(f.masks / names[0], 64, 48, regenerated);
+        check(mk::recomposite_all(f.layer.string(), err) == 1,
+              "a regenerated imported mask receives its corrections: " + err);
+        check(mk::revert_all(f.layer.string(), err) == 1 &&
+                  stencil_pixels(f.masks / names[0]) == regenerated,
+              "revert all restores the imported mask without a session: " + err);
+        check(s.open(f.root.string(), f.images.string(), f.masks.string(), flipped, err),
+              "imported masks reopen: " + err);
+        settle(s);
+        keep_box(s);
+        s.save();
+        settle(s);
+        s.revert_every_frame();
+        settle(s);
+        keep_box(s);
+        s.save();
+        settle(s);
+        check(s.error().empty() && !fs::exists(f.masks / "cam0/a.png"),
+              "editing after revert all retains the imported path: " + s.error());
+        s.close();
+        for (size_t i = 0; i < names.size(); i++)
+            check(!fs::exists(f.masks / (f.keys[i] + ".png")),
+                  "no competing canonical mask created: " + names[i]);
+    }
+}
+
 // One layer folder, two mask folders: the second must not reinterpret the
 // first's bases.
 void test_session_other_mask_root_refused() {
@@ -8760,6 +8833,7 @@ int main() {
     test_session_eraser();
     test_session_size_mismatch();
     test_session_flipped_polarity();
+    test_session_imported_mask_names();
     test_session_other_mask_root_refused();
     test_session_reencoded_mask_is_not_regenerated();
     test_session_corrupt_index_refuses();

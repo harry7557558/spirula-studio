@@ -504,6 +504,7 @@ private:
     // thereafter, cleared only after close()'s join(): safe by ordering,
     // not by exclusivity -- neither field is ever mutable mid-session.
     std::string _workspace, _image_root, _mask_root, _layer_root;
+    MaskPaths _mask_paths;   // immutable while the health scanner runs
     bool _mask_flipped = false;      // mask_root's 255 is drop
     std::vector<FrameRef> _frames;
     int _idx = -1;

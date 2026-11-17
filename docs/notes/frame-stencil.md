@@ -247,7 +247,9 @@ screen lists a row per input, or per camera of an input with several
 camera its stencil already names; a 360 file's views share one row until the
 panel splits them). Each row has the border fit (Cut away / Off, with the
 shrink slider) and its drawn areas (None, a saved set, or Draw..., which opens
-Try the mask on that input). The logic is `app/gui/StencilRows.h`, with no
+Try the mask on that row's camera, with separate areas enabled when the
+input has several cameras). The frame slider can still visit other cameras;
+the tools edit the camera shown. The logic is `app/gui/StencilRows.h`, with no
 ImGui; `stencil_rows_test` covers it.
 
 Each row follows a row above it. An input's first row follows the same

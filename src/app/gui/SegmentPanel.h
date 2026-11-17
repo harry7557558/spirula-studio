@@ -1,16 +1,7 @@
 #pragma once
 
-// SegmentPanel -- try a mask prompt on one real frame before committing to a
-// run over the whole capture, with the same sam::Masker the run uses, so what
-// is on screen is what will be written. Clicks prompt a SAM 2 checkpoint (no
-// text tower); they belong to an object and a frame (MaskClick) and live in
-// the settings, because they are prompts for the run. The model is dropped
-// when the panel closes, so a reconstruction after it has the VRAM.
-//
-// The same panel edits the input's static stencil (app::FrameStencil): the
-// fitted fisheye border plus shapes drawn with the mask editor's tools
-// (StencilEdit.h), for the whole input or per camera. That half needs no
-// model and works when there is none.
+// Mask prompts and static frame stencils on the pixels preparation writes.
+// Clicks belong to an object and a frame; drawn areas can belong to a camera.
 
 #include "app/FrameMask.h"
 #include "app/gui/GlLoader.h"
@@ -54,6 +45,8 @@ public:
     // The source preview's frame: a video's frame number, or a photo's path. A
     // frame outside the clip lands on its nearer end.
     void show_frame(const PreviewFrame& frame);
+    // A table row's camera, selected and given its own areas after listing.
+    void edit_camera(std::string camera) { _camera_request = std::move(camera); }
 
     // Draws the modal window. Call once per frame from the dataset screen,
     // inside its ImGui frame. Both arguments are edited in place.
@@ -81,7 +74,10 @@ public:
         StencilPreset set;
         std::string camera;
     };
-    void edit_saved(EditRequest request) { _edit_request = std::move(request); }
+    void edit_saved(EditRequest request) {
+        edit_camera(request.camera);
+        _edit_request = std::move(request);
+    }
 
 private:
     struct Rgb;
@@ -105,7 +101,7 @@ private:
     void draw_tools(app::FrameStencil& stencil, bool& edited);
     void draw_saved_areas(app::FrameStencil& stencil);
     void start_editing(app::FrameStencil& stencil, const StencilPreset& set);
-    void show_camera(const std::string& camera);
+    bool show_camera(const std::string& camera);
     // A pen shape's anchors and handles under Points, or the pen with Ctrl:
     // hover, grab, drag, and the history step on release. True: the pointer
     // is on one of them, so the click is not the canvas's.
@@ -163,6 +159,7 @@ private:
     std::vector<std::string> _folders_pending;
     int  _frame_idx = 0;
     std::optional<PreviewFrame> _target_frame;   // until the listing lands
+    std::optional<std::string> _camera_request;
     bool _frame_dirty = true;           // the chosen frame changed
     bool _needs_run = false;            // prompt edited; rerun on release
     std::atomic<bool> _listing{false};

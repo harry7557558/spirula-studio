@@ -85,8 +85,11 @@ std::string frame_key(const std::string& image_root, const std::string& file) {
 
 // A key is '/'-separated (generic_string); make_preferred keeps a Windows
 // path from coming out half '\' and half '/' in the messages that name it.
-std::string mask_file(const std::string& mask_root, const std::string& key) {
-    return (fs::path(mask_root) / (key + ".png")).make_preferred().string();
+std::string mask_file(const std::string& mask_root, const std::string& key,
+                      const MaskPaths& paths) {
+    const auto it = paths.find(key);
+    return (fs::path(mask_root) / (it == paths.end() ? key + ".png" : it->second))
+        .make_preferred().string();
 }
 
 std::string layer_file(const std::string& layer_root, const std::string& key,
@@ -173,6 +176,7 @@ std::string utc_now_iso() {
 
 bool LayerIndex::load(const std::string& layer_root, std::string& error) {
     frames.clear();
+    mask_paths.clear();
     mask_root.clear();
     mask_flipped = false;
     const std::string path = (fs::path(layer_root) / kIndexFileName).string();
@@ -190,6 +194,14 @@ bool LayerIndex::load(const std::string& layer_root, std::string& error) {
     const JsonValue* fr = doc.find("frames");
     if (!fr || !fr->is_object()) return true;
     for (const auto& [key, v] : fr->obj) {
+        if (const JsonValue* m = v.find("mask")) {
+            const fs::path rel = fs::path(m->as_string()).lexically_normal();
+            if (rel.empty() || rel.is_absolute() || rel.has_root_name() || *rel.begin() == "..") {
+                error = path + ": invalid mask path";
+                return false;
+            }
+            mask_paths[key] = rel.generic_string();
+        }
         IndexEntry e;
         if (const JsonValue* b = v.find("base")) fnv_parse(b->as_string(), e.base_fp);
         if (const JsonValue* c = v.find("composite")) fnv_parse(c->as_string(), e.composite_fp);
@@ -214,6 +226,8 @@ bool LayerIndex::save(const std::string& layer_root, std::string& error) const {
         w.field("composite", fnv_hex(e.composite_fp));
         w.field("kept", e.kept);
         w.field("saved_at", e.saved_at);
+        if (const auto it = mask_paths.find(key); it != mask_paths.end())
+            w.field("mask", it->second);
         w.end();
     }
     w.end();
@@ -231,7 +245,7 @@ BaseState base_state(const std::string& mask_root, const std::string& key,
                      const LayerIndex& idx) {
     const auto it = idx.frames.find(key);
     std::error_code ec;
-    const std::string mask = mask_file(mask_root, key);
+    const std::string mask = mask_file(mask_root, key, idx.mask_paths);
     const bool have_mask = fs::exists(mask, ec);
     if (it == idx.frames.end()) return have_mask ? BaseState::Unedited : BaseState::Missing;
     if (!have_mask) return BaseState::Missing;
@@ -294,7 +308,7 @@ bool save_frame(const std::string& layer_root, const std::string& mask_root,
     std::error_code ec;
     const size_t n = (size_t)w * h;
     const std::string base_path = layer_file(layer_root, key, Layer::Base);
-    const std::string mask_path = mask_file(mask_root, key);
+    const std::string mask_path = mask_file(mask_root, key, idx.mask_paths);
     IndexEntry e = idx.frames.count(key) ? idx.frames.at(key) : IndexEntry{};
 
     if (!fs::exists(base_path, ec) && fs::exists(mask_path, ec)) {
@@ -345,7 +359,7 @@ bool recomposite_frame(const std::string& layer_root, const std::string& mask_ro
                        std::string& error) {
     found = base_state(mask_root, key, idx);
     if (found != BaseState::Regenerated) return true;
-    const std::string mask_path = mask_file(mask_root, key);
+    const std::string mask_path = mask_file(mask_root, key, idx.mask_paths);
     std::vector<uint8_t> bytes;
     if (!read_file(mask_path, bytes)) { error = mask_path; return false; }
     int w = 0, h = 0;
@@ -407,7 +421,7 @@ bool revert_frame(const std::string& layer_root, const std::string& mask_root,
     if (fs::exists(base_path, ec)) {
         std::vector<uint8_t> bytes;
         if (!read_file(base_path, bytes)) { error = base_path; return false; }
-        const std::string mask_path = mask_file(mask_root, key);
+        const std::string mask_path = mask_file(mask_root, key, idx.mask_paths);
         if (!write_file_atomic(mask_path, bytes.data(), bytes.size())) {
             error = mask_path;
             return false;
@@ -456,11 +470,11 @@ int revert_all(const std::string& layer_root, std::string& error) {
 
 bool frame_size(const std::string& layer_root, const std::string& mask_root,
                 const std::string& key, const std::string& image_file, int& w, int& h,
-                std::string& from) {
+                std::string& from, const MaskPaths& paths) {
     std::error_code ec;
     from = layer_file(layer_root, key, Layer::Base);
     if (fs::exists(from, ec)) return app::image_size(from, w, h);
-    from = mask_file(mask_root, key);
+    from = mask_file(mask_root, key, paths);
     if (fs::exists(from, ec)) return app::image_size(from, w, h);
     from = image_file;
     return app::image_size(from, w, h);
@@ -492,7 +506,7 @@ bool restore_layers(const std::string& layer_root, const std::string& mask_root,
     const std::string d = layer_file(layer_root, snap.key, Layer::Drop);
     const std::string k = layer_file(layer_root, snap.key, Layer::Keep);
     const std::string base_path = layer_file(layer_root, snap.key, Layer::Base);
-    const std::string mask_path = mask_file(mask_root, snap.key);
+    const std::string mask_path = mask_file(mask_root, snap.key, idx.mask_paths);
     auto put_one = [&](const std::string& path, bool had, const std::vector<uint8_t>& png) {
         if (had) return write_file_atomic(path, png.data(), png.size());
         fs::remove(path, ec);
@@ -637,9 +651,9 @@ bool KeptCache::save(const std::string& layer_root, std::string& error) const {
 }
 
 bool kept_fraction_of(const std::string& mask_root, const std::string& key, bool flipped,
-                      KeptCache& cache, float& kept) {
+                      KeptCache& cache, float& kept, const MaskPaths& paths) {
     kept = -1.0f;
-    const std::string path = mask_file(mask_root, key);
+    const std::string path = mask_file(mask_root, key, paths);
     // A FIFO or a device there would block the open until a writer came.
     std::error_code ec;
     if (!fs::is_regular_file(path, ec)) return false;
