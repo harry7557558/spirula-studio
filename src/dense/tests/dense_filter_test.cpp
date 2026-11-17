@@ -129,6 +129,18 @@ void two_image_bar_is_the_median() {
     fs::remove_all(dir);
 }
 
+// A sort that cannot open its input must name the file. The old message, "dense intermediate
+// write failed", sent a bug report hunting a full disk when the handle table was what ran out.
+void sort_open_failure_names_the_file() {
+    const auto dir = scratch("sort-io");
+    std::string message;
+    try { external_median(dir / "absent.bin", 3, 1 << 20); }
+    catch (const std::exception& e) { message = e.what(); }
+    check(!message.empty(), "a missing sort input was accepted");
+    check(message.find("absent.bin") != std::string::npos, "the error does not name the file: " + message);
+    fs::remove_all(dir);
+}
+
 // Mutants: the finer focal; the worst pair instead of the best; the half angle; the grid scale ignored.
 void depth_precision_takes_the_best_pair_and_coarser_focal() {
     const View ref = pinhole(0, {0, 0, 0}, 32), close = pinhole(1, {0.1, 0, 0}, 32), wide = pinhole(2, {1, 0, 0}, 16);
@@ -638,6 +650,7 @@ int main() {
         {"free_space_wraps_a_panorama_seam", free_space_wraps_a_panorama_seam},
         {"free_space_grid_spans_512_cells_per_turn", free_space_grid_spans_512_cells_per_turn},
         {"two_image_bar_is_the_median", two_image_bar_is_the_median},
+        {"sort_open_failure_names_the_file", sort_open_failure_names_the_file},
         {"depth_precision_takes_the_best_pair_and_coarser_focal", depth_precision_takes_the_best_pair_and_coarser_focal},
         {"automatic_depth_precision_reproduces_the_measured_bars", automatic_depth_precision_reproduces_the_measured_bars},
         {"far_isolated_drops_only_isolated_far_points", far_isolated_drops_only_isolated_far_points},
