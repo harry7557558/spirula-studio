@@ -8,6 +8,16 @@ Delaunay tetrahedralization of splat samples, `src/mesh/Meshing.h`) stays the
 default. Comparing a 2dgs model against the paper's numbers needs the paper's
 extraction, or a gap cannot be told apart from the extractor's.
 
+## Status
+
+T0-T2 done, T3 but for the GUI: `spirula mesh --method tsdf` runs on both
+backends. First run, a 3dgs model of the action-cam capture (1M splats, 488
+cameras at 2688x1512): 4 min, 6.0 GB RAM at peak, mesh F 0.474 against 0.56
+for the opacity field of the same model. TSDF averages each camera's depth
+and only clears free space near surfaces, where the opacity field takes the
+least occupancy over the cameras, so floaters one camera sees survive; the
+comparison that matters is on a 2dgs model, next.
+
 ## Design
 
 1. **Depth from the moments render.** `render_camera_moments`
@@ -26,9 +36,12 @@ extraction, or a gap cannot be told apart from the extractor's.
    read the pixel's depth `d`, and fold `clamp(d - |v - o|, -trunc, trunc)`
    into the voxel's running mean (weight 1, as Open3D). Voxels behind the
    band (`d - |v - o| < -trunc`) are not updated.
-3. **Marching cubes** over allocated blocks, a vertex per cut edge keyed by
-   its global edge id so the mesh comes out welded; a cell is skipped unless
-   its eight voxels have weight. The result enters the existing finishing
+3. **Marching tetrahedra** over allocated blocks, six per cube along its main
+   diagonal, with the opacity-field extractor's tables (`mesh/MarchingTets.h`)
+   rather than the paper's marching cubes: the same linear interpolation of
+   the same field, no second table. A vertex per cut edge, keyed by the edge's
+   lower grid point and direction, so the mesh comes out welded; a tetrahedron
+   is skipped unless its four voxels have weight. The result enters the existing finishing
    chain in `MeshingHost.cpp` (merge, cleanup, culling, orientation, colour,
    export) unchanged.
 4. **Defaults.** Voxel = diagonal of the 5-95 percentile box of the splat
@@ -52,9 +65,10 @@ render moments, download, convert on the host. Unit check: a plane seen
 head-on gives its distance.
 
 ### T2. Volume and marching cubes
-`mesh/Tsdf.{h,cpp}`, host only. Test (`mesh/tests`, both builds, no GPU):
-analytic depth maps of a sphere from pinhole and fisheye cameras; every
-vertex within half a voxel of the sphere, the mesh closed and manifold.
+`mesh/Tsdf.{h,cpp}`, host only. `tsdf_sphere` (both builds, no GPU):
+analytic depth maps of a sphere from pinhole, fisheye and orthographic
+cameras; vertices within a voxel of it (median 0.05: depth is read at the
+nearest pixel, as Open3D does), the mesh closed, faces wound outward.
 
 ### T3. CLI, GUI, memory
 Flags above, help in all 13 languages (`check_ui_text.py`); the GUI's mesh

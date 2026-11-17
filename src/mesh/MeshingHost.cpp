@@ -14,6 +14,8 @@
 #include "mesh/MeshUV.h"
 #include "mesh/Delaunay3D.h"
 #include "mesh/MeshLog.h"
+#include "mesh/MarchingTets.h"
+#include "mesh/Tsdf.h"
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -50,100 +52,6 @@ using Clock = std::chrono::steady_clock;
 static double secs_since(Clock::time_point t0) {
     return std::chrono::duration<double>(Clock::now() - t0).count();
 }
-
-// The 6 tet edges as corner-index pairs.
-static const int kTetEdge[6][2] = {{0,1},{0,2},{0,3},{1,2},{1,3},{2,3}};
-
-// Marching-tetrahedra triangle table. Case bit i is set when occ[i] < iso
-// (the "empty" side). Each triangle is 3 edges; an edge is a corner pair.
-// Winding follows Paul Bourke's PolygoniseTri so normals are consistent.
-struct MTCase { int ntri; int e[2][3][2]; };
-static const MTCase kMT[16] = {
-    /*0000*/ {0, {}},
-    /*0001*/ {1, {{{0,1},{0,2},{0,3}}}},
-    /*0010*/ {1, {{{1,0},{1,3},{1,2}}}},
-    /*0011*/ {2, {{{0,3},{0,2},{1,3}}, {{1,3},{1,2},{0,2}}}},
-    /*0100*/ {1, {{{2,0},{2,1},{2,3}}}},
-    /*0101*/ {2, {{{0,1},{2,3},{0,3}}, {{0,1},{1,2},{2,3}}}},
-    /*0110*/ {2, {{{0,1},{1,3},{2,3}}, {{0,1},{0,2},{2,3}}}},
-    /*0111*/ {1, {{{3,0},{3,2},{3,1}}}},
-    /*1000*/ {1, {{{3,0},{3,2},{3,1}}}},
-    /*1001*/ {2, {{{0,1},{1,3},{2,3}}, {{0,1},{0,2},{2,3}}}},
-    /*1010*/ {2, {{{0,1},{2,3},{0,3}}, {{0,1},{1,2},{2,3}}}},
-    /*1011*/ {1, {{{2,0},{2,1},{2,3}}}},
-    /*1100*/ {2, {{{0,3},{0,2},{1,3}}, {{1,3},{1,2},{0,2}}}},
-    /*1101*/ {1, {{{1,0},{1,3},{1,2}}}},
-    /*1110*/ {1, {{{0,1},{0,2},{0,3}}}},
-    /*1111*/ {0, {}},
-};
-
-static inline int64_t edge_key(int a, int b, int64_t P) {
-    int64_t lo = a < b ? a : b, hi = a < b ? b : a;
-    return lo * P + hi;
-}
-
-// Cut-edge key -> mesh-vertex id, open-addressed. std::unordered_map spends
-// ~120 bytes per entry here plus a bucket array sized from the tet count, which
-// was 1.0 GB of the peak on a 1M-splat model.
-class EdgeTable {
-public:
-    explicit EdgeTable(size_t expect) {
-        size_t cap = 1024;
-        while (cap < expect) cap <<= 1;
-        keys_.assign(cap, kEmpty);
-        vals_.assign(cap, -1);
-        mask_ = cap - 1;
-    }
-    int find(int64_t k) const {
-        size_t i = (size_t)mix(k) & mask_;
-        while (keys_[i] != kEmpty) {
-            if (keys_[i] == k) return vals_[i];
-            i = (i + 1) & mask_;
-        }
-        return -1;
-    }
-    // The id already stored for `k`, or -1 after storing `id` for it.
-    int insert(int64_t k, int id) {
-        if ((load_ + 1) * 4 > (mask_ + 1) * 3) grow();
-        size_t i = (size_t)mix(k) & mask_;
-        while (keys_[i] != kEmpty) {
-            if (keys_[i] == k) return vals_[i];
-            i = (i + 1) & mask_;
-        }
-        keys_[i] = k; vals_[i] = id; ++load_;
-        return -1;
-    }
-    void release() {
-        std::vector<int64_t>().swap(keys_);
-        std::vector<int32_t>().swap(vals_);
-        mask_ = 0; load_ = 0;
-    }
-
-private:
-    static constexpr int64_t kEmpty = INT64_MIN;   // keys are lo*P+hi >= 0
-    static uint64_t mix(int64_t k) {
-        uint64_t x = (uint64_t)k;
-        x ^= x >> 33; x *= 0xff51afd7ed558ccdULL;
-        x ^= x >> 33; x *= 0xc4ceb9fe1a85ec53ULL;
-        return x ^ (x >> 33);
-    }
-    void grow() {
-        const size_t cap = (mask_ + 1) * 2;
-        std::vector<int64_t> nk(cap, kEmpty);
-        std::vector<int32_t> nv(cap, -1);
-        const size_t nmask = cap - 1;
-        for (size_t j = 0; j <= mask_; ++j) {
-            if (keys_[j] == kEmpty) continue;
-            size_t i = (size_t)mix(keys_[j]) & nmask;
-            while (nk[i] != kEmpty) i = (i + 1) & nmask;
-            nk[i] = keys_[j]; nv[i] = vals_[j];
-        }
-        keys_.swap(nk); vals_.swap(nv); mask_ = nmask;
-    }
-    std::vector<int64_t> keys_;
-    std::vector<int32_t> vals_;
-    size_t mask_ = 0, load_ = 0;
-};
 
 // ---------------------------------------------------------------------------
 // Manifold-preserving short-edge merge.
@@ -1716,6 +1624,78 @@ bool extract_opacity_field(OccupancyEvaluator& ev, const MeshingConfig& cfg,
     return true;
 }
 
+// The paper's large-scene default: 1024 cells across the scene, here the 5-95
+// percentile box of the splat centres, which ignores far floaters.
+float auto_tsdf_voxel(const float* means, int n) {
+    double diag2 = 0.0;
+    std::vector<float> axis((size_t)n);
+    for (int a = 0; a < 3; ++a) {
+        for (int i = 0; i < n; ++i) axis[(size_t)i] = means[3 * i + a];
+        const size_t lo = (size_t)(0.05 * (n - 1)), hi = (size_t)(0.95 * (n - 1));
+        std::nth_element(axis.begin(), axis.begin() + lo, axis.end());
+        const float vlo = axis[lo];
+        std::nth_element(axis.begin(), axis.begin() + hi, axis.end());
+        diag2 += (double)(axis[hi] - vlo) * (axis[hi] - vlo);
+    }
+    return (float)(std::sqrt(diag2) / 1024.0);
+}
+
+// Every camera's median depth fused into a TSDF, and its zero level.
+bool extract_tsdf(OccupancyEvaluator& ev, const float* means, int num_splats,
+                  const CameraParams& cams, int num_cameras, const MeshingConfig& cfg,
+                  MeshProgress& prog, Mesh& mesh) {
+    const float voxel = cfg.tsdf_voxel > 0.0f ? cfg.tsdf_voxel : auto_tsdf_voxel(means, num_splats);
+    if (!(voxel > 0.0f)) {
+        mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_no_extent);
+        return false;
+    }
+    const float trunc = std::max(cfg.tsdf_trunc, 1.0f) * voxel;
+    TsdfVolume vol(voxel, trunc);
+    auto t = Clock::now();
+    prog.enter(MeshPhase::Fuse);
+    if (cfg.verbose)
+        mlog::out(mlog::Stage::Tsdf, mmsg::tsdf_start,
+                  {num_cameras, mlog::num(voxel, 4), mlog::num(trunc, 4)});
+    std::vector<float> moments, depth;
+    for (int c = 0; c < num_cameras; ++c) {
+        int W = 0, H = 0;
+        if (!ev.render_moments(c, moments, W, H)) {
+            mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_needs_cameras);
+            return false;
+        }
+        depth.resize((size_t)W * H);
+        moments_to_depth(moments.data(), depth.size(), depth.data());
+        TsdfCamera tc{};
+        std::copy(cams.viewmats + 16 * c, cams.viewmats + 16 * (c + 1), tc.viewmat);
+        tc.fx = cams.intrins[4 * c];
+        tc.fy = cams.intrins[4 * c + 1];
+        tc.cx = cams.intrins[4 * c + 2];
+        tc.cy = cams.intrins[4 * c + 3];
+        tc.width = W;
+        tc.height = H;
+        tc.model = cams.camera_models[c];
+        tc.distortion = cams.distortions ? cams.distortions[c] : 0;
+        if (cams.dist_coeffs) std::copy(cams.dist_coeffs + 8 * c, cams.dist_coeffs + 8 * (c + 1), tc.dist);
+        vol.integrate(tc, depth.data(), cfg.tsdf_max_depth);
+    }
+    if (cfg.verbose)
+        mlog::out(mlog::Stage::Tsdf, mmsg::tsdf_fused,
+                  {(long long)vol.num_blocks(), mlog::num((double)vol.bytes() / 1048576.0, 0),
+                   mlog::num(secs_since(t), 2)});
+
+    t = Clock::now();
+    prog.enter(MeshPhase::Extract);
+    vol.extract(mesh);
+    if (cfg.verbose)
+        mlog::out(mlog::Stage::Tsdf, mmsg::marching_done,
+                  {(long long)mesh.F.size(), mlog::num(secs_since(t), 2)});
+    if (mesh.F.empty()) {
+        mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_empty);
+        return false;
+    }
+    return true;
+}
+
 // Everything after extraction, whatever made the mesh: merge, culling,
 // cleanup, orientation, colour, export.
 void finish_mesh(Mesh& mesh, OccupancyEvaluator& ev, MeshProgress& prog,
@@ -1991,7 +1971,7 @@ bool generate_mesh(
     if (const char* dbg = spirula::env("MESH_DEBUG_RENDER")) {
         int cam = std::atoi(dbg);
         std::vector<float> mom; int W = 0, H = 0;
-        if (!ev.debug_render_moments(cam, mom, W, H)) {
+        if (!ev.render_moments(cam, mom, W, H)) {
             mlog::out(mlog::Stage::Debug, mmsg::debug_render_unavailable);
             return false;
         }
@@ -2025,9 +2005,14 @@ bool generate_mesh(
         return true;
     }
 
+    const bool tsdf = cfg.method == MeshMethod::Tsdf;
+    if (tsdf && !ev.has_render_cameras()) {
+        mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_needs_cameras);
+        return false;
+    }
     // Refused here rather than inside the solver, which can only report the
     // empty result as "no tetrahedra".
-    if ((long long)ev.num_kept() * 7 > delaunay3d::kMaxPoints) {
+    if (!tsdf && (long long)ev.num_kept() * 7 > delaunay3d::kMaxPoints) {
         mlog::fail(mlog::Stage::PointCloud, mmsg::too_many_gaussians,
                    {(long long)ev.num_kept(), (long long)delaunay3d::kMaxPoints,
                     (long long)(delaunay3d::kMaxPoints / 7)});
@@ -2038,7 +2023,14 @@ bool generate_mesh(
     // completion looks like a hang and leaves a progress display nothing to show.
     MeshProgress prog(cfg, cfg.on_progress, ev.num_points(), want_vertex, want_texture);
     Mesh mesh;
-    if (!extract_opacity_field(ev, cfg, prog, t0, mesh)) return false;
+    if (tsdf) {
+        long long pixels = 0;
+        for (int c = 0; c < num_cameras; ++c) pixels += (long long)cams.widths[c] * cams.heights[c];
+        prog.tsdf((double)pixels);
+        if (!extract_tsdf(ev, means, num_splats, cams, num_cameras, cfg, prog, mesh)) return false;
+    } else if (!extract_opacity_field(ev, cfg, prog, t0, mesh)) {
+        return false;
+    }
     finish_mesh(mesh, ev, prog, cfg, outputs, want_vertex, want_texture, t0);
     return true;
 }
