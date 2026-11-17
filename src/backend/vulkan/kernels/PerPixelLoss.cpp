@@ -618,7 +618,7 @@ void launch_fused_flip_inplace(
     ScielabParams p = colour_loss_params(
         img1, img2, mask, dL_dmap, dL_dimg1, val_buf, loss_map, loss_map_weight,
         saturation_threshold, "fused_ssim.flip_mask_cov", PoolSlot::FlipMaskWeight,
-        4);
+        7);
     if (map_features) p.flags |= kFlipMapFeatures;
     dispatch_colour_loss("fused_ssim.flip_bwd_inplace", p, loss_fmts(img1, img2));
 }

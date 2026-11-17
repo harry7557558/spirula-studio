@@ -94,8 +94,11 @@ per image. Each thread keeps the window centres it owns (3 of the
 block-plus-halo's 26x26) in registers across the passes, so shared memory
 holds only the tiles and, at the end, the seven adjoint grids: 31.4 KB, under
 the 32 KB floor. With a mask or the clip test on, a pre-pass writes each
-pixel's seven window coverages as float16 (16 B per pixel,
-`PoolSlot::FlipMaskWeight`).
+pixel's seven window coverages as float32 (28 B per pixel,
+`PoolSlot::FlipMaskWeight`). The legacy CUDA kernel stores them as float16;
+on Vulkan, an R9700 with float16 put the all-kept-mask gradient 8.3% of max
+off the unmasked closed form, against float32's 5e-6, and Vulkan leaves
+`packHalf2x16`'s rounding mode to the driver.
 
 Per call on bonsai at 780x520 (Vulkan, RTX 3070 Laptop, GPU timestamps under
 `SS_PROFILE=1`, 600 steps, each loss run first once and last once): FLIP
