@@ -24,9 +24,9 @@
 #include "shaders/per_pixel_losses.slang"
 #undef CudaDeviceExport
 
-static const int kNRaw = int(RawLossIndex::length);        // 31
-static const int kNW = int(LossWeightIndex::length);       // 19
-static const int kNL = int(LossIndex::length);             // 14
+static const int kNRaw = int(RawLossIndex::length);
+static const int kNW = int(LossWeightIndex::length);
+static const int kNL = int(LossIndex::length);
 
 // in_flags bits (buffer present)
 static const uint kInCam = 1u << 0;
@@ -372,6 +372,7 @@ void ppl_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         if ((p.in_flags & kInLossMap) != 0) {
             p.loss_map[idx] = abs(
                 losses[int(RawLossIndex::RgbLoss)] +
+                losses[int(RawLossIndex::DepthSupMetric)] +
                 losses[int(RawLossIndex::RenderNormalSup)] +
                 losses[int(RawLossIndex::DepthNormalSup)] +
                 losses[int(RawLossIndex::AlphaSup)] +

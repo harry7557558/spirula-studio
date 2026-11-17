@@ -939,6 +939,8 @@ static std::map<std::string, float> _engine_loss(
     }
     loss_dict["depth_loss"] = sdiv(lv.depth_sup,
         loss_weights[(int)LossWeightIndex::DepthSup]);
+    loss_dict["lidar_depth_loss"] = sdiv(lv.depth_sup_metric,
+        loss_weights[(int)LossWeightIndex::DepthSupMetric]);
     loss_dict["normal_loss"] = sdiv(lv.normal_sup,
         loss_weights[(int)LossWeightIndex::NormalSup]);
     loss_dict["alpha_loss"] = sdiv(lv.alpha_sup,

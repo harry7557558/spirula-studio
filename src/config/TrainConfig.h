@@ -194,7 +194,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(bool, background_match_luminance, false, "splats", "advanced", "")     \
     X(float, viewer_kernel_fraction, 0.3f, "splats", "advanced", "")         \
     X(std::optional<float>, scale_init, 0.35f, "splats", "advanced", "") \
-    X(std::optional<float>, opacity_init, std::nullopt, "splats", "advanced", "") \
+    X(std::optional<float>, opacity_init, std::nullopt, "splats", "advanced", "")     X(float, lidar_seed_opacity, 0.5f, "splats", "advanced", "")             \
     X(bool, suppress_initial_scales, false, "splats", "expert", "")          \
     X(std::string, random_init, "auto", "splats", "advanced", "never|auto|always") \
     X(float, random_init_fraction, 0.1f, "splats", "advanced", "")          \
@@ -277,7 +277,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(float, alpha_reg_weight, 0.0f, "geometry", "basic", "")                \
     X(int, alpha_reg_warmup, 12000, "geometry", "advanced", "")              \
     X(int, reg_warmup_length, 0, "geometry", "advanced", "")                 \
-    X(float, depth_supervision_weight, 0.0f, "geometry", "basic", "")        \
+    X(float, depth_supervision_weight, 0.0f, "geometry", "basic", "")            X(float, lidar_depth_weight, 0.1f, "geometry", "basic", "")              \
     X(float, normal_supervision_weight, 0.01f, "geometry", "basic", "")      \
     X(std::optional<bool>, input_depth_is_ray_depth, std::nullopt, "geometry", "basic", "") \
     X(int, supervision_warmup, 0, "geometry", "expert", "")                  \

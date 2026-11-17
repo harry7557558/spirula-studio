@@ -10,6 +10,7 @@ enum class RawLossIndex {
     DepthSupXX,
     DepthSupYY,
     DepthSupXY,
+    DepthSupMetric,
     RenderNormalSup,
     DepthNormalSup,
     AlphaSup,
@@ -51,6 +52,8 @@ enum class LossWeightIndex {
     USupL2,
     VSupL2,
     DepthSup,
+    DepthSupMetric,
+    DepthMetricLogScale,
     NormalSup,
     AlphaSup,
     AlphaSupUnder,
@@ -71,6 +74,7 @@ enum class LossIndex {
     RgbLoss,
     RgbPSNR,
     DepthSup,
+    DepthSupMetric,
     NormalSup,
     AlphaSup,
     NormalReg,
@@ -166,6 +170,7 @@ struct LossValues {
     float rgb_loss;
     float rgb_psnr;
     float depth_sup;
+    float depth_sup_metric;
     float normal_sup;
     float alpha_sup;
     float normal_reg;

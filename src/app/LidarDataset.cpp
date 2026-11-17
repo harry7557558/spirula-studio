@@ -10,7 +10,9 @@
 #include "data/ImageProbe.h"
 #include "data/Json.h"
 #include "data/JsonWrite.h"
+#include "data/LidarLayout.h"
 #include "data/PointCloudFile.h"
+#include "data/SparseEdit.h"
 #include "external/stb_image.h"
 #include "external/stb_image_write.h"
 #include "i18n/Message.h"
@@ -1294,9 +1296,14 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     std::mutex mu;
     std::exception_ptr failure;
     int64_t done = 0;
+    // The trainer takes lidar/depths as this scan's: a run without maps
+    // must not leave an earlier run's behind.
     if (opt.depth_maps) {
-        fs::create_directories(ds / "depths", ec);
-        fs::create_directories(ds / "normals", ec);
+        fs::create_directories(ds / lidar_layout::kDepths, ec);
+        fs::create_directories(ds / lidar_layout::kNormals, ec);
+    } else {
+        fs::remove_all(ds / lidar_layout::kDepths, ec);
+        fs::remove_all(ds / lidar_layout::kNormals, ec);
     }
     const int nf = (int)frames.size();
 #pragma omp parallel for schedule(dynamic, 1)
@@ -1385,6 +1392,9 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
                 on += std::fabs((ray ? p.norm() : p.z) - d) <= kOnRatio * d + kOnSlack;
             }
             if (measured >= kOnMinPoints && 2 * on < measured) {
+                std::error_code rm;
+                fs::remove(ds / lidar_layout::kDepths / (stem_of(f.rel) + ".png"), rm);
+                fs::remove(ds / lidar_layout::kNormals / (stem_of(f.rel) + ".png"), rm);
                 std::lock_guard<std::mutex> lk(mu);
                 off_scan.insert(f.image);
                 log(format(lmsg::progress_maps, {(long long)++done, (long long)nf}));
@@ -1398,8 +1408,8 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
                     if (depth[j] > 0 && v <= 65535.0)
                         mm[j] = (uint16_t)std::max<long>(1, std::lround(v));
                 }
-                const fs::path dp = ds / "depths" / (stem + ".png");
-                const fs::path np = ds / "normals" / (stem + ".png");
+                const fs::path dp = ds / lidar_layout::kDepths / (stem + ".png");
+                const fs::path np = ds / lidar_layout::kNormals / (stem + ".png");
                 fs::create_directories(dp.parent_path());
                 fs::create_directories(np.parent_path());
                 if (!save_depth_png16(dp.string(), mm.data(), m.width, m.height))
@@ -1482,6 +1492,10 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     }
     res.sfm_points = (int64_t)out.points.size();
     int64_t observed = 0, observations = 0;
+    std::vector<double> scan_xyz;
+    std::vector<uint8_t> scan_rgb;
+    scan_xyz.reserve(n_seed * 3);
+    scan_rgb.reserve(n_seed * 3);
     for (size_t s = 0; s < n_seed; s++) {
         ColPoint p;
         for (int a = 0; a < 3; a++) p.xyz[a] = seed_xyz[s * 3 + a];
@@ -1505,7 +1519,20 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
             observations++;
         }
         observed += !p.track.empty();
+        scan_xyz.insert(scan_xyz.end(), p.xyz, p.xyz + 3);
+        scan_rgb.insert(scan_rgb.end(), p.rgb, p.rgb + 3);
         out.points[id] = std::move(p);
+    }
+    // The model keeps the scan points for their tracks; this copy says which
+    // of its points the scan measured.
+    const fs::path scan_ply = ds / lidar_layout::kPoints;
+    if (n_seed > 0) {
+        fs::create_directories(scan_ply.parent_path(), ec);
+        spirula::write_ply_points(scan_ply.string(), scan_xyz.data(), scan_rgb.data(),
+                                  (int64_t)n_seed, nullptr, nullptr,
+                                  spirula::PlyCoordinates::Float64);
+    } else {
+        fs::remove(scan_ply, ec);
     }
     res.seed_points = (int64_t)n_seed;
     log(format(lmsg::seed_summary, {(long long)n_seed, fixed(voxel, 3), (long long)res.sfm_points}));

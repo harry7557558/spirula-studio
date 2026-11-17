@@ -4,6 +4,7 @@
 #include "app/ScanDepth.h"
 #include "core/CameraModel.h"
 #include "data/JsonWrite.h"
+#include "data/LidarLayout.h"
 #include "data/PointCloudFile.h"
 #include "data/SparseEdit.h"
 #include "external/stb_image.h"
@@ -575,8 +576,8 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
 
     std::vector<std::string> depth_paths(frames.size()), normal_paths(frames.size());
     if (opt.depth_maps && cloud.size() > 0) {
-        fs::create_directories(out / "depths", ec);
-        fs::create_directories(out / "normals", ec);
+        fs::create_directories(out / lidar_layout::kDepths, ec);
+        fs::create_directories(out / lidar_layout::kNormals, ec);
         int64_t n_spherical = 0;
         for (const Frame& f : frames) n_spherical += std::strcmp(f.cam.model, "PINHOLE") != 0;
         // The trainer reads every map of a dataset one way, by majority
@@ -607,8 +608,10 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
                     if (depth[j] > 0 && v <= 65535.0)
                         mm[j] = (uint16_t)std::max<long>(1, std::lround(v));
                 }
-                const std::string dp = "depths/" + frames[(size_t)k].stem + ".png";
-                const std::string np = "normals/" + frames[(size_t)k].stem + ".png";
+                const std::string dp =
+                    std::string(lidar_layout::kDepths) + "/" + frames[(size_t)k].stem + ".png";
+                const std::string np =
+                    std::string(lidar_layout::kNormals) + "/" + frames[(size_t)k].stem + ".png";
                 if (!save_depth_png16((out / dp).string(), mm.data(), m.width, m.height))
                     throw std::runtime_error("cannot write " + (out / dp).string());
                 write_normal_png(out / np, normal, m.width, m.height);
@@ -626,11 +629,11 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
         res.depth_maps = done;
         std::set<std::string> maps;
         for (const Frame& f : frames) maps.insert(f.stem + ".png");
-        remove_others(out / "depths", maps);
-        remove_others(out / "normals", maps);
+        remove_others(out / lidar_layout::kDepths, maps);
+        remove_others(out / lidar_layout::kNormals, maps);
     } else {
-        fs::remove_all(out / "depths", ec);
-        fs::remove_all(out / "normals", ec);
+        fs::remove_all(out / lidar_layout::kDepths, ec);
+        fs::remove_all(out / lidar_layout::kNormals, ec);
     }
 
     if (seeds && !seed_xyz.empty()) {
@@ -643,6 +646,10 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
         spirula::write_ply_points((out / "sparse_pc.ply").string(), seed_xyz.data(),
                                   seed_rgb.data(), res.seed_points, nullptr, nullptr,
                                   spirula::PlyCoordinates::Float64);
+        fs::create_directories((out / lidar_layout::kPoints).parent_path(), ec);
+        spirula::write_ply_points((out / lidar_layout::kPoints).string(), seed_xyz.data(),
+                                  seed_rgb.data(), res.seed_points, nullptr, nullptr,
+                                  spirula::PlyCoordinates::Float64);
         if (res.voxel > 0) {
             char edge[32];
             std::snprintf(edge, sizeof edge, "%.3g", res.voxel);
@@ -650,6 +657,8 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
         } else {
             log(format(emsg::seed_all, {(long long)res.seed_points}));
         }
+    } else {
+        fs::remove(out / lidar_layout::kPoints, ec);
     }
 
     JsonWriter w;

@@ -28,6 +28,7 @@
 #include "data/RegionProgram.h"
 #include "data/RoiDocument.h"
 #include "data/LabelField.h"
+#include "data/LidarLayout.h"
 #include "dense/Artifact.h"
 #include "data/Knn.h"
 #include "kernels/loss/PcaReg.cuh"
@@ -44,6 +45,7 @@
 #include <array>
 #include <cmath>
 #include <map>
+#include <unordered_set>
 #include <condition_variable>
 #include <cstdio>
 #include <fstream>
@@ -401,7 +403,8 @@ SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
         float q[4] = {gauss(rng), gauss(rng), gauss(rng), gauss(rng)};
         float qn = std::sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
         for (int d = 0; d < 4; d++) s.quats[i*4 + d] = q[d] / std::max(qn, 1e-12f);
-        s.opacities[i] = std::log(opacity_init / (1.f - opacity_init));
+        const float o = pts.opacity.empty() ? opacity_init : pts.opacity[pick[i]];
+        s.opacities[i] = std::log(o / (1.f - o));
     }
 
     // Seed colors. Uniform-color clouds are randomized.
@@ -627,6 +630,44 @@ std::string parser_seed(const std::string& seed) {
     return seed == spirula::dense::kSparseSeed ? std::string() : seed;
 }
 
+// The scan writer stores each scan point in the model too, so a seed that
+// matches one to 0.1 mm after the parser's frame change is a scan point.
+// Returns how many matched; the others keep `other_opacity`.
+int64_t mark_scan_seeds(ParsedDataset& ds, const std::string& scan_ply,
+                        float scan_opacity, float other_opacity) {
+    const ColmapPoints3D scan = read_ply_points(scan_ply);
+    const auto& m = ds.raw_to_file;
+    const double a = m[0], b = m[1], c = m[2], d = m[4], e = m[5], f = m[6],
+                 g = m[8], h = m[9], k = m[10];
+    const double det = a * (e * k - f * h) - b * (d * k - f * g) + c * (d * h - e * g);
+    const double inv[9] = {(e * k - f * h) / det, (c * h - b * k) / det, (b * f - c * e) / det,
+                           (f * g - d * k) / det, (a * k - c * g) / det, (c * d - a * f) / det,
+                           (d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det};
+    auto key = [](const double* p) {
+        uint64_t h = 1469598103934665603ull;
+        for (int i = 0; i < 3; i++)
+            h = (h ^ (uint64_t)std::llround(p[i] * 1e4)) * 1099511628211ull;
+        return h;
+    };
+    std::unordered_set<uint64_t> keys;
+    keys.reserve((size_t)scan.num());
+    for (int64_t i = 0; i < scan.num(); i++) {
+        double q[3], p[3];
+        for (int r = 0; r < 3; r++) q[r] = scan.xyz[i * 3 + r] - m[r * 4 + 3];
+        for (int r = 0; r < 3; r++)
+            p[r] = inv[r * 3] * q[0] + inv[r * 3 + 1] * q[1] + inv[r * 3 + 2] * q[2] - ds.center[r];
+        keys.insert(key(p));
+    }
+    ds.points.opacity.assign((size_t)ds.points.num(), other_opacity);
+    int64_t matched = 0;
+    for (int64_t i = 0; i < ds.points.num(); i++)
+        if (keys.count(key(&ds.points.xyz[i * 3]))) {
+            ds.points.opacity[i] = scan_opacity;
+            matched++;
+        }
+    return matched;
+}
+
 }  // namespace
 
 std::array<float, (int)LossWeightIndex::length>
@@ -656,6 +697,9 @@ build_loss_weights(const TrainConfig& c, int step) {
     w[(int)LossWeightIndex::USupL2]        = w_u_l2 * scale;
     w[(int)LossWeightIndex::VSupL2]        = w_v_l2 * scale;
     w[(int)LossWeightIndex::DepthSup]      = sup_active * c.depth_supervision_weight;
+    w[(int)LossWeightIndex::DepthSupMetric] = sup_active * c.lidar_depth_weight;
+    w[(int)LossWeightIndex::DepthMetricLogScale] =
+        std::log(c.depth_unit_scale_factor * c.relative_scale.value_or(1.0f));
     w[(int)LossWeightIndex::NormalSup]     = sup_active * c.normal_supervision_weight;
     w[(int)LossWeightIndex::AlphaSup]      = mask * c.alpha_loss_weight;
     w[(int)LossWeightIndex::AlphaSupUnder] = mask * c.alpha_loss_weight_under;
@@ -1158,12 +1202,36 @@ void TrainerSession::seed_at_random() {
 }
 
 void TrainerSession::load_dataset() {
+    std::error_code ec;
+    const fs::path data_dir(cfg.data);
+    const bool scan_points = fs::is_regular_file(data_dir / lidar_layout::kPoints, ec);
     // Written back into cfg, so config.json names the cloud this run used.
     if (cfg.seed_pointcloud.empty() && cfg.resume.empty() && cfg.random_init != "always" &&
         (cfg.init_ply.empty() || cfg.init_ply_add_points)) {
-        cfg.seed_pointcloud = spirula::dense::automatic_seed(cfg.data);
-        if (!cfg.seed_pointcloud.empty())
+        const std::string dense = spirula::dense::automatic_seed(cfg.data);
+        // A photo-made dense cloud would replace the scan's points, which hold
+        // the measured surfaces: it seeds a scan dataset only when chosen.
+        if (scan_points && !dense.empty())
+            log(lfmt(lmsg::dense_seed_beside_scan, {dense}));
+        else if (!dense.empty()) {
+            cfg.seed_pointcloud = dense;
             log(lfmt(lmsg::dense_seed_automatic, {cfg.seed_pointcloud}));
+        }
+    }
+    if (cfg.depth_dir == "depths" && fs::is_directory(data_dir / lidar_layout::kDepths, ec))
+        cfg.depth_dir = lidar_layout::kDepths;
+    if (cfg.normal_dir == "normals" && fs::is_directory(data_dir / lidar_layout::kNormals, ec))
+        cfg.normal_dir = lidar_layout::kNormals;
+    if (cfg.depth_dir != lidar_layout::kDepths) {
+        cfg.lidar_depth_weight = 0.0f;
+    } else {
+        // Pearson on scan maps would only throw away the scale the laser measured.
+        cfg.depth_supervision_weight = 0.0f;
+    }
+    if (cfg.lidar_depth_weight > 0.0f) {
+        char w[32];
+        std::snprintf(w, sizeof w, "%.4g", cfg.lidar_depth_weight);
+        log(lfmt(lmsg::scan_depth_metric, {std::string(w)}));
     }
     cfg.seed_pointcloud = spirula::dense::resolve_seed_path(cfg.data, cfg.seed_pointcloud);
     DatasetParserConfig pcfg;
@@ -1192,6 +1260,14 @@ void TrainerSession::load_dataset() {
     pcfg.metashape_ply           = cfg.metashape_ply;
     pcfg.metashape_psx           = cfg.metashape_psx;
     ds = parse_dataset(cfg.data, pcfg, cfg.data_format);
+    if (scan_points && ds.points.num() > 0) {
+        const int64_t n = mark_scan_seeds(ds, (data_dir / lidar_layout::kPoints).string(),
+                                          cfg.lidar_seed_opacity,
+                                          cfg.opacity_init.value_or(0.1f));
+        char o[32];
+        std::snprintf(o, sizeof o, "%.3g", cfg.lidar_seed_opacity);
+        log(lfmt(lmsg::scan_seed_points, {(long long)n, (long long)ds.points.num(), std::string(o)}));
+    }
     roi.reset();
     apply_partition_config(ds);
     load_region();
@@ -1266,7 +1342,7 @@ void TrainerSession::load_dataset() {
         if (*cfg.apply_loss_for_mask) log(lmsg::alpha_masks_cut_out.get());
     }
     has_depth  = !ds.depth_filenames.empty()  && cfg.load_depths &&
-                 cfg.depth_supervision_weight > 0.0f;
+                 (cfg.depth_supervision_weight > 0.0f || cfg.lidar_depth_weight > 0.0f);
     has_normal = !ds.normal_filenames.empty() && cfg.load_normals &&
                  (cfg.normal_supervision_weight > 0.0f ||
                   cfg.median_normal_supervision_weight > 0.0f);
@@ -1706,7 +1782,9 @@ void TrainerSession::setup_engine() {
                                    cfg.use_adagrad_bilagrid_optim);
         st.bilagrid_depth_init = true;
     }
+    // A scan's normals are measured, not a model's biased guess: no correction.
     if (cfg.use_bilateral_grid_for_geometry && has_normal &&
+        cfg.normal_dir != lidar_layout::kNormals &&
         cfg.normal_supervision_weight > 0.0f &&
         (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_normal_lr
                                         : cfg.bilagrid_normal_lr) > 0.0f) {

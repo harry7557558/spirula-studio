@@ -1128,9 +1128,11 @@ private:
     double _seed_files_time = -1.0;
     void draw_dataset_aux(float width);
     bool dense_cloud_present();
+    bool scan_cloud_present();         // lidar/points.ply, probed with the dense cloud
     std::string _dense_probe_data;     // dense_cloud_present()'s cache
     double _dense_probe_time = -1.0;
     bool _dense_probe_found = false;
+    bool _scan_probe_found = false;
     bool _seed_other = false;          // "Other PLY file" picked, no file yet
     // RoMa's licence and its batch fetcher. Once, before anything asks either.
     void init_dense();

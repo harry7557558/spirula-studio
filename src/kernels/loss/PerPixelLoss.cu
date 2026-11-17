@@ -190,6 +190,7 @@ __global__ void per_pixel_losses_forward_kernel(
         if (out_loss_map != nullptr) {
             out_loss_map[idx] = fabsf(
                 losses[(int)RawLossIndex::RgbLoss] +
+                losses[(int)RawLossIndex::DepthSupMetric] +
                 losses[(int)RawLossIndex::RenderNormalSup] +
                 losses[(int)RawLossIndex::DepthNormalSup] +
                 losses[(int)RawLossIndex::AlphaSup] +
@@ -1492,6 +1493,7 @@ LossValues compute_multi_scale_per_pixel_losses(
         out.rgb_loss        = h_prev[(int)LossIndex::RgbLoss];
         out.rgb_psnr        = h_prev[(int)LossIndex::RgbPSNR];
         out.depth_sup       = h_prev[(int)LossIndex::DepthSup];
+        out.depth_sup_metric = h_prev[(int)LossIndex::DepthSupMetric];
         out.normal_sup      = h_prev[(int)LossIndex::NormalSup];
         out.alpha_sup       = h_prev[(int)LossIndex::AlphaSup];
         out.normal_reg      = h_prev[(int)LossIndex::NormalReg];

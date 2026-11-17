@@ -1642,6 +1642,7 @@ bool apply_partition(ParsedDataset& ds, const ScenePartition& p, int part,
             if (i >= 0 && i < n_pts) pk[(size_t)i] = 1;
         keep_rows(ds.points.xyz, n_pts, 3, pk.data());
         keep_rows(ds.points.rgb, n_pts, 3, pk.data());
+        keep_rows(ds.points.opacity, n_pts, 1, pk.data());
     }
     out.points_after = ds.points.num();
     return true;

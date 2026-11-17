@@ -31,9 +31,10 @@ namespace {
 
 using backend::MemcpyKind;
 
-constexpr int kNRaw = (int)RawLossIndex::length;   // 31
-constexpr int kNW = (int)LossWeightIndex::length;  // 19
-constexpr int kNL = (int)LossIndex::length;        // 14
+constexpr int kNRaw = (int)RawLossIndex::length;
+// An odd count keeps both param structs a multiple of 8 bytes (static_asserts below).
+constexpr int kNW = (int)LossWeightIndex::length;
+constexpr int kNL = (int)LossIndex::length;
 
 // ---------------------------------------------------------------------------
 // Param-struct mirrors (shaders/multi_scale_loss.slang etc.)
@@ -1414,6 +1415,7 @@ LossValues compute_multi_scale_per_pixel_losses(
         out.rgb_loss        = h_prev[(int)LossIndex::RgbLoss];
         out.rgb_psnr        = h_prev[(int)LossIndex::RgbPSNR];
         out.depth_sup       = h_prev[(int)LossIndex::DepthSup];
+        out.depth_sup_metric = h_prev[(int)LossIndex::DepthSupMetric];
         out.normal_sup      = h_prev[(int)LossIndex::NormalSup];
         out.alpha_sup       = h_prev[(int)LossIndex::AlphaSup];
         out.normal_reg      = h_prev[(int)LossIndex::NormalReg];

@@ -59,6 +59,7 @@ enum RawLossIndex {
     DepthSupXX,
     DepthSupYY,
     DepthSupXY,
+    DepthSupMetric,
     RenderNormalSup,
     DepthNormalSup,
     AlphaSup,
@@ -102,6 +103,10 @@ enum LossWeightIndex {
     USupL2,
     VSupL2,
     DepthSup,
+    DepthSupMetric,
+    // log(training-frame units per depth-map unit): not a weight, it turns
+    // millimetre counts into the rendered depth's units.
+    DepthMetricLogScale,
     NormalSup,
     AlphaSup,
     AlphaSupUnder,
@@ -188,8 +193,18 @@ float[RawLossIndex::length] per_pixel_losses(
     losses[RawLossIndex::RgbL2] = float(mask) *
         clamp(l2_loss(render_rgb, ref_rgb), 0.0f, 1.0f);
 
-    // Depth - Pearson correlation in log space
     depth_mask &= mask;
+
+    // Metric depth (a LiDAR scan): Cauchy on the log ratio, scale 3 %. A scan map
+    // draws thin near objects too wide. Charbonnier pulled splats across such
+    // edges into blotches, and the Cauchy pull fades past the scale.
+    bool metric_mask = depth_mask && render_depth > 1e-3f;
+    float log_ratio = (log(max(render_depth, 1e-3f)) - log(max(ref_depth, 1e-3f)) -
+        weights[LossWeightIndex::DepthMetricLogScale]) / 0.03f;
+    losses[RawLossIndex::DepthSupMetric] = weights[LossWeightIndex::DepthSupMetric] *
+        float(metric_mask) * 0.015f * log(1.0f + log_ratio * log_ratio);
+
+    // Depth - Pearson correlation
     render_depth = float(depth_mask) * max(render_depth, 1e-4);
     ref_depth = float(depth_mask) * max(ref_depth, 1e-4);
     losses[RawLossIndex::DepthSupX] = render_depth;
@@ -355,6 +370,7 @@ enum LossIndex {
     RgbLoss,
     RgbPSNR,
     DepthSup,
+    DepthSupMetric,
     NormalSup,
     AlphaSup,
     NormalReg,
@@ -403,6 +419,9 @@ float[LossIndex::length] per_pixel_losses_reduce(
             )
          + 1.0))  // numerical issue
     , 0.0, 2.0) : 0.0;
+
+    losses[LossIndex::DepthSupMetric] =
+        raw_losses[RawLossIndex::DepthSupMetric] / max(raw_losses[RawLossIndex::DepthMaskTotal], 1);
 
     // normal supervision loss
     losses[LossIndex::NormalSup] = (

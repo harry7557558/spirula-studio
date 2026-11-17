@@ -61,6 +61,7 @@ struct ColmapImage {
 struct ColmapPoints3D {
     std::vector<double>   xyz;        // [N, 3] flat
     std::vector<uint8_t>  rgb;        // [N, 3] flat
+    std::vector<float>    opacity;    // [N] start opacity; empty: opacity_init for all
     int64_t num() const { return (int64_t)xyz.size() / 3; }
 };
 

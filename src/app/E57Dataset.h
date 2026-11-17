@@ -20,7 +20,7 @@ struct E57DatasetOptions {
     std::string output;
     int64_t seed_points = 500000;    // 0 writes no cloud
     bool all_points = false;         // every point a seed, nothing thinned
-    bool depth_maps = true;          // depths/ and normals/ from the scan
+    bool depth_maps = true;          // lidar/depths/ and lidar/normals/ from the scan
     bool pinhole = true;
     bool spherical = true;
     bool overwrite = false;          // write into a folder that is not empty

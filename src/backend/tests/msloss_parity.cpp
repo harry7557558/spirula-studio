@@ -292,6 +292,7 @@ void run_ms_cfg(Rng& r, const MsCfg& c) {
     g_loose.push_back(lv.rgb_loss);
     g_loose.push_back(lv.rgb_psnr);
     g_loose.push_back(lv.depth_sup);
+    g_loose.push_back(lv.depth_sup_metric);
     g_loose.push_back(lv.normal_sup);
     g_loose.push_back(lv.alpha_sup);
     g_loose.push_back(lv.normal_reg);

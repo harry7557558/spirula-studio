@@ -2567,6 +2567,44 @@ SS_MSG(scale_init_help,
     TR("Her splat'ın başlangıç boyutu. Ayarlanmazsa nokta bulutundan türetilir; "
        "büyük olması boşluğu daha çabuk doldurur ama başlangıç daha bulanıktır."));
 
+SS_MSG(lidar_seed_opacity,
+    EN("LiDAR seed opacity"), JA("LiDAR 開始点の不透明度"),
+    ZH_HANS("LiDAR 起始点不透明度"), ZH_HANT("LiDAR 起始點不透明度"),
+    KO("LiDAR 시작점 불투명도"), DE("Deckkraft der LiDAR-Startpunkte"),
+    FR("Opacité des points de départ LiDAR"),
+    ES("Opacidad de los puntos iniciales LiDAR"),
+    PT("Opacidade dos pontos iniciais LiDAR"),
+    IT("Opacità dei punti iniziali LiDAR"),
+    NL("Dekking van de LiDAR-startpunten"),
+    RU("Непрозрачность стартовых точек LiDAR"),
+    TR("LiDAR başlangıç noktası opaklığı"));
+SS_MSG(lidar_seed_opacity_help,
+    EN("Starting opacity of splats seeded from LiDAR scan points. A scan point "
+       "lies on a real surface, so it can start more opaque than a photo point."),
+    JA("LiDAR スキャン点から作るスプラットの初期不透明度です。スキャン点は実際の"
+       "表面上にあるので、写真由来の点より不透明に始められます。"),
+    ZH_HANS("由 LiDAR 扫描点生成的泼溅的初始不透明度。扫描点位于真实表面上，"
+            "因此可以比照片点更不透明地开始。"),
+    ZH_HANT("由 LiDAR 掃描點生成的潑濺的初始不透明度。掃描點位於真實表面上，"
+            "因此可以比照片點更不透明地開始。"),
+    KO("LiDAR 스캔 점에서 만든 스플랫의 초기 불투명도입니다. 스캔 점은 실제 "
+       "표면 위에 있으므로 사진 점보다 더 불투명하게 시작해도 됩니다."),
+    DE("Anfangsdeckkraft der Splats aus LiDAR-Scanpunkten. Ein Scanpunkt liegt "
+       "auf einer echten Fläche und darf daher deckender starten als ein Fotopunkt."),
+    FR("Opacité de départ des splats issus des points du scan LiDAR. Un point du "
+       "scan est sur une vraie surface : il peut partir plus opaque qu'un point photo."),
+    ES("Opacidad inicial de los splats creados con puntos del escaneo LiDAR. Un "
+       "punto del escaneo está en una superficie real, así que puede empezar más opaco."),
+    PT("Opacidade inicial dos splats criados a partir de pontos da varredura LiDAR. "
+       "Um ponto da varredura está numa superfície real e pode começar mais opaco."),
+    IT("Opacità iniziale degli splat creati dai punti della scansione LiDAR. Un "
+       "punto della scansione sta su una superficie reale e può partire più opaco."),
+    NL("Begindekking van splats uit LiDAR-scanpunten. Een scanpunt ligt op een "
+       "echt oppervlak en mag dus dekkender beginnen dan een fotopunt."),
+    RU("Начальная непрозрачность сплатов из точек LiDAR-скана. Точка скана лежит "
+       "на реальной поверхности, поэтому может начинать более непрозрачной."),
+    TR("LiDAR tarama noktalarından oluşturulan splat'lerin başlangıç opaklığı. Tarama "
+       "noktası gerçek bir yüzeydedir, bu yüzden fotoğraf noktasından daha opak başlayabilir."));
 SS_MSG(opacity_init,
     EN("Initial splat opacity"), JA("スプラットの初期不透明度"),
     ZH_HANS("泼溅初始不透明度"), ZH_HANT("潑濺初始不透明度"),
@@ -4816,6 +4854,45 @@ SS_MSG(depth_supervision_weight_help,
     TR("Yapay zekânın kestirdiği derinliğin geometriyi ne kadar güçlü yönlendirdiği. "
        "Dokusuz alanlarda işe yarar, ama ağır yanlı bir kestirim kaliteyi düşürebilir."));
 
+SS_MSG(lidar_depth_weight,
+    EN("LiDAR depth guidance"), JA("LiDAR 深度による誘導"),
+    ZH_HANS("LiDAR 深度的引导强度"), ZH_HANT("LiDAR 深度的引導強度"),
+    KO("LiDAR 깊이 안내"), DE("Führung durch LiDAR-Tiefe"),
+    FR("Guidage par la profondeur LiDAR"),
+    ES("Guía por la profundidad LiDAR"),
+    PT("Orientação pela profundidade LiDAR"),
+    IT("Guida dalla profondità LiDAR"),
+    NL("Sturing door de LiDAR-diepte"),
+    RU("Направление по глубине LiDAR"),
+    TR("LiDAR derinliği rehberliği"));
+SS_MSG(lidar_depth_weight_help,
+    EN("How strongly the scan's measured distances hold the geometry. Used only "
+       "when the dataset has depth maps from a LiDAR scan; 0 turns it off."),
+    JA("スキャンで測った距離が、どれだけ強くジオメトリを保つかです。LiDAR "
+       "スキャン由来の深度マップがあるデータセットでのみ使われ、0 で無効です。"),
+    ZH_HANS("扫描测得的距离对几何的约束强度。仅当数据集有来自 LiDAR 扫描的深度图"
+            "时使用；设为 0 即关闭。"),
+    ZH_HANT("掃描測得的距離對幾何的約束強度。僅當資料集有來自 LiDAR 掃描的深度圖"
+            "時使用；設為 0 即關閉。"),
+    KO("스캔으로 잰 거리가 지오메트리를 얼마나 강하게 붙잡는지입니다. LiDAR "
+       "스캔에서 나온 깊이 맵이 있는 데이터셋에서만 쓰이며, 0이면 꺼집니다."),
+    DE("Wie stark die gemessenen Entfernungen des Scans die Geometrie halten. Nur "
+       "bei Datensätzen mit Tiefenkarten aus einem LiDAR-Scan; 0 schaltet es ab."),
+    FR("Avec quelle force les distances mesurées par le scan tiennent la géométrie. "
+       "Utilisé seulement avec des cartes de profondeur issues d'un scan LiDAR ; 0 "
+       "le désactive."),
+    ES("Con qué fuerza las distancias medidas por el escaneo sujetan la geometría. "
+       "Solo se usa con mapas de profundidad de un escaneo LiDAR; 0 lo desactiva."),
+    PT("Com que força as distâncias medidas pela varredura seguram a geometria. "
+       "Só é usado com mapas de profundidade de uma varredura LiDAR; 0 desliga."),
+    IT("Con quanta forza le distanze misurate dalla scansione tengono la geometria. "
+       "Usato solo con mappe di profondità da una scansione LiDAR; 0 lo spegne."),
+    NL("Hoe sterk de gemeten afstanden van de scan de geometrie vasthouden. Alleen "
+       "bij dieptekaarten uit een LiDAR-scan; 0 zet het uit."),
+    RU("Насколько сильно измеренные сканом расстояния удерживают геометрию. "
+       "Работает только с картами глубины из LiDAR-скана; 0 отключает."),
+    TR("Taramanın ölçtüğü uzaklıkların geometriyi ne kadar güçlü tuttuğu. Yalnızca "
+       "LiDAR taramasından derinlik haritası olan veri kümelerinde kullanılır; 0 kapatır."));
 SS_MSG(normal_supervision_weight,
     EN("Predicted normal guidance"), JA("推定法線による誘導"),
     ZH_HANS("预测法线的引导强度"), ZH_HANT("預測法線的引導強度"),
