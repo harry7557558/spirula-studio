@@ -85,7 +85,21 @@ changed with the primitive would be a rule nobody could see.
 
 ## Measurements
 
-The same capture, 7000 steps, 1M splats, longer side 1344 px:
+Mip-NeRF 360 (`images_4` garden, `images_2` bonsai, every 8th view held out,
+30k steps, 1M-splat cap, Vulkan, one run each); PSNR / SSIM / LPIPS:
+
+| scene | 3dgs | 2dgs, normal consistency 0 | `2dgs` preset |
+|---|---|---|---|
+| garden | 26.99 / 0.868 / 0.087 | 26.39 / 0.843 / 0.109 | 25.79 / 0.831 / 0.121 |
+| bonsai | 29.75 / 0.931 / 0.115 | 29.80 / 0.932 / 0.115 | 28.97 / 0.919 / 0.131 |
+
+Indoors the disc matches 3dgs; on garden's open foliage it gives up 0.6 dB,
+as the paper's outdoor scenes do. The preset's geometry losses cost a further
+0.6-0.8 dB on both, the price of its meshes. 2dgs trains in 1.5-1.6x the time
+of 3dgs (garden 512 s against 772-823 s, bonsai 752 s against 1151-1210 s)
+with 14-33% more engine VRAM.
+
+An action-cam fisheye capture, 7000 steps, 1M splats, longer side 1344 px:
 
 | primitive | backend | PSNR | SSIM | train time | engine VRAM |
 |---|---|---|---|---|---|
