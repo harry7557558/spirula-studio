@@ -8,9 +8,11 @@
 #include "dense/Versions.h"
 #include "data/SeedPointCount.h"
 
+#include "core/AvifImage.h"
 #include "core/ColorBasis.h"
 #include "core/ColorSpace.h"
 #include "core/ImageFile.h"
+#include "core/JxlImage.h"
 
 #include "checkpoint/SplatMerge.h"
 #include "checkpoint/SplatPly.h"
@@ -647,6 +649,7 @@ static const char* photo_import_name(PhotoImport m) {
         case PhotoImport::Copy:        return "copy";
         case PhotoImport::Move:        return "move";
         case PhotoImport::InPlace:     return "in-place";
+        case PhotoImport::ConvertJxl:  return "convert-jxl";
     }
     return "?";
 }
@@ -708,6 +711,7 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     section(msg::runlog_section_prep.get());
     line("workspace", _workspace);
     line("photo_import", photo_import_name(_photo_import));
+    line("frame_file", app::frame_file_ext(_sfm_job.prep.frame_file) + 1);
     for (const PrepInput& s : _sources) {
         line(s.is_video ? "video_source" : "photo_source", s.path);
         line("sequential", cfg_str(s.sequential));
@@ -4591,6 +4595,7 @@ void GuiApp::sync_dataset_jobs() {
     prep.adaptive_fps = _sfm_job.prep.adaptive_fps;
     prep.adaptive_range = _sfm_job.prep.adaptive_range;
     prep.sharp_window = _sfm_job.prep.sharp_window;
+    prep.frame_file = _sfm_job.prep.frame_file;
     prep.skip_blurry = _sfm_job.prep.skip_blurry;
     prep.blur_px = _sfm_job.prep.blur_px;
     prep.blur_neighbour = _sfm_job.prep.blur_neighbour;
@@ -4881,14 +4886,19 @@ namespace {
 void photo_import_combo(PhotoImport* mode, bool no_in_place) {
     const std::vector<const Msg*> labels{
         &dmsg::photo_import_convert, &dmsg::photo_import_copy,
-        &dmsg::photo_import_move, &dmsg::photo_import_inplace};
+        &dmsg::photo_import_move, &dmsg::photo_import_inplace,
+        &dmsg::photo_import_convert_jxl};
     const std::vector<const Msg*> helps{
         &dmsg::photo_import_convert_help, &dmsg::photo_import_copy_help,
-        &dmsg::photo_import_move_help, &dmsg::photo_import_inplace_help};
+        &dmsg::photo_import_move_help, &dmsg::photo_import_inplace_help,
+        &dmsg::photo_import_convert_jxl_help};
     int idx = (int)*mode;
     ImGui::SetNextItemWidth(px(260.0f));
     if (ui::BeginCombo(dmsg::photo_import, labels[(size_t)idx]->get())) {
-        for (int i = 0; i < kNumPhotoImports; i++) {
+        // Listed beside the other re-encode; numbered last so presets keep theirs.
+        static const int kOrder[kNumPhotoImports] = {0, 4, 1, 2, 3};
+        for (const int i : kOrder) {
+            if ((PhotoImport)i == PhotoImport::ConvertJxl && !jxl::available()) continue;
             const bool blocked =
                 no_in_place && (PhotoImport)i == PhotoImport::InPlace;
             ImGui::BeginDisabled(blocked);
@@ -4900,6 +4910,27 @@ void photo_import_combo(PhotoImport* mode, bool no_in_place) {
         ImGui::EndCombo();
     }
     ui::help_on_hover(dmsg::photo_import_help);
+}
+
+// Only the formats this build can write are offered.
+void frame_file_combo(app::FrameFile* file) {
+    const std::vector<const Msg*> labels{&dmsg::frame_file_jpeg, &dmsg::frame_file_jxl,
+                                         &dmsg::frame_file_avif};
+    const std::vector<const Msg*> helps{&dmsg::frame_file_jpeg_help, &dmsg::frame_file_jxl_help,
+                                        &dmsg::frame_file_avif_help};
+    const bool can[3] = {true, jxl::available(), avif::can_encode()};
+    if (!can[(int)*file]) *file = app::FrameFile::Jpeg;
+    const int idx = (int)*file;
+    ImGui::SetNextItemWidth(px(220.0f));
+    if (ui::BeginCombo(dmsg::frame_file, labels[(size_t)idx]->get())) {
+        for (int i = 0; i < 3; i++) {
+            if (!can[i]) continue;
+            if (ui::Selectable(*labels[(size_t)i], i == idx)) *file = (app::FrameFile)i;
+            ui::help_on_hover(*helps[(size_t)i]);
+        }
+        ImGui::EndCombo();
+    }
+    ui::help_on_hover(dmsg::frame_file_help);
 }
 
 }  // namespace
@@ -5290,7 +5321,8 @@ void GuiApp::draw_dataset_source() {
         // A scan's photographs or views join the images, so they cannot be
         // read where they are.
         photo_import_combo(&_photo_import,
-                           _sources.size() > 1 || (!_sources.empty() && _sources[0].heif) ||
+                           _sources.size() > 1 ||
+                               (!_sources.empty() && _sources[0].foreign_photos) ||
                                (!_lidar.empty() && !_lidar_in_frame));
     }
 
@@ -5571,6 +5603,8 @@ void GuiApp::draw_dataset_basics() {
         // The rate itself is a column of the input list, beside the video it
         // describes; what is left here is what it means for all of them.
         ImGui::BeginDisabled(dataset_locked(Stage::Frames));
+        // COLMAP reads neither JPEG XL nor AVIF.
+        if (effective_engine() == Engine::BuiltIn) frame_file_combo(&_sfm_job.prep.frame_file);
         ui::Checkbox(dmsg::adaptive_fps, &_sfm_job.prep.adaptive_fps);
         ui::help_on_hover(dmsg::adaptive_fps_help);
         if (_sfm_job.prep.adaptive_fps &&
@@ -7758,7 +7792,7 @@ GuiApp::DatasetFolders GuiApp::workspace_folders(const WorkspaceState& prior) co
         // the app's convention -- only a bundled folder is ever left flipped.
         f.mask_dir = (fs::path(_workspace) / "masks").string();
     } else if (prior.input_masks && _sources.size() == 1 && !_sources[0].is_video &&
-               _sources[0].packed_lenses == 0 && !_sources[0].heif) {
+               _sources[0].packed_lenses == 0 && !_sources[0].foreign_photos) {
         // Masks that came with the photos pair with them where they lie.
         f.image_dir = fs::absolute(_sources[0].path, ec).string();
         f.mask_dir = fs::absolute(_sources[0].mask_dir, ec).string();

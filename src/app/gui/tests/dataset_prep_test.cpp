@@ -12,9 +12,14 @@
 #include "app/gui/DatasetPrep.h"
 #include "app/gui/DatasetRecord.h"
 #include "app/gui/FilmReel.h"
+#include "app/gui/ForeignPhoto.h"
 #include "app/gui/PickSheet.h"
+#include "app/gui/Subprocess.h"
 #include "app/gui/mask/MaskLayer.h"
+#include "core/AvifImage.h"
+#include "core/JxlImage.h"
 #include "core/SourcePath.h"
+#include "external/stb_image.h"
 #include "external/stb_image_write.h"
 #include "i18n/catalog/Log.h"
 #include "i18n/catalog/MaskEdit.h"
@@ -338,9 +343,10 @@ void test_heif_folder() {
     const fs::path root = scratch("heif");
     const fs::path photos = root / "photos", ws = root / "dataset";
     for (int i = 0; i < 3; i++) write_jpg(photos / (std::string(1, (char)('a' + i)) + ".jpg"), 16, 12, i);
-    check(!gui::folder_has_heif(photos.string()), "a folder of JPEGs holds no HEIC");
+    check(!gui::folder_has_foreign_photos(photos.string()), "a folder of JPEGs holds no HEIC");
     std::ofstream(photos / "d.HEIC", std::ios::binary) << "not a photo";
-    check(gui::folder_has_heif(photos.string()) && gui::is_image_file(photos / "d.HEIC"),
+    check(gui::folder_has_foreign_photos(photos.string()) &&
+              gui::is_image_file(photos / "d.HEIC"),
           "a .HEIC is a photo, whatever its case");
 
     gui::PrepJob job;
@@ -349,11 +355,11 @@ void test_heif_folder() {
     job.ffmpeg_exe = (root / "no-such-ffmpeg").string();
     gui::PrepInput in;
     in.path = photos.string();
-    in.heif = true;
+    in.foreign_photos = true;
     job.inputs = {in};
     check(!gui::reads_photos_in_place(job.inputs, job.photo_import),
           "a HEIC folder is not read in place");
-    job.inputs[0].heif = false;   // run() asks the disk itself
+    job.inputs[0].foreign_photos = false;   // run() asks the disk itself
     gui::RunProgress prog;
     std::string err;
     const bool ran = run_prep(job, prog, err);
@@ -364,6 +370,382 @@ void test_heif_folder() {
     check(!fs::exists(ws / "images" / "d.jpg", ec) &&
               !fs::exists(ws / "images" / "d.jpg.part", ec),
           "no half-written JPEG is left for a resumed run to keep");
+}
+
+// libjxl 0.12 (through ImageMagick): 16x12 stored, codestream orientation 6,
+// a container with an Exif box (FocalLength 16 mm, Model "T", Orientation 6).
+const uint8_t kJxlTurned[] = {
+    0x00, 0x00, 0x00, 0x0c, 0x4a, 0x58, 0x4c, 0x20, 0x0d, 0x0a, 0x87, 0x0a, 0x00,
+    0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70, 0x6a, 0x78, 0x6c, 0x20, 0x00, 0x00,
+    0x00, 0x00, 0x6a, 0x78, 0x6c, 0x20, 0x00, 0x00, 0x00, 0x13, 0x6a, 0x78, 0x6c,
+    0x70, 0x00, 0x00, 0x00, 0x00, 0xff, 0x0a, 0x58, 0x30, 0x0b, 0xe4, 0x04, 0x00,
+    0x00, 0x00, 0x8e, 0x45, 0x78, 0x69, 0x66, 0x00, 0x00, 0x00, 0x06, 0x45, 0x78,
+    0x69, 0x66, 0x00, 0x00, 0x4d, 0x4d, 0x00, 0x2a, 0x00, 0x00, 0x00, 0x08, 0x00,
+    0x04, 0x01, 0x10, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x54, 0x00, 0x00, 0x00,
+    0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x06, 0x00, 0x00, 0x02,
+    0x13, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x87, 0x69,
+    0x00, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3e, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x04, 0x90, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x04, 0x30, 0x32,
+    0x33, 0x32, 0x91, 0x01, 0x00, 0x07, 0x00, 0x00, 0x00, 0x04, 0x01, 0x02, 0x03,
+    0x00, 0x92, 0x0a, 0x00, 0x05, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x74,
+    0xa0, 0x01, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0xff, 0xff, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+    0x00, 0x4e, 0x6a, 0x78, 0x6c, 0x70, 0x80, 0x00, 0x00, 0x01, 0x40, 0x16, 0x88,
+    0x06, 0x00, 0xec, 0x00, 0x41, 0x5e, 0x16, 0x00, 0x80, 0x0a, 0x95, 0x51, 0xc6,
+    0x0d, 0x5e, 0xce, 0xf5, 0x7c, 0xf9, 0xa1, 0xc3, 0x62, 0xda, 0xc6, 0x75, 0x86,
+    0xb6, 0xda, 0xb6, 0xb0, 0x84, 0xb1, 0xd9, 0x5e, 0x18, 0x24, 0x24, 0x1c, 0xc0,
+    0xc6, 0x05, 0xf5, 0xcd, 0xb1, 0xe1, 0x21, 0x43, 0x0d, 0x81, 0x4a, 0x12, 0x29,
+    0x10, 0x77, 0xeb, 0x91, 0x08, 0xd4, 0x8b, 0x4d, 0x1e, 0x4c, 0x1d
+};
+// libjxl 0.12 (through ffmpeg): a bare 40x24 codestream, no container.
+const uint8_t kJxlBare[] = {
+    0xff, 0x0a, 0x05, 0xc8, 0x00, 0x13, 0x88, 0x02, 0x00, 0xe4, 0x00, 0xb5, 0x9f,
+    0x20, 0x00, 0x00, 0x15, 0x2a, 0xa3, 0x8c, 0x1b, 0xbc, 0x9c, 0xeb, 0xf9, 0xf2,
+    0x43, 0x87, 0xc5, 0xb4, 0x8d, 0xeb, 0x0c, 0x6d, 0xb5, 0x6d, 0x61, 0x09, 0x63,
+    0xb3, 0xbd, 0x30, 0x48, 0x48, 0x38, 0x43, 0xe6, 0x4d, 0x75, 0xf0, 0xe6, 0x81,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1a, 0xce, 0x96, 0xb0, 0x34, 0x00, 0x00,
+    0x54, 0x92, 0x00
+};
+
+std::vector<uint8_t> read_bytes(const fs::path& p) {
+    std::ifstream f(p, std::ios::binary);
+    return std::vector<uint8_t>(std::istreambuf_iterator<char>(f), {});
+}
+
+void write_bytes(const fs::path& p, const uint8_t* b, size_t n) {
+    std::error_code ec;
+    fs::create_directories(p.parent_path(), ec);
+    std::ofstream(p, std::ios::binary).write((const char*)b, (std::streamsize)n);
+}
+
+// JPEG XL and AVIF join HEIC: found, never read in place, sized and their EXIF
+// read from the header, and a JPEG XL's EXIF carried across ffmpeg's convert.
+void test_jxl_avif_folder() {
+    const fs::path root = scratch("jxl");
+    const fs::path photos = root / "photos", ws = root / "dataset";
+    write_bytes(photos / "a.jxl", kJxlTurned, sizeof kJxlTurned);
+    write_bytes(photos / "b.JXL", kJxlBare, sizeof kJxlBare);
+    write_jpg(photos / "a.jpg", 16, 12, 0);
+    check(gui::folder_has_foreign_photos(photos.string()) == !jxl::available() &&
+              gui::is_image_file(photos / "b.JXL") && gui::is_image_file(photos / "c.avif") &&
+              gui::is_foreign_photo_path("c.AVIF") && !gui::is_heif_path("c.avif"),
+          "a .jxl and an .avif are photos, whatever their case");
+
+    int w = 0, h = 0;
+    check(gui::foreign_photo_size((photos / "a.jxl").string(), w, h) && w == 12 && h == 16,
+          "jxl: orientation 6 is the upright 12x16");
+    check(gui::foreign_photo_size((photos / "b.JXL").string(), w, h) && w == 40 && h == 24,
+          "jxl: a bare codestream is sized too");
+    std::vector<uint8_t> exif;
+    check(gui::foreign_photo_exif((photos / "a.jxl").string(), exif) && exif.size() > 6,
+          "jxl: the Exif box is read");
+    const sfm::ExifData e =
+        exif.size() > 6 ? sfm::parseExifTiff(exif.data() + 6, exif.size() - 6) : sfm::ExifData{};
+    check(e.valid && std::fabs(e.focal_mm - 16.0) < 1e-9 && e.orientation == 6,
+          "jxl: the box holds the photo's focal and turn");
+    check(gui::foreign_photo_exif((photos / "b.JXL").string(), exif) && exif.empty(),
+          "jxl: a bare codestream has no EXIF, and none is missed");
+    check(!gui::foreign_photo_exif((photos / "c.avif").string(), exif),
+          "avif: EXIF is not read here, so it may be missed");
+
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    job.photo_import = gui::PhotoImport::Copy;
+    job.ffmpeg_exe = (root / "no-such-ffmpeg").string();
+    gui::PrepInput in;
+    in.path = photos.string();
+    job.inputs = {in};
+    gui::RunProgress prog;
+    std::string err;
+    const bool ran = run_prep(job, prog, err);
+    if (jxl::available()) {
+        // Trained on as they are: copied unchanged, no ffmpeg asked for.
+        std::error_code ec;
+        check(ran && read_bytes(ws / "images" / "a.jxl") ==
+                         std::vector<uint8_t>(kJxlTurned, kJxlTurned + sizeof kJxlTurned) &&
+                  fs::exists(ws / "images" / "b.JXL", ec) &&
+                  !fs::exists(ws / "images" / "a_jxl.jpg", ec),
+              "jxl, with libjxl: copied unchanged: " + err);
+        // Re-encoded as JPEG asks for JPEGs: libjxl makes them, no ffmpeg.
+        fs::remove_all(ws, ec);
+        job.photo_import = gui::PhotoImport::ConvertJpeg;
+        const fs::path turned = ws / "images" / "a_jxl.jpg";
+        check(run_prep(job, prog, err) && fs::exists(ws / "images" / "a.jpg", ec) &&
+                  fs::exists(turned, ec) && fs::exists(ws / "images" / "b.jpg", ec) &&
+                  !fs::exists(ws / "images" / "a.jxl", ec),
+              "jxl, with libjxl, re-encoded: JPEGs without ffmpeg: " + err);
+        int c = 0;
+        check(stbi_info(turned.string().c_str(), &w, &h, &c) && w == 12 && h == 16,
+              "jxl, with libjxl, re-encoded: the JPEG is upright");
+        const sfm::ExifData out = sfm::readExif(turned.string());
+        check(out.valid && std::fabs(out.focal_mm - 16.0) < 1e-9 && out.orientation == 1,
+              "jxl, with libjxl, re-encoded: the EXIF is carried, its turn flattened");
+        return;
+    }
+    check(!ran && err == spirula::i18n::format(spirula::i18n::msg::log::err_ffmpeg_missing,
+                                               {job.ffmpeg_exe}),
+          "jxl: without ffmpeg the run names it: " + err);
+
+    if (!gui::command_exists("ffmpeg")) {
+        std::puts("SKIP: jxl conversion, ffmpeg is unavailable");
+        return;
+    }
+    job.ffmpeg_exe = "ffmpeg";
+    std::error_code ec;
+    fs::remove_all(ws, ec);
+    if (!run_prep(job, prog, err)) {
+        // An ffmpeg built without libjxl: what it said is the error.
+        std::printf("SKIP: jxl conversion, ffmpeg cannot decode it: %s\n", err.c_str());
+        return;
+    }
+    const fs::path turned = ws / "images" / "a_jxl.jpg", bare = ws / "images" / "b.jpg";
+    check(fs::exists(ws / "images" / "a.jpg", ec) && fs::exists(turned, ec) &&
+              fs::exists(bare, ec),
+          "jxl: a.jxl meets a.jpg and takes a_jxl.jpg");
+    int c = 0;
+    check(stbi_info(turned.string().c_str(), &w, &h, &c) && w == 12 && h == 16,
+          "jxl: ffmpeg's JPEG is upright");
+    const sfm::ExifData out = sfm::readExif(turned.string());
+    check(out.valid && std::fabs(out.focal_mm - 16.0) < 1e-9 && out.orientation == 1,
+          "jxl: the EXIF is carried across, its turn flattened");
+}
+
+// A 16x12 cut-out: an opaque 8x6 rectangle at (4, 3) on transparency. Lossless
+// libjxl 0.12 (cjxl -d 0), and AVIF through ImageMagick with its alpha image.
+const uint8_t kJxlAlpha[] = {
+    0xff, 0x0a, 0x58, 0x30, 0xb0, 0x12, 0x08, 0x10, 0x10, 0x00, 0x90, 0x00, 0x4b,
+    0x18, 0x8b, 0x15, 0x00, 0xd4, 0x3d, 0xc5, 0x18, 0xef, 0x62, 0x2f, 0x20, 0x02,
+    0xc0, 0x20, 0xa5, 0x35, 0x00, 0x24, 0x38, 0xc9, 0xe3, 0x07, 0x7a, 0x4d, 0x59,
+    0x5c, 0x43, 0x22, 0xc3, 0xc4, 0x3d, 0x83, 0xd9, 0x01
+};
+const uint8_t kAvifAlpha[] = {
+    0x00, 0x00, 0x00, 0x1c, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66, 0x00,
+    0x00, 0x00, 0x00, 0x6d, 0x69, 0x66, 0x31, 0x61, 0x76, 0x69, 0x66, 0x6d, 0x69,
+    0x61, 0x66, 0x00, 0x00, 0x01, 0x70, 0x6d, 0x65, 0x74, 0x61, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x21, 0x68, 0x64, 0x6c, 0x72, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x70, 0x69, 0x63, 0x74, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34, 0x69,
+    0x6c, 0x6f, 0x63, 0x00, 0x00, 0x00, 0x00, 0x44, 0x40, 0x00, 0x02, 0x00, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x94, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x36, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01, 0xca, 0x00, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1a, 0x00, 0x00, 0x00, 0x38, 0x69,
+    0x69, 0x6e, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x15,
+    0x69, 0x6e, 0x66, 0x65, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x61,
+    0x76, 0x30, 0x31, 0x00, 0x00, 0x00, 0x00, 0x15, 0x69, 0x6e, 0x66, 0x65, 0x02,
+    0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x61, 0x76, 0x30, 0x31, 0x00, 0x00,
+    0x00, 0x00, 0x0e, 0x70, 0x69, 0x74, 0x6d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+    0x00, 0x00, 0x00, 0xaf, 0x69, 0x70, 0x72, 0x70, 0x00, 0x00, 0x00, 0x8a, 0x69,
+    0x70, 0x63, 0x6f, 0x00, 0x00, 0x00, 0x0c, 0x61, 0x76, 0x31, 0x43, 0x81, 0x00,
+    0x0c, 0x00, 0x00, 0x00, 0x00, 0x14, 0x69, 0x73, 0x70, 0x65, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x10,
+    0x70, 0x69, 0x78, 0x69, 0x00, 0x00, 0x00, 0x00, 0x03, 0x08, 0x08, 0x08, 0x00,
+    0x00, 0x00, 0x0c, 0x61, 0x76, 0x31, 0x43, 0x81, 0x00, 0x1c, 0x00, 0x00, 0x00,
+    0x00, 0x0e, 0x70, 0x69, 0x78, 0x69, 0x00, 0x00, 0x00, 0x00, 0x01, 0x08, 0x00,
+    0x00, 0x00, 0x38, 0x61, 0x75, 0x78, 0x43, 0x00, 0x00, 0x00, 0x00, 0x75, 0x72,
+    0x6e, 0x3a, 0x6d, 0x70, 0x65, 0x67, 0x3a, 0x6d, 0x70, 0x65, 0x67, 0x42, 0x3a,
+    0x63, 0x69, 0x63, 0x70, 0x3a, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x73, 0x3a,
+    0x61, 0x75, 0x78, 0x69, 0x6c, 0x69, 0x61, 0x72, 0x79, 0x3a, 0x61, 0x6c, 0x70,
+    0x68, 0x61, 0x00, 0x00, 0x00, 0x00, 0x1d, 0x69, 0x70, 0x6d, 0x61, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x03, 0x81, 0x02, 0x03, 0x00,
+    0x02, 0x04, 0x84, 0x02, 0x05, 0x86, 0x00, 0x00, 0x00, 0x1a, 0x69, 0x72, 0x65,
+    0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0e, 0x61, 0x75, 0x78, 0x6c,
+    0x00, 0x02, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x58, 0x6d, 0x64, 0x61,
+    0x74, 0x12, 0x00, 0x0a, 0x09, 0x18, 0x0c, 0xfe, 0xda, 0x20, 0x21, 0xa0, 0xd0,
+    0x80, 0x32, 0x27, 0x44, 0xf1, 0xe1, 0xe1, 0x99, 0x40, 0x61, 0x86, 0x1f, 0x84,
+    0x00, 0x00, 0x02, 0x8e, 0x13, 0x27, 0xfb, 0x03, 0x98, 0x4c, 0x00, 0xe3, 0x16,
+    0xf9, 0xc1, 0x5e, 0x6a, 0xa8, 0xc7, 0xbb, 0x2e, 0xf2, 0x4a, 0xd8, 0x91, 0xa0,
+    0x48, 0x58, 0xc8, 0x12, 0x00, 0x0a, 0x05, 0x18, 0x0c, 0xfe, 0xd8, 0x54, 0x32,
+    0x0f, 0x44, 0xd0, 0x02, 0x08, 0x50, 0x8c, 0x9c, 0xbc, 0x13, 0xaf, 0x41, 0x15,
+    0x72, 0x91, 0x50
+};
+
+// A JPEG XL or AVIF with alpha goes where a PNG with alpha would: re-encoded,
+// a JPEG and a mask; copied, an RGBA PNG, or itself where this build reads it.
+void test_foreign_alpha() {
+    const bool native = jxl::available() && avif::available();
+    if (!native && !gui::command_exists("ffmpeg")) {
+        std::puts("SKIP: foreign alpha, ffmpeg is unavailable");
+        return;
+    }
+    const fs::path root = scratch("foreign_alpha");
+    const fs::path photos = root / "photos";
+    write_bytes(photos / "cut.jxl", kJxlAlpha, sizeof kJxlAlpha);
+    write_bytes(photos / "cut2.avif", kAvifAlpha, sizeof kAvifAlpha);
+    check(gui::foreign_photo_has_alpha((photos / "cut.jxl").string()) &&
+              gui::foreign_photo_has_alpha((photos / "cut2.avif").string()),
+          "alpha: found in the headers of both");
+    for (int i = 0; i < 2; i++) write_jpg(photos / ("p" + std::to_string(i) + ".jpg"), 16, 12, i);
+
+    for (const gui::PhotoImport mode : {gui::PhotoImport::ConvertJpeg, gui::PhotoImport::Copy}) {
+        const bool convert = mode == gui::PhotoImport::ConvertJpeg;
+        const std::string tag = convert ? "alpha, re-encoded: " : "alpha, copied: ";
+        const fs::path ws = root / (convert ? "converted" : "copied");
+        gui::PrepJob job;
+        job.workspace = ws.string();
+        job.photo_import = mode;
+        if (native) job.ffmpeg_exe = (root / "no-such-ffmpeg").string();
+        gui::PrepInput in;
+        in.path = photos.string();
+        job.inputs = {in};
+        gui::RunProgress prog;
+        std::string err;
+        if (!run_prep(job, prog, err)) {
+            check(!native, tag + "libjxl and libavif need no ffmpeg: " + err);
+            if (!native)
+                std::printf("SKIP: %sffmpeg cannot decode it: %s\n", tag.c_str(), err.c_str());
+            continue;
+        }
+        for (const char* stem : {"cut", "cut2"}) {
+            const bool is_jxl = std::string(stem) == "cut";
+            const fs::path jpg = ws / "images" / (std::string(stem) + ".jpg");
+            const fs::path png = ws / "images" / (std::string(stem) + ".png");
+            const fs::path own = ws / "images" / (std::string(stem) + (is_jxl ? ".jxl" : ".avif"));
+            const fs::path mask = ws / "masks" / (std::string(stem) + ".png");
+            std::error_code ec;
+            int w = 0, h = 0, c = 0;
+            if (!convert && (is_jxl ? jxl::available() : avif::available())) {
+                check(fs::exists(own, ec) && !fs::exists(png, ec) && !fs::exists(jpg, ec),
+                      tag + stem + " is kept as it is");
+            } else if (convert) {
+                check(fs::exists(jpg, ec) && !fs::exists(png, ec) && fs::exists(mask, ec),
+                      tag + stem + " becomes a JPEG and a mask");
+                stbi_uc* m = stbi_load(mask.string().c_str(), &w, &h, &c, 1);
+                check(m && w == 16 && h == 12 && m[3 * 16 + 4] == 255 && m[0] == 0 &&
+                          m[11 * 16 + 15] == 0,
+                      tag + stem + "'s mask keeps the rectangle and drops the rest");
+                stbi_image_free(m);
+            } else {
+                check(fs::exists(png, ec) && !fs::exists(jpg, ec),
+                      tag + stem + " stays a PNG");
+                check(stbi_info(png.string().c_str(), &w, &h, &c) && c == 4 && w == 16 &&
+                          h == 12,
+                      tag + stem + "'s PNG carries its alpha");
+            }
+        }
+    }
+}
+
+// An 8-bit RGBA TIFF, uncompressed, its alpha unassociated (ExtraSamples 2).
+void write_rgba_tiff(const fs::path& p, int w, int h, const std::vector<uint8_t>& px) {
+    std::vector<uint8_t> f = {'I', 'I', 42, 0};
+    auto le16 = [&](uint32_t v) { f.push_back((uint8_t)v); f.push_back((uint8_t)(v >> 8)); };
+    auto le32 = [&](uint32_t v) { le16(v & 0xFFFF); le16(v >> 16); };
+    const uint32_t bits_at = 8, pixels_at = 16, ifd_at = pixels_at + (uint32_t)px.size();
+    le32(ifd_at);
+    for (int i = 0; i < 4; i++) le16(8);
+    f.insert(f.end(), px.begin(), px.end());
+    struct Entry { uint16_t tag, type; uint32_t count, value; };
+    const Entry e[] = {{256, 4, 1, (uint32_t)w}, {257, 4, 1, (uint32_t)h},
+                       {258, 3, 4, bits_at},     {259, 3, 1, 1},
+                       {262, 3, 1, 2},           {273, 4, 1, pixels_at},
+                       {277, 3, 1, 4},           {278, 4, 1, (uint32_t)h},
+                       {279, 4, 1, (uint32_t)px.size()}, {338, 3, 1, 2}};
+    le16((uint32_t)(sizeof e / sizeof e[0]));
+    for (const Entry& x : e) {
+        le16(x.tag);
+        le16(x.type);
+        le32(x.count);
+        if (x.type == 3 && x.count == 1) { le16(x.value); le16(0); }
+        else le32(x.value);
+    }
+    le32(0);
+    std::ofstream(p, std::ios::binary).write((const char*)f.data(), (std::streamsize)f.size());
+}
+
+// Copy as JPEG XL: an upright JPEG becomes a .jxl that gives it back byte for
+// byte, EXIF readable; one EXIF turns, a PNG and a TIFF are re-encoded as JPEG
+// XL from their pixels, upright, their alpha a mask as the JPEG mode makes it.
+void test_convert_jxl() {
+    if (!jxl::available()) {
+        std::puts("SKIP: copy as JPEG XL, a build without libjxl");
+        return;
+    }
+    const fs::path root = scratch("convert_jxl");
+    const fs::path photos = root / "photos", ws = root / "dataset";
+    write_bytes(root / "t.jxl", kJxlTurned, sizeof kJxlTurned);
+    std::vector<uint8_t> app1;
+    gui::foreign_photo_exif((root / "t.jxl").string(), app1);
+    write_jpg(photos / "turned.jpg", 16, 12, 1);
+    write_jpg(photos / "flat.jpg", 16, 12, 2);
+    std::vector<uint8_t> turned = read_bytes(photos / "turned.jpg");
+    std::vector<uint8_t> flat = read_bytes(photos / "flat.jpg");
+    std::vector<uint8_t> flat_app1 = app1;
+    if (flat_app1.size() > 6)
+        sfm::exifFlattenOrientation(flat_app1.data() + 6, flat_app1.size() - 6, 16, 12);
+    check(app1.size() > 6 && sfm::jpegInsertApp1(turned, app1) &&
+              sfm::jpegInsertApp1(flat, flat_app1),
+          "copy as jxl: EXIF spliced into the test photos");
+    write_bytes(photos / "turned.jpg", turned.data(), turned.size());
+    write_bytes(photos / "flat.jpg", flat.data(), flat.size());
+    write_jpg(photos / "plain.JPG", 24, 16, 3);
+    write_png(photos / "gray.png", 8, 8, 77);
+    // A cut-out: opaque left half, a soft column, transparent right.
+    std::vector<uint8_t> rgba(32 * 24 * 4);
+    for (int y = 0; y < 24; y++)
+        for (int x = 0; x < 32; x++) {
+            uint8_t* q = rgba.data() + ((size_t)y * 32 + x) * 4;
+            q[0] = (uint8_t)(x * 8);
+            q[1] = (uint8_t)(y * 10);
+            q[2] = 90;
+            q[3] = x < 15 ? 255 : x == 15 ? 128 : 0;
+        }
+    stbi_write_png((photos / "cutout.png").string().c_str(), 32, 24, 4, rgba.data(), 32 * 4);
+    write_rgba_tiff(photos / "render.tif", 32, 24, rgba);
+
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    job.photo_import = gui::PhotoImport::ConvertJxl;
+    gui::PrepInput in;
+    in.path = photos.string();
+    job.inputs = {in};
+    gui::RunProgress prog;
+    std::string err;
+    check(run_prep(job, prog, err), "copy as jxl: run: " + err);
+    const fs::path img = ws / "images";
+    std::error_code ec;
+    check(fs::exists(img / "flat.jxl", ec) && !fs::exists(img / "flat.jpg", ec) &&
+              fs::exists(img / "plain.jxl", ec) && fs::exists(img / "turned.jxl", ec) &&
+              !fs::exists(img / "turned.jpg", ec) && fs::exists(img / "gray.jxl", ec) &&
+              fs::exists(img / "cutout.jxl", ec) && fs::exists(img / "render.jxl", ec),
+          "copy as jxl: every photo becomes a .jxl");
+    check(!fs::exists(ws / "masks" / "gray.png", ec) && !fs::exists(ws / "masks" / "flat.png", ec),
+          "copy as jxl: a photo without alpha gets no mask");
+    check(sfm::exifOrientation((img / "turned.jxl").string()) <= 1,
+          "copy as jxl: the turned JPEG is upright, its EXIF no longer asks for a turn");
+    for (const char* name : {"cutout", "render"}) {
+        jxl::Info ai;
+        std::vector<uint8_t> back;
+        bool ok = jxl::decode_srgb8((img / (std::string(name) + ".jxl")).string(), 3, 1, ai,
+                                    back).empty() &&
+                  ai.width == 32 && ai.height == 24 && ai.channels == 3;
+        double se = 0;
+        for (size_t i = 0; ok && i < (size_t)32 * 24; i++)
+            for (int c = 0; c < 3; c++) se += std::pow((double)back[i * 3 + c] - rgba[i * 4 + c], 2);
+        check(ok && 10 * std::log10(255.0 * 255.0 * 32 * 24 * 3 / std::max(se, 1.0)) > 35,
+              std::string("copy as jxl: ") + name + ".jxl is its colour alone, close");
+        int mw = 0, mh = 0, mc = 0;
+        const std::string mp = (ws / "masks" / (std::string(name) + ".png")).string();
+        stbi_uc* m = stbi_load(mp.c_str(), &mw, &mh, &mc, 1);
+        bool gated = m && mw == 32 && mh == 24;
+        for (int i = 0; gated && i < 32 * 24; i++)
+            gated = m[i] == (rgba[(size_t)i * 4 + 3] >= 128 ? 255 : 0);
+        if (m) stbi_image_free(m);
+        check(gated, std::string("copy as jxl: ") + name + "'s alpha is a mask gated at 128");
+    }
+    jxl::Info info;
+    std::vector<uint8_t> px;
+    check(jxl::decode_srgb8((img / "plain.jxl").string(), 3, 1, info, px).empty() &&
+              info.width == 24 && info.height == 16,
+          "copy as jxl: plain.jxl decodes at its size");
+    const sfm::ExifData e = sfm::readExif((img / "flat.jxl").string());
+    check(e.valid && std::fabs(e.focal_mm - 16.0) < 1e-9,
+          "copy as jxl: the JPEG's EXIF is read from the .jxl");
+    check(read_bytes(photos / "flat.jpg").size() == flat.size(),
+          "copy as jxl: the source photo is left as it was");
+    std::string why = jxl::transcode_jpeg((photos / "gray.png").string(),
+                                          (root / "gray.jxl").string());
+    check(!why.empty() && !fs::exists(root / "gray.jxl", ec),
+          "copy as jxl: a PNG is refused, nothing written");
 }
 
 // A chequerboard smeared sideways across `smear` pixels: 10 px of edge sharp,
@@ -900,6 +1282,9 @@ int main() {
     test_feature_masks_workspace();
     test_model_masking_needs_segmentation();
     test_heif_folder();
+    test_jxl_avif_folder();
+    test_foreign_alpha();
+    test_convert_jxl();
     test_skipped_photos();
     test_frames_reel_counts_images();
     test_packed_photo_one_lens();

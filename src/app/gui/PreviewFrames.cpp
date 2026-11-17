@@ -5,7 +5,7 @@
 #include "app/CubeLut.h"
 #include "app/FrameMask.h"
 #include "app/gui/DatasetPrep.h"
-#include "app/gui/HeifPhoto.h"
+#include "app/gui/ForeignPhoto.h"
 #include "app/gui/Subprocess.h"
 #include "i18n/catalog/Dataset.h"
 
@@ -67,9 +67,9 @@ void crop_packed(const PreviewSource& src, int folder, int& w, int& h,
 bool load_photo(const PreviewSource& src, const std::string& path,
                 int& w, int& h, std::vector<uint8_t>& rgb, int folder,
                 const std::atomic<bool>& cancel, std::string& error) {
-    if (is_heif_path(path)) {
-        if (!load_heif(path, src.builtin_decode, src.ffmpeg_exe, w, h, rgb, cancel,
-                       error))
+    if (is_foreign_photo_path(path)) {
+        if (!load_foreign_photo(path, src.builtin_decode, src.ffmpeg_exe, w, h, rgb,
+                                cancel, error))
             return false;
         convert_to_srgb(src, rgb);
     } else if (imagefile::handles(path)) {

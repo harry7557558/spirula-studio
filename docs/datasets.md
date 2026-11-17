@@ -595,6 +595,91 @@ pivot and nothing else. `src/data/SceneCenter.h` is the one implementation;
 the table of centres travels to a viewer on `ViewerRenderConfig::centers`,
 and the training viewer's browser client fetches it from `/scene`.
 
+## Photos in HEIC, JPEG XL or AVIF
+
+Nothing past dataset preparation reads these, so a folder holding any is never
+read in place: each such photo becomes a JPEG in the dataset's `images/`,
+whatever the import mode (`app/gui/ForeignPhoto.h`). A name already taken gets
+the source's extension: `a.jxl` beside `a.jpg` becomes `a_jxl.jpg`.
+
+| format | decoded by | its EXIF in the JPEG |
+|---|---|---|
+| HEIC / HEIF | the in-process decoder (`SS_ENABLE_PATENTED`), else ffmpeg 7.0+ | kept in-process, lost through ffmpeg |
+| JPEG XL (`.jxl`) | ffmpeg built with libjxl | kept: the container's `Exif` box is spliced back, unless it is Brotli-compressed (`brob`) |
+| AVIF (`.avif`) | ffmpeg | lost |
+
+ffmpeg applies the file's own turn and mirror, so the JPEG is upright and a
+carried EXIF has its Orientation reset to 1. A JPEG XL or AVIF with alpha (read
+from the header: a JPEG XL's extra channels, an AVIF's auxiliary alpha image)
+goes where a PNG with alpha would: "Copy, re-encoded as JPEG" writes a JPEG and
+a mask in `masks/`, anything else keeps an RGBA PNG the trainer reads the alpha
+of. A run that lost EXIF says for how
+many photos: SfM has no focal-length prior or GPS for them. A 33 MP JPEG XL
+converts in 0.7 s at a 0.35 GB peak and an AVIF in 0.4 s at 0.25 GB, so those
+run side by side; HEIF through ffmpeg runs one at a time (2.6 GB for a 24 MP
+grid).
+
+### Training on JPEG XL and AVIF
+
+A build with `-DSS_WITH_JXL=ON` (libjxl) or `-DSS_WITH_AVIF=ON` (libavif),
+both from `SS_JXL_ROOT` (`cmake/SsJxl.cmake`), trains on those files as they
+are: Create Dataset keeps them unchanged, unless "Copy, re-encoded as JPEG"
+asks for JPEGs, which libjxl or libavif then decode for it (EXIF kept, alpha as
+a mask, no ffmpeg). SfM and the trainer decode them, and SfM reads their EXIF,
+a Brotli-compressed one included. Each of the trainer's
+16 image loaders decodes on its share of the cores, so a full-size run takes
+about as long as on JPEGs: 515 photos at 30k steps, 9:52 as JPEG, 10:08 as
+JPEG XL made from them. A JPEG XL made from a JPEG decodes with libjxl, within
+16 levels (50 dB) of stb's decode of that JPEG. At a
+`--train-resolution-divisor` of 2 or more the downscale cache holds them as
+`<name>.jxl.jpg` (q95, as for a JPEG), or `.png` with alpha or more than 8 bits.
+
+Such a build also offers "Copy, stored as JPEG XL": what "Copy, re-encoded as
+JPEG" would re-encode becomes a JPEG XL instead, and nothing becomes a JPEG.
+
+- A JPEG that needs no turn is stored losslessly, about 20% smaller, and kept
+  only once it gives back the same JPEG byte for byte (`djxl a.jxl a.jpg`
+  restores it). 97 Sony A7 IV photos (33 MP): 382 MB to 307 MB in 15 s, each
+  of the 8 workers encoding on its share of the cores.
+- A PNG, BMP or 8-bit TIFF, and a JPEG its EXIF turns, is encoded from its
+  pixels at JPEG 95's match (below), upright. Its alpha becomes a mask in
+  `masks/`, the same file the JPEG mode writes. A 16-bit or float image is
+  copied as it is.
+
+97 cut-outs (33 MP RGBA PNG) came to 377 MB of JPEG XL against the JPEG
+mode's 707 MB of JPEGs, each beside the same 33 MB of masks, in 32.2 s against
+28.7 s. libjxl's encoder is held by memory bandwidth (about 5.5 such photos a
+second here, however many run at once), so this mode runs up to 16 photos at a
+time where RAM allows, and works on each where it was decoded. SfM found the
+features in 5.9 s against 4.3 s (libjxl decodes a 33 MP photo in 541 ms on one
+thread, stb a JPEG in 194 ms), and 3000 full-size steps took 3:35 against 3:31.
+
+### Video frames as JPEG XL or AVIF
+
+"Frames as" (built-in engine only: COLMAP reads neither) and `spirula sam
+extract --format jpg|jxl|avif` write a video's frames as JPEG 95, or straight
+from the decoded pixels as JPEG XL or AVIF matched to that JPEG
+(`app/FrameFile.h`, `app/WriterPool.h`). The match was set on five frames
+(2.7K and 1080p GoPro, 4K Sony A7 IV, a 6 MP still) against stb's JPEG 95 with
+SSIMULACRA2, Butteraugli, PSNR and SSIM:
+
+| | size against JPEG 95 | one-core encode, 2.7K frame |
+|---|---|---|
+| JPEG XL 97, effort 3 | 17-40% smaller, every metric at least as good | 170 ms (JPEG 122 ms) |
+| JPEG XL 95, effort 7 (libjxl's default) | 30% smaller | 1900 ms |
+| AVIF 93, 10-bit 4:4:4, speed 8 (ffmpeg's libaom) | about 25% smaller | 600-750 ms |
+
+Extracting at 2 fps took as long as JPEG on the 2.7K and 1080p clips (4.6 s
+against 4.5 s, 2.3 s against 2.2 s) and 15% longer on the 4K one. Denser than
+that, libjxl is limited by memory bandwidth, not cores: its encodes stop
+scaling at about 30 frames a second of 2.7K on a 16-core machine, so 10 fps of
+a 25 s clip took 10.5 s against 6.5 s. Each image in the pool encodes on its
+share of the cores, one each while the queue is full, up to a quarter of them
+for the last few.
+
+AVIF is offered only by a libavif built with an AV1 encoder
+(`avif::can_encode`).
+
 ## EXIF orientation
 
 A phone held upright records a **landscape file plus a tag** that says to turn

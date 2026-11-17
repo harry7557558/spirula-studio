@@ -109,11 +109,14 @@ add_library(ss_nn STATIC
     ${SS_SRC}/core/ExrImage.cpp
     ${SS_SRC}/core/IccProfile.cpp
     ${SS_SRC}/core/ImageFile.cpp
+    ${SS_SRC}/core/JxlImage.cpp
+    ${SS_SRC}/core/AvifImage.cpp
     ${SS_SRC}/core/MappedFile.cpp
     ${SS_SRC}/core/TiffImage.cpp
     ${SS_SRC}/external/miniz.c
 )
 target_include_directories(ss_nn PUBLIC ${SS_SRC})
+ss_link_jxl(ss_nn)
 # PUBLIC and on ss_nn, not on ss_video: the flag means "this build
 # contains the video decoder", and what reads it is nn/vk/Context.cpp, which
 # has to request a video-decode queue at device creation -- before any decoder

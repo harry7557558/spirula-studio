@@ -1,15 +1,30 @@
 #include "core/ImageFile.h"
 
+#include "core/AvifImage.h"
 #include "core/ExrImage.h"
+#include "core/JxlImage.h"
 #include "core/TiffImage.h"
 
 namespace imagefile {
 
 bool handles(const std::string& path) {
-    return exr::is_exr(path) || tiff::is_tiff(path);
+    return exr::is_exr(path) || tiff::is_tiff(path) || jxl::is_jxl(path) ||
+           avif::is_avif(path);
 }
 
 std::string probe(const std::string& path, Info& info) {
+    if (avif::is_avif(path)) {
+        avif::Info a;
+        if (const std::string err = avif::probe(path, a); !err.empty()) return err;
+        info = {a.width, a.height, a.channels};
+        return "";
+    }
+    if (jxl::is_jxl(path)) {
+        jxl::Info j;
+        if (const std::string err = jxl::probe(path, j); !err.empty()) return err;
+        info = {j.width, j.height, j.channels};
+        return "";
+    }
     if (exr::is_exr(path)) {
         exr::Info e;
         if (const std::string err = exr::probe(path, e); !err.empty()) return err;
@@ -37,6 +52,21 @@ bool declared_color_space(const std::string& path, DeclaredColor& out) {
 std::string decode_srgb8(const std::string& path, const Options& opt, Info& info,
                          std::vector<uint8_t>& out, const std::string& gamut,
                          std::optional<bool> is_linear, std::vector<uint8_t>* unexposed) {
+    if (avif::is_avif(path)) {
+        avif::Info a;
+        const std::string err = avif::decode_srgb8(path, opt.channels, opt.threads, a, out);
+        info = {a.width, a.height, a.channels};
+        if (unexposed) unexposed->clear();
+        return err;
+    }
+    if (jxl::is_jxl(path)) {
+        // Always sRGB out of libjxl, so neither the gamut nor an exposure applies.
+        jxl::Info j;
+        const std::string err = jxl::decode_srgb8(path, opt.channels, opt.threads, j, out);
+        info = {j.width, j.height, j.channels};
+        if (unexposed) unexposed->clear();
+        return err;
+    }
     if (exr::is_exr(path)) {
         exr::Info e;
         exr::Options o;

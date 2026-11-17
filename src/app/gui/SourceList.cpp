@@ -125,7 +125,7 @@ PrepInput make_source(const std::string& path, bool use_found_masks) {
         if (!use_found_masks) s.mask_dir.clear();
         s.packed_lenses = probe_packed_lenses(s.path);
         if (s.packed_lenses >= 2) s.rig = kRigOwn;
-        s.heif = folder_has_heif(s.path);
+        s.foreign_photos = folder_has_foreign_photos(s.path);
     }
     s.camera_model = default_lens(s);
     return s;
@@ -272,14 +272,15 @@ std::string workspace_base(const std::vector<PrepInput>& sources, bool& exact) {
         const fs::path p(sources[0].path);
         if (sources[0].is_video) {
             base = (p.parent_path() / (p.stem().string() + "_dataset")).string();
-        } else if (named_images(p) && !sources[0].heif) {
+        } else if (named_images(p) && !sources[0].foreign_photos) {
             // A dataset folder: images/ (and masks/) are already where every
             // parser looks for them, so the reconstruction belongs beside them
             // as sparse/ -- in that folder, not in a copy of it with a suffix.
             base = p.parent_path().string();
             exact = true;
         } else if (named_images(p)) {
-            // ... unless they are HEIC, whose JPEGs need an images/ of their own.
+            // ... unless they are HEIC, JPEG XL or AVIF, whose JPEGs need an
+            // images/ of their own.
             base = p.parent_path().string() + "_dataset";
         } else {
             base = sources[0].path + "_dataset";

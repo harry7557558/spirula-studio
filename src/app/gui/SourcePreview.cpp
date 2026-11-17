@@ -6,7 +6,7 @@
 #include "app/FrameLook.h"
 #include "app/FrameMask.h"
 #include "app/gui/DatasetPrep.h"
-#include "app/gui/HeifPhoto.h"
+#include "app/gui/ForeignPhoto.h"
 #include "app/gui/Layout.h"
 #include "app/gui/SceneFrame.h"
 #include "app/gui/Ui.h"

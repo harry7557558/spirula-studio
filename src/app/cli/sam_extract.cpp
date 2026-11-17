@@ -79,6 +79,7 @@ void usage() {
     help_row("    --start <time>", H::xh_start);
     help_row("    --end <time>", H::xh_end);
     help_row("-q, --quality <0..100>", H::xh_quality);
+    help_row("    --format <f>", H::xh_format);
     help_row("-r, --rotate <deg>", H::xh_rotate);
     help_row("    --no-autorotate", H::xh_no_autorotate);
     help_row("    --scale <f>", H::xh_scale);
@@ -151,6 +152,7 @@ struct Options {
     int    skip = 1, keep = -1, max_frames = 0;
     double clip_start = 0.0, clip_end = 0.0;
     int    quality = 95, rotate = 0;
+    app::FrameFile file = app::FrameFile::Jpeg;
     bool   auto_rotate = true;
     float  scale = 1.0f;
     std::string lut;
@@ -229,6 +231,19 @@ bool parse_args(int argc, char** argv, Options& o) {
         else if (a == "--report")
             o.report = next("--report");
         else if (a == "--threads") o.threads = std::atoi(next("--threads"));
+        else if (a == "--format") {
+            const std::string f = next("--format");
+            if (f == "jpg") o.file = app::FrameFile::Jpeg;
+            else if (f == "jxl") o.file = app::FrameFile::Jxl;
+            else if (f == "avif") o.file = app::FrameFile::Avif;
+            else {
+                std::fprintf(stderr, "%s\n",
+                             spirula::i18n::format(
+                                 spirula::i18n::msg::cli::sam_unexpected_argument,
+                                 {"--format " + f}).c_str());
+                return false;
+            }
+        }
         else if (a == "--decoder") {
             const std::string d = next("--decoder");
             if (d == "auto") o.decoder = app::FrameDecoder::Auto;
@@ -341,6 +356,7 @@ int sam_cli_extract(int argc, char** argv) {
     job.clip_start = o.clip_start;
     job.clip_end = o.clip_end;
     job.quality = o.quality;
+    job.file = o.file;
     job.rotate = o.rotate;
     job.auto_rotate = o.auto_rotate;
     job.scale = o.scale;

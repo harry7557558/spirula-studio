@@ -86,7 +86,7 @@ bool isImageExt(const std::string& e) {
     std::string s;
     for (char c : e) s += (char)std::tolower((unsigned char)c);
     return s == ".jpg" || s == ".jpeg" || s == ".png" || s == ".bmp" || s == ".tga" ||
-           s == ".ppm" || s == ".pgm" || s == ".exr" || s == ".tif" || s == ".tiff";
+           s == ".ppm" || s == ".pgm" || s == ".exr" || s == ".tif" || s == ".tiff" || s == ".jxl" || s == ".avif";
 }
 
 // macOS AppleDouble sidecars (`._<name>`, written on exFAT / NTFS / SMB) keep

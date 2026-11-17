@@ -1,5 +1,8 @@
 #include "data/DownscaleCache.h"
 
+#include "core/AvifImage.h"
+#include "core/ImageFile.h"
+#include "core/JxlImage.h"
 #include "core/PngWrite.h"
 #include "data/DatasetParser.h"
 
@@ -46,6 +49,10 @@ bool tail_has(const std::string& path, const uint8_t* marker, size_t n) {
 
 }  // namespace
 
+bool is_modern(const std::string& path) {
+    return jxl::is_jxl(path) || avif::is_avif(path);
+}
+
 Format format_of(const std::string& path) {
     uint8_t head[8] = {};
     std::FILE* f = std::fopen(path.c_str(), "rb");
@@ -58,8 +65,30 @@ Format format_of(const std::string& path) {
     return Format::None;
 }
 
+Format cache_format(const std::string& image) {
+    const Format own = format_of(image);
+    if (own != Format::None) return own;
+    int channels = 0, bits = 8;
+    if (jxl::is_jxl(image)) {
+        jxl::Info info;
+        if (!jxl::probe(image, info).empty()) return Format::None;
+        channels = info.channels;
+        bits = info.bits;
+    } else if (avif::is_avif(image)) {
+        avif::Info info;
+        if (!avif::probe(image, info).empty()) return Format::None;
+        channels = info.channels;
+        bits = info.bits;
+    } else {
+        return Format::None;
+    }
+    return channels <= 3 && bits <= 8 ? Format::Jpeg : Format::Png;
+}
+
 std::string path_for(const std::string& image, const std::string& image_dir, int d) {
-    if (d < 2 || format_of(image) == Format::None) return "";
+    const Format fmt = d >= 2 ? cache_format(image) : Format::None;
+    if (fmt == Format::None) return "";
+    const bool renamed = format_of(image) == Format::None;
     std::error_code ec;
     const fs::path img = fs::absolute(image, ec).lexically_normal();
     fs::path dir;
@@ -75,6 +104,7 @@ std::string path_for(const std::string& image, const std::string& image_dir, int
     if (dir.filename().empty()) dir = dir.parent_path();   // a trailing separator
     const std::string name = dir.filename().string();
     if (name.empty() || name == "." || name == "..") return "";
+    if (renamed) rel += fmt == Format::Jpeg ? ".jpg" : ".png";
     return (dir.parent_path() / (name + "_" + std::to_string(d)) / rel).string();
 }
 
@@ -87,9 +117,13 @@ int scaled_side(int full, int d, const std::string& mode) {
 
 bool usable(const std::string& cached, const std::string& image, int d) {
     int cw, chh, cn, iw, ih, in;
-    if (!stbi_info(cached.c_str(), &cw, &chh, &cn) ||
-        !stbi_info(image.c_str(), &iw, &ih, &in))
-        return false;
+    if (!stbi_info(cached.c_str(), &cw, &chh, &cn)) return false;
+    if (!stbi_info(image.c_str(), &iw, &ih, &in)) {
+        imagefile::Info info;
+        if (!is_modern(image) || !imagefile::probe(image, info).empty()) return false;
+        iw = info.width;
+        ih = info.height;
+    }
     auto fits = [d](int side, int full) {
         for (const char* mode : {"floor", "ceil", "round"})
             if (side == scaled_side(full, d, mode)) return true;

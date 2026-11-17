@@ -561,6 +561,10 @@ add_executable(ffmpeg_probe_test
     ${SS_SRC}/app/gui/Subprocess.cpp)
 ss_configure_app(ffmpeg_probe_test)
 
+add_executable(frame_file_test
+    ${SS_SRC}/app/tests/frame_file_test.cpp)
+ss_configure_app(frame_file_test)
+
 # The GUI files with no GUI in them: the plan that decides which steps of a
 # dataset run are kept or redone, and the preset serializers. Named rather
 # than globbed -- each such test names its own sources.
@@ -658,7 +662,7 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/FrameMaskSvg.cpp
         ${SS_SRC}/app/FrameLook.cpp
         ${SS_SRC}/app/gui/Subprocess.cpp
-        ${SS_SRC}/app/gui/HeifPhoto.cpp)
+        ${SS_SRC}/app/gui/ForeignPhoto.cpp)
     ss_configure_app(match_matrix_editor_test)
     target_link_libraries(match_matrix_editor_test PRIVATE imgui_glfw OpenGL::GL)
     target_compile_definitions(match_matrix_editor_test PRIVATE SS_TOOL_SFM=1)
@@ -715,7 +719,7 @@ if(SS_BUILD_GUI)
     add_executable(dataset_prep_test
         ${SS_SRC}/app/gui/tests/dataset_prep_test.cpp
         ${SS_SRC}/app/gui/DatasetPrep.cpp
-        ${SS_SRC}/app/gui/HeifPhoto.cpp
+        ${SS_SRC}/app/gui/ForeignPhoto.cpp
         ${SS_SRC}/app/gui/FrameSelect.cpp
         ${SS_SRC}/app/gui/PickSheet.cpp
         ${SS_SRC}/app/FrameSharpness.cpp
@@ -764,7 +768,7 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/gui/DatasetPlan.cpp
         ${SS_SRC}/app/gui/DatasetRecord.cpp
         ${SS_SRC}/app/gui/DatasetPrep.cpp
-        ${SS_SRC}/app/gui/HeifPhoto.cpp
+        ${SS_SRC}/app/gui/ForeignPhoto.cpp
         ${SS_SRC}/app/gui/FrameSelect.cpp
         ${SS_SRC}/app/gui/PickSheet.cpp
         ${SS_SRC}/app/FrameSharpness.cpp

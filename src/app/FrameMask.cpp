@@ -1030,7 +1030,7 @@ bool is_image_file(const fs::path& p) {
     std::string e = p.extension().string();
     for (char& c : e) c = (char)std::tolower((unsigned char)c);
     return e == ".png" || e == ".jpg" || e == ".jpeg" || e == ".bmp" ||
-           e == ".tif" || e == ".tiff" || e == ".webp" || e == ".exr";
+           e == ".tif" || e == ".tiff" || e == ".webp" || e == ".exr" || e == ".jxl" || e == ".avif";
 }
 
 void intersect_with_file(std::vector<uint8_t>& px, int w, int h,

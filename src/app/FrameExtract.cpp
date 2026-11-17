@@ -277,10 +277,12 @@ bool extract_track(const FrameExtractJob& o, const FrameExtractSinks& sinks,
             }
         }
         WriteJob job;
-        job.path = (image_dir / (std::string(stem) + (jpeg ? ".jpg" : ".png"))).string();
+        job.path = (image_dir / (std::string(stem) +
+                                 (jpeg ? frame_file_ext(o.file) : ".png"))).string();
         if (sinks.preview && image.channels == 3)
             sinks.preview(image.data.data(), image.width, image.height, job.path);
         job.quality = o.quality;
+        job.file = o.file;
         job.exif = exposure.exif(index);
         job.image = std::move(image);
         const double t0 = nn::now_ms();
@@ -341,8 +343,10 @@ bool extract_pair(const FrameExtractJob& o, const FrameExtractSinks& sinks,
                           job.image.data.data());
             t.convert += nn::now_ms() - t0;
             job.path = (image_dir / o.views[i].dir /
-                        (std::string(stem) + (jpeg ? ".jpg" : ".png"))).string();
+                        (std::string(stem) +
+                         (jpeg ? frame_file_ext(o.file) : ".png"))).string();
             job.quality = o.quality;
+            job.file = o.file;
             job.exif = exif;
             if (sinks.preview)
                 sinks.preview(job.image.data.data(), job.image.width, job.image.height,
@@ -378,10 +382,12 @@ bool extract_synced(const FrameExtractJob& o, const FrameExtractSinks& sinks,
         const std::vector<uint8_t> exif = exposure.exif(index);
         for (size_t k = 0; k < imgs.size(); k++) {
             WriteJob job;
-            job.path = (dirs[k] / (std::string(stem) + (jpeg ? ".jpg" : ".png"))).string();
+            job.path = (dirs[k] / (std::string(stem) +
+                                   (jpeg ? frame_file_ext(o.file) : ".png"))).string();
             if (sinks.preview && imgs[k].channels == 3)
                 sinks.preview(imgs[k].data.data(), imgs[k].width, imgs[k].height, job.path);
             job.quality = o.quality;
+            job.file = o.file;
             job.exif = exif;
             job.image = std::move(imgs[k]);
             const double t0 = nn::now_ms();
@@ -519,8 +525,10 @@ bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sink
                 WriteJob w;
                 w.image = im;
                 w.path = (fs::path(job.skipped_dir) /
-                          (std::string(stem) + (jpeg ? ".jpg" : ".png"))).string();
+                          (std::string(stem) +
+                           (jpeg ? frame_file_ext(job.file) : ".png"))).string();
                 w.quality = job.quality;
+                w.file = job.file;
                 w.exif = exposure.exif(p.index);
                 pool.submit(std::move(w));
             }

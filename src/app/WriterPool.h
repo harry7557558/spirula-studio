@@ -13,8 +13,11 @@
 // growing until memory runs out; `submit` blocks when it is full.
 
 #include "app/DepthPng.h"
+#include "app/FrameFile.h"
 #include "app/GeometryOutput.h"
+#include "core/AvifImage.h"
 #include "core/HardwareThreads.h"
+#include "core/JxlImage.h"
 #include "external/stb_image_write.h"
 #include "nn/core/Log.h"
 #include "nn/io/Image.h"
@@ -28,6 +31,7 @@
 #include <cstdio>
 #include <exception>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -42,6 +46,7 @@ struct WriteJob {
     int                   depth_w = 0, depth_h = 0;
     std::string           path;
     int                   quality = 95;
+    FrameFile             file = FrameFile::Jpeg;   // with `quality` in 0..100
     std::vector<uint8_t>  exif;     // APP1 payload for a JPEG image; empty writes none
     std::string           geometry_key; // opt-in checked, atomic geometry publication
     bool                  geometry_overwrite = false;
@@ -105,15 +110,36 @@ private:
                                     im.data.data(), job.quality))
             return false;
         sfm::jpegInsertApp1(jpeg, job.exif);
+        return write_bytes(jpeg, path);
+    }
+
+    static bool write_bytes(const std::vector<uint8_t>& bytes, const std::string& path) {
         std::FILE* file = std::fopen(path.c_str(), "wb");
         if (!file) return false;
-        const bool good = std::fwrite(jpeg.data(), 1, jpeg.size(), file) == jpeg.size();
+        const bool good = std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
         return std::fclose(file) == 0 && good;
+    }
+
+    // At the JPEG quality's match (app/FrameFile.h).
+    static bool save_jxl_or_avif(const WriteJob& job, const std::string& path, int threads) {
+        const auto& im = job.image;
+        std::vector<uint8_t> out;
+        const std::string why =
+            job.file == FrameFile::Jxl
+                ? jxl::encode_srgb8(im.data.data(), im.width, im.height, im.channels,
+                                    std::min(100, job.quality + kJxlOverJpegQuality),
+                                    kJxlEffort, job.exif, threads, out)
+                : avif::encode_srgb8(im.data.data(), im.width, im.height, im.channels,
+                                     job.quality - kAvifUnderJpegQuality, kAvifSpeed,
+                                     job.exif, threads, out);
+        if (!why.empty()) throw std::runtime_error(why);
+        return write_bytes(out, path);
     }
 
     void run() {
         while (true) {
             WriteJob job;
+            int share = 1;
             {
                 std::unique_lock<std::mutex> lk(mu_);
                 work_.wait(lk, [this] { return !queue_.empty() || done_; });
@@ -122,6 +148,12 @@ private:
                 job = std::move(queue_.front());
                 queue_.pop_front();
                 ++active_;
+                // The cores shared among the images in hand, one each while the
+                // queue is full; at most a quarter, so the decoder feeding the
+                // queue is not starved (a 4K clip's decode took 30% longer).
+                const int cores = (int)spirula::hardware_threads();
+                share = std::clamp(cores / (int)std::max<size_t>(1, active_ + queue_.size()), 1,
+                                   std::max(1, cores / 4));
                 space_.notify_one();
             }
             const double t0 = nn::now_ms();
@@ -133,6 +165,9 @@ private:
                 auto encode = [&](const std::string& path) {
                     if (!job.depth.empty())
                         return save_depth_png16(path, job.depth.data(), job.depth_w, job.depth_h);
+                    if (job.file != FrameFile::Jpeg && job.geometry_key.empty() &&
+                        !job.image.empty() && job.quality >= 0 && job.quality <= 100)
+                        return save_jxl_or_avif(job, path, share);
                     if (job.geometry_key.empty() && !job.image.empty() && !job.exif.empty() &&
                         job.quality >= 0 && job.quality <= 100)
                         return save_jpeg_with_exif(job, path);

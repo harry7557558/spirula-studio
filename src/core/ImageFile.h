@@ -1,8 +1,9 @@
 #pragma once
 
 // The image formats decoded here rather than by stb_image -- OpenEXR
-// (core/ExrImage.h) and TIFF (core/TiffImage.h) -- behind one probe and one
-// sRGB decode, so a caller that hands everything else to stb branches once.
+// (core/ExrImage.h), TIFF (core/TiffImage.h), JPEG XL (core/JxlImage.h) and
+// AVIF (core/AvifImage.h) -- behind one probe and one sRGB decode, so a caller
+// that hands everything else to stb branches once.
 
 #include "core/ColorSpace.h"
 
@@ -36,7 +37,7 @@ struct DeclaredColor {
     bool gamut_known = true;
 };
 
-// True for an EXR or a TIFF, by the first bytes of the file.
+// True for an EXR, a TIFF, a JPEG XL or an AVIF, by the first bytes of the file.
 bool handles(const std::string& path);
 
 // Header only. Returns "" on success, else one sentence naming the problem.
