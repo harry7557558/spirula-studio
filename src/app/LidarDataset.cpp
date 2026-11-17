@@ -45,7 +45,7 @@ namespace {
 constexpr double kPi = 3.14159265358979323846;
 // Part of the signature: raised with a fix that changes the result, so a
 // dataset aligned before it is done again rather than reused.
-constexpr int kAlignVersion = 2;
+constexpr int kAlignVersion = 3;
 constexpr const char* kUnalignedDir = "sparse_unaligned";
 
 // The one draw of the scan everything else is taken from: the depth maps'
