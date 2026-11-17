@@ -125,7 +125,15 @@ window.__viewer = {
   load: (files) => load(files),
   get model() { return model; },
   get opts() { return opts; },
-  setOpt: (k, v) => { opts[k] = v; dirty = true; },
+  setOpt: (k, v) => {
+    if (k === 'primitive') {
+      $('primitive').value = String(v);
+      syncPrimitive();
+      return;
+    }
+    opts[k] = v;
+    dirty = true;
+  },
   get nav() { return nav; },
   get camera() { return camera; },
   snapshot: () => { if (model && model.type==='splat') maybeSort(true); renderer.render(camera, opts); return renderer.snapshot(); },
@@ -381,7 +389,8 @@ async function loadSingleModel(entries) {
     }
     freeSplatSh();   // SH lives on the GPU now; drop the WASM copy (+ quats)
     sortWorkerInitModel(data);
-    model = { type:'splat', count: data.count, shDegree: data.shDegree, sbLobes: data.sbLobes };
+    model = { type:'splat', count: data.count, shDegree: data.shDegree, sbLobes: data.sbLobes, mip: data.mip };
+    syncPrimitive();
     showSplatUI(data);
   } else {
     renderer.setMesh(res.data, res.image || null);
@@ -480,6 +489,13 @@ function showSplatUI(data) {
   $('st-sb').textContent = data.sbLobes || 0;
   $('sb-row').style.display = data.sbLobes > 0 ? '' : 'none';
 }
+
+function syncPrimitive() {
+  const mode = $('primitive').value;
+  opts.primitive = mode === 'auto' ? Number(model?.mip === true) : Number(mode);
+  dirty = true;
+}
+
 function showMeshUI(data) {
   $('sec-mesh').classList.remove('hidden');
   $('sec-splat').classList.add('hidden');
@@ -935,7 +951,7 @@ function wireControls() {
   bind('move-speed','input', e => { nav.speedExp = +e.target.value; $('v-speed').textContent = Math.pow(10,+e.target.value).toFixed(2)+'×'; });
   bind('btn-reset','click', () => { if (model) fitModel(); else nav.reset(); });
 
-  bind('primitive','change', e => { opts.primitive = +e.target.value; dirty=true; });
+  bind('primitive','change', syncPrimitive);
   bind('gamut','change', e => { opts.gamut = toColMajor(GAMUTS[e.target.value]); dirty=true; });
   bind('linear','change', e => { opts.isLinear = e.target.checked; dirty=true; });
   bind('transfer','change', e => { opts.transfer = +e.target.value; dirty=true; });

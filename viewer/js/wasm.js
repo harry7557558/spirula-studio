@@ -56,7 +56,7 @@ function readSplat() {
   const shRest = call('ssv_splat_sh_rest');
   const sbLobes = call('ssv_splat_sb_lobes');
   const data = {
-    count, shDegree, shRest, sbLobes,
+    count, shDegree, shRest, sbLobes, mip: Boolean(call('ssv_splat_mip')),
     posop: f32(call('ssv_splat_posop'), count*4),
     quat:  u16(call('ssv_splat_quat'), count*4),
     scale: u16(call('ssv_splat_scale'), count*4),

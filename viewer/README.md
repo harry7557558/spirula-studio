@@ -35,7 +35,8 @@ plain C++17 with no CUDA dependency (see `csrc/CameraModel.h`).
   buffering, so multi-GB hosted models load). If the GPU runs out of memory
   on the SH textures, the viewer drops one SH degree at a time and retries
   instead of failing.
-  - Primitive select: **3DGS**, **Mip** (antialiased), **3DGUT** (unscented
+  - Primitive select: **Auto** uses Mip for PLY files tagged as antialiased and
+    3DGS for untagged files. Override it with **3DGS**, **Mip** (antialiased), or **3DGUT** (unscented
     transform projection; fragments evaluate the 3D Gaussian along per-pixel
     rays, "eval3d"). 3DGS/Mip use analytic projection Jacobians with the
     conventional out-of-bounds Jacobian clipping.
