@@ -212,7 +212,7 @@ paper's `(1 - cos) / 2` and so pulls far harder near agreement, and both
 ramp in linearly over `distortion_reg_warmup` (6000 steps).
 
 Sweep on the action-cam capture (30k steps, 1M splats, Vulkan, 61 held-out
-views). Geometry: `spirula mesh` against the capture's dense matching cloud,
+views). Geometry: `spirula mesh` scored by `reference/python/mesh_fscore.py` against the capture's dense matching cloud,
 tolerance 0.5% of its 5-95% extent, 1M points sampled each way, precision
 = mesh points within it, recall = cloud points within it; one run each, so F moves by ~0.02
 between runs of one setting.
