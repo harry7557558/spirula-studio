@@ -658,6 +658,8 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
             log(format(emsg::seed_all, {(long long)res.seed_points}));
         }
     } else {
+        // The parser seeds from a sparse_pc.ply that transforms.json does not name.
+        fs::remove(out / "sparse_pc.ply", ec);
         fs::remove(out / lidar_layout::kPoints, ec);
     }
 

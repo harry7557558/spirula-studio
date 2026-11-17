@@ -9,6 +9,7 @@
 #include "core/CameraModel.h"
 #include "data/CameraMath.h"
 #include "data/DatasetParser.h"
+#include "data/LidarLayout.h"
 #include "data/SceneTransform.h"
 #include "data/tests/E57TestFile.h"
 #include "external/stb_image_write.h"
@@ -222,6 +223,13 @@ int main() {
           ds.camera_models[1] == (int)CameraModelType::EQUIRECTANGULAR, "camera models");
     check(ds.gauge_oriented && ds.gauge_metric, "gauge.txt: +Z up, metres");
     check(ds.points.num() == res.seed_points, "the seed cloud");
+    const fs::path out(opt.output);
+    check(read_ply_points((out / lidar_layout::kPoints).string()).num() == res.seed_points,
+          "lidar/points.ply holds the seed cloud");
+    check(ds.depth_filenames.size() == 2 &&
+              fs::path(ds.depth_filenames[1]).parent_path() ==
+                  (out / lidar_layout::kDepths).lexically_normal(),
+          "the depth maps are read from lidar/depths");
 
     // Every camera must send a world point to the pixel its E57 image has it at.
     const float zero[kCameraDistortionParams] = {};
@@ -316,6 +324,15 @@ int main() {
         check(wrong_way == app::E57Check::Fixed && worst(R_got) < 1e-5,
               "alignment check: a photo posed with the wrong axes is turned back");
     }
+
+    // A run without maps or seeds leaves no earlier run's maps or seeds behind.
+    opt.depth_maps = false;
+    opt.seed_points = 0;
+    app::write_e57_dataset(opt, [](const std::string&) {});
+    check(!fs::exists(out / lidar_layout::kDepths) && !fs::exists(out / lidar_layout::kNormals) &&
+              !fs::exists(out / lidar_layout::kPoints) && !fs::exists(out / "sparse_pc.ply"),
+          "--no-depth --points 0 removes the old maps and seed clouds");
+    check(parse_dataset(opt.output, cfg, "").points.num() == 0, "and the parser finds no seeds");
 
     fs::remove_all(dir);
     std::printf(g_failures ? "\n%d FAILED\n" : "\nall passed\n", g_failures);
