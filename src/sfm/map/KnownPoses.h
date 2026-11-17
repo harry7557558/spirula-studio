@@ -113,7 +113,7 @@ inline KnownPoseStats triangulateKnownPoses(Reconstruction& rec, const MatchesDa
             const TrackElement& e = tracks.observations[k];
             const uint32_t id = image_of[e.image_id];
             if (id == kNotInModel) continue;
-            // One observation per image: a point seen twice in one frame is two points.
+            // One observation per image: two features in one frame cannot be one point.
             if (std::any_of(rays.begin(), rays.end(), [&](const Ray& r) { return r.image == id; }))
                 continue;
             rays.push_back({id, e.point2D_idx, rec.images.at(id).points2D[e.point2D_idx]});
@@ -121,7 +121,7 @@ inline KnownPoseStats triangulateKnownPoses(Reconstruction& rec, const MatchesDa
         if (rays.size() < 2) continue;
         Vec3 X;
         if (!triangulateRays(rec, rays, X)) continue;
-        // The worst ray is what a wrong match looks like; the rest are solved again without it.
+        // A ray past `max_error_px` is a wrong match; the rest are solved again without it.
         std::vector<Ray> kept;
         for (const Ray& r : rays)
             if (reprojects(rec, r, X, opt.max_error_px)) kept.push_back(r);

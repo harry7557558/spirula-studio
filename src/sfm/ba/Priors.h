@@ -95,7 +95,7 @@ struct LevelFrame {
 // Image indices are whatever the holder says: the mapper fills them with
 // reconstruction image ids, buildBundle remaps them to BA indices.
 struct PosePriors {
-    Vec3 up_w{0, 0, 1};    // the world up every PriorUp is measured against
+    Vec3 up_w{0, 0, 1};    // the world up a PriorUp without its own axis is measured against
     double huber = 1.345;  // in sigmas, per factor
     GpsFrame gps;          // where the single-image centres are stated
     LevelFrame level;

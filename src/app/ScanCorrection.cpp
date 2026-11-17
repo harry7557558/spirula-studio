@@ -21,7 +21,8 @@ constexpr double kRejectFloorM = 0.03;
 constexpr double kRejectFloorRad = 0.3 * kPi / 180.0;
 constexpr double kRejectSpread = 3.0;
 constexpr int kGaussNewton = 6;
-// Holds a knot that no photograph sees to its neighbours, at a tenth of one photograph's weight.
+// Ties each knot to its neighbours at a tenth of one photograph's weight,
+// so a knot that no photograph sees follows them.
 constexpr double kKnotTie = 0.1;
 
 double median(std::vector<double> v) {

@@ -717,7 +717,7 @@ struct LidarPoint {
 
 // One /lidar message: header field 1 (its field 2 the sweep's time), then a
 // point per field 2: x y z in mm (fields 1-3), intensity (4), time from the
-// sweep's in us (6). Points nearer than `min_range` to the sensor are left out.
+// sweep's in us (6). Points outside `min_range` to `max_range` from the sensor are left out.
 void parse_sweep(const uint8_t* d, size_t n, const double E[16], double min_range, double max_range,
                  std::vector<LidarPoint>& out) {
     out.clear();

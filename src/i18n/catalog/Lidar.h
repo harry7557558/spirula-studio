@@ -1363,31 +1363,31 @@ SS_MSG(scan_photos_place_only,
     TR("Çekim fotoğraflarını yalnızca hizalama için kullan"));
 
 SS_MSG(scan_photos_place_only_help,
-    EN("Capture photos place your own photos in the scan, then training drops them. Only those near "
+    EN("Capture photos place your own photos in the scan, and are not trained on. Only those near "
        "your own photos help, so a lower camera rate saves time."),
     JA("キャプチャの写真はあなたの写真をスキャンに合わせ、その後の学習では外されます。"
        "あなたの写真の近くの写真だけが役立つので、レートを下げると時間を節約できます。"),
-    ZH_HANS("采集的照片把您自己的照片放进扫描，之后训练会去掉它们。只有靠近您照片的采集照片有用，"
+    ZH_HANS("采集的照片把您自己的照片放进扫描，本身不参与训练。只有靠近您照片的采集照片有用，"
             "所以降低帧率可以节省时间。"),
-    ZH_HANT("擷取的照片把您自己的照片放進掃描，之後訓練會去掉它們。只有靠近您照片的擷取照片有用，"
+    ZH_HANT("擷取的照片把您自己的照片放進掃描，本身不參與訓練。只有靠近您照片的擷取照片有用，"
             "所以降低幀率可以節省時間。"),
     KO("캡처 사진은 직접 찍은 사진을 스캔에 맞추고, 그 뒤 학습에서는 빠집니다. 직접 찍은 사진 근처의 "
        "사진만 도움이 되므로 비율을 낮추면 시간이 줄어듭니다."),
-    DE("Die Fotos der Aufnahme bringen Ihre Fotos in den Scan, das Training lässt sie danach weg. Nur die "
+    DE("Die Fotos der Aufnahme bringen Ihre Fotos in den Scan und werden nicht trainiert. Nur die "
        "nahe Ihren Fotos helfen, eine niedrigere Rate spart also Zeit."),
-    FR("Les photos de la capture placent vos photos dans le scan, puis l'entraînement les retire. Seules "
+    FR("Les photos de la capture placent vos photos dans le scan et ne servent pas à l'entraînement. Seules "
        "celles proches de vos photos aident : un débit plus bas fait gagner du temps."),
-    ES("Las fotos de la captura colocan sus fotos en el escaneo y luego el entrenamiento las quita. Solo "
+    ES("Las fotos de la captura colocan sus fotos en el escaneo y no se usan en el entrenamiento. Solo "
        "ayudan las cercanas a sus fotos, así que una tasa menor ahorra tiempo."),
-    PT("As fotos da captura colocam as suas fotos na varredura e depois o treino retira-as. Só ajudam as "
+    PT("As fotos da captura colocam as suas fotos na varredura e não entram no treino. Só ajudam as "
        "próximas das suas fotos, por isso uma taxa menor poupa tempo."),
-    IT("Le foto dell'acquisizione allineano le tue foto alla scansione, poi l'addestramento le toglie. "
+    IT("Le foto dell'acquisizione allineano le tue foto alla scansione e non entrano nell'addestramento. "
        "Servono solo quelle vicine alle tue: meno foto al secondo, meno tempo."),
-    NL("De foto's van de opname plaatsen uw foto's in de scan, daarna laat de training ze weg. Alleen "
+    NL("De foto's van de opname plaatsen uw foto's in de scan en gaan niet mee in de training. Alleen "
        "die bij uw foto's helpen, dus een lagere rate spaart tijd."),
-    RU("Фото съёмки ставят ваши фото в скан, затем обучение их убирает. Помогают только фото рядом с "
+    RU("Фото съёмки ставят ваши фото в скан и не идут в обучение. Помогают только фото рядом с "
        "вашими, поэтому меньшая частота экономит время."),
-    TR("Çekim fotoğrafları fotoğraflarınızı taramaya yerleştirir, eğitim sonra onları çıkarır. "
+    TR("Çekim fotoğrafları fotoğraflarınızı taramaya yerleştirir ve eğitime girmez. "
        "Yalnız sizinkilere yakın olanlar işe yarar; düşük hız zaman kazandırır."));
 
 SS_MSG(capture_camera_fps_help,

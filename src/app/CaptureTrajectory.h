@@ -16,7 +16,7 @@ namespace app::lidar {
 // <capture stem>.trajectory.csv in a dataset's lidar folder, beside anchors.json.
 std::string trajectory_path(const std::string& lidar_dir, const std::string& capture);
 
-// Empty when the file does not exist. Throws on a file it cannot read.
+// Empty when the file does not open. Throws on a bad line or on times out of order.
 spirula::xbin::Correction read_trajectory(const std::string& path);
 void write_trajectory(const std::string& path, const spirula::xbin::Correction& c);
 

@@ -98,8 +98,8 @@ std::string poses_csv() {
     return out;
 }
 
-// Sweeps of 0.1 s from the true walk, in the LiDAR's frame: the IMU is 1 cm
-// ahead of it (kImuLidar), no turn between them.
+// Sweeps of 0.1 s from the true walk, in the LiDAR's frame: the LiDAR is 1 cm
+// ahead of the IMU (kImuLidar), no turn between them.
 std::vector<Bytes> sweeps() {
     std::vector<Bytes> out;
     std::mt19937 rng(7);
@@ -114,7 +114,7 @@ std::vector<Bytes> sweeps() {
             const int64_t dt = i * 99999 / kSweepPoints;
             double c[3], yaw;
             truth(s * 0.1 + dt * 1e-6, c, yaw);
-            const double o[3] = {c[0] - 0.01 * std::cos(yaw), c[1] - 0.01 * std::sin(yaw), c[2]};
+            const double o[3] = {c[0] + 0.01 * std::cos(yaw), c[1] + 0.01 * std::sin(yaw), c[2]};
             const double ea = el(rng), aa = az(rng);
             const double local[3] = {std::cos(ea) * std::cos(aa), std::cos(ea) * std::sin(aa), std::sin(ea)};
             const double d[3] = {std::cos(yaw) * local[0] - std::sin(yaw) * local[1],

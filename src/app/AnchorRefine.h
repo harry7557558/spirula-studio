@@ -2,9 +2,10 @@
 
 // A capture's photographs placed from the device's own poses instead of by a
 // free reconstruction: the run's verified matches triangulated with those
-// poses (sfm/map/KnownPoses.h), then one bundle adjustment in which each
+// poses (sfm/map/KnownPoses.h), then a bundle adjustment in which each
 // instant is one rig pose held near the device's, the factory rig turns only,
-// and each camera's lens is refined. docs/notes/lidar-alignment.md.
+// and each camera's lens is refined. Both run twice, then one level similarity
+// puts the block back on the trajectory. docs/notes/lidar-alignment.md.
 
 #include "app/LidarAlign.h"
 

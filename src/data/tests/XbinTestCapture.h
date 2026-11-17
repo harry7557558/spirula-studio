@@ -94,7 +94,7 @@ constexpr const char* kCameraYaml =
     "  intrinsic: [30, 31, 20, 15]\n  distortion: [0, 0, 0, 0]\n"
     "calibrated: true\nversion: V3.1.1\n";
 
-// The IMU 1 cm ahead of the LiDAR; camera_0 10 cm above it, written as the
+// The LiDAR 1 cm ahead of the IMU (+x), camera_0 10 cm above the LiDAR, written as the
 // device writes it: LiDAR -> camera.
 constexpr const char* kImuLidar = "transform: [1, 0, 0, 0.01, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]\n";
 constexpr const char* kCameraLidar =

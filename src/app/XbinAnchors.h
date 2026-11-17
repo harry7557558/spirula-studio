@@ -3,7 +3,7 @@
 // The photographs of an XGRIDS capture (data/XbinReader.h) as anchors: each
 // chosen camera's frames decoded as a video's are (app/FrameExtract.h) into
 // `images_dir`/`subdir`/<camera>/, named by their frame counter, with their
-// poses from the device's trajectory.
+// poses from the LiDAR trajectory when the dataset has one, else the device's.
 
 #include <algorithm>
 #include <atomic>
@@ -56,7 +56,7 @@ private:
     int64_t _first = 0, _slot = -1;
 };
 
-// At most as many as FrameRate keeps of `frames` recorded over `seconds`.
+// At least as many as FrameRate keeps of `frames` recorded over `seconds`.
 inline int64_t frames_at_rate(int64_t frames, double seconds, float fps) {
     if (fps <= 0.0f || seconds <= 0.0) return frames;
     return std::min(frames, (int64_t)std::floor(seconds * fps) + 1);

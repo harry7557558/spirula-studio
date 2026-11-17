@@ -39,8 +39,9 @@ photos / videos ─────────────────────�
 2. **SfM** runs over everything, except when the scans' photographs are the
    only images and the scans share a frame by their files (below): then they
    keep the scanner's poses and the step is `--scanner-poses` directly ("Use
-   the scanner's camera poses as they are", on by default; untick it for a
-   scanner whose camera poses are worse than a reconstruction would be). A
+   the scanner's camera poses as they are", on by default but unticked when an
+   XGRIDS capture is added; untick it for a scanner whose camera poses are
+   worse than a reconstruction would be). A
    reconstruction that fails is not the end of a run whose scan has
    photographs either: those keep the scanner's poses.
 3. **The fit, per model** (`sparse/0`, `sparse/1`, ...): each model with an
@@ -145,8 +146,8 @@ taken for it. Every case above was exercised on the FJD workspace
   LAS's frame. `nCore_data/` holds the same two under `colmap/`, with the LAS
   under `lidar/`. Both are found by layout, so a renamed copy works too.
   "Add dataset..." or a drop of the export, either of the two, or a folder
-  inside one takes `raw/` in place, adds the LAS, ticks "already in the
-  scan's frame" (`--mode keep`) and reads its masks flipped: they are white
+  inside one takes `raw/` in place, adds the LAS, ticks "All cameras are
+  scan-native (placed by the scanner)" (`--mode keep`) and reads its masks flipped: they are white
   where the operator is.
 
 - **XGRIDS capture** (`.xbin`, PortalCam, the file the scanner writes before
@@ -170,7 +171,7 @@ taken for it. Every case above was exercised on the FJD workspace
   or ffmpeg when the device cannot or "Extract frames with ffmpeg" is on; a
   build without it gives the stream to ffmpeg), with poses from the same trajectory and
   their own lenses -- two `OPENCV_FISHEYE`, two `OPENCV` -- so "Use the
-  scanner's camera poses" needs no reconstruction. "Add LiDAR scan..." takes
+  scanner's camera poses as they are" needs no reconstruction. "Add LiDAR scan..." takes
   the `.xbin`, and a capture folder dropped or added as a dataset is taken as
   its `.xbin`. Each camera has a line under the scan's row: a checkbox takes
   it (`camera_3` starts unticked, because LCC Studio takes no frame of it
@@ -208,12 +209,13 @@ taken for it. Every case above was exercised on the FJD workspace
 
   A capture alone is not placed by its reconstruction but by its own poses,
   refined (`--refine`, `app/AnchorRefine.h`): the run's verified matches are
-  triangulated with the device's poses (`sfm/map/KnownPoses.h`), then one
-  bundle adjustment holds each instant as one rig pose, near the device's
+  triangulated with the capture's poses (`sfm/map/KnownPoses.h`), then a
+  bundle adjustment holds each instant as one rig pose, near the capture's
   (2 cm and 0.5 deg priors on its centre and attitude), turns the factory rig
   only, and refines each camera's whole lens, principal point included when
-  the camera has 20 placed photos or more (`pp_min_images`). Every
-  photograph keeps a pose and no fit to the scan is needed. Measured on one
+  the camera has 20 placed photos or more (`pp_min_images`). Triangulation
+  and adjustment run twice. Every photograph keeps a pose and no fit to the
+  scan is needed. Measured on one
   300 s capture (888 photos) against 12,000 tracks of a free reconstruction
   from the same matches (854 photos in one model, factory lenses in its
   manifest): the device's poses as they are reproject at 1.9 px median but

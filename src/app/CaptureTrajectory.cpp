@@ -37,7 +37,7 @@ constexpr double kPi = 3.14159265358979323846;
 constexpr double kDeg = kPi / 180.0;
 
 // Measured on a 975 s PortalCam walk against LCC Studio's own offline
-// trajectory: 4.7 cm after one rigid fit, the device's 47 cm.
+// trajectory: 5.4 cm after one rigid fit, the device's 47 cm.
 constexpr double kNearM = 1.0;   // the operator walks within it
 constexpr double kFarM = 60.0;
 constexpr double kSweepVoxelM = 0.1;

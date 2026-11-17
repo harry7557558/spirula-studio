@@ -261,16 +261,16 @@ bool decode(const XbinDecoder& how, const fs::path& stream, const fs::path& dir,
 #endif
 
 // Camera `k`'s frames that `keep` takes, as <counter>.jpg in `dir` and nothing
-// else there, with their times; false when `cancel` stopped it. Frames already
-// there are reused.
+// else there, with their times; false when `cancel` stopped it. When all of
+// them are already there, nothing is decoded.
 bool decode_camera(spirula::xbin::Reader& reader, size_t k, const fs::path& dir,
                    const std::function<bool(int64_t)>& keep, const XbinDecoder& how,
                    const std::atomic<bool>* cancel, const std::function<void(int64_t)>& written,
                    std::vector<int64_t>& counters, std::vector<int64_t>& times) {
     std::error_code ec;
     fs::create_directories(dir, ec);
-    // Beside the camera's folder, not in it: that folder is a dataset input. As
-    // big as the camera's whole stream.
+    // Beside the camera's folder, not in it: that folder is a dataset input. It
+    // holds the kept frames only.
     const RemoveOnExit stream{dir.parent_path() / (dir.filename().string() + Stream::kExtension)};
     counters.clear();
     times.clear();

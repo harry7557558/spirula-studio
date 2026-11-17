@@ -1,6 +1,6 @@
 // scan_correction -- a capture's scan following its refined photographs
 // (app/ScanCorrection.h) on a synthetic 300 s walk with two cameras: the device's
-// trajectory drifts up to 40 cm and 1 deg from the truth, each camera's mount is
+// trajectory drifts up to 62 cm and 1 deg from the truth, each camera's mount is
 // turned a fixed 0.7 or 0.4 deg, each refined pose has 1.5 cm and 0.1 deg of
 // its own error, and five instants are 30 cm off. The moves must give back the
 // drift, not the mounts, and leave the five out.

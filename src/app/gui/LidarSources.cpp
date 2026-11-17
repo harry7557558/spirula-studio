@@ -140,8 +140,8 @@ void GuiApp::add_lidar_sources(const std::vector<std::string>& paths) {
         if (std::any_of(_lidar.begin(), _lidar.end(),
                         [&](const LidarInput& l) { return l.path == in.path; }))
             continue;
-        // A capture's recorded poses carry its cameras' factory mounts, 1.7 deg off on
-        // a PortalCam, so its photographs are refined unless the box is ticked again.
+        // A capture's recorded poses carry its cameras' factory mounts. With the box off,
+        // a capture alone gets its photographs refined.
         if (spirula::xbin::is_xbin_path(in.path)) _lidar_keep_poses = false;
         _lidar.push_back(std::move(in));
     }
@@ -309,7 +309,7 @@ void GuiApp::draw_capture_cameras(LidarInput& in, float rate_x) {
 
 void GuiApp::draw_lidar_options() {
     if (_lidar.empty()) return;
-    // A capture's photographs are never left out: its points have no colour,
+    // The scan-photos box never leaves a capture's photographs out: its points have no colour,
     // so views rendered from them would place nothing. Its row says how they are used.
     bool photos = false;
     for (const LidarInput& l : _lidar) photos = photos || (l.photos > 0 && l.cameras.empty());

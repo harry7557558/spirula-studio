@@ -299,7 +299,7 @@ files (`adopt_rows_above`).
 ### A laser scan's photographs
 
 An E57 that carries photographs, while they join the reconstruction (not
-"All cameras are scan-native"), gets rows after the inputs: one, or one per
+"All cameras are scan-native (placed by the scanner)"), gets rows after the inputs: one, or one per
 camera folder once Try the mask splits it (`pinhole` and `panorama` when it
 has both). They are a chain of their own, whose first row follows nothing,
 so a scan's photographs never take a video's areas (issue #99); the rows edit
@@ -316,10 +316,10 @@ beside the Try the mask button lists these scans too (`_mask_try_scan`).
 
 An XGRIDS capture holds about 1300 frames of 4000x3000 in 110 s, so Draw...
 on one of its rows decodes only a spread of the frames the run keeps of that
-row's camera: 24, the number the border fit reads
+row's camera (an unticked camera's row shows the first ticked camera): 24, the number the border fit reads
 (`BorderDetectOptions::samples`). The panel shows one camera at a time,
 because each lens has its own circle: the slider and the border fit are all
-that camera's, and the input picker beside Try the mask lists each camera.
+that camera's, and the input picker beside Try the mask lists each ticked camera.
 The frames go to a folder in the system's temporary directory under the run's
 names, never into the dataset. A camera already decoded stays there while the
 panel shows the capture, and the GUI removes the folder when the panel closes

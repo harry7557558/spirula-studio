@@ -1,8 +1,9 @@
 #pragma once
 
 // A laser scan's points, whichever file they came in -- E57, LAS, PLY or an
-// XGRIDS capture -- streamed in batches in the file's own frame, so a
-// 100M-point cloud never has to fit in memory. docs/notes/lidar-alignment.md.
+// XGRIDS capture -- streamed in batches in the file's own frame (a capture's
+// moved by its correction, if set), so a 100M-point cloud never has to fit in
+// memory. docs/notes/lidar-alignment.md.
 
 #include "data/E57Reader.h"
 
@@ -41,7 +42,7 @@ public:
     const Info& info() const { return _info; }
     // The E57 file behind this reader, for its images; null for any other format.
     e57::Reader* e57() { return _e57.get(); }
-    // The XGRIDS capture behind this reader, for its cameras; null otherwise.
+    // The XGRIDS capture behind this reader, for its cameras and its correction; null otherwise.
     xbin::Reader* xbin() { return _xbin.get(); }
 
     // Every point, in batches; false when `cancel` stopped it.

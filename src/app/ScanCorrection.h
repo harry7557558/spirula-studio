@@ -16,8 +16,8 @@
 
 namespace app::lidar {
 
-// One photograph: camera-to-world pose by the device's trajectory and after
-// the refinement.
+// One photograph: camera-to-world pose as the reader gives it before the
+// refinement, and after it.
 struct PosePair {
     int64_t time_us = 0;
     std::string camera;              // its folder; each camera has its own mount
@@ -28,7 +28,7 @@ struct PosePair {
 struct ScanCorrection {
     spirula::xbin::Correction keys;              // smoothed, at the instants kept
     std::vector<int64_t> instants;               // every instant, ascending
-    std::vector<std::array<double, 6>> raw;      // each instant's own move, rotation vector then shift
+    std::vector<std::array<double, 6>> raw;      // fitted turn (rotation vector), then own shift
     std::vector<char> kept;
     int64_t rejected = 0;
     double moved_m = 0, turned_deg = 0;          // medians over the keys, at their cameras

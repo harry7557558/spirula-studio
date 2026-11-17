@@ -71,7 +71,7 @@ int main() {
         points.push_back(p);
     }
 
-    // Camera 1 sits 6 cm to the right of camera 0 and looks 90 deg to its right.
+    // Camera 1 sits 6 cm in front of camera 0 and looks 90 deg to its left.
     const Pose cam1_from_cam0{sfm::angleAxisToRotation({0, kPi / 2, 0}), {-0.06, 0, 0}};
     // The factory rig, turned 0.8 deg off the true one about the lens axis.
     const Pose device_cam1_from_cam0{

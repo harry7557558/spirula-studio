@@ -93,7 +93,8 @@ void check_capture(const fs::path& dir, const fs::path& path) {
     r.set_correction({});
     check(r.camera_pose(0, 1250000, R, c) && close_to(c[0], 0.26) && close_to(c[1], 0), "an empty correction is the device's trajectory");
 
-    // Outer: a quarter turn about z at 1.5 s. Composed, the shift of `corr` turns with it.
+    // Outer: a quarter turn about z and 30 cm up, at 1.5 s.
+    // Composed, the shift of `corr` turns with it.
     spirula::xbin::Correction turn;
     turn.time_us = {1500000};
     turn.move = {{0, 0, 1.5707963267948966, 0, 0, 0.3}};
@@ -372,7 +373,7 @@ void check_corruption(const fs::path& dir) {
     };
     check(attempt(good), "the capture the corruption starts from reads");
     // The bytes between the device message and the topic table, which nothing
-    // reads: one cut there stands for all of them.
+    // reads: one cut and one changed byte there stand for all of them.
     uint32_t device = 0;
     std::memcpy(&device, &good[32], 4);
     const size_t gap_from = 36 + device + 1;

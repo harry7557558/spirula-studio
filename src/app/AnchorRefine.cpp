@@ -161,7 +161,8 @@ RefineResult refine_anchors(std::vector<Anchor>& anchors, const sfm::MatchesData
             md.dof = f == folders.front() ? (uint8_t)sfm::kRigDofNone : (uint8_t)sfm::kRigDofRotation;
             d.members.push_back(md);
         }
-        // The device states the rig exactly: any instant holding both cameras gives it.
+        // The device states the rig exactly: the first instant with the lead camera
+        // and a member gives that member's mount.
         for (const auto& [key, ks] : instants) {
             if (key.first != capture) continue;
             const Placed* lead = nullptr;

@@ -966,7 +966,7 @@ void follow_photos(const std::vector<std::string>& clouds, const std::vector<Anc
         if (pairs.empty()) continue;
         ScanCorrection sc = scan_correction(pairs, kCorrectionWindowS);
         if (sc.keys.time_us.empty()) continue;
-        // What each instant asked for and what the scan got, to check a run by.
+        // Each instant's move and the smoothed key, before the LiDAR trajectory is composed under them.
         std::ofstream csv(ds / "lidar" / (fs::path(clouds[k]).stem().string() + ".correction.csv"));
         csv << "# time_us rx ry rz tx ty tz kept, then the smoothed move when kept\n";
         for (size_t i = 0, key = 0; i < sc.instants.size(); i++) {

@@ -429,8 +429,8 @@ void SourcePreview::start_listing() {
                     return load_e57_image(images, it, side, out, err);
                 };
             }
-            // A capture's trajectory poses all but its first few frames. They
-            // are decoded only by a run or the mask panel, so the grid stays empty.
+            // Every frame counts as posed, though the trajectory misses the first few.
+            // They are decoded only by a run or the mask panel, so the grid stays empty.
             if (spirula::xbin::Reader* x = r.xbin())
                 for (const spirula::xbin::Camera& c : x->cameras()) {
                     L->images += c.frames;

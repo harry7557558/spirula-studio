@@ -1189,7 +1189,7 @@ XGRIDS `.xbin`) is an
 input like photos and videos -- **Add LiDAR scan...**, or drop the file: the
 reconstruction runs, then is aligned with the scan (rotation, translation and
 scale) and written as a COLMAP model whose seed points are the scan's, with
-tracks; an E57 that carries photographs can be the only input.
+tracks; an E57 or `.xbin` that carries photographs can be the only input.
 [notes/lidar-alignment.md](notes/lidar-alignment.md) is that path.
 
 `spirula e57 <scan.e57> [<folder>]` is the other: no reconstruction at all,

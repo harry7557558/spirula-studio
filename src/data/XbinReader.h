@@ -5,7 +5,8 @@
 // has no published specification; what is read here was measured on PortalCam
 // firmware V3.2.5 (docs/notes/lidar-alignment.md). The device message after
 // the file header names the device, and a table before the first chunk names
-// each topic; a device or a topic that was not measured is refused.
+// each topic. A device that was not measured is refused, and so is a topic
+// that was not measured when the index holds chunks of it.
 
 #include "data/E57Reader.h"
 
@@ -62,15 +63,15 @@ public:
     int64_t sweeps() const;
     int64_t points_estimate() const;
 
-    // Every LiDAR point in the device's world frame (metres, +Z up), each
-    // placed by the trajectory at its own time, in batches; false when
-    // `cancel` stopped it.
+    // Every LiDAR point 0.5 m or more from the sensor and inside the trajectory,
+    // in the device's world frame (metres, +Z up), each placed at its own time,
+    // in batches; false when `cancel` stopped it.
     bool read_points(const std::function<void(const e57::Point*, size_t)>& sink,
                      const std::atomic<bool>* cancel = nullptr);
 
-    // Each sweep in recorded order, its points `min_range` to `max_range` from
-    // the sensor, each placed by the trajectory at its own time and then taken
-    // into the IMU frame at the sweep's middle. `sink` returns false to stop.
+    // Each sweep with points and inside the trajectory, in recorded order: points
+    // max(`min_range`, 0.5 m) to `max_range` from the sensor, each placed at its
+    // own time, in the IMU frame at the sweep's middle. `sink` returns false to stop.
     bool read_sweeps(double min_range, double max_range, const std::function<bool(const Sweep&)>& sink);
 
     // Camera-to-world rotation (row-major, OpenCV axes) and centre of camera
