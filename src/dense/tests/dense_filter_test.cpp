@@ -592,8 +592,8 @@ void reconstruction_written_reprojection() {
     check(wall_run(config, nullptr, "reproject-off", dataset).reprojection.observations == 0, "the check ran while off");
 }
 
-// The plane scenario with every filter off. GOLDEN is that scenario's cloud from 95b27a4b,
-// before these filters existed. Mutant: any filter, id or side file changing the off path.
+// 95b27a4b plane baselines: the original reference and GCC/Linux differ in rounding.
+// Both were produced without the filters; the off path must retain their bytes.
 void all_filters_off_matches_the_base_pipeline() {
     auto config = small_config();
     config.two_image_points = "off"; config.far_isolated = false; config.reprojection_check = false;
@@ -601,7 +601,9 @@ void all_filters_off_matches_the_base_pipeline() {
     std::string ply;
     wall_run(config, nullptr, "all-off", metric_wall_dataset(), [](int x, int y) { return x % 8 == 4 && y % 8 == 4 ? 12.0 : 4.0; }, &ply);
     const auto hash = spirula::sha256_file(ply);
-    check(hash == "e86ee06443c04f5e44ca5d23c2701a49e60279d6b4dd437110a5c693d36bd34f", "all filters off gave " + hash);
+    check(hash == "e86ee06443c04f5e44ca5d23c2701a49e60279d6b4dd437110a5c693d36bd34f" ||
+          hash == "802cd6b228b6d3528b4a9258233e7e8bd449208d5a075f5db694966f88e0b181",
+          "all filters off gave " + hash);
     fs::remove(ply);
 }
 

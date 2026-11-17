@@ -3,6 +3,7 @@
 
 #include "data/DatasetParser.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -49,7 +50,11 @@ ResolvedCenter resolve(const std::string& name, float threshold,
 }
 
 bool same(const std::array<double, 3>& a, const std::array<double, 3>& b) {
-    return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
+    // OpenMP reductions can sum the same coordinates in different orders.
+    for (int r = 0; r < 3; ++r)
+        if (!(std::fabs(a[r] - b[r]) <= 1e-12 * std::max(1.0, std::fabs(b[r]))))
+            return false;
+    return true;
 }
 
 }  // namespace
@@ -74,7 +79,7 @@ int main() {
         const std::array<double, 3> want = scene_center(
             CenterMode::PointMedian, cams_far.data(), 300, pts_far.data(), 5000);
         check(c.mode == CenterMode::PointMedian && same(c.center, want),
-              "an ECEF scene centres on exactly what point-median gives");
+              "an ECEF scene centres on what point-median gives");
     }
     {
         const ResolvedCenter a = resolve("auto", 20.0f, cams_far, pts_here);

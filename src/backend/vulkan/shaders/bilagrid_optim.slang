@@ -1,18 +1,7 @@
-// Fused bilagrid optimizers (Vulkan backend): sparse image-loss gradient +
-// inline TV gradient + Adam or AdaGrad update, mirroring
-// kernels/bilagrid/BilagridFusedAdam.cu. One 256-cell codec block per workgroup (cell
-// index == flat thread index, folded through wgs_per_row).
-//
-// Quantized Adam moments use QuantizedAdamState<4|8> (optim_quant.slang);
-// the AdaGrad accumulator uses QuantizedTensorLog<4|8>; value quant is the
-// 16-bit linear codec + per-256-cell float2 bounds. Cross-block TV neighbor
-// reads pick up whatever other blocks have already written this step — the
-// same partial-update semantic as CUDA, so parity for tv_weight > 0 is
-// tolerance-based.
-//
-// Spec constants (IDs by declaration order — dispatches must pass ALL):
-//   0: kQuantBits  — 0 = fp32 moments/accum, 4 / 8 = quantized
-//   1: kValueQuant — 0 = fp32 grid, 1 = 16-bit packed + bounds
+// Fused bilagrid TV optimizers, one 256-cell codec block per workgroup.
+// Cross-block TV reads can see partially updated neighbours, as on CUDA.
+// BgOptimParams exceeds the 128-byte push limit and goes through the params ring.
+// Spec constants: 0 = kQuantBits (0/4/8), 1 = kValueQuant (fp32/q16).
 
 #include "bilagrid_common.slang"
 #include "optim_quant.slang"
@@ -134,16 +123,14 @@ void _bo_value_writeback(BgOptimParams p, uint idx, uint tid, bool inside,
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void bilagrid_tv_adam(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-                      uniform BgOptimParams p) {
+                      uniform BgOptimParams* pp) {
+    BgOptimParams p = *pp;
     const float eps = 1e-15f;
     const float beta1 = 0.9f;
     const float beta2 = 0.999f;
 
     uint block_id = wg.y * p.wgs_per_row + wg.x;
-    // Grid-fold tail: the last fold row can pad past the final quant block.
-    // Bounds reads use a clamped block index (in-bounds even if a CPU JIT
-    // speculates them) and writes are blk_ok-gated; barriers still see every
-    // thread. Same convention as optimizer.slang.
+    // Fold padding must keep every lane at barriers; clamp reads and gate writes.
     uint n_blocks = (p.total_cells + 255u) / 256u;
     bool blk_ok = block_id < n_blocks;
     uint blk_rd = min(block_id, n_blocks - 1u);
@@ -205,7 +192,8 @@ void bilagrid_tv_adam(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void bilagrid_tv_adagrad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-                         uniform BgOptimParams p) {
+                         uniform BgOptimParams* pp) {
+    BgOptimParams p = *pp;
     const float eps = 1e-15f;
 
     uint block_id = wg.y * p.wgs_per_row + wg.x;
