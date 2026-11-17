@@ -226,6 +226,10 @@ void MeshRunner::run(MeshJob job) {
         argv.push_back("--data");
         argv.push_back(job.data_dir);
     }
+    if (job.use_data && job.tsdf) {
+        argv.push_back("--method");
+        argv.push_back("tsdf");
+    }
     if (job.max_cameras > 0) {
         argv.push_back("--max-cameras");
         argv.push_back(std::to_string(job.max_cameras));

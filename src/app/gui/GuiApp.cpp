@@ -9825,6 +9825,11 @@ void GuiApp::draw_mesh_options() {
         ui::InputInt(msg::mesh_max_cameras, &_mesh_job.max_cameras);
         _mesh_job.max_cameras = std::max(0, _mesh_job.max_cameras);
         ui::help_on_hover(msg::mesh_max_cameras_help);
+        int method = _mesh_job.tsdf ? 1 : 0;
+        ImGui::SetNextItemWidth(px(220.0f));
+        if (ui::Combo(msg::mesh_method, &method, {&msg::mesh_method_opacity, &msg::mesh_method_tsdf}))
+            _mesh_job.tsdf = method == 1;
+        ui::help_on_hover(msg::mesh_method_help);
         ImGui::Unindent();
     }
 
