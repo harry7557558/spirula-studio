@@ -183,6 +183,11 @@ float depth_scale(const std::vector<float>& depth) {
 // that merely looks plausible.
 // ---------------------------------------------------------------------------
 
+bool geometry_serial_fallback(bool explicit_memory, uint64_t model_bytes,
+                              uint64_t memory, size_t children) {
+    return !explicit_memory && children != 0 && model_bytes > memory / children;
+}
+
 int output_self_check() {
     const fs::path root = fs::temp_directory_path() / ("spirula-geometry-check-" +
         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
@@ -196,6 +201,12 @@ int output_self_check() {
         std::printf("  %s geometry resume: %s\n", good ? "ok  " : "FAIL", what);
         if (!good) ++failures;
     };
+    check(geometry_serial_fallback(false, 11, 20, 2) &&
+          !geometry_serial_fallback(false, 10, 20, 2),
+          "default worker memory falls back only above the per-worker share");
+    check(!geometry_serial_fallback(true, 11, 20, 2) &&
+          !geometry_serial_fallback(false, 11, 20, 0),
+          "explicit memory and serial runs never use the worker fallback");
     const std::string normal_key = "synthetic-source|six-faces|normal|png";
     const std::string depth_key = "synthetic-source|six-faces|depth";
     const auto normal = root / "normal.png";
@@ -773,6 +784,7 @@ int spirula_geometry_main(int argc, char** argv) {
     // An explicit --device, including an empty one: `--device ""` is the
     // caller's Auto, which must beat SS_VK_DEVICE the way a chosen index does.
     bool device_set = false;
+    bool worker_memory_set = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -817,6 +829,7 @@ int spirula_geometry_main(int argc, char** argv) {
                     mb > std::numeric_limits<uint64_t>::max() / (1024 * 1024))
                     throw std::invalid_argument("range");
                 o.worker_memory = mb * 1024 * 1024;
+                worker_memory_set = true;
             } catch (...) {
                 std::fprintf(stderr, "--worker-memory-mb needs a positive integer\n");
                 return 2;
@@ -869,7 +882,7 @@ int spirula_geometry_main(int argc, char** argv) {
     try {
         const unsigned copies = o.worker ? 1 : app::workers_per_gpu();
         if (copies > 1 && o.worker_devices.empty()) o.worker_devices = selector;
-        const auto worker_devices = app::expand_worker_devices(
+        auto worker_devices = app::expand_worker_devices(
             app::parse_worker_devices(o.worker_devices), copies);
         // ---- the dataset --------------------------------------------------
         DatasetParserConfig cfg;
@@ -920,13 +933,27 @@ int spirula_geometry_main(int argc, char** argv) {
             if (const int rc = install_model(o.model, o.want_depth, o.want_normal)) return rc;
         }
 
+        uint64_t model_host_bytes = 0;
+        int patch = 0;
+        if (!worker_devices.empty()) {
+            patch = app::geometry_model_preflight(
+                o.model, o.want_depth, o.want_normal, model_host_bytes);
+            const size_t children = std::min(worker_devices.size(), (size_t)N);
+            if (geometry_serial_fallback(worker_memory_set, model_host_bytes,
+                                         o.worker_memory, children)) {
+                NN_LOG_WARN("%s\n", format(G::warn_serial_memory,
+                    {o.model, gb(model_host_bytes), gb(o.worker_memory)}).c_str());
+                o.worker_devices.clear();
+                worker_devices.clear();
+            }
+        }
         app::GeometryModel pred;
-        if (o.worker_devices.empty()) pred.load(o.model, selector, o.want_depth, o.want_normal);
+        if (o.worker_devices.empty()) {
+            pred.load(o.model, selector, o.want_depth, o.want_normal);
+            patch = pred.sizeGranularity();
+        }
 
         // ---- camera plans --------------------------------------------------
-        uint64_t model_host_bytes = 0;
-        const int patch = o.worker_devices.empty() ? pred.sizeGranularity()
-            : app::geometry_model_preflight(o.model, o.want_depth, o.want_normal, model_host_bytes);
         auto make_warp = [&](size_t g) {
             app::GeometryWarp warp;
             const int64_t i = group_first[g];
