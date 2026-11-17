@@ -5,7 +5,7 @@ Both sides are sampled (the mesh by area, the cloud uniformly); a point counts
 when its nearest neighbour on the other side is within the tolerance, a
 fraction of the diagonal of the cloud's 5-95 percentile box. Precision is the
 mesh share within it, recall the cloud share. Repeated runs of one training
-setting moved F by ~0.02 (docs/notes/2dgs-plan.md, "Preset weights").
+setting moved F by ~0.02 (docs/notes/2dgs.md, "Preset weights").
 
     python3 reference/python/mesh_fscore.py <mesh.ply> <cloud.ply> [--samples N] [--tol F]
 
