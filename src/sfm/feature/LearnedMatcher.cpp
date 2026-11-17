@@ -100,6 +100,7 @@ private:
         aliked::MatchInput in;
         in.keypoints = xy.data();
         in.descriptors = reinterpret_cast<const float*>(f.descData());
+        if (!in.descriptors) throw std::runtime_error("features read without descriptors");
         in.n = f.count();
         in.width = f.width;
         in.height = f.height;
@@ -177,6 +178,7 @@ private:
         loma::MatchInput in;
         in.keypoints = xy.data();
         in.descriptors = reinterpret_cast<const float*>(f.descData());
+        if (!in.descriptors) throw std::runtime_error("features read without descriptors");
         in.n = f.count();
         in.width = f.width;
         in.height = f.height;

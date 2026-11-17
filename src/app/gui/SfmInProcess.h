@@ -6,9 +6,9 @@
 // module -- 27 s to compile, against SfmRunner.cpp's 3 s -- and nothing else in
 // the GUI should pay that. The interface below names no SfM type.
 //
-// Every SfM Vulkan device is a scoped member of the stage that made it, so the
-// GPU is handed back when this returns; the GUI still sequences a run before
-// training rather than sharing a VRAM budget with it.
+// Every SfM Vulkan device is a scoped member of the stage that made it, and a
+// learned frontend's process-wide nn device is shut down on the way out, so
+// the GPU is handed back when this returns, cancelled or not.
 
 #include "app/gui/SfmProgress.h"
 
