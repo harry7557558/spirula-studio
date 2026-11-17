@@ -71,12 +71,12 @@ void transform_splat_ply(const std::string& source, const std::string& destinati
 // splat_ply_put_rest() turns a [basis.coeffs(), 3] colour row into the file
 // order that follows the DC.
 std::string splat_ply_header(int64_t vertices, const ColorBasis& basis,
-                             const std::string& primitive = "");
+                             const std::string& primitive = "", bool y_up = false);
 int splat_ply_row_floats(const ColorBasis& basis);
 void splat_ply_put_rest(const float* rest, const ColorBasis& basis, float* out);
 
-// Resolve a PLY, checkpoint or run to (PLY, run directory), newest checkpoint
-// first. Canonical splat.ply wins; named-only folders need an unambiguous PLY.
+// Resolve a PLY, TAR, checkpoint or run to (PLY, run directory), newest step
+// first. Legacy folders and unambiguous standalone PLY files remain readable.
 // Throws when no model is found.
 std::pair<std::string, std::string> find_splat_ply(const std::string& path);
 

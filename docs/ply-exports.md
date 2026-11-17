@@ -1,36 +1,43 @@
-# Named checkpoint PLY and SuperSplat export
+# Checkpoint PLY and SuperSplat export
 
-Each saved checkpoint contains exactly two PLY files:
+Each save writes one PLY and one TAR directly into the run folder:
 
 ```text
-outputs/example/step-000030000.ckpt/
-  splat.ply
+outputs/example/
+  config.json
   example.ply
-  state.tar
+  example.tar
 ```
 
-`splat.ply` remains the canonical native model for Spirula, camera-based
-meshing and existing tools. `<run>.ply` is the delivery, named after the run
-folder. No PLY copies are published at the run root. For a run called `splat`,
-the delivery is `splat_export.ply` to avoid overwriting the canonical model.
+With `save_only_latest_checkpoint=false`, each pair includes its step:
+`example_step-000030000.ply` and `example_step-000030000.tar`. There are no
+PLY copies, hard links or per-step checkpoint directories. The latest-only
+mode replaces the named pair and prunes retained step pairs and legacy
+checkpoint directories after the new save succeeds.
 
-With `--export-y-up false` (default), the named delivery uses native
-coordinates. Hard links avoid duplicate storage where supported, with a copy
-fallback. Enable `--export-y-up true` or **Export Y-up PLY** to rotate this
-same named delivery for SuperSplat instead of creating another file.
+With `--export-y-up false` (default), the PLY uses native coordinates.
+Enable `--export-y-up true` or **Export Y-up PLY** to save that same file for
+SuperSplat. Geometry, SH and spherical-beta lobe axes rotate together.
 
 The desired viewer transform is Rx(-90 degrees), mapping (x,y,z) to
 (x,z,-y). PlayCanvas applies Rz(180 degrees) when importing PLY, so the
 export bakes its inverse after that transform: (x,y,z) -> (-x,-z,-y).
 The composition on import is Rx(-90 degrees), keeping native +Z upright.
-Gaussian orientations, SH and spherical-beta lobe axes rotate together via
-`SplatTransform`. Export reads bounded chunks and publishes atomically.
 
-Training, cameras, scene_transform.json, gauge.txt and splat.ply retain
-their original coordinates. Use splat.ply for camera-based meshing; the named
-Y-up delivery follows SuperSplat's file convention. Resume uses state.tar.
+The header marks this convention with
+`comment spirula_coordinate_system supersplat_y_up`. Spirula's shared PLY
+reader reverses it while decoding, including when meshing or initializing a
+new training run. Unmarked PLY files retain their existing interpretation.
+Positions and quaternions use direct formulas; SH uses the nonzero terms of
+fixed band matrices, and lobe axes use the same axis swap. No general
+similarity transform or second file pass is needed.
 
-The shared model resolver prefers canonical splat.ply and newest checkpoints.
-Named-only folders require one unambiguous splat PLY. GUI folder detection
-uses the same resolver. Existing files from older versions are not deleted;
-use a fresh run directory for the two-file output layout.
+Saving stages bounded GPU chunks and overlaps packing/device transfers with
+disk writes. Reading overlaps disk reads with decoding. Training state in the
+TAR, cameras, `scene_transform.json` and `gauge.txt` remain in native coordinates.
+Resume reads the TAR directly, without a PLY conversion or loss of filtered
+splats and optimizer state.
+
+Run-folder resolution selects the greatest saved step from archive metadata;
+an explicit TAR or paired PLY selects that checkpoint. Legacy `state.tar`,
+`splat.ply` and `step-*.ckpt` folders remain readable.

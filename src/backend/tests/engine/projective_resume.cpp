@@ -55,13 +55,13 @@ int main() {
         // Resuming under a lower cap drops the two faintest splats, rows 1 and 3.
         engine_reset(); seed({0,-3,1,-5});
         put_projective({1,.25f,.5f,17, 2,-.25f,1,23, 3,.75f,2,29, 4,-.5f,3,31},{7,11,13,19});
-        engine_save_checkpoint((root/"cap4").string(),true,456);
+        engine_save_checkpoint((root/"cap4").string(),true,456,512,"named",true);
         engine_reset(); seed({0,0});
         ckpt::TargetLayout target;
         target.max_num_splats = engine_get_max_num_splats();
         target.num_sh = engine_get_num_sh();
         target.sb_lobes = engine_get_sb_lobes();
-        if (!ckpt::adapt_checkpoint(root/"cap4",target,root/"cap2"))
+        if (!ckpt::adapt_checkpoint(root/"cap4"/"named.tar",target,root/"cap2"))
             throw std::runtime_error("a lower splat cap did not adapt the checkpoint");
         if (engine_load_checkpoint((root/"cap2").string()) != 456)
             throw std::runtime_error("adapted projective checkpoint lost the training step");

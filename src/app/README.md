@@ -193,8 +193,8 @@ no HTTP/viewer.
     [--color none,vertex,texture] [--texture-size 0] [--flag value ...]
 ```
 
-- `<ckpt>` = run dir (config.json + `step-*.ckpt/`), a `*.ckpt` dir, or a
-  `splat.ply` directly. `--data` defaults to config.json's `data`; the
+- `<ckpt>` = run dir (config.json + named PLY/TAR pairs), a legacy `*.ckpt`
+  dir, or a PLY/TAR directly. `--data` defaults to config.json's `data`; the
   dataparser settings (image_dir, recon dir, metashape paths, numeric
   rescale) and `model.relative_scale` are honored from config.json.
 - Color modes: `none`, `vertex` (per-vertex RGB), `texture` (LSCM UV atlas +
@@ -348,7 +348,7 @@ agree. Only the C++ exists now, so the table said nothing the code does not.
 
 ## Resume
 
-`--resume <run_dir|step-*.ckpt>` is native (`src/checkpoint/Resume.h`). The
+`--resume <run_dir|file.tar|file.ply|step-*.ckpt>` is native (`src/checkpoint/Resume.h`). The
 checkpoint's `config.json` is the base config — it carries the architecture
 the saved state was built for, so `--data` is not needed on a resume — with
 the resume path, an output dir defaulting back to the checkpoint's own run

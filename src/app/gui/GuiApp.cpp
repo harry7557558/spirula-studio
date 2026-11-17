@@ -3824,7 +3824,8 @@ void GuiApp::draw_menu_bar() {
                       FileDialog::Mode::Folder);
         }
         if (ui::MenuItem(msg::resume_training, nullptr, false, !native_work_busy() && !training_busy()))
-            open_pick(PickAction::ResumeRun, msg::resume_training.get(), FileDialog::Mode::Folder);
+            open_pick(PickAction::ResumeRun, msg::resume_training.get(),
+                      FileDialog::Mode::FileOrFolder, {".tar", ".ply"});
         ui::help_on_hover_disabled(msg::resume_training_help);
         if (ui::MenuItem(msg::menu_new_dataset) && !native_work_busy()) {
             close_splat();
@@ -4111,7 +4112,8 @@ void GuiApp::draw_home() {
     if (_keep_full_ckpt) {
         ImGui::BeginDisabled(native_work_busy() || training_busy());
         if (ui::Button(msg::resume_training, ImVec2(-1, bh)))
-            open_pick(PickAction::ResumeRun, msg::resume_training.get(), FileDialog::Mode::Folder);
+            open_pick(PickAction::ResumeRun, msg::resume_training.get(),
+                      FileDialog::Mode::FileOrFolder, {".tar", ".ply"});
         ImGui::EndDisabled();
         ui::help_on_hover_disabled(msg::resume_training_help);
     }

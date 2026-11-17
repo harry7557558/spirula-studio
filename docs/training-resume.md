@@ -9,10 +9,10 @@ all carry on from where they stopped.
 
 1. While training, press **Stop** and choose **Stop and Save**. The current
    step finishes and a checkpoint is written into the run's output folder, for
-   example `outputs/<run>/step-000012000.ckpt/`, next to its `config.json`.
+   example `outputs/<run>/<run>.tar`, next to its `config.json`.
 2. Later, choose **File > Resume Training...** or **Resume Training...** on the
    Home screen, and pick that run folder. You can also pick a specific
-   `step-*.ckpt` folder inside it.
+   retained `<run>_step-*.tar` file (legacy `step-*.ckpt` folders also work).
 3. The run's dataset opens on the training screen with the run's own settings,
    and the seed line reads that the Gaussians come from the checkpoint. Press
    **Start** to continue from the saved step toward the run's original step
@@ -30,14 +30,19 @@ fresh.
 
 ## What a save contains
 
-`splat.ply` contains filtered, dequantized splats for viewing and export.
-Saving copies their parameters to the CPU, filters invalid or inactive rows,
-then packs the binary PLY in parallel into chunks of up to 8 MiB. `state.tar`
-streams the saved device buffers in chunks of up to 32 MiB without that
-per-splat conversion. Both are written with a `.tmp` suffix and renamed after
-all checkpoint files have closed successfully. A completed `splat.ply.tmp`
-can therefore remain while `state.tar.tmp` is still being written. These are
-buffered writes; timings depend on the OS cache and competing disk activity.
+`<run>.ply` contains filtered, dequantized splats for viewing and export;
+`<run>.tar` contains the native training state. Both sit beside `config.json`.
+With `save_only_latest_checkpoint=false`, both names gain `_step-000012000`
+for that step. There is one PLY per checkpoint, without links or copies.
+
+The PLY writer stages bounded chunks from the GPU, filters and packs rows on
+the CPU, and overlaps disk writes with the next chunk. Y-up conversion is
+part of packing; Spirula reverses it during PLY decoding. TAR saving and
+loading use two reusable 16 MiB staging buffers to overlap device transfers
+with disk I/O. Neither save path stages the whole model in system RAM.
+Files keep a `.tmp` suffix until all checkpoint streams close successfully,
+then replace their final names. These are buffered writes; timings depend on
+the OS cache and competing disk activity.
 
 A checkpoint written **when a run is stopped before its last step** always
 holds everything needed to continue: the world parameters, optimizer state and
@@ -63,7 +68,7 @@ checkpoints entirely, including the one on stop.
 
 ```text
 spirula train --resume outputs/<run>
-spirula train --resume outputs/<run>/step-000012000.ckpt
+spirula train --resume outputs/<run>/<run>_step-000012000.tar
 ```
 
 The first form picks the latest checkpoint in the run. Settings come from the

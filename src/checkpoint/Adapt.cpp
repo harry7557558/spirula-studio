@@ -1,6 +1,7 @@
 // Adapt.cpp -- see Adapt.h.
 
 #include "checkpoint/Adapt.h"
+#include "checkpoint/Resume.h"
 
 #include "core/CheckpointIO.h"
 #include "core/SphericalBeta.h"
@@ -69,9 +70,9 @@ Buffer from_u32(const std::vector<uint32_t>& v) {
 }
 
 std::map<std::string, Buffer> read_tar_npy(const fs::path& ckpt_dir) {
-    std::ifstream in((ckpt_dir / "state.tar").string(), std::ios::binary);
+    std::ifstream in(resolve_checkpoint(ckpt_dir).tar_path.string(), std::ios::binary);
     if (!in) throw std::runtime_error("cannot open " +
-                                      (ckpt_dir / "state.tar").string());
+                                      resolve_checkpoint(ckpt_dir).tar_path.string());
     std::map<std::string, Buffer> out;
     for (const auto& m : tar_index(in)) {
         if (m.name.size() < 4 ||
@@ -523,9 +524,9 @@ bool needs_adapt(const JsonValue& state, const TargetLayout& t) {
 
 bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
                       const fs::path& out_dir) {
-    std::ifstream sin((ckpt_dir / "state.tar").string(), std::ios::binary);
+    std::ifstream sin(resolve_checkpoint(ckpt_dir).tar_path.string(), std::ios::binary);
     if (!sin) throw std::runtime_error("cannot open " +
-                                       (ckpt_dir / "state.tar").string());
+                                       resolve_checkpoint(ckpt_dir).tar_path.string());
     std::string state_text;
     for (const auto& m : tar_index(sin))
         if (m.name == "state.json") { state_text = tar_read_member(sin, m); break; }

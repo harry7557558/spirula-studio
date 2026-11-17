@@ -256,7 +256,7 @@ int main(int argc, char** argv) {
             }
             std::filesystem::path ckpt_dir = argv[2];
             std::filesystem::path out_path = argc > 3 ? std::filesystem::path(argv[3])
-                : (ckpt_dir.filename() == "state.tar" ? ckpt_dir.parent_path() : ckpt_dir) / "background.webp";
+                : (ckpt_dir.extension() == ".tar" ? ckpt_dir.parent_path() : ckpt_dir) / "background.webp";
             if (ckpt::export_background_from_checkpoint(ckpt_dir, out_path)) {
                 std::printf("%s\n", format(bgmsg::saved, {out_path.string()}).c_str());
                 return 0;

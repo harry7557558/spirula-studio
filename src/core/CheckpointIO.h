@@ -1,20 +1,10 @@
 #pragma once
 
-// CheckpointIO -- zero-dependency writers for the resumable-checkpoint format.
-//
-// A checkpoint's resume payload is a single POSIX ustar `state.tar` bundling:
-//   * state.json         -- small runtime/validation manifest (written by the
-//                           engine; NOT config -- config lives in config.json)
-//   * <slot_name>.npy    -- one flat, typed NumPy array per saved pool buffer,
-//                           named by its DevicePool slot ("world.means.npy",
-//                           "eng.sh_quant.q.npy", ...).
-//
-// The device->host copy is chunked through a small reusable host buffer, so
-// serializing a multi-GB buffer uses bounded host RAM and ZERO extra device
-// memory (nothing is allocated on the GPU during a save).
-//
-// Phase 2 (load/resume) will add the matching tar + .npy readers here.
+// Native resume archives: state.json and flat typed NPY device buffers in ustar.
+// Two reusable chunks overlap disk I/O with device transfers.
 
+#include "core/BufferedFile.h"
+#include <future>
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -111,15 +101,23 @@ inline void tar_write_npy_device(std::ostream& out, const std::string& name,
     tar_header(out, name, member);
     out.write(hdr.data(), (std::streamsize)hdr.size());
 
-    constexpr size_t CHUNK = 32u << 20;   // 32 MiB host staging
-    if (host.size() < std::min(nbytes, CHUNK)) host.resize(std::min(nbytes, CHUNK));
+    const size_t chunk = std::min(nbytes, spirula::kFileBufferBytes);
+    if (host.size() < 2*chunk) host.resize(2*chunk);
     const char* src = (const char*)dptr;
-    for (size_t off = 0; off < nbytes; ) {
-        size_t n = std::min(CHUNK, nbytes - off);
-        backend::memcpy_sync(host.data(), src + off, n, backend::MemcpyKind::DeviceToHost);
-        out.write(host.data(), (std::streamsize)n);
-        off += n;
+    std::future<void> pending;
+    size_t slot = 0;
+    for (size_t off = 0; off < nbytes; off += chunk) {
+        const size_t n = std::min(chunk, nbytes-off);
+        char* data = host.data()+slot*chunk;
+        backend::memcpy_sync(data, src+off, n, backend::MemcpyKind::DeviceToHost);
+        if (pending.valid()) pending.get();
+        pending = std::async(std::launch::async, [&, data, n] {
+            out.write(data, (std::streamsize)n);
+            if (!out) throw std::runtime_error("failed to write checkpoint buffer " + name);
+        });
+        slot = 1-slot;
     }
+    if (pending.valid()) pending.get();
     tar_pad(out, member);
 }
 
@@ -223,14 +221,24 @@ inline void read_into_device(std::istream& in, uint64_t offset,
                              void* dptr, size_t nbytes, std::vector<char>& host) {
     in.clear();
     in.seekg((std::streamoff)offset, std::ios::beg);
-    constexpr size_t CHUNK = 32u << 20;
-    if (host.size() < std::min(nbytes, CHUNK)) host.resize(std::min(nbytes, CHUNK));
+    const size_t chunk = std::min(nbytes, spirula::kFileBufferBytes);
+    if (host.size() < 2*chunk) host.resize(2*chunk);
     char* dst = (char*)dptr;
-    for (size_t off = 0; off < nbytes; ) {
-        size_t n = std::min(CHUNK, nbytes - off);
-        in.read(host.data(), (std::streamsize)n);
-        backend::memcpy_sync(dst + off, host.data(), n, backend::MemcpyKind::HostToDevice);
-        off += n;
+    auto read = [&](char* data, size_t n) {
+        in.read(data, (std::streamsize)n);
+        if (!in) throw std::runtime_error("truncated checkpoint buffer");
+    };
+    if (nbytes) read(host.data(), chunk);
+    std::future<void> pending;
+    size_t slot = 0;
+    for (size_t off = 0; off < nbytes; off += chunk) {
+        const size_t n = std::min(chunk, nbytes-off);
+        if (pending.valid()) pending.get();
+        if (off+n < nbytes)
+            pending = std::async(std::launch::async, read, host.data()+(1-slot)*chunk,
+                                 std::min(chunk, nbytes-off-n));
+        backend::memcpy_sync(dst+off, host.data()+slot*chunk, n, backend::MemcpyKind::HostToDevice);
+        slot = 1-slot;
     }
 }
 

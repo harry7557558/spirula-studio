@@ -3,6 +3,7 @@
 #include "app/gui/Screenshot.h"
 
 #include "app/TrainerCore.h"
+#include "checkpoint/Resume.h"
 #include "app/gui/CompareView.h"
 #include "app/gui/GuiApp.h"
 #include "app/gui/Ui.h"
@@ -264,10 +265,15 @@ void embed(std::vector<uint8_t>& f, const std::string& text, bool png) {
     if (f.size() >= 33) f.insert(f.begin() + 33, seg.begin(), seg.end());
 }
 
-// "step-000009644.ckpt" -> 9644; 0 for anything else.
-int checkpoint_step(const std::string& folder) {
-    if (folder.rfind("step-", 0) != 0) return 0;
-    return std::atoi(folder.c_str() + 5);
+int checkpoint_step(const fs::path& model) {
+    try {
+        const auto state = ckpt::read_state_json(model);
+        const auto* step = state.find("step");
+        return step ? step->as_int() : 0;
+    } catch (const std::exception&) {
+        const auto folder = model.parent_path().filename().string();
+        return folder.rfind("step-", 0) == 0 ? std::atoi(folder.c_str()+5) : 0;
+    }
 }
 
 // The saved view the camera sits on, as the tooltip names it; "" for none.
@@ -586,7 +592,7 @@ void GuiApp::take_viewer_screenshots() {
         job.dataset = fs::u8path(home.folder).filename().u8string();
         job.run = home.run_dir.empty() ? f.stem().u8string()
                                        : fs::u8path(home.run_dir).filename().u8string();
-        job.step = checkpoint_step(f.parent_path().filename().u8string());
+        job.step = checkpoint_step(f);
         if (!home.run_dir.empty()) {
             try {
                 const JsonValue cfg =

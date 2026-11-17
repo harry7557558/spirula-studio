@@ -1616,7 +1616,7 @@ void TrainerSession::setup_engine() {
             _resolution_stages.emplace_back((int)std::min<int64_t>(from, INT_MAX), divisor);
         if (!cfg.resume.empty()) {
             try {
-                const JsonValue state = ckpt::read_state_json(ckpt::resolve_checkpoint(cfg.resume).ckpt_dir);
+                const JsonValue state = ckpt::read_state_json(ckpt::resolve_checkpoint(cfg.resume).tar_path);
                 if (const JsonValue* saved = state.find("step")) dm.first_step = saved->as_int();
             } catch (const std::exception&) {}   // restore_checkpoint reports it
         }
@@ -1778,7 +1778,7 @@ SeedSplats TrainerSession::seed_world(const ColorResolution& color) {
 // splats, different SH degree, bilagrid/PPISP added or dropped).
 void TrainerSession::restore_checkpoint() {
     ckpt::ResolvedCheckpoint r = ckpt::resolve_checkpoint(cfg.resume);
-    ckpt::check_resumable(r.ckpt_dir);
+    ckpt::check_resumable(r.tar_path);
 
     // The target is what the engine ACTUALLY holds, not what the config asks
     // for: a depth/normal grid also needs the dataset to carry those maps,
@@ -1798,15 +1798,15 @@ void TrainerSession::restore_checkpoint() {
     if (cfg.use_calib_warp)
         target.calib_warp = std::array<int, 2>{cfg.calib_warp_grid, cfg.calib_warp_parallax ? 4 : 2};
 
-    fs::path load_from = r.ckpt_dir;
+    fs::path load_from = r.tar_path;
     fs::path tmp;
     bool adapted = false;
     {
-        JsonValue state = ckpt::read_state_json(r.ckpt_dir);
+        JsonValue state = ckpt::read_state_json(r.tar_path);
         if (ckpt::needs_adapt(state, target)) {
             tmp = out_dir / ".resume_adapt";
             log(lmsg::ckpt_adapting.get());
-            adapted = ckpt::adapt_checkpoint(r.ckpt_dir, target, tmp);
+            adapted = ckpt::adapt_checkpoint(r.tar_path, target, tmp);
             if (adapted) load_from = tmp;
         }
     }
@@ -1816,7 +1816,7 @@ void TrainerSession::restore_checkpoint() {
     } catch (const std::exception& e) {
         if (adapted) remove_tree(tmp);
         throw std::runtime_error(
-            std::string("cannot resume from ") + r.ckpt_dir.string() + ": " +
+            std::string("cannot resume from ") + r.tar_path.string() + ": " +
             e.what());
     }
     if (adapted) remove_tree(tmp);
@@ -1825,64 +1825,29 @@ void TrainerSession::restore_checkpoint() {
         cfg.background_mode = "sh";
         cfg.background_sh_degree = bg_deg;
     }
-    log(lfmt(lmsg::resumed_from, {r.ckpt_dir.string(), (long long)start_step}));
-}
-
-static void publish_ply_copy(const fs::path& source, const fs::path& destination) {
-    if (source == destination) return;
-    fs::path temporary = destination;
-    temporary += ".tmp";
-    std::error_code ec;
-    fs::remove(temporary, ec);
-    try {
-        fs::create_hard_link(source, temporary, ec);
-        if (ec) fs::copy_file(source, temporary, fs::copy_options::overwrite_existing);
-        spirula::replace_file(temporary, destination);
-    } catch (...) {
-        fs::remove(temporary, ec);
-        throw;
-    }
+    log(lfmt(lmsg::resumed_from, {r.tar_path.string(), (long long)start_step}));
 }
 
 void TrainerSession::save_checkpoint(int step, bool full) {
-    char name[32];
-    std::snprintf(name, sizeof name, "step-%09d.ckpt", step);
-    fs::path ckpt = out_dir / name;
-    fs::create_directories(ckpt);
-    engine_save_checkpoint(ckpt.string(), full, step, cfg.background_export_height);
     fs::path run_path = fs::absolute(out_dir).lexically_normal();
     if (run_path.filename().empty()) run_path = run_path.parent_path();
     const std::string run_name = run_path.filename().string();
-    const fs::path native = ckpt / "splat.ply";
-    // Keep exactly one delivery beside the canonical checkpoint model.
-    const fs::path destination = ckpt / (run_name == "splat" ? "splat_export.ply" : run_name + ".ply");
-    if (cfg.export_y_up) {
-        fs::path temporary = destination;
-        temporary += ".tmp";
-        // PlayCanvas applies Rz(pi) on PLY import; bake its inverse after Rx(-pi/2).
-        const spirula::Sim3 rotation{1.0, {-1, 0, 0, 0, 0, -1, 0, -1, 0}, {0, 0, 0}};
-        try {
-            spirula::transform_splat_ply(native.string(), temporary.string(), rotation);
-            spirula::replace_file(temporary, destination);
-        } catch (...) {
-            std::error_code ec;
-            fs::remove(temporary, ec);
-            throw;
-        }
-    } else {
-        publish_ply_copy(native, destination);
+    std::string basename = run_name;
+    if (!cfg.save_only_latest_checkpoint) {
+        char suffix[32];
+        std::snprintf(suffix, sizeof suffix, "_step-%09d", step);
+        basename += suffix;
     }
-    std::error_code bg_ec;
-    if (fs::is_regular_file(ckpt / "background.webp", bg_ec)) {
-        fs::copy_file(ckpt / "background.webp", out_dir / "background.webp",
-                      fs::copy_options::overwrite_existing, bg_ec);
-    }
+    engine_save_checkpoint(out_dir.string(), full, step, cfg.background_export_height,
+                           basename, cfg.export_y_up);
     if (cfg.save_only_latest_checkpoint) {
         std::vector<fs::path> stale;
         for (const auto& e : fs::directory_iterator(out_dir)) {
-            std::string b = e.path().filename().string();
-            if (b.rfind("step-", 0) == 0 &&
-                b.find(".ckpt") != std::string::npos && e.path() != ckpt)
+            const std::string b = e.path().filename().string();
+            if (e.is_directory() && b.rfind("step-", 0) == 0 && e.path().extension() == ".ckpt")
+                stale.push_back(e.path());
+            if (e.is_regular_file() && b.rfind(run_name + "_step-", 0) == 0 &&
+                (e.path().extension() == ".ply" || e.path().extension() == ".tar"))
                 stale.push_back(e.path());
         }
         for (const auto& p : stale) remove_tree(p);

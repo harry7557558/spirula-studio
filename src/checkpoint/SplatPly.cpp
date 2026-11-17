@@ -5,6 +5,8 @@
 
 #include "checkpoint/SplatPlyMetadata.h"
 #include "checkpoint/SplatTransform.h"
+#include "checkpoint/SplatYUp.h"
+#include "checkpoint/Resume.h"
 #include "core/SphericalBeta.h"
 
 #include <algorithm>
@@ -12,6 +14,8 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <future>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 
@@ -37,6 +41,7 @@ struct PlyHeader {
     bool ok = false;
     bool binary_le = false;
     bool ascii = false;
+    bool y_up = false;
     int64_t num_vertex = 0;
     std::string primitive;
     std::vector<PlyProp> props;
@@ -86,6 +91,7 @@ PlyHeader read_header(std::istream& f) {
             h.binary_le = tok == "binary_little_endian";
             h.ascii = tok == "ascii";
         } else if (tok == "comment") {
+            if (line == "comment spirula_coordinate_system supersplat_y_up") h.y_up = true;
             if (const auto mode = mip_from_ply_comment(line))
                 h.primitive = *mode ? "mip" : "";
         } else if (tok == "element") {
@@ -181,12 +187,13 @@ int sb_lobes_from_params(int n_params, const std::string& path) {
 
 
 std::string splat_ply_header(int64_t vertices, const ColorBasis& basis,
-                             const std::string& primitive) {
+                             const std::string& primitive, bool y_up) {
     std::ostringstream h;
     h << "ply\n";
     h << "format binary_little_endian 1.0\n";
     if (primitive == "mip") h << "comment SplatRenderMode: mip\n";
-    h << "element vertex " << vertices << "\n";
+    if (y_up) h << "comment spirula_coordinate_system supersplat_y_up\n";
+    h << "element vertex " << std::setfill('0') << std::setw(20) << vertices << "\n";
     h << "property float x\nproperty float y\nproperty float z\n";
     h << "property float nx\nproperty float ny\nproperty float nz\n";
     h << "property float f_dc_0\nproperty float f_dc_1\nproperty float f_dc_2\n";
@@ -302,17 +309,31 @@ public:
             return;
         }
         // Row-blocked: one read() per vertex is most of a large model's load time.
-        const int64_t kRows = std::max<size_t>(1, kFileBufferBytes / _h.row_bytes);
+        const int64_t kRows = std::max<int64_t>(1, std::min<int64_t>(nr, kFileBufferBytes / _h.row_bytes));
         _raw.resize((size_t)_h.row_bytes * kRows);
+        _next.resize(_raw.size());
+        auto read_next = [&](int64_t m) {
+            _f.read((char*)_next.data(), (std::streamsize)(m * (int64_t)_h.row_bytes));
+            if (!_f) throw std::runtime_error(_path + ": truncated vertex data");
+        };
+        read_next(std::min(kRows, nr));
+        std::future<void> pending;
         for (int64_t done = 0; done < nr; done += kRows) {
             const int64_t m = std::min(kRows, nr - done);
-            _f.read((char*)_raw.data(), (std::streamsize)(m * (int64_t)_h.row_bytes));
-            if (!_f) throw std::runtime_error(_path + ": truncated vertex data");
-            for (int64_t i = 0; i < m; i++) {
-                const uint8_t* r = _raw.data() + (size_t)i * _h.row_bytes;
-                for (size_t k = 0; k < _h.props.size(); k++)
-                    _vals[k] = read_scalar(r, _h.props[k]);
-                take(dst, at + done + i, _vals.data());
+            if (pending.valid()) pending.get();
+            _raw.swap(_next);
+            if (done + m < nr)
+                pending = std::async(std::launch::async, read_next, std::min(kRows, nr-done-m));
+#pragma omp parallel if(m >= 4096) num_threads(8)
+            {
+                std::vector<float> vals(_h.props.size());
+#pragma omp for schedule(static)
+                for (int64_t i = 0; i < m; i++) {
+                    const uint8_t* r = _raw.data() + (size_t)i * _h.row_bytes;
+                    for (size_t k = 0; k < _h.props.size(); k++)
+                        vals[k] = read_scalar(r, _h.props[k]);
+                    take(dst, at + done + i, vals.data());
+                }
             }
         }
     }
@@ -334,8 +355,12 @@ private:
         for (int f = 0; f < sb::kLobeFloats && L > 0; f++)
             for (int l = 0; l < L; l++)
                 lobes[l * sb::kLobeFloats + f] = v[_csb[(size_t)(f * L + l)]];
+        if (_h.y_up)
+            _y_up.apply(&out.means[i*3], &out.quats[i*4],
+                        K > 0 ? &out.features_sh[i*K*3] : nullptr, out.basis(), true);
     }
 
+    SplatYUp _y_up;
     std::string _path;
     std::ifstream _f;
     PlyHeader _h;
@@ -344,7 +369,7 @@ private:
     std::vector<int> _crest, _csb;
     int64_t _K_sh = 0, _K = 0, _K_file = 0;
     std::vector<float> _vals;
-    std::vector<uint8_t> _raw;
+    std::vector<uint8_t> _raw, _next;
 };
 
 }  // namespace
@@ -478,6 +503,15 @@ std::pair<std::string, std::string> find_splat_ply(const std::string& path) {
         }
         return ec ? fs::path{} : candidate;
     };
+    if (p.extension() == ".tar" || fs::is_directory(p, ec)) {
+        try {
+            const auto checkpoint = ckpt::resolve_checkpoint(p);
+            fs::path ply = checkpoint.tar_path;
+            ply.replace_extension(".ply");
+            if (!fs::is_regular_file(ply, ec)) ply = checkpoint.ckpt_dir / "splat.ply";
+            if (fs::is_regular_file(ply, ec)) return {ply.string(), checkpoint.run_dir.string()};
+        } catch (const std::exception&) {}
+    }
     if (fs::is_regular_file(p / "splat.ply", ec))
         return {(p / "splat.ply").string(), p.extension() == ".ckpt"
                                                 ? p.parent_path().string() : p.string()};

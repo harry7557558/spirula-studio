@@ -25,7 +25,7 @@ struct TarView {
 };
 
 TarView open_state_tar(const fs::path& ckpt_dir) {
-    fs::path tarpath = ckpt_dir / "state.tar";
+    fs::path tarpath = resolve_checkpoint(ckpt_dir).tar_path;
     TarView v;
     v.in.open(tarpath.string(), std::ios::binary);
     if (!v.in)
@@ -45,24 +45,45 @@ std::string read_member(TarView& v, const std::string& name) {
 
 
 ResolvedCheckpoint resolve_checkpoint(const fs::path& path) {
+    if (fs::is_regular_file(path) && (path.extension() == ".tar" || path.extension() == ".ply")) {
+        fs::path tar = path;
+        tar.replace_extension(".tar");
+        if (!fs::is_regular_file(tar) && path.extension() == ".ply")
+            tar = path.parent_path() / "state.tar";
+        if (!fs::is_regular_file(tar)) throw std::runtime_error("no checkpoint archive for " + path.string());
+        const auto dir = tar.parent_path();
+        return {dir.extension() == ".ckpt" ? dir.parent_path() : dir, dir, tar};
+    }
     if (fs::is_regular_file(path / "state.tar"))
-        return {path.parent_path(), path};
+        return {path.extension() == ".ckpt" || !fs::exists(path / "config.json")
+                    ? path.parent_path() : path, path, path / "state.tar"};
 
-    // Checkpoint dirs are step-%09d.ckpt, so lexicographic order is numeric.
-    // One without state.tar is a save that never finished.
-    std::vector<fs::path> ckpts;
-    if (fs::is_directory(path))
+    std::vector<fs::path> candidates;
+    if (fs::is_directory(path)) {
         for (const auto& e : fs::directory_iterator(path)) {
-            std::string b = e.path().filename().string();
-            if (b.rfind("step-", 0) == 0 && b.find(".ckpt") != std::string::npos &&
+            const auto name = e.path().filename().string();
+            if (e.is_regular_file() && e.path().extension() == ".tar")
+                candidates.push_back(e.path());
+            if (e.is_directory() && name.rfind("step-", 0) == 0 && e.path().extension() == ".ckpt" &&
                 fs::is_regular_file(e.path() / "state.tar"))
-                ckpts.push_back(e.path());
+                candidates.push_back(e.path() / "state.tar");
         }
-    if (ckpts.empty())
-        throw std::runtime_error("no state.tar or step-*.ckpt found under " +
-                                 path.string());
-    std::sort(ckpts.begin(), ckpts.end());
-    return {path, ckpts.back()};
+    }
+    fs::path latest;
+    int64_t latest_step = -1;
+    for (const auto& tar : candidates) {
+        JsonValue state;
+        try { state = read_state_json(tar); }
+        catch (const std::runtime_error&) { continue; }
+        const auto* step = state.find("step");
+        const int64_t n = step ? step->as_int() : 0;
+        if (n > latest_step || (n == latest_step && tar > latest)) {
+            latest = tar;
+            latest_step = n;
+        }
+    }
+    if (latest.empty()) throw std::runtime_error("no checkpoint archive found under " + path.string());
+    return {path, latest.parent_path(), latest};
 }
 
 
@@ -71,7 +92,7 @@ JsonValue read_state_json(const fs::path& ckpt_dir) {
     std::string sj = read_member(v, "state.json");
     if (sj.empty())
         throw std::runtime_error("state.json missing in " +
-                                 (ckpt_dir / "state.tar").string());
+                                 ckpt_dir.string());
     return json_parse(sj);
 }
 
@@ -91,11 +112,11 @@ void check_resumable(const fs::path& ckpt_dir) {
         throw std::runtime_error(
             "checkpoint '" + ckpt_dir.string() + "' is NOT resumable: it was "
             "saved without save_full_checkpoint, so it holds only the "
-            "inference/appearance params and splat.ply -- not the world "
+            "inference/appearance params -- not the world "
             "parameters and optimizer state needed to continue training. "
             "Re-run the source training with --save-full-checkpoint 1 so its "
             "checkpoints are resumable; this one is usable for inference and "
-            "meshing (splat.ply) only.");
+            "meshing with its PLY only.");
 }
 
 
@@ -113,7 +134,7 @@ TrainConfig build_resume_config(const TrainConfig& cli,
                                  const std::string& preset,
                                  const std::set<std::string>& explicit_flags) {
     ResolvedCheckpoint r = resolve_checkpoint(cli.resume);
-    check_resumable(r.ckpt_dir);
+    check_resumable(r.tar_path);
 
     fs::path run_dir = fs::absolute(r.run_dir);
     fs::path cfg_path = run_dir / "config.json";
