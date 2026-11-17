@@ -87,16 +87,28 @@ Result run(TorchTensorView rgb, TorchTensorView ref, const float* Ts,
 }
 
 void expect_same(const Result& a, const Result& b, const char* what,
-                 double rel = 1e-6) {
+                 double rel = 1e-6, double map_abs = 1e-9) {
     double worst = 0.0;
-    auto cmp = [&](const std::vector<float>& x, const std::vector<float>& y) {
-        for (size_t i = 0; i < x.size(); i++)
-            worst = std::max(worst, std::fabs((double)x[i] - y[i]) /
-                                        (1e-9 + rel * std::fabs((double)y[i])));
+    auto cmp = [&](const std::vector<float>& x, const std::vector<float>& y,
+                   const char* channel, double abs_tol = 1e-9) {
+        double max_abs = 0.0;
+        size_t worst_i = 0;
+        double channel_worst = 0.0;
+        for (size_t i = 0; i < x.size(); i++) {
+            const double error = std::fabs((double)x[i] - y[i]);
+            max_abs = std::max(max_abs, error);
+            const double ratio = std::isfinite(x[i]) && std::isfinite(y[i])
+                ? error / (abs_tol + rel * std::fabs((double)y[i])) : INFINITY;
+            if (ratio > channel_worst) { channel_worst = ratio; worst_i = i; }
+        }
+        worst = std::max(worst, channel_worst);
+        if (channel_worst > 1.0)
+            std::printf("  %s[%zu]: got %.9g, expected %.9g, max abs %.9g\n",
+                        channel, worst_i, x[worst_i], y[worst_i], max_abs);
     };
-    cmp(a.v_rgb, b.v_rgb);
-    cmp(a.v_Ts, b.v_Ts);
-    cmp(a.map, b.map);
+    cmp(a.v_rgb, b.v_rgb, "v_rgb");
+    cmp(a.v_Ts, b.v_Ts, "v_Ts");
+    cmp(a.map, b.map, "map", map_abs);
     const bool ok = worst <= 1.0;
     std::printf("%-58s %s (%.3g of tolerance)\n", what, ok ? "ok" : "FAILED", worst);
     if (!ok) g_failures++;
@@ -202,8 +214,9 @@ void check_half_stages(std::mt19937& rng) {
         std::snprintf(what, sizeof(what), "appearance chain, float16 raw copy, %d image(s)", nb);
         expect_equal(download_half(raw16, 3 * np), rgb16f, 0.0, what);
 
-        // The three colour grids: float16 in gives what float in gives, and
-        // float16 out is float out rounded.
+        // The three colour grids: float16 in gives what float in gives, to fp32
+        // rounding (each input format is its own pipeline; on an R9700 they
+        // differ by up to one ulp), and float16 out is float out rounded.
         for (int fam = 0; fam < 3; fam++) {
             const char* name = fam == 0 ? "affine" : fam == 1 ? "ppisp" : "loglinear";
             const int C = fam == 0 ? 12 : 9;
@@ -233,7 +246,7 @@ void check_half_stages(std::mt19937& rng) {
             backend::device_synchronize();
             const std::vector<float> gref = download(gf, 3 * np);
             std::snprintf(what, sizeof(what), "%s grid, float16 in, %d image(s)", name, nb);
-            expect_equal(download(gff, 3 * np), gref, 0.0, what);
+            expect_equal(download(gff, 3 * np), gref, 1e-6, what);
             std::snprintf(what, sizeof(what), "%s grid, float16 out, %d image(s)", name, nb);
             expect_rounded(download_half(gh, 3 * np), gref, what);
 
@@ -273,7 +286,7 @@ void check_half_stages(std::mt19937& rng) {
                 // The grid gradient is summed with atomics.
                 std::snprintf(what, sizeof(what), "%s grid backward v%d, float16 in, %d image(s)",
                               name, version, nb);
-                expect_equal(v_rgb[1], v_rgb[0], 0.0, what);
+                expect_equal(v_rgb[1], v_rgb[0], 1e-6, what);
                 expect_equal(v_grid[1], v_grid[0], 1e-5, what);
             }
             for (void* q : {(void*)d_grid, gf, gff, gh, (void*)d_vout}) backend::device_free(q);
@@ -365,8 +378,6 @@ int main() {
     uint8_t* d_mask = upload(mask);
     uint8_t* d_mask4 = upload(mask4);
 
-    // S-CIELAB's sRGB decode and cube root go through driver transcendentals:
-    // NVIDIA Vulkan's uint8 pipeline lands its map 1.7e-6 off (CUDA: exact).
     constexpr int kScielab = (int)PerceptualLoss::SCielab;
     constexpr int kFlip = (int)PerceptualLoss::Flip;
     const struct { int mode; const char* name; int loss = 0; } modes[] = {
@@ -387,8 +398,10 @@ int main() {
         const Result base8 = run(view(d_rgbf, 4, 3), view(d_ref8f, 4, 3), d_Ts,
                                  d_mask, m.mode, 3, m.loss);
         std::snprintf(what, sizeof(what), "uint8 ground truth, %s", m.name);
+        // RTX 5070 Vulkan: S-CIELAB's transcendental rounding moves the map by up to 6.4e-8.
         expect_same(run(view(d_rgbf, 4, 3), view(d_ref8, 1, 3), d_Ts, d_mask,
-                        m.mode, 3, m.loss), base8, what, m.loss ? 1e-5 : 1e-6);
+                        m.mode, 3, m.loss), base8, what, m.loss ? 1e-5 : 1e-6,
+                    m.loss == kScielab ? 1e-7 : 1e-9);
         const Result base16 = run(view(d_rgb16f, 4, 3), view(d_ref16f, 4, 3),
                                   d_Ts, d_mask, m.mode, 1, m.loss);
         std::snprintf(what, sizeof(what), "float16 render and ground truth, %s",
