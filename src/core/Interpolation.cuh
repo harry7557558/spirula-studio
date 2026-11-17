@@ -30,8 +30,12 @@ __device__ __forceinline__ void resolve_taps(
     int& x0, int& y0, int& x1, int& y1,
     float& w00, float& w01, float& w10, float& w11
 ) {
-    float u = ((float)x_dst + 0.5f) * (float)W_src / (float)W_dst - 0.5f;
-    float v = ((float)y_dst + 0.5f) * (float)H_src / (float)H_dst - 0.5f;
+    // Equal sizes read the pixel itself. A fast-math divide leaves u one ULP
+    // off, and revalidate_weights then gives a hole its neighbour's full value.
+    float u = W_src == W_dst ? (float)x_dst
+                             : ((float)x_dst + 0.5f) * (float)W_src / (float)W_dst - 0.5f;
+    float v = H_src == H_dst ? (float)y_dst
+                             : ((float)y_dst + 0.5f) * (float)H_src / (float)H_dst - 0.5f;
 
     int x0_raw = (int)floorf(u);
     int y0_raw = (int)floorf(v);

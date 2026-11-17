@@ -129,8 +129,11 @@ uint _ms_load_u8(uint* buf, uint idx) {
 void _ms_taps(int x_dst, int y_dst, int W_dst, int H_dst, int W_src, int H_src,
               out int x0, out int y0, out int x1, out int y1,
               out float w00, out float w01, out float w10, out float w11) {
-    float u = (float(x_dst) + 0.5f) * float(W_src) / float(W_dst) - 0.5f;
-    float v = (float(y_dst) + 0.5f) * float(H_src) / float(H_dst) - 0.5f;
+    // Equal sizes read the pixel itself, as resolve_taps does.
+    float u = W_src == W_dst ? float(x_dst)
+                             : (float(x_dst) + 0.5f) * float(W_src) / float(W_dst) - 0.5f;
+    float v = H_src == H_dst ? float(y_dst)
+                             : (float(y_dst) + 0.5f) * float(H_src) / float(H_dst) - 0.5f;
     int x0_raw = int(floor(u));
     int y0_raw = int(floor(v));
     float fx = u - float(x0_raw);
