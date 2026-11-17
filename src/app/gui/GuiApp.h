@@ -451,6 +451,7 @@ private:
     std::string resolved_worker_devices() const;
 #ifdef SS_BUILD_SAM
     void draw_additional_gpus();
+    void draw_workers_per_gpu();
 #endif
     void draw_geometry_options();
     // Opens the geometry preview on the output folder when it already holds a
@@ -1035,6 +1036,7 @@ private:
     int  _mask_detect_every = 1;
     int  _mask_memory_frames = 0;
     std::string _additional_gpus = "auto";
+    unsigned _workers_per_gpu = 1;
     // The static stencils are kept on the inputs themselves (PrepInput::
     // stencil); this only says whether the run is given them, so that turning
     // the option off and on again does not throw away what was drawn.
