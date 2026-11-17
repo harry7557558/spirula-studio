@@ -1,22 +1,13 @@
-// Backend parity tool for the fused 3DGS geometry optimizer
-// (fused_optim_3dgs_geometry) and the trust-region adamtr color kernels
-// (fused_adamtr_(linear_)rgb_(sh_)optim). The SAME source builds under both
-// backends:
+// Backend parity for fused_optim_3dgs_geometry and the adamtr colour kernels.
+// The same source builds under both backends:
 //
 //   CUDA build:   ./optimgeo_parity dump ref.bin
 //   Vulkan build: ./optimgeo_parity compare ref.bin   (per device)
 //
-// Ref format: [nf, floats..., nc, int32 codes...]. Floats compare with the
-// usual fast-math tolerance; quantized packed cells are decoded host-side
-// into integer codes and compare with a +-1 allowance.
-//
-// Geometry configs cover: fp32 state, scale-agnostic means (radii),
-// per-splat steps, densify-score output, non-SH 16-bit quantized Adam state
-// (two-step protocol from the zero-state codec fixed point: all-zero bounds
-// + all-zero packed decode exactly to (g1=0, g2=0)), and the block-wise
-// 16-bit grad-quant decode path. The chaotic scale-agnostic-means x non-SH
-// quant combination is excluded, as in fpbo_parity (u = g1/(sqrt_g2 + eps)
-// is unbounded for radii == 0 splats — true on CUDA too).
+// Ref format: [nf, floats..., nc, int32 codes...]; floats compare with the
+// fast-math tolerance, quantized cells as decoded codes within +-1. The
+// geometry configs are listed at geo_cfgs. Scale-agnostic means with non-SH
+// quant is left out, as in fpbo_parity: unbounded at radii == 0 on CUDA too.
 
 #include <kernels/optim/Optimizer.cuh>
 
@@ -25,6 +16,7 @@
 #include <cstring>
 #include <fstream>
 #include <random>
+#include <utility>
 #include <vector>
 
 using backend::MemcpyKind;
@@ -90,19 +82,28 @@ int main(int argc, char** argv) {
 
     // ---- fused_optim_3dgs_geometry ----
     // (sam, zero_grad, non_sh_quant, grad_quant, per_splat_steps, densify,
-    //  linear colour trust region -- only the nq config updates DC)
+    //  linear colour trust region -- only the nq config updates DC, surfel)
     struct GeoCfg {
         bool sam, zero_grad, nq, gq, steps, densify, ct;
+        bool surfel = false;
     };
-    const GeoCfg geo_cfgs[5] = {
+    const GeoCfg geo_cfgs[] = {
         {false, true, false, false, false, true, false},
         {true, false, false, false, true, false, false},
         {false, true, true, false, false, true, false},
         {true, true, false, true, true, true, false},
         {false, false, true, false, false, false, true},
+        // Scales are drawn on all three axes, so many surfels start with the
+        // third above the disc and take the clamp.
+        {false, true, false, false, false, true, false, true},
+        {false, true, true, false, false, true, false, true},
     };
 
+    // The float ranges the surfel rows write, held to zero violations: the
+    // global allowance below would let a broken scale clamp through.
+    std::vector<std::pair<size_t, size_t>> surfel_ranges;
     for (const GeoCfg& c : geo_cfgs) {
+        const size_t floats_before = acc.size();
         std::vector<float> means(3 * N), quats(4 * N), scales(3 * N),
             opacs(N), dc(3 * N), radii(N);
         for (auto& v : means) v = uf(-2.f, 2.f);
@@ -230,7 +231,7 @@ int main(int argc, char** argv) {
                 1.6e-4f, 1e-3f, 5e-3f, 5e-2f, 2.5e-3f,
                 /*max_gauss_ratio=*/4.f, /*scale_reg=*/0.1f,
                 /*mcmc_op=*/0.05f, /*mcmc_scale=*/0.02f,
-                /*erank=*/0.1f, /*erank_s3=*/0.05f, /*quat_norm=*/0.1f, /*surfel=*/false,
+                /*erank=*/0.1f, /*erank_s3=*/0.05f, /*quat_norm=*/0.1f, c.surfel,
                 /*dc_reg=*/0.01f, /*sh_reg=*/0.01f,
                 /*max_screen_size=*/0.3f, /*max_screen_size_penalty=*/1.5f,
                 c.sam, ct, nq, visit, gq, {},
@@ -258,6 +259,7 @@ int main(int argc, char** argv) {
         }
         if (c.zero_grad && !c.gq) readback_f(acc, d_v_means, 3 * N);
         readback_i(codes, (const int32_t*)d_visit, N);
+        if (c.surfel) surfel_ranges.push_back({floats_before, acc.size()});
     }
 
     // ---- fused_adamtr_(linear_)rgb_(sh_)optim ----
@@ -361,6 +363,14 @@ int main(int argc, char** argv) {
         max_abs = std::max(max_abs, d);
         if (d > tol) fviol++;
     }
+    int64_t fviol_surfel = 0;
+    for (const auto& r : surfel_ranges)
+        for (size_t i = r.first; i < r.second; i++)
+            fviol_surfel += std::fabs((double)acc[i] - (double)ref[i]) >
+                            5e-3 + 1e-3 * std::fabs((double)ref[i]);
+    if (fviol_surfel)
+        std::printf("optimgeo_parity: %lld float violations in the surfel rows\n",
+                    (long long)fviol_surfel);
     int64_t cviol = 0;
     int64_t max_c = 0;
     for (int64_t i = 0; i < nc; i++) {
@@ -375,7 +385,7 @@ int main(int argc, char** argv) {
         "%.5f%%), %lld codes (max |d| %lld, violations %lld = %.5f%%)\n",
         (long long)nf, max_abs, (long long)fviol, 100.0 * ffrac,
         (long long)nc, (long long)max_c, (long long)cviol, 100.0 * cfrac);
-    bool pass = ffrac <= 2e-3 && cfrac <= 5e-3;
+    bool pass = ffrac <= 2e-3 && cfrac <= 5e-3 && fviol_surfel == 0;
     std::printf(pass ? "optimgeo_parity: PASSED\n"
                      : "optimgeo_parity: FAILED\n");
     return pass ? 0 : 1;
