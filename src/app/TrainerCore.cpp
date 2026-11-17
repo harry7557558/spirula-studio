@@ -14,6 +14,8 @@
 #include "data/ResolutionSchedule.h"
 #include "core/HostMemory.h"
 #include "checkpoint/SplatPly.h"
+#include "core/AtomicFile.h"
+#include "core/Similarity.h"
 #include "config/TrainConfigJson.h"
 #include "core/ColorSpace.h"
 #include "core/ImageFile.h"
@@ -1826,12 +1828,50 @@ void TrainerSession::restore_checkpoint() {
     log(lfmt(lmsg::resumed_from, {r.ckpt_dir.string(), (long long)start_step}));
 }
 
+static void publish_ply_copy(const fs::path& source, const fs::path& destination) {
+    if (source == destination) return;
+    fs::path temporary = destination;
+    temporary += ".tmp";
+    std::error_code ec;
+    fs::remove(temporary, ec);
+    try {
+        fs::create_hard_link(source, temporary, ec);
+        if (ec) fs::copy_file(source, temporary, fs::copy_options::overwrite_existing);
+        spirula::replace_file(temporary, destination);
+    } catch (...) {
+        fs::remove(temporary, ec);
+        throw;
+    }
+}
+
 void TrainerSession::save_checkpoint(int step, bool full) {
     char name[32];
     std::snprintf(name, sizeof name, "step-%09d.ckpt", step);
     fs::path ckpt = out_dir / name;
     fs::create_directories(ckpt);
     engine_save_checkpoint(ckpt.string(), full, step, cfg.background_export_height);
+    fs::path run_path = fs::absolute(out_dir).lexically_normal();
+    if (run_path.filename().empty()) run_path = run_path.parent_path();
+    const std::string run_name = run_path.filename().string();
+    const fs::path native = ckpt / "splat.ply";
+    // Keep exactly one delivery beside the canonical checkpoint model.
+    const fs::path destination = ckpt / (run_name == "splat" ? "splat_export.ply" : run_name + ".ply");
+    if (cfg.export_y_up) {
+        fs::path temporary = destination;
+        temporary += ".tmp";
+        // PlayCanvas applies Rz(pi) on PLY import; bake its inverse after Rx(-pi/2).
+        const spirula::Sim3 rotation{1.0, {-1, 0, 0, 0, 0, -1, 0, -1, 0}, {0, 0, 0}};
+        try {
+            spirula::transform_splat_ply(native.string(), temporary.string(), rotation);
+            spirula::replace_file(temporary, destination);
+        } catch (...) {
+            std::error_code ec;
+            fs::remove(temporary, ec);
+            throw;
+        }
+    } else {
+        publish_ply_copy(native, destination);
+    }
     std::error_code bg_ec;
     if (fs::is_regular_file(ckpt / "background.webp", bg_ec)) {
         fs::copy_file(ckpt / "background.webp", out_dir / "background.webp",

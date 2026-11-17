@@ -63,6 +63,10 @@ void write_splat_ply(const SplatCloud& c, const std::string& path,
                      const uint8_t* keep = nullptr,
                      const class SplatTransform* moved = nullptr);
 
+// A separate, bounded-memory export; geometry and view-dependent colour turn together.
+void transform_splat_ply(const std::string& source, const std::string& destination,
+                          const struct Sim3& transform);
+
 // The same layout for a writer that fills rows itself (EngineCheckpoint.cpp);
 // splat_ply_put_rest() turns a [basis.coeffs(), 3] colour row into the file
 // order that follows the DC.
@@ -71,11 +75,9 @@ std::string splat_ply_header(int64_t vertices, const ColorBasis& basis,
 int splat_ply_row_floats(const ColorBasis& basis);
 void splat_ply_put_rest(const float* rest, const ColorBasis& basis, float* out);
 
-// Resolve what a user pointed at into (splat.ply, run directory): a .ply
-// directly, a step-*.ckpt / *.ckpt directory holding one, or a run directory
-// whose newest checkpoint has one. The run directory is where config.json is
-// looked for; it may not exist, and for a loose .ply it is a guess.
-// Throws when nothing under `path` is a splat.ply.
+// Resolve a PLY, checkpoint or run to (PLY, run directory), newest checkpoint
+// first. Canonical splat.ply wins; named-only folders need an unambiguous PLY.
+// Throws when no model is found.
 std::pair<std::string, std::string> find_splat_ply(const std::string& path);
 
 }  // namespace spirula
