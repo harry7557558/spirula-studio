@@ -10,13 +10,22 @@ extraction, or a gap cannot be told apart from the extractor's.
 
 ## Status
 
-T0-T2 done, T3 but for the GUI: `spirula mesh --method tsdf` runs on both
-backends. First run, a 3dgs model of the action-cam capture (1M splats, 488
-cameras at 2688x1512): 4 min, 6.0 GB RAM at peak, mesh F 0.474 against 0.56
-for the opacity field of the same model. TSDF averages each camera's depth
-and only clears free space near surfaces, where the opacity field takes the
-least occupancy over the cameras, so floaters one camera sees survive; the
-comparison that matters is on a 2dgs model, next.
+T0-T3 done: `spirula mesh --method tsdf` and the GUI's surface method, both
+backends. The action-cam capture (488 cameras at 2688x1512), meshes scored
+with `reference/python/mesh_fscore.py`:
+
+| model | extractor | precision | recall | F | time |
+|---|---|---|---|---|---|
+| 2dgs preset, 30k | opacity field | 0.849 | 0.585 | 0.693 | 97 s |
+| 2dgs preset, 30k | TSDF | 0.778 | 0.607 | 0.682 | 116 s |
+| 3dgs, 1M | opacity field | 0.659 | 0.490 | 0.562 | |
+| 3dgs, 1M | TSDF | 0.532 | 0.427 | 0.474 | 4 min |
+
+On 2dgs the two are within the ~0.02 a rerun moves F. On 3dgs TSDF falls
+behind: it averages each camera's depth and clears free space only near
+surfaces, where the opacity field takes the least occupancy over the
+cameras, so floaters one camera sees survive. DTU Chamfer against the
+paper's table is phase 7 of the 2dgs plan.
 
 ## Design
 
