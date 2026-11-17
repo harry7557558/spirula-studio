@@ -775,6 +775,7 @@ struct EngineState {
         int   base_step  = 0;
         float half_life  = 0.0f;
         float step_scale = 1.0f;    // what this step's raster bwd multiplies by
+        float dead_below = 0.0f;    // the next refine's dead test; 0 = min_weight
     } max_weight;
 
     // The learned densification score lives in optim.accum_buffer as

@@ -210,8 +210,9 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     DeviceVector<uint32_t> visit_counters,
     uint32_t dead_after_steps,
     // Peak alpha * T per splat; when given it is a second dead test against
-    // min_opacity and is carried src -> dst. dead_by_opacity keeps the first.
+    // min_weight and is carried src -> dst. dead_by_opacity keeps the first.
     DeviceVector<float> max_weight,
+    float min_weight,
     bool dead_by_opacity,
     int sh_optim_bits,
     int num_sh,

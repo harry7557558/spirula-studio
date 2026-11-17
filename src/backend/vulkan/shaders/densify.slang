@@ -462,11 +462,13 @@ struct RelocMaskParams {  // 104 bytes: pushed directly
     uint* visit_counters; // [N] (dead_after_steps != 0)
     float* max_weight;   // [N] (has_max_weight)
     float min_opacity;
+    float min_weight;
     uint num_splats;
     uint wgs_per_row;
     uint dead_after_steps;
     uint dead_by_opacity;
     uint has_max_weight;
+    uint pad0;
 };
 
 [shader("compute")]
@@ -488,7 +490,7 @@ void densify_reloc_mask(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     bool is_low_opac =
         (p.dead_by_opacity != 0 && _dn_sigmoid(opac) <= p.min_opacity) ||
-        (p.has_max_weight != 0 && p.max_weight[idx] <= p.min_opacity);
+        (p.has_max_weight != 0 && p.max_weight[idx] <= p.min_weight);
     bool is_finite = _dn_finitef(dot(mean, mean) / dot(quat, quat) +
                                  dot(scale, dc) * opac);
     bool is_stale = p.dead_after_steps != 0u &&

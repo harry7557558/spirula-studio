@@ -774,6 +774,8 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.densify.min_opacity                   = c.min_opacity;
     cfg.densify.dead_criterion = dead_criterion_enum(c.dead_criterion);
     cfg.densify.max_weight_half_life = (float)std::max(c.max_batch_per_epoch, 1);
+    cfg.densify.min_weight                    = c.min_weight;
+    cfg.densify.max_dead_fraction             = c.max_dead_fraction;
     cfg.densify.max_screen_size               = c.max_screen_size;
     cfg.densify.max_screen_size_clip_hardness = c.max_screen_size_clip_hardness;
     cfg.densify.clip_screen_size_at_refine    = c.max_screen_size_penalty > 0.0f;

@@ -210,13 +210,15 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(float, growth_factor, 1.05f, "detail", "advanced", "")                 \
     X(float, min_opacity, 0.005f, "detail", "advanced", "")                  \
     X(std::string, dead_criterion, "either", "detail", "advanced", "opacity|max_weight|either") \
+    X(float, min_weight, 0.05f, "detail", "advanced", "")                    \
+    X(float, max_dead_fraction, 0.02f, "detail", "expert", "")               \
     X(int, refine_every, 100, "detail", "advanced", "")                      \
     X(int, refine_start_iter, 500, "detail", "expert", "")                   \
     X(int, refine_stop_num_iter, 2500, "detail", "advanced", "")             \
     X(int, refine_stop_iter, 14000, "detail", "advanced", "")                \
     X(float, noise_lr, 160.0f, "detail", "expert", "")                        \
     X(float, noise_lr_final, 1.6f, "detail", "expert", "")                   \
-    X(bool, noise_gate_peak_weight, true, "detail", "expert", "")            \
+    X(bool, noise_gate_peak_weight, false, "detail", "expert", "")           \
     X(bool, use_revised_densification, true, "detail", "expert", "")         \
     X(std::string, densify_score_mode, "mean", "detail", "basic", "mean|max|median|geom") \
     X(float, densify_score_blend_world_grad, 0.0f, "detail", "advanced", "") \
@@ -526,7 +528,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         // c.features_dc_lr = 0.0015f;
         c.features_sh_lr = 0.0001f;
         c.ssim_lambda = 0.1f;
-        c.noise_gate_peak_weight = false;
+        c.min_weight = 0.005f;
         return true;
     }
     if (name == "synthetic") {

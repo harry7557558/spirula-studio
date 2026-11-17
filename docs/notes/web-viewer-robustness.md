@@ -11,7 +11,10 @@ along with a much stronger, per-coefficient `--sh-reg` (below).
 
 ## Defaults
 
-`--viewer-kernel-fraction 0.5`, `--noise-gate-peak-weight` on, `--sh-reg 0.04`.
+`--viewer-kernel-fraction 0.5`, `--noise-gate-peak-weight` on, `--sh-reg 0.04`
+are what every score in this note was measured with. The gate is off by default
+since `--min-weight` took over its job (below); the web renderers have not been
+scored again without it.
 Over the eight scenes of the sweep (the six below plus london_undistorted at
 8M splats and garden_full at 3M, full resolution) that scores +3.8 against the
 earlier defaults, +3.0 without the synthetic lego, positive on every scene
@@ -170,7 +173,67 @@ share above it lifts 0.3 from +1.1 to +1.7. It also trains 2.6% faster (6.7% on
 kitchen), presumably because hidden splats that move stop adding to the
 overdraw (not measured).
 
-The `hdr` preset keeps opacity-only gating (`--noise-gate-peak-weight false`) for more stable training.
+Off by default. The gate ties the noise to where a splat sits: a covered splat
+keeps moving and stops the moment it reaches open space, so covered splats
+collect on the camera side of whatever covered them. A textured surface pushes
+such a splat back out through its opacity. A low-texture one is equally well
+explained from anywhere along the ray, and turns to haze. That shows where the
+gate reaches most of the model, a dense seed under a high cap in which nearly
+every splat weighs little; on bicycle at 1M it reaches 4% of the splats beyond
+those opacity alone does.
+
+## `--min-weight`
+
+What the gate bought on the benchmark scenes is the splats it gets recycled,
+not their motion: it raises the dead count by a third (bicycle, garden), and
+kicks that cancel over time, so that nothing travels, keep 40% of its LPIPS-A
+gain on bicycle. `--min-weight` recycles those splats directly. With
+`--dead-criterion` `max_weight` or `either`, a splat whose peak alpha * T stays
+at or under it is dead (0.05; the test used to be against `--min-opacity`,
+0.005), and no noise depends on position.
+
+A fixed threshold fails where the gate did. In a model whose splats all weigh
+little, 0.02 finds a quarter of them dead at every refine, relocation eats the
+whole split budget and the model stops growing. `--max-dead-fraction` (0.02)
+bounds it: a refine that finds a larger share dead lowers the threshold by
+`sqrt(limit / share)`, by half at most and not under `--min-opacity`; any other
+refine raises it 10%, up to `--min-weight`.
+
+LPIPS-A in Spirula's renderer, every 8th image held out, 30k steps (bicycle and
+garden at 1/4 resolution, kitchen at 1/2, sedan from the sparse seed, london at
+1/4 and 3M splats, the rest 1M). The gate columns keep the 0.005 threshold;
+two runs where two numbers are given.
+
+| scene | gate on | gate off | `--min-weight` 0.02 | 0.05 | 0.10 |
+|---|---|---|---|---|---|
+| bicycle | 0.1723, 0.1732 | 0.1767 | 0.1640 | 0.1564, 0.1569 | 0.1540 |
+| garden | 0.0915, 0.0925 | 0.0926 | 0.0896 | 0.0865 | |
+| kitchen | 0.0883, 0.0881 | | 0.0880 | 0.0868, 0.0883 | |
+| train | 0.1055 | | 0.1052 | 0.1024 | 0.1047 |
+| playroom | 0.1379 | | 0.1358 | 0.1354 | |
+| sedan | 0.1953, 0.1957 | | 0.1915 | 0.1855, 0.1856 | 0.1853 |
+| london | 0.2069 | | | 0.1997 | |
+
+At 0.05 against the gate, training time runs from -5.6% (playroom) to +2.6%
+(sedan), -0.6% summed over the seven scenes, with 1.6% between repeats; peak
+engine VRAM is 0.1% to 1.0% higher. PSNR falls with the threshold on train
+(20.60, 20.56, 20.43, 20.33 dB at 0.005, 0.02, 0.05, 0.10) and sedan (25.49 to
+25.38 dB) and holds or rises elsewhere. `--max-dead-fraction 0.03` changes
+neither sedan nor kitchen beyond run noise.
+
+The `hdr` preset keeps `--min-weight 0.005`, the earlier test; 0.05 was not
+tried on bracketed captures.
+
+Other ways to keep the gate, on bicycle (0.1723-0.1732 with it, 0.1767
+without):
+
+- Gating on peak transmittance (peak weight / opacity): 0.1765.
+- No gate and a softer curve, `(1 - opacity)^110`: 0.1770.
+- The gate's share of the kick scaled by 0.5 / 0.25: 0.1735 / 0.1740, and the
+  haze shrinks with it rather than going away.
+- That share kept in the plane of the splat's two major axes: 0.1749.
+- Lowering a gated splat's opacity toward its peak weight as it is kicked: less
+  opacity is less weight, and where most splats are gated the model dies.
 
 ## Tried, not kept
 

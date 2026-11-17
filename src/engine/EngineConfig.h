@@ -227,10 +227,14 @@ struct DensifyConfig {
     int   refine_every                  = 0;
     float growth_factor                 = 1.0f;
     float min_opacity                   = 0.0f;
-    // MaxWeight compares min_opacity against each splat's peak alpha * T,
+    // MaxWeight compares min_weight against each splat's peak alpha * T,
     // halved every max_weight_half_life steps. Revised relocation only.
     DeadCriterion dead_criterion        = DeadCriterion::Opacity;
     float max_weight_half_life          = 800.0f;
+    float min_weight                    = 0.0f;
+    // A refine that finds more than this share dead lowers the weight test
+    // toward min_opacity; it climbs back while fewer die. <= 0: no limit.
+    float max_dead_fraction             = 0.0f;
     float max_screen_size               = 0.0f;
     float max_screen_size_clip_hardness = 0.0f;
     // With the soft penalty on, the hard clip drops to a once-per-refine
