@@ -2,7 +2,7 @@
 
 // Truncated signed distance fusion of per-camera depth maps, and its zero
 // level as a triangle mesh: the extraction 2D Gaussian Splatting reports its
-// meshes with (docs/notes/tsdf-plan.md). Host only. Depth is RAY distance along
+// meshes with (docs/notes/tsdf.md). Host only. Depth is RAY distance along
 // unit rays, as the meshing render measures it, so every camera model fuses
 // the same way.
 

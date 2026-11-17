@@ -124,7 +124,9 @@ An action-cam fisheye capture, 7000 steps, 1M splats, longer side 1344 px:
   2dgs, against 0.11 for a 3dgut model reloaded the same way (the appearance
   correction a PLY does not carry). Rendered as 3dgut the same PLY scores
   within 0.2 dB of 2dgs, which is why meshing through the 3DGUT moments
-  (`src/mesh/`) reaches the sweep's F without a 2dgs kernel.
+  (`src/mesh/`) reaches the sweep's F without a 2dgs kernel. The paper's own
+  extraction, TSDF fusion, is `spirula mesh --method tsdf`
+  ([tsdf.md](tsdf.md)).
 
 ## Open question
 

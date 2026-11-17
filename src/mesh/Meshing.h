@@ -31,7 +31,7 @@ namespace meshing {
 
 // Opacity: the opacity field over a Delaunay of splat samples. Tsdf: per-camera
 // median depth fused into a truncated signed distance volume
-// (docs/notes/tsdf-plan.md); it needs cameras.
+// (docs/notes/tsdf.md); it needs cameras.
 enum class MeshMethod { Opacity, Tsdf };
 
 struct MeshingConfig {
