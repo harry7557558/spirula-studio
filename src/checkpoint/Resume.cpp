@@ -120,9 +120,8 @@ void check_resumable(const fs::path& ckpt_dir) {
 }
 
 
-TrainConfig config_from_json(const fs::path& config_json) {
+TrainConfig config_from_json(const fs::path& config_json, TrainConfig c) {
     const JsonValue root = json_parse_file(config_json.string());
-    TrainConfig c;
     // A run from before --scene-center trained uncentred; `auto` could move it.
     if (!root.find("scene_center")) c.scene_center = "none";
     train_config_from_json(root, c);

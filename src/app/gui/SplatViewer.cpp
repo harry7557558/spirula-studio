@@ -373,13 +373,15 @@ void SplatViewer::run(std::string path) {
             }, !_hardware);
         if (num <= 0) return fail(msg::viewer_no_splats.get());
 
-        // PLY omits the primitive and rasterization settings stored in config.json.
         TrainConfig cfg;
+        if (!file_primitive.empty()) cfg.primitive = file_primitive;
         const fs::path cfg_path = fs::path(run_dir) / "config.json";
         std::error_code ec;
         if (fs::is_regular_file(cfg_path, ec)) {
             try {
-                cfg = ckpt::config_from_json(cfg_path);
+                TrainConfig run_cfg = ckpt::config_from_json(cfg_path, cfg);
+                if (run_cfg.primitive.empty()) run_cfg.primitive = cfg.primitive;
+                cfg = std::move(run_cfg);
                 log(format(msg::viewer_using_run_config, {cfg_path.string()}));
             } catch (const std::exception& e) {
                 log(format(msg::viewer_run_config_unreadable, {e.what()}));
@@ -415,7 +417,7 @@ void SplatViewer::run(std::string path) {
         set_frame(center, unit);
 
         ViewerRenderConfig vc;
-        vc.primitive = !cfg.primitive.empty() ? cfg.primitive : file_primitive;
+        vc.primitive = cfg.primitive;
         vc.packed = cfg.packed;
         vc.sh_degree_warmup_every = 1;
         // Median and distortion buffers are training diagnostics computed from
