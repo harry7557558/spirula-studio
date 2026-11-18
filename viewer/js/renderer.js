@@ -582,7 +582,7 @@ export class Renderer {
     gl.uniform2f(u.uFocal, intr.fx, intr.fy);
     gl.uniform2f(u.uCenter, intr.cx, intr.cy);
     gl.uniform2f(u.uViewport, w, h);
-    gl.uniform1f(u.uNear, 0.01);
+    gl.uniform1f(u.uNear, 0);
     gl.uniform1f(u.uOpacityScale, opts.opacityScale ?? 1.0);
     gl.uniform1i(u.uShDegree, opts.shDegree != null ? Math.min(opts.shDegree, m.shDegree) : m.shDegree);
     gl.uniform1i(u.uShRest, m.shRest);

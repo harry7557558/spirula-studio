@@ -2,6 +2,7 @@
 
 #include "app/gui/SplatViewer.h"
 #include "app/gui/SceneFrame.h"
+#include "core/Env.h"
 
 #include "backend/api/BackendRuntime.h"
 #include "checkpoint/BackgroundExport.h"
@@ -41,7 +42,7 @@ SplatViewer::~SplatViewer() {
 }
 
 void SplatViewer::open(const std::string& path, int scene_slot,
-                       std::mutex* engine_mutex) {
+                       std::mutex* engine_mutex, int hardware) {
     close();
     {
         std::lock_guard<std::mutex> lk(_mu);
@@ -54,6 +55,9 @@ void SplatViewer::open(const std::string& path, int scene_slot,
     _sb_lobes = 0;
     _engine_mutex = engine_mutex;
     _pending_slot = scene_slot;
+    _hardware = hardware < 0 ? spirula::env_on("VIEWER_OPENGL") : hardware != 0;
+    _hardware_fallback = hardware < 0;
+    _hardware_supported = true;
     _state = State::Loading;
     _worker = std::thread([this, path] { run(path); });
 }
@@ -339,33 +343,34 @@ void SplatViewer::run(std::string path) {
         int sh_degree = 0, sb_lobes = 0;
         std::string file_primitive;
         std::vector<float> sampled;
+        const auto shape = _hardware ? spirula::splat_ply_shape(ply) : spirula::SplatCloud{};
         spirula::read_splat_ply_chunks(ply, int64_t(1) << 18,
             [&](const spirula::SplatCloud& c, int64_t first, int64_t total) {
                 std::lock_guard<std::mutex> lk(*_engine_mutex);
                 if (first == 0) {
                     num = total;
-                    sh_degree = c.sh_degree;
-                    sb_lobes = c.sb_lobes;
+                    sh_degree = _hardware ? shape.sh_degree : c.sh_degree;
+                    sb_lobes = _hardware ? shape.sb_lobes : c.sb_lobes;
                     file_primitive = c.primitive;
                     step = std::max<int64_t>(1, total / (1 << 20));
                     sampled.reserve((size_t)(total / step + 1) * 3);
                     // Claimed before the upload, not after: an upload that
                     // throws part way still leaves buffers for close() to free.
-                    _scene_slot = _pending_slot;
-                    engine_scene_begin_3dgs(_pending_slot, total, (int)c.coeffs(),
+                    if (!_hardware) _scene_slot = _pending_slot;
+                    if (!_hardware) engine_scene_begin_3dgs(_pending_slot, total, (int)c.coeffs(),
                                             c.sb_lobes);
                 }
                 for (int64_t i = (step - first % step) % step; i < c.num; i += step)
                     sampled.insert(sampled.end(), c.means.begin() + i * 3,
                                    c.means.begin() + i * 3 + 3);
-                engine_scene_upload_3dgs(_pending_slot, first,
+                if (!_hardware) engine_scene_upload_3dgs(_pending_slot, first,
                                          tv(c.means, {c.num, 3}),
                                          tv(c.quats, {c.num, 4}),
                                          tv(c.scales, {c.num, 3}),
                                          tv(c.opacities, {c.num, 1}),
                                          tv(c.features_dc, {c.num, 3}),
                                          tv(c.features_sh, {c.num, c.coeffs(), 3}));
-            });
+            }, !_hardware);
         if (num <= 0) return fail(msg::viewer_no_splats.get());
 
         // PLY omits the primitive and rasterization settings stored in config.json.
@@ -388,6 +393,13 @@ void SplatViewer::run(std::string path) {
         fs::path ckpt_dir = fs::path(ply).parent_path();
         bool has_bg = ckpt::load_background_sh(ckpt_dir, bg_deg, bg_coeffs,
                                                bg_transfer, bg_is_linear);
+        _hardware_supported = sb_lobes == 0 && !has_bg;
+        if (_hardware && !_hardware_supported) {
+            _hardware = false;
+            _hardware_fallback = false;
+            run(path);
+            return;
+        }
 
         {
             std::lock_guard<std::mutex> lk(_mu);
@@ -436,12 +448,12 @@ void SplatViewer::run(std::string path) {
             auto vec = [](const spirula::Mat3f& m) {
                 return std::vector<float>(m.begin(), m.end());
             };
-            engine_scene_set_color_space(
+            if (!_hardware) engine_scene_set_color_space(
                 _pending_slot, cs_on, (int)color.splat_transfer,
                 color.splat_linear,
                 cs_on ? vec(spirula::gamut_to_rec709(color.splat_gamut))
                       : std::vector<float>{});
-            if (has_bg && !bg_coeffs.empty()) {
+            if (!_hardware && has_bg && !bg_coeffs.empty()) {
                 const int64_t n_bg = (int64_t)bg_coeffs.size();
                 TorchTensorView bg_tv((uint64_t)(uintptr_t)bg_coeffs.data(),
                                       (uint32_t)sizeof(float), {n_bg, 3LL});
@@ -464,7 +476,22 @@ void SplatViewer::run(std::string path) {
             log(format(msg::viewer_loaded, {(long long)num, (long long)sh_degree}));
         _state = State::Ready;
     } catch (const std::exception& e) {
-        fail(e.what());
+        const std::string error = e.what();
+        if (_engine_mutex && _hardware_fallback && !_hardware &&
+            (error.find("GPU allocation failed:") == 0 ||
+             error.find("out of GPU memory:") == 0 ||
+             error.find("out of memory") != std::string::npos ||
+             error.find("OUT_OF_DEVICE_MEMORY") != std::string::npos)) {
+            const int slot = _scene_slot.exchange(-1);
+            if (slot >= 0) {
+                std::lock_guard<std::mutex> lk(*_engine_mutex);
+                engine_scene_free(slot);
+            }
+            _hardware = true;
+            run(path);
+            return;
+        }
+        fail(error);
     }
 }
 
