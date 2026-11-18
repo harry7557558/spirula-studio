@@ -630,30 +630,32 @@ void note_cache_dir_once(const std::string& cached, bool written) {
     std::fflush(written ? stdout : stderr);
 }
 
-// `src` shrunk by `d` in its own format and channels, kept at `cached`, and
-// decoded into `dst` from those bytes. False when `src` would not decode or
-// encode, for the caller to decode it the ordinary way.
+// Keep alpha in the cache so its pixels do not depend on the composite colour.
 bool decode_rgb_via_new_cache(const std::string& src, const std::string& cached, int d,
                               const std::string& rounding, int expected_h, int expected_w,
                               PixelDType dtype, uint8_t* dst, int turns_cw,
-                              const float* over)
+                              const float* over, int cache_w = 0, int cache_h = 0)
 {
-    const dscache::Format fmt = dscache::format_of(src);
-    const bool sixteen = fmt == dscache::Format::Png && stbi_is_16_bit(src.c_str());
+    const dscache::Format source_fmt = dscache::format_of(src);
+    const dscache::Format fmt = cache_w > 0 ? dscache::Format::Png : source_fmt;
+    const bool sixteen = source_fmt == dscache::Format::Png && stbi_is_16_bit(src.c_str());
     int w = 0, h = 0, n = 0;
-    void* px = sixteen ? (void*)stbi_load_16(src.c_str(), &w, &h, &n, 0)
-                       : (void*)stbi_load(src.c_str(), &w, &h, &n, 0);
+    std::unique_ptr<void, decltype(&stbi_image_free)> px(
+        sixteen ? (void*)stbi_load_16(src.c_str(), &w, &h, &n, 0)
+                : (void*)stbi_load(src.c_str(), &w, &h, &n, 0), stbi_image_free);
     if (!px) return false;
-    const int tw = dscache::scaled_side(w, d, rounding), th = dscache::scaled_side(h, d, rounding);
+    const int tw = cache_w > 0 ? cache_w : dscache::scaled_side(w, d, rounding);
+    const int th = cache_h > 0 ? cache_h : dscache::scaled_side(h, d, rounding);
     std::vector<uint8_t> bytes;
     if (sixteen) {
-        const std::vector<uint16_t> shrunk = shrink_native((const uint16_t*)px, h, w, n, th, tw);
+        const std::vector<uint16_t> shrunk = shrink_native((const uint16_t*)px.get(), h, w, n, th, tw);
+        px.reset();
         bytes = dscache::encode(fmt, shrunk.data(), tw, th, n, 16);
     } else {
-        const std::vector<uint8_t> shrunk = shrink_native((const uint8_t*)px, h, w, n, th, tw);
+        const std::vector<uint8_t> shrunk = shrink_native((const uint8_t*)px.get(), h, w, n, th, tw);
+        px.reset();
         bytes = dscache::encode(fmt, shrunk.data(), tw, th, n, 8);
     }
-    stbi_image_free(px);
     if (bytes.empty()) return false;
     note_cache_dir_once(cached, dscache::store(cached, bytes));
     decode_stbi_rgb_into(cached, &bytes, expected_h, expected_w, dtype, dst, turns_cw, over);
@@ -1441,6 +1443,31 @@ void DataManagerImpl::decode_rgb_of(int64_t i, int dst_h, int dst_w, PixelDType 
     const int d = _cfg.downscale_cache_divisor;
     const std::string cached =
         d > 1 && dt != PixelDType::FLOAT32 ? dscache::path_for(src, _cfg.image_dir, d) : "";
+    if (_cfg.cache_progressive_images && dt != PixelDType::FLOAT32 &&
+        dst_w < _widths[i] && dst_h < _heights[i]) {
+        const std::string& source = !cached.empty() && dscache::usable(cached, src, d) ? cached : src;
+        const bool turned = (turns_of(i) & 1) != 0;
+        const int w = turned ? dst_h : dst_w, h = turned ? dst_w : dst_h;
+        std::filesystem::path root(_cfg.image_dir);
+        if (root.filename().empty()) root = root.parent_path();
+        if (!root.empty() && source == cached) root += "_" + std::to_string(d);
+        const std::string level = dscache::path_for_size(source, w, h, root.string());
+        if (!level.empty()) {
+            try {
+                if (dscache::usable_size(level, w, h)) {
+                    try {
+                        decode_rgb_into(level, dst_h, dst_w, dt, dst, turns_of(i), decode_threads,
+                                        composite_of(i));
+                        return;
+                    } catch (const std::exception&) {}
+                }
+                std::error_code ec;
+                std::filesystem::remove(level, ec);
+                if (decode_rgb_via_new_cache(source, level, 1, "floor", dst_h, dst_w, dt,
+                                            dst, turns_of(i), composite_of(i), w, h)) return;
+            } catch (const std::exception&) {} // Cache failure must not prevent training.
+        }
+    }
     if (!cached.empty()) {
         std::error_code ec;
         if (dscache::usable(cached, src, d)) {

@@ -2,6 +2,7 @@
 
 #include "core/PngWrite.h"
 #include "data/DatasetParser.h"
+#include "data/ImageDiscovery.h"
 
 #include "external/stb_image.h"
 #include "external/stb_image_write.h"
@@ -83,6 +84,36 @@ int scaled_side(int full, int d, const std::string& mode) {
     const double r = mode == "ceil" ? std::ceil(v) : mode == "round" ? std::round(v)
                                                                      : std::floor(v);
     return std::max(1, (int)r);
+}
+
+std::string path_for_size(const std::string& image, int width, int height,
+                          const std::string& image_dir) {
+    if (format_of(image) == Format::None) return "";
+    std::error_code ec;
+    const auto stamp = fs::last_write_time(image, ec);
+    if (ec) return "";
+    const auto size = fs::file_size(image, ec);
+    if (ec) return "";
+    const fs::path src = fs::absolute(image, ec).lexically_normal();
+    if (ec) return "";
+    fs::path root = image_dir.empty() ? src.parent_path() : fs::absolute(image_dir, ec).lexically_normal();
+    if (ec) return "";
+    if (root.filename().empty()) root = root.parent_path();
+    std::string rel = dsparse::relative_under(src.string(), root.string());
+    if (rel.empty()) { root = src.parent_path(); rel = src.filename().string(); }
+    const std::string shape = std::to_string(width) + "x" + std::to_string(height);
+    const std::string key = src.filename().string() + "." +
+        std::to_string(stamp.time_since_epoch().count()) + "-" + std::to_string(size) + ".png";
+    // Keeping PNGs outside the image tree prevents SfM from discovering them as photos.
+    return (root.parent_path() / image_discovery::kProgressiveCache / root.filename() / shape /
+            fs::path(rel).parent_path() / key).string();
+}
+
+bool usable_size(const std::string& cached, int width, int height) {
+    int w, h, n;
+    static const uint8_t iend[4] = {'I', 'E', 'N', 'D'};
+    return stbi_info(cached.c_str(), &w, &h, &n) && w == width && h == height &&
+           format_of(cached) == Format::Png && tail_has(cached, iend, 4);
 }
 
 bool usable(const std::string& cached, const std::string& image, int d) {

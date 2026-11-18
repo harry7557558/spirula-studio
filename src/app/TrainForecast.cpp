@@ -88,12 +88,14 @@ void max_with(double mu, double sigma, double c, double& mean, double& sd) {
     sd = std::sqrt(std::max(0.0, m2 - mean * mean));
 }
 
-// Mean and its variance, over the samples within 3x the median: a pipeline
-// build when the SH degree steps up is a one-off, not what later steps cost.
-void robust_mean(const std::vector<double>& v, double& mean, double& var) {
+// Rare pipeline builds are outliers; repeated decode stalls are real run time.
+void robust_mean(const std::vector<double>& v, double& mean, double& var, bool keep_stalls = true) {
     std::vector<double> s = v;
     std::nth_element(s.begin(), s.begin() + s.size() / 2, s.end());
-    const double cut = 3.0 * s[s.size() / 2];
+    double cut = 3.0 * s[s.size() / 2];
+    const size_t slow = (size_t)std::count_if(v.begin(), v.end(), [&](double x) { return x > cut; });
+    if (keep_stalls && slow > std::max<size_t>(1, v.size() / 20))
+        cut = *std::max_element(v.begin(), v.end());
     double sum = 0.0, sq = 0.0;
     int k = 0;
     for (double x : v)
@@ -132,6 +134,8 @@ constexpr double kGammas[3] = {0.75, 0.875, 1.0};
 constexpr double kMemPowers[3] = {0.6, 0.8, 1.0};
 constexpr double kMemPrior[3] = {0.2, 0.3, 0.5};
 
+constexpr double kHostFloorSigma = 0.2;
+
 // Picked by replaying bonsai at 1/4 and 1/2 and garden at 1/4 resolution;
 // docs/notes/train-forecast.md has the errors each one bought.
 constexpr double kTimeFloor = 0.1;     // wall-time noise floor, per window
@@ -143,6 +147,7 @@ constexpr double kForget = 0.9;        // per window, of each exponent's score
 // count has moved; docs/notes/train-forecast.md has the errors it leaves.
 constexpr double kColumnExp = 0.5;
 constexpr double kColumnExpSigma = 0.2;
+constexpr double kColumnPixelExpSigma = 0.2;
 constexpr double kColumnNoise = 0.05;  // of a window's mean column
 
 // Growth starts all per splat (g0 = 0): fitting a fixed chunk under-read
@@ -195,7 +200,8 @@ void TrainForecast::reset(const ForecastSetup& s) {
         _mm[i].p = kMemPowers[i];
         _mm[i].score = std::log(kMemPrior[i]);
     }
-    _fallback_wall = 0.0;
+    _fallback_wall = _fallback_load = 0.0;
+    _host_floor = 0.0;
     _fallback_n = 0;
     _save_per_msplat = 0.0;
     _saves = 0;
@@ -220,7 +226,7 @@ void TrainForecast::reset(const ForecastSetup& s) {
     _others_mean = _others_sq = 0.0;
     _others_n = 0;
     _image_bytes = 0.0;
-    _image_ratio = 1.0;
+    _image_ratio = 0.0;
     _vram = VramForecast{};
     _steps.clear();
     _timed.clear();
@@ -245,6 +251,10 @@ double TrainForecast::pixel_ratio(int step) const {
     return 1.0 / ((double)divisor * (double)divisor);
 }
 
+double TrainForecast::sample_ratio(int step, int divisor) const {
+    return divisor > 0 ? 1.0 / ((double)divisor * divisor) : pixel_ratio(step);
+}
+
 template <class F>
 void TrainForecast::pieces(int from, int to, F&& f) const {
     const int every = _setup.sh_degree_every;
@@ -263,21 +273,24 @@ void TrainForecast::pieces(int from, int to, F&& f) const {
 }
 
 void TrainForecast::add_step(int step, double wall_s, int64_t splats,
-                             double splat_gpu_s) {
+                             double splat_gpu_s, int resolution_divisor) {
     std::lock_guard<std::mutex> lk(_mu);
     // The first step builds the pipelines: seconds, not milliseconds.
     if (_warmup_left < kWarmupSteps) {
         _fallback_wall += wall_s;
+        const double r = sample_ratio(step, resolution_divisor);
+        _fallback_load += 0.5 * (fixed_load(r) + splat_load(r));
         ++_fallback_n;
     }
     if (_warmup_left > 0) { --_warmup_left; return; }
+    // The previous step's breakdown arrives after add_step.
+    if ((int)_tw.wall.size() >= _window_len) close_time_window();
     const double reg = reg_seconds(step, (double)splats / 1e6);
     _tw.wall.push_back(std::max(0.0, wall_s - reg));
     _tw.gpu.push_back(splat_gpu_s < 0.0 ? splat_gpu_s : std::max(0.0, splat_gpu_s - reg));
     _tw.msplats.push_back((double)splats / 1e6);
-    _tw.pixels.push_back(pixel_ratio(step));
+    _tw.pixels.push_back(sample_ratio(step, resolution_divisor));
     _tw.coeffs.push_back(sh_coeffs(step));
-    if ((int)_tw.wall.size() >= _window_len) close_time_window();
 }
 
 void TrainForecast::close_time_window() {
@@ -285,6 +298,16 @@ void TrainForecast::close_time_window() {
     std::swap(w, _tw);
     double y = 0.0, var_y = 0.0, g = 0.0, var_g = 0.0;
     robust_mean(w.wall, y, var_y);
+    double fast = 0.0, fast_var = 0.0;
+    robust_mean(w.wall, fast, fast_var, false);
+    if (fast < 0.9 * y) {
+        // Prefetch throughput limits the whole step; GPU growth can hide that wait.
+        _host_floor = _host_floor > 0.0 ? 0.7 * _host_floor + 0.3 * y : y;
+        y = fast;
+        var_y = fast_var;
+    } else {
+        _host_floor *= 0.9;
+    }
     // Laptop GPUs change clocks for whole windows at a time: bonsai at 1/2
     // resolution ran 40-60% slow for 100 steps at a stretch, four times.
     var_y += (kTimeFloor * y) * (kTimeFloor * y);
@@ -296,37 +319,50 @@ void TrainForecast::close_time_window() {
         robust_mean(timed, g, var_g);
         var_g += (0.05 * g) * (0.05 * g);
     }
+    StepCells cells;
+    const bool homogeneous = *std::min_element(w.pixels.begin(), w.pixels.end()) ==
+                             *std::max_element(w.pixels.begin(), w.pixels.end());
+    const bool have_cells = homogeneous && window_gpu(cells, w.pixels.front());
+    if (_host_floor > 0.0 && have_cells) {
+        const double reg = _reg_n > 0 ? cells.at(StepPart::Regularizer, StepScale::Splats) : 0.0;
+        const double rest = y - cells.scale(StepScale::Splats) + reg - cells.scale(StepScale::SplatsPixels);
+        if (rest > 0.0) {
+            const double share = std::clamp(cells.scale(StepScale::Pixels) / rest, 0.0, 1.0);
+            double r = 0.0;
+            for (double px : w.pixels) r += px / w.pixels.size();
+            _px_share = share / (r + share - share * r);
+        }
+    }
     for (TimeModel& t : _tm)
         update_time_model(t, w, y, var_y, g, var_g, has_gpu, !_time_init);
     _time_init = true;
-    StepCells cells;
-    if (window_gpu(cells)) update_column_model(w, y, var_y, cells);
+    if (have_cells) update_column_model(w, y, var_y, cells);
 }
 
 void TrainForecast::update_column_model(const Window& w, double y, double var_y,
                                         const StepCells& cells) {
     ColumnModel& c = _cm;
     const double len = (double)w.msplats.size();
-    double m = 0.0, mk = 0.0, ra = 0.0, rq = 0.0, k = 0.0;
+    double m = 0.0, mk = 0.0, ra = 0.0, lr = 0.0, k = 0.0;
     for (size_t i = 0; i < w.msplats.size(); ++i) {
         m += w.msplats[i];
         mk += w.msplats[i] * w.coeffs[i];
         k += w.coeffs[i];
         ra += fixed_load(w.pixels[i]);
-        rq += std::pow(w.pixels[i], kSplatPixelTimeExp);
+        lr += std::log(w.pixels[i]);
     }
     m = std::max(1e-9, m / len);
     mk /= len;
     k /= len;
     ra = std::max(1e-9, ra / len);
-    rq = std::max(1e-9, rq / len);
+    lr /= len;
     // The regularizer left the wall time in add_step; it leaves its column here.
     const double splats =
         std::max(0.0, cells.scale(StepScale::Splats) -
                           (_reg_n > 0 ? cells.at(StepPart::Regularizer, StepScale::Splats) : 0.0));
     const double sp = cells.scale(StepScale::SplatsPixels);
     if (!(splats > 0.0) || !(sp > 0.0)) return;
-    const double lm = std::log(m), lsp = std::log(sp / rq);
+    const double lm = std::log(m), lsp = std::log(sp);
     const double rest = std::max(0.0, y - splats - sp) / ra;
     const double noise = kColumnNoise * kColumnNoise;
     if (!c.init) {
@@ -336,14 +372,16 @@ void TrainForecast::update_column_model(const Window& w, double y, double var_y,
         c.B[0][0] = (0.1 * c.b[0]) * (0.1 * c.b[0]);
         c.B[1][1] = c.b[1] * c.b[1];
         c.B[0][1] = c.B[1][0] = 0.0;
-        // s0 is the column at one million splats: the further this window is
-        // from there, the more of the exponent's doubt it carries.
         const double q_var = kColumnExpSigma * kColumnExpSigma;
+        const double r_var = kColumnPixelExpSigma * kColumnPixelExpSigma;
         c.s[1] = kColumnExp;
-        c.s[0] = lsp - c.s[1] * lm;
+        c.s[2] = kSplatPixelTimeExp;
+        c.s[0] = lsp - c.s[1] * lm - c.s[2] * lr;
         c.S[1][1] = q_var;
+        c.S[2][2] = r_var;
         c.S[0][1] = c.S[1][0] = -lm * q_var;
-        c.S[0][0] = noise + lm * lm * q_var;
+        c.S[0][2] = c.S[2][0] = -lr * r_var;
+        c.S[0][0] = noise + lm * lm * q_var + lr * lr * r_var;
         c.a = rest;
         c.a_var = (0.2 * y / ra) * (0.2 * y / ra);
         c.init = true;
@@ -354,7 +392,7 @@ void TrainForecast::update_column_model(const Window& w, double y, double var_y,
     for (int i = 0; i < 2; ++i) c.B[i][i] += (kTimeDrift * c.b[i]) * (kTimeDrift * c.b[i]) + 1e-12;
     c.S[0][0] += kTimeDrift * kTimeDrift;
     kf_update(c.b, c.B, {m, mk}, splats, noise * splats * splats + 1e-12, 3.0);
-    kf_update(c.s, c.S, {1.0, lm}, lsp, noise, 3.0);
+    kf_update(c.s, c.S, {1.0, lm, lr}, lsp, noise, 3.0);
     double av[1] = {c.a}, aP[1][1] = {{c.a_var}};
     kf_update(av, aP, {1.0}, rest, var_y / (ra * ra), kGate);
     c.a = std::max(0.0, av[0]);
@@ -449,14 +487,16 @@ TrainForecast::Remaining TrainForecast::remaining(int next_step, int64_t live) c
     const double m0 = std::max(1e-9, (double)live / 1e6);
     const double r0 = pixel_ratio(next_step);
     const int k0 = sh_coeffs(next_step);
-    double steps = 0.0, steps_a = 0.0, steps_r = 0.0, save_msplat = 0.0;
+    double steps = 0.0, steps_a = 0.0, steps_b = 0.0, steps_r = 0.0, save_msplat = 0.0;
     // The breakdown's columns: splats alone (linear, SH-weighted below), and
     // splats x pixels, at the exponents the paired runs measured.
     double lin = 0.0, lin_k = 0.0, sp = 0.0, reg_msplats = 0.0;
-    double load[3] = {}, load_k[3] = {};
+    double load[3] = {}, load_k[3] = {}, host_extra[3] = {};
     // The column model's own sums: the splat x pixel term and its slope in s1.
     const double q = _cm.init ? _cm.s[1] : kSplatPixelSplatExp;
-    double col_m = 0.0, col_mk = 0.0, col_sp = 0.0, col_sp_ln = 0.0;
+    const double qr = _cm.init ? _cm.s[2] : kSplatPixelTimeExp;
+    double col_m = 0.0, col_mk = 0.0, col_sp = 0.0, col_sp_ln = 0.0, col_sp_lr = 0.0;
+    double col_host_extra = 0.0;
     int64_t last = live;
     sch.segments(next_step, live, [&](int f, int e, int64_t n) {
         const double m = (double)n / 1e6;
@@ -464,22 +504,29 @@ TrainForecast::Remaining TrainForecast::remaining(int next_step, int64_t live) c
             const double len = b - a;
             steps += len;
             steps_a += len * fixed_load(r);
+            steps_b += len * splat_load(r);
             steps_r += len * r / r0;
             if (_setup.reg_start_step >= 0)
                 reg_msplats += std::max(0, b - std::max(a, _setup.reg_start_step)) * m;
             lin += len * m / m0;
             lin_k += len * m / m0 * k;
-            sp += len * std::pow(m / m0, q) * std::pow(r / r0, kSplatPixelTimeExp);
+            sp += len * std::pow(m / m0, q) * std::pow(r / r0, qr);
             const double sp_s = len * std::exp(_cm.s[0] + _cm.s[1] * std::log(m)) *
-                                std::pow(r, kSplatPixelTimeExp);
+                                std::pow(r, qr);
             col_m += len * m;
             col_mk += len * m * k;
             col_sp += sp_s;
             col_sp_ln += sp_s * std::log(m);
+            col_sp_lr += sp_s * std::log(r);
+            const double col_cost = _cm.a * fixed_load(r) + (_cm.b[0] + _cm.b[1] * k) * m;
+            col_host_extra += std::max(0.0, len * (_host_floor - col_cost) - sp_s);
             for (int i = 0; i < 3; ++i) {
                 const double l = std::pow(m, _tm[i].gamma) * splat_load(r);
                 load[i] += len * l;
                 load_k[i] += len * l * k;
+                const double cost = _tm[i].x[0] * fixed_load(r) +
+                                    (_tm[i].x[1] + _tm[i].x[2] * k) * l;
+                host_extra[i] += len * std::max(0.0, _host_floor - cost);
             }
         });
         if (sps > 0) {
@@ -496,9 +543,10 @@ TrainForecast::Remaining TrainForecast::remaining(int next_step, int64_t live) c
 
     if (_cm.init) {
         const ColumnModel& c = _cm;
-        out.seconds = c.a * steps_a + c.b[0] * col_m + c.b[1] * col_mk + col_sp;
+        out.seconds = c.a * steps_a + c.b[0] * col_m + c.b[1] * col_mk + col_sp + col_host_extra;
         out.sigma = std::sqrt(c.a_var * steps_a * steps_a + quad(c.B, {col_m, col_mk}) +
-                              quad(c.S, {col_sp, col_sp_ln}));
+                              quad(c.S, {col_sp, col_sp_ln, col_sp_lr}) +
+                              std::pow(kHostFloorSigma * col_host_extra, 2));
         const double now = c.b[0] + c.b[1] * k0;
         if (now > 0.0) out.splats = (c.b[0] * lin + c.b[1] * lin_k) / now;
     } else if (_time_init) {
@@ -508,8 +556,9 @@ TrainForecast::Remaining TrainForecast::remaining(int next_step, int64_t live) c
         for (int i = 0; i < 3; ++i) {
             const TimeModel& t = _tm[i];
             const double wi = std::exp(t.score - best);
-            const double sec = t.x[0] * steps_a + t.x[1] * load[i] + t.x[2] * load_k[i];
-            const double var = quad(t.P, {steps_a, load[i], load_k[i], 0.0});
+            const double sec = t.x[0] * steps_a + t.x[1] * load[i] + t.x[2] * load_k[i] + host_extra[i];
+            const double var = quad(t.P, {steps_a, load[i], load_k[i], 0.0}) +
+                               std::pow(kHostFloorSigma * host_extra[i], 2);
             wsum += wi;
             mean += wi * sec;
             second += wi * (var + sec * sec);
@@ -522,7 +571,7 @@ TrainForecast::Remaining TrainForecast::remaining(int next_step, int64_t live) c
         const double now = b0 + b1 * k0;
         if (now > 0.0) out.splats = (b0 * lin + b1 * lin_k) / now;
     } else if (_fallback_n > 0) {
-        out.seconds = _fallback_wall / _fallback_n * steps;
+        out.seconds = _fallback_wall / std::max(_fallback_load, 1e-9) * 0.5 * (steps_a + steps_b);
     } else {
         return out;
     }
@@ -555,16 +604,16 @@ EtaForecast TrainForecast::eta(int next_step, int64_t live) const {
 
 void TrainForecast::add_breakdown(const StepSample& s) {
     std::lock_guard<std::mutex> lk(_mu);
-    _steps.push_back({s.step, s.wall_s, s.save_s, s.data_wait_s, s.densify});
+    const double pixels = sample_ratio(s.step, s.resolution_divisor);
+    _steps.push_back({s.step, s.wall_s, s.save_s, s.data_wait_s, pixels, s.densify});
     while ((int)_steps.size() > _window_len) _steps.pop_front();
-    if (s.timed) _timed.push_back({s.step, s.densify, s.gpu});
-    // A record leaves with its window, except each stratum's latest: a densify
-    // step is sampled once per refine_every steps, and may be the window's only one.
+    if (s.timed) _timed.push_back({s.step, s.densify, s.gpu, pixels});
+    // Sparse densify timings retain their latest sample at each resolution.
     const int oldest = _steps.front().step;
     for (auto it = _timed.begin(); it != _timed.end();) {
         bool newer_same = false;
         for (auto jt = std::next(it); jt != _timed.end() && !newer_same; ++jt)
-            newer_same = jt->densify == it->densify;
+            newer_same = jt->densify == it->densify && jt->pixels == it->pixels;
         if (it->step < oldest && newer_same) it = _timed.erase(it);
         else ++it;
     }
@@ -574,7 +623,7 @@ void TrainForecast::add_breakdown(const StepSample& s) {
         // Shares measured at r, as the shares at full resolution the loads
         // take: s = f r / (f r + 1 - f) solved for f.
         const auto at_full = [](double sh, double r) { return sh / (r + sh - sh * r); };
-        const double r = pixel_ratio(s.step);
+        const double r = sample_ratio(s.step, s.resolution_divisor);
         const StepCells& w = now.cells;
         const double px = w.scale(StepScale::Pixels);
         const double fixed = px + w.scale(StepScale::Images) + w.scale(StepScale::Fixed) +
@@ -583,13 +632,13 @@ void TrainForecast::add_breakdown(const StepSample& s) {
         const double reg =
             _reg_n > 0 ? w.at(StepPart::Regularizer, StepScale::Splats) : 0.0;
         const double splat = sp + w.scale(StepScale::Splats) - reg;
-        if (fixed > 0.0) _px_share = at_full(px / fixed, r);
+        if (_host_floor <= 0.0 && fixed > 0.0) _px_share = at_full(px / fixed, r);
         if (splat > 0.0) _sp_share = at_full(sp / splat, std::pow(r, kSplatPixelTimeExp));
     }
 
     _run_steps += 1.0;
     _run_wall += s.wall_s;
-    _run_cells.at(StepPart::Loading, StepScale::Pixels) += s.data_wait_s;
+    _run_cells.at(StepPart::Loading, StepScale::Images) += s.data_wait_s;
     _run_cells.at(StepPart::Saving, StepScale::Splats) += s.save_s;
     StepCells gpu;
     bool have = s.timed;
@@ -598,12 +647,14 @@ void TrainForecast::add_breakdown(const StepSample& s) {
     } else {
         int n = 0;
         for (const TimedRec& t : _timed)
-            if (t.densify == s.densify && t.step >= oldest) { gpu.add(t.gpu); ++n; }
+            if (t.densify == s.densify && t.step >= oldest && t.pixels == pixels) {
+                gpu.add(t.gpu); ++n;
+            }
         if (n > 0) {
             for (auto& row : gpu.s) for (double& v : row) v /= n;
             have = true;
         } else {
-            have = window_gpu(gpu);
+            have = window_gpu(gpu, pixels);
         }
     }
     if (have) {
@@ -613,25 +664,32 @@ void TrainForecast::add_breakdown(const StepSample& s) {
     }
 }
 
-bool TrainForecast::window_gpu(StepCells& out) const {
+bool TrainForecast::window_gpu(StepCells& out, double pixels) const {
     if (_steps.empty() || _timed.empty()) return false;
+    if (pixels <= 0.0) pixels = _steps.back().pixels;
     const int oldest = _steps.front().step;
     StepCells mean[2];
     int timed[2] = {0, 0};
     for (const TimedRec& t : _timed)
-        if (t.step >= oldest) { mean[t.densify].add(t.gpu); ++timed[t.densify]; }
+        if (t.step >= oldest && t.pixels == pixels) {
+            mean[t.densify].add(t.gpu); ++timed[t.densify];
+        }
     // A stratum with no sample in the window takes its latest one from before.
     for (int k = 0; k < 2; ++k)
         if (timed[k] == 0)
             for (auto it = _timed.rbegin(); it != _timed.rend(); ++it)
-                if ((int)it->densify == k) { mean[k].add(it->gpu); timed[k] = 1; break; }
+                if ((int)it->densify == k && it->pixels == pixels) {
+                    mean[k].add(it->gpu); timed[k] = 1; break;
+                }
     double steps[2] = {0.0, 0.0};
-    for (const StepRec& r : _steps) steps[r.densify] += 1.0;
+    for (const StepRec& r : _steps)
+        if (r.pixels == pixels) steps[r.densify] += 1.0;
     if (timed[0] == 0) { mean[0] = mean[1]; timed[0] = timed[1]; }
     if (timed[1] == 0) { mean[1] = mean[0]; timed[1] = timed[0]; }
     if (timed[0] == 0) return false;
     out = StepCells{};
     const double all = steps[0] + steps[1];
+    if (all == 0.0) return false;
     for (int k = 0; k < 2; ++k) out.add(mean[k], steps[k] / all / timed[k]);
     for (double& v : out.s[(int)StepPart::Saving]) v = 0.0;
     return true;
@@ -642,7 +700,7 @@ namespace {
 // Host spans may overlap the GPU still finishing the step before: what the
 // wall clock cannot hold comes off the image wait first.
 void settle_host(TimeBreakdown& b, double wall) {
-    double& loading = b.cells.at(StepPart::Loading, StepScale::Pixels);
+    double& loading = b.cells.at(StepPart::Loading, StepScale::Images);
     const double over = b.cells.total() - wall;
     if (over > 0.0) loading = std::max(0.0, loading - over);
     b.unaccounted = std::max(0.0, wall - b.cells.total());
@@ -660,18 +718,19 @@ TimeBreakdown TrainForecast::time_measured() const {
 bool TrainForecast::measured(TimeBreakdown& b) const {
     b = TimeBreakdown{};
     if (!window_gpu(b.cells)) return false;
-    double wall = 0.0, save = 0.0, data = 0.0;
+    double wall = 0.0, save = 0.0, data = 0.0, n = 0.0;
     for (const StepRec& r : _steps) {
+        if (r.pixels != _steps.back().pixels) continue;
         wall += r.wall;
         save += r.save;
         data += r.data;
+        n += 1.0;
     }
-    const double n = (double)_steps.size();
-    b.cells.at(StepPart::Loading, StepScale::Pixels) += data / n;
+    b.cells.at(StepPart::Loading, StepScale::Images) += data / n;
     b.cells.at(StepPart::Saving, StepScale::Splats) += save / n;
     settle_host(b, wall / n);
     b.steps = 1.0;
-    b.window = (int)_steps.size();
+    b.window = (int)n;
     b.known = true;
     return true;
 }
@@ -763,6 +822,12 @@ void TrainForecast::add_memory(const MemorySample& m) {
         _others_sq += a * (o * o - _others_sq);
         ++_others_n;
     }
+    const double ratio = sample_ratio(m.step, m.resolution_divisor);
+    if (ratio > _image_ratio) {
+        _mw = MemWindow{};
+        _held_steps = 0;
+        _image_ratio = ratio;
+    }
     // A step's demand: its splat-tile pairs where the engine counts them, else
     // the category's bytes in use.
     const double demand = m.isect_step > 0 ? (double)m.isect_step : (double)m.pool_used[sxi];
@@ -826,7 +891,7 @@ void TrainForecast::close_mem_window(const MemorySample& m) {
         double pred = 0.0, wsum = 0.0;
         for (const MemModel& mm : _mm) {
             const double wi = std::exp(mm.score - best);
-            pred += wi * (mm.g[0] + mm.g[1] * memory_x(mm, n, m.step));
+            pred += wi * (mm.g[0] + mm.g[1] * std::pow(n, mm.p) * std::pow(_image_ratio, kSplatXImgVramExp));
             wsum += wi;
         }
         pred /= wsum;
@@ -838,7 +903,7 @@ void TrainForecast::close_mem_window(const MemorySample& m) {
     }
     const double R = (kMemFloor * _grow_hw) * (kMemFloor * _grow_hw);
     for (MemModel& mm : _mm) {
-        const double x = memory_x(mm, n, m.step);
+        const double x = std::pow(n, mm.p) * std::pow(_image_ratio, kSplatXImgVramExp);
         if (!_mem_init) {
             mm.g[0] = 0.0;
             mm.g[1] = _grow_hw / x;
@@ -884,7 +949,6 @@ void TrainForecast::refresh_vram(const MemorySample& m) {
             0.01 * v.capacity);
     }
     _image_bytes = v.category[(int)VramCategory::Image];
-    _image_ratio = pixel_ratio(m.step);
 
     if (_history_skip++ % _history_stride == 0)
         _history.push_back({(double)m.step, ours, v.others});
@@ -940,7 +1004,7 @@ void TrainForecast::refresh_vram(const MemorySample& m) {
         if (!_mem_init) {
             MemModel& f = fits[i].m;
             f.g[0] = 0.0;
-            f.g[1] = _grow_hw / memory_x(f, n_now, m.step);
+            f.g[1] = _grow_hw / (std::pow(n_now, f.p) * std::pow(_image_ratio, kSplatXImgVramExp));
             f.G[0][0] = f.G[0][1] = f.G[1][0] = 0.0;
             f.G[1][1] = (kPerSplatSigma * f.g[1]) * (kPerSplatSigma * f.g[1]);
         }
@@ -1036,7 +1100,7 @@ void TrainForecast::refresh_vram(const MemorySample& m) {
     };
     const double swing = std::sqrt(_swing_sq);
     band(next, hw_mean, 0.0, hw_count, hw_lift, hw_lift_sd);
-    sch.segments(next, m.splats_next, [&](int f, int e, int64_t count) {
+    auto project_segment = [&](int f, int e, int64_t count) {
         const double n = (double)count / 1e6;
         // The exponents' mixture: its mean and its spread, the fits' own
         // uncertainty plus how far they disagree.
@@ -1076,7 +1140,7 @@ void TrainForecast::refresh_vram(const MemorySample& m) {
         // running max over segments would count it once per segment.
         double mean, sd;
         max_with(g_mean, g_sd, _grow_hw, mean, sd);
-        if (f > next) band(f, hw_mean, hw_sd, hw_count, hw_lift, hw_lift_sd);
+        if (f > next) band(f - 1, hw_mean, hw_sd, hw_count, hw_lift, hw_lift_sd);
         if (mean >= hw_mean) {
             hw_mean = mean;
             hw_sd = sd;
@@ -1087,7 +1151,17 @@ void TrainForecast::refresh_vram(const MemorySample& m) {
             hw_lift_sd = std::hypot((_demand_init ? 0.5 : 1.0) * corr, swing * std::min(1.0, more),
                                     drift / std::max(per_splat, 1.0));
         }
-        band(e - 1, hw_mean, hw_sd, hw_count, hw_lift, hw_lift_sd);
+        band(f, hw_mean, hw_sd, hw_count, hw_lift, hw_lift_sd);
+        if (e - 1 > f) band(e - 1, hw_mean, hw_sd, hw_count, hw_lift, hw_lift_sd);
+    };
+    sch.segments(next, m.splats_next, [&](int begin, int end, int64_t count) {
+        int from = begin;
+        for (const auto& stage : _setup.resolution_stages) {
+            if (stage.first <= from || stage.first >= end) continue;
+            project_segment(from, stage.first, count);
+            from = stage.first;
+        }
+        project_segment(from, end, count);
     });
 
     v.projected = true;

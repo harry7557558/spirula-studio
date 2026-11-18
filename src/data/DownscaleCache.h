@@ -24,6 +24,11 @@ std::string path_for(const std::string& image, const std::string& image_dir, int
 // `full` divided by `d` under `mode` (floor | ceil | round), never below 1.
 int scaled_side(int full, int d, const std::string& mode);
 
+// Lossless progressive levels, keyed by native size and source revision.
+std::string path_for_size(const std::string& image, int width, int height,
+                          const std::string& image_dir = "");
+bool usable_size(const std::string& cached, int width, int height);
+
 // True when `cached` is the size `image` divided by `d` gives under any of the
 // rounding modes, and ends the way a complete file of its format does.
 bool usable(const std::string& cached, const std::string& image, int d);

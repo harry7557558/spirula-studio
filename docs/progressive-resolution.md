@@ -113,9 +113,9 @@ differ only in this setting, compared on their held-out views.
 maximum the GPU cannot hold fails within the first few thousand steps. With it,
 the largest growth comes after the switch to full resolution, which is also
 when each step's image buffers are largest. A maximum that does not fit then
-fails late in the run, soon after the switch. The GPU memory forecast cannot
-warn about this in advance (see Known limits). If you are unsure a maximum
-fits, train it briefly without progressive resolution first, or lower it.
+fails late in the run, soon after the switch. The GPU memory forecast projects
+the later image buffers and splat ceilings before the switch; its uncertainty
+is largest before those resolutions and counts have been measured.
 
 ## What changes, and what does not
 
@@ -130,21 +130,35 @@ fits, train it briefly without progressive resolution first, or lower it.
 - With `cache_images cpu` (images held in RAM), the smaller copies are
   prepared while images load, which costs about a third more RAM at a start
   divisor of 4. Each copy is released once its stage has passed.
-- With `cache_images disk` (the default), every step decodes its full-size
-  image and then shrinks it. Low-resolution steps are cheap on the GPU, so
-  during those stages the CPU decode becomes the bottleneck: expect the CPU
-  near 100% while the GPU waits.
+- With `cache_images disk` (the default) and `cache_downscaled_images` enabled,
+  progressive levels are cached as lossless PNG files in
+  `.spirula-progressive/<image-folder>/<width>x<height>/` beside the image
+  folder. Source-image discovery ignores this owned subtree, including when
+  SfM receives the dataset root or an external image folder. The first
+  use decodes and shrinks the source; later passes decode the smaller level.
+  An existing fixed-divisor cache is used as the source when available.
+  Cache keys include the selected input's size and modification time, and
+  retain native bit depth and alpha. Damaged progressive levels are rebuilt.
+  Existing fixed-divisor images retain their established dimensions-only
+  reuse policy. Failed writes fall back to ordinary decoding. Disable
+  `cache_downscaled_images` to avoid these writes. EXR and TIFF are not cached.
 - Densification measures splat size as a fraction of the frame, so its limits
   mean the same at every resolution. How many splats it may add follows the
   splat budget above.
 - Resuming a stopped run continues the schedule from the checkpoint's step.
 
-**Known limits.** Step-time estimates early in a run reflect the cheaper
-low-resolution steps, so the remaining time reads short until full resolution
-is reached. The GPU memory projection, likewise, is measured on the smaller
-images: it does not foresee the larger image buffers of later stages, so it
-can show no risk for a run that will run out of memory at full resolution. It
-firms up only after the last switch.
+**Forecasting.** ETA integrates the planned resolution stages and splat
+ceilings, including its provisional estimate before the first fitted window.
+Memory projects per-image buffers and per-pixel arena slices at the later
+sizes, and the graph includes each resolution boundary. Measurements use the
+batch's actual divisor because disk prefetch can deliver batches out of order
+near a switch. Retained allocations are associated with the finest size seen,
+so a late coarse batch cannot rescale them a second time.
+
+The cost of an unseen resolution is still an extrapolation. Loading stalls,
+changes in visible splats, and mixed camera sizes can differ from the fitted
+pixel scaling law. See `docs/notes/train-forecast.md` for the model and its
+measured errors. A projected low risk is not a guarantee that a run fits.
 
 ## Settings reference
 
@@ -178,5 +192,44 @@ fitted images as their base; their pixel ratios describe progressive stages.
 The integer-divisor disk cache stores the divisor-only images, independent
 of the cap. Capped and uncapped runs write identical cache files and reuse
 the same cache. The cap is applied when loading those files into memory;
-progressive stages can then reduce them further. A cap without an integer
-divisor of at least 2 does not create a disk cache.
+progressive stages can then reduce them further. Progressive cache levels use
+the exact requested dimensions, independently of the divisor's rounding mode
+and the cap. A cap alone does not create a fixed-divisor disk cache.
+
+## Disk cache measurement
+
+A controlled bicycle comparison used Vulkan on an RTX 5070, 6,000 steps,
+a 3M SH3 cap, `train_resolution_divisor=2`, `max_resolution=0`,
+`sampling_seed=42`, and manual progressive stages `0:4,1000:2,2500:1`
+(aligned to steps 1,014 and 2,535). Every run enabled
+`cache_downscaled_images` and reused the same existing `images_2` inputs.
+The original binary had only the fixed-divisor cache; the updated binary
+also cached the progressive PNG levels.
+
+“Warm” and “cold” here describe whether those progressive PNGs existed at
+startup. The operating system's page cache was not flushed. All three runs
+used the same four CPU cores and ran sequentially with no other GPU job.
+Stage times below sum the recorded step wall times at the scheduled
+boundaries; a few prefetched batches can cross those boundaries.
+
+| Binary / progressive levels | Quarter-size stage | Half-size stage | Full-size stage | Training total |
+|---|---:|---:|---:|---:|
+| Original / unavailable | 13.34 s | 26.03 s | 102.55 s | 142.22 s |
+| Updated / warm | 4.06 s | 12.39 s | 102.05 s | 118.76 s |
+| Updated / cold | 7.20 s | 20.93 s | 102.10 s | 130.49 s |
+
+The warm-cache run was 16.5% faster overall; creating the levels on first use
+was still 8.3% faster. Cold creation added 11.72 seconds relative to reusing
+the levels, almost entirely in the two smaller stages. Peak process RSS
+including eval was 2.43 GiB for all three. Raw held-out PSNR/SSIM were
+24.194/0.72384 before, 24.173/0.72332 with warm levels, and 24.169/0.72339
+with cold levels. Shared sampling seeds reduce variation but
+do not make GPU training deterministic; these single runs measure throughput,
+not a statistically established quality change.
+
+Cache discovery regressions cover a dataset root with generated levels, nested
+external image folders, direct cache-folder input, and unrelated hidden
+folders. `image_discovery_test`, `downscale_cache_test`,
+`progressive_resolution_test`, `train_forecast_test`, and `dataset_prep_test`
+passed on both CUDA and Vulkan. Vulkan validation also built the GUI and
+actual SfM pipeline with SAM disabled.

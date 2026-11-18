@@ -1120,10 +1120,11 @@ void TrainerSession::set_alpha_config(DataManagerConfig& dm,
 }
 
 void TrainerSession::set_downscale_cache(DataManagerConfig& dm) const {
+    dm.cache_progressive_images = cfg.cache_downscaled_images && cfg.progressive_resolution;
+    dm.image_dir = (fs::path(cfg.data) / cfg.image_dir).lexically_normal().string();
     const float d = cfg.train_resolution_divisor;
     if (!cfg.cache_downscaled_images || !(d >= 2.0f) || d != std::floor(d)) return;
     dm.downscale_cache_divisor = (int)d;
-    dm.image_dir = (fs::path(cfg.data) / cfg.image_dir).lexically_normal().string();
     dm.downscale_rounding_mode = cfg.downscale_rounding_mode;
 }
 
@@ -1948,6 +1949,7 @@ TimeBreakdown TrainerSession::time_breakdown(bool whole_run) const {
 
 void TrainerSession::observe_memory(int step, int64_t splats_ran) {
     MemorySample m;
+    m.resolution_divisor = engine_train_resolution_divisor();
     m.step = step;
     m.splats_ran = splats_ran;
     m.splats_next = _live_splats.load();
@@ -2133,7 +2135,9 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         const bool probe_step = cfg.pca_reg_neighbors > 0 && step < cfg.pca_reg_start_iter &&
                                 step % kPcaRegProbeEvery == 10;
         if (probe_step) sample.gpu.at(StepPart::Regularizer, StepScale::Splats) = 0.0;
-        else _forecast.add_step(step, latency - save_s, splats_ran, splat_gpu_s);
+        sample.resolution_divisor = engine_train_resolution_divisor();
+        if (!probe_step) _forecast.add_step(step, latency - save_s, splats_ran, splat_gpu_s,
+                                           sample.resolution_divisor);
         sample.step = step;
         sample.wall_s = latency;
         sample.save_s = save_s;
