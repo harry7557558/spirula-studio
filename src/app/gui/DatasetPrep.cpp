@@ -1,5 +1,6 @@
 // DatasetPrep.cpp -- see DatasetPrep.h.
 
+#include "data/ImageDiscovery.h"
 #include "app/gui/DatasetPrep.h"
 
 #include "app/CubeLut.h"
@@ -98,6 +99,7 @@ const char* const kVideoExtensions[kNumVideoExtensions] = {
 };
 
 bool is_image_file(const fs::path& p) {
+    if (image_discovery::generated_cache(p)) return false;
     std::string e = p.extension().string();
     for (auto& c : e) c = (char)std::tolower((unsigned char)c);
     return e == ".jpg" || e == ".jpeg" || e == ".png" || e == ".webp" ||
@@ -183,6 +185,7 @@ std::vector<fs::path> walk_images(const fs::path& dir, const std::vector<fs::pat
         if (!s.empty() && fs::is_directory(s, ec)) guard.push_back(s);
     for (fs::recursive_directory_iterator it(dir, kWalk, ec), end; !ec && it != end;
          it.increment(ec)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (!guard.empty() && it->is_directory(ec) &&
             std::any_of(guard.begin(), guard.end(), [&](const fs::path& s) {
                 std::error_code eq;
@@ -717,6 +720,7 @@ int probe_packed_lenses(const std::string& dir) {
     std::error_code ec;
     for (fs::recursive_directory_iterator it(dir, kWalk, ec), end;
          !ec && it != end; it.increment(ec)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (!it->is_regular_file(ec) || lower_ext(it->path().string()) != ".insp")
             continue;
         int w = 0, h = 0, ch = 0;
@@ -918,8 +922,10 @@ bool any_image(const fs::path& p) {
     std::error_code ec;
     if (!fs::is_directory(p, ec)) return false;
     for (fs::recursive_directory_iterator it(p, kWalk, ec), end; !ec && it != end;
-         it.increment(ec))
+         it.increment(ec)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (it->is_regular_file(ec) && is_image_file(it->path())) return true;
+    }
     return false;
 }
 
@@ -949,6 +955,7 @@ void collect_image_folders(const fs::path& dir, const std::string& rel, int dept
     std::error_code ec;
     for (fs::directory_iterator it(dir, kWalk, ec), end; !ec && it != end;
          it.increment(ec)) {
+        if (image_discovery::generated_cache(it->path())) continue;
         if (it->is_directory(ec)) {
             if (!is_mask_folder(it->path().string()) &&
                 !is_mask_edits_folder(it->path().string()) &&
@@ -1245,6 +1252,7 @@ static std::string frame_source_identity_impl(
         if (ec) return {};
         for (fs::recursive_directory_iterator it(root, fs::directory_options::follow_directory_symlink, ec),
              end; !ec && it != end; it.increment(ec)) {
+            if (image_discovery::skip_cache(it)) continue;
             if (it->is_directory(ec) && it->path().lexically_normal() == workspace) {
                 it.disable_recursion_pending();
                 continue;

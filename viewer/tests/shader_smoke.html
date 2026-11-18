@@ -1,0 +1,109 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebGL splat regression</title>
+<pre id="result">Running…</pre>
+<script type="module">
+import * as shaders from '../js/shaders.js';
+import { Renderer } from '../js/renderer.js';
+import { Camera } from '../js/camera.js';
+
+const result = document.querySelector('#result');
+try {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 128;
+  const renderer = new Renderer(canvas), gl = renderer.gl;
+  let programs = 0, renders = 0;
+  function compile(type, source, camera, primitive) {
+    const shader = gl.createShader(type);
+    source = source.replace('\n', `\n#define CAM_MODEL ${camera}\n#define PRIM ${primitive}\n`);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+      throw Error(gl.getShaderInfoLog(shader));
+    return shader;
+  }
+  function link(vertex, fragment, camera, primitive) {
+    const program = gl.createProgram();
+    for (const [type, source] of [[gl.VERTEX_SHADER, vertex], [gl.FRAGMENT_SHADER, fragment]]) {
+      const shader = compile(type, source, camera, primitive);
+      gl.attachShader(program, shader);
+      gl.deleteShader(shader);
+    }
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS))
+      throw Error(gl.getProgramInfoLog(program));
+    gl.deleteProgram(program);
+    programs++;
+  }
+  for (let camera = 0; camera < 5; camera++) {
+    for (let primitive = 0; primitive < 3; primitive++) {
+      link(shaders.SPLAT_VS, primitive === 2 ? shaders.SPLAT_FS_3D : shaders.SPLAT_FS, camera, primitive);
+      link(shaders.SPLAT_VS, primitive === 2 ? shaders.PICK_FS_3D : shaders.PICK_FS, camera, primitive);
+    }
+  }
+  link(shaders.FULLSCREEN_VS, shaders.TONEMAP_FS, 0, 0);
+
+  renderer.setSplat({
+    count: 1, posop: new Float32Array([0, 0, 0, .8]),
+    quat: new Uint16Array([0, 0, 0, 0x3c00]),
+    scale: new Uint16Array([0x3800, 0x3800, 0x3800, 0x3c00]),
+    fdc: new Uint16Array([0, 0, 0]), shDegree: 0, shRest: 0, sbLobes: 0,
+  });
+  const camera = new Camera();
+  const options = {
+    background: [0, 0, 0], showGrid: false, gamut: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    transfer: 0, isLinear: false,
+  };
+  const pixel = new Uint8Array(4);
+  for (const model of ['perspective', 'orthographic', 'fisheye', 'equisolid', 'equirectangular']) {
+    for (let primitive = 0; primitive < 3; primitive++) {
+      camera.model = model;
+      options.primitive = primitive;
+      renderer.render(camera, options);
+      gl.readPixels(64, 64, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+      const depth = renderer.pickSplatDepth(camera, options, 64, 64);
+      if (gl.getError() || pixel[0] < 98 || pixel[0] > 104 || !Number.isFinite(depth) || Math.abs(depth - 3) > .01)
+        throw Error(`${model}/${primitive}: pixel ${pixel}, depth ${depth}`);
+      renders++;
+    }
+  }
+  camera.model = 'perspective';
+  options.primitive = 0;
+  options.isLinear = true;
+  renderer.render(camera, options);
+  gl.readPixels(64, 64, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+  // Display transfer follows compositing: sRGB(0.5 * 0.8), not sRGB(0.5) * 0.8.
+  if (gl.getError() || Math.abs(pixel[0] - 170) > 2)
+    throw Error(`Linear compositing: pixel ${pixel}`);
+  camera.pos = [0, 0, 0];
+  camera.target = [0, 0, -1];
+  options.isLinear = false;
+  let nearCases = 0;
+  for (const model of ['perspective', 'orthographic', 'fisheye', 'equisolid', 'equirectangular']) {
+    camera.model = model;
+    for (const depth of [0, 2 ** -8, 2 ** -14]) {
+      const scale = model === 'orthographic' ? 0x3000 : depth < .001 ? 0x0080 : 0x1000;
+      renderer.setSplat({
+        count: 1, posop: new Float32Array([0, 0, -depth, .8]),
+        quat: new Uint16Array([0, 0, 0, 0x3c00]),
+        scale: new Uint16Array([scale, scale, scale, 0x3c00]),
+        fdc: new Uint16Array([0, 0, 0]), shDegree: 0, shRest: 0, sbLobes: 0,
+      });
+      for (let primitive = 0; primitive < 3; primitive++) {
+        options.primitive = primitive;
+        renderer.render(camera, options);
+        gl.readPixels(64, 64, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+        const picked = renderer.pickSplatDepth(camera, options, 64, 64);
+        const valid = depth === 0 ? pixel[0] === 0 && picked === null :
+          pixel[0] > 30 && Number.isFinite(picked) && Math.abs(picked / depth - 1) < .03;
+        if (gl.getError() || !valid)
+          throw Error(`Near plane ${model}/${primitive}/${depth}: pixel ${pixel}, depth ${picked}`);
+        nearCases++;
+      }
+    }
+  }
+  result.textContent = `PASS: ${programs} programs, ${renders} render/depth cases, linear compositing, ${nearCases} near-plane cases`;
+} catch (error) {
+  result.textContent = `FAIL: ${error.stack}`;
+}
+</script>

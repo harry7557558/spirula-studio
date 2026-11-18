@@ -108,6 +108,7 @@ struct DataManagerConfig {
     // (data/DownscaleCache.h), 0 for none; `image_dir` is the dataset's
     // absolute image folder, `downscale_rounding_mode` how the cache sizes them.
     int         downscale_cache_divisor = 0;
+    bool        cache_progressive_images = false;
     std::string image_dir;
     std::string downscale_rounding_mode = "floor";
 

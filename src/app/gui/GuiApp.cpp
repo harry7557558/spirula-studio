@@ -10449,7 +10449,6 @@ bool GuiApp::launch_batch_merge(BatchTask& task, const BatchRow& row) {
             for (const std::string& r : runs) found += !r.empty();
             if (found == 0) throw std::runtime_error(pmsg::err_nothing_to_merge.get());
             spirula::MergeStats st;
-            const spirula::SplatCloud merged = spirula::merge_partition_splats(p, runs, st);
             char stamp[32];
             const std::time_t now = std::time(nullptr);
             std::strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", std::localtime(&now));
@@ -10457,7 +10456,7 @@ bool GuiApp::launch_batch_merge(BatchTask& task, const BatchRow& row) {
             std::error_code ec;
             fs::create_directories(outputs, ec);
             const std::string out = (fs::path(outputs) / (stem + "_merged_" + stamp + ".ply")).string();
-            spirula::write_splat_ply(merged, out);
+            spirula::merge_partition_splats_file(p, runs, out, st);
             _merge_result = out;
         } catch (const std::exception& e) {
             _merge_error = e.what();
@@ -12367,12 +12366,14 @@ void GuiApp::draw_basic_options() {
         }
     }
     ui::help_on_hover(msg::opt_resolution_help);
+#if 0
     ImGui::SetNextItemWidth(w);
     if (ui::InputInt(fld::max_resolution, &_cfg.max_resolution)) {
         _cfg.max_resolution = std::clamp(_cfg.max_resolution, 0, 32768);
         _cfg_ui.touched.insert("max_resolution");
     }
     ui::help_on_hover(fld::max_resolution_help);
+#endif
 
 #if 0
     if (ui::Checkbox(fld::progressive_resolution, &_cfg.progressive_resolution))

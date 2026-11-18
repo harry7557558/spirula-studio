@@ -85,6 +85,7 @@ struct ForecastSetup {
 
 struct MemorySample {
     int step = 0;
+    int resolution_divisor = 0; // 0: use the planned schedule (older traces)
     int64_t splats_ran = 0;      // what the step trained
     int64_t splats_next = 0;     // what the next one will, after densify
     std::array<size_t, (int)VramCategory::Count> pool_used{};
@@ -113,6 +114,7 @@ struct MemorySample {
 // spans inside it, and on a timed step every kernel's GPU time.
 struct StepSample {
     int step = 0;
+    int resolution_divisor = 0;
     double wall_s = 0.0;       // the save included
     double save_s = 0.0;
     double data_wait_s = 0.0;
@@ -146,8 +148,9 @@ public:
 
     // A finished step: its wall time without any checkpoint save, the splats
     // it ran with, and the GPU seconds of its splat-proportional stages
-    // (< 0 when not timed).
-    void add_step(int step, double wall_s, int64_t splats, double splat_gpu_s);
+    // (< 0 when not timed). add_breakdown follows this call.
+    void add_step(int step, double wall_s, int64_t splats, double splat_gpu_s,
+                  int resolution_divisor = 0);
     void add_save(double seconds, int64_t splats);
     // One pass of the regularizer over `splats`: its GPU seconds, measured on
     // a step that ran it or scaled up from a probe before it starts.
@@ -182,14 +185,13 @@ private:
         double P[4][4] = {};
         double score = 0.0;              // discounted log-likelihood
     };
-    // The same time once the breakdown has measured its columns: a ra + (b0 +
-    // b1 * sh_coeffs) * msplats + exp(s0 + s1 ln msplats) * r^0.45, each term
-    // filtered on its own measurement -- s1 is how splat x pixel work grows.
+    // Separate splat and pixel exponents keep resolution changes from being
+    // learned as changes in the cost per splat.
     struct ColumnModel {
         bool init = false;
         double a = 0.0, a_var = 0.0;
         double b[2] = {0, 0}, B[2][2] = {};
-        double s[2] = {0, 0}, S[2][2] = {};
+        double s[3] = {0, 0, 0}, S[3][3] = {};
     };
     struct MemWindow {
         int steps = 0;
@@ -216,13 +218,14 @@ private:
     };
     struct StepRec {
         int step;
-        double wall, save, data;
+        double wall, save, data, pixels;
         bool densify;
     };
     struct TimedRec {
         int step;
         bool densify;
         StepCells gpu;
+        double pixels;
     };
 
     int sh_coeffs(int step) const;
@@ -236,13 +239,14 @@ private:
         return _sp_share * std::pow(r, kSplatPixelTimeExp) + 1.0 - _sp_share;
     }
     double memory_x(const MemModel& m, double msplats, int step) const;
+    double sample_ratio(int step, int divisor) const;
     // f(first, end, coeffs, r) over [from, to) in pieces of constant SH
     // coefficients and pixel ratio.
     template <class F>
     void pieces(int from, int to, F&& f) const;
     Remaining remaining(int next_step, int64_t live) const;
     // The window's per-step GPU cells, densify steps weighted by their share.
-    bool window_gpu(StepCells& out) const;
+    bool window_gpu(StepCells& out, double pixels = 0.0) const;
     bool measured(TimeBreakdown& b) const;
     void close_time_window();
     void update_time_model(TimeModel& t, const Window& w, double y, double var_y,
@@ -260,7 +264,8 @@ private:
     bool _time_init = false;
     std::array<TimeModel, 3> _tm;
     ColumnModel _cm;
-    double _fallback_wall = 0.0;
+    double _fallback_wall = 0.0, _fallback_load = 0.0;
+    double _host_floor = 0.0; // seconds per step limited by asynchronous image supply
     int _fallback_n = 0;
     double _save_per_msplat = 0.0;
     int _saves = 0;

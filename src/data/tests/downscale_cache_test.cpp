@@ -11,6 +11,7 @@
 #include "external/stb_image.h"
 #include "external/stb_image_write.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -58,12 +59,16 @@ CacheMode g_mode = CacheMode::CPU;
 
 std::vector<uint8_t> fetch(const std::string& image, const fs::path& image_dir, bool cache,
                            const float* over = nullptr, int turns = 0, int cap = 0,
-                           const std::string& rounding = "floor") {
+                           const std::string& rounding = "floor", int progressive_divisor = 1) {
     DataManagerConfig cfg;
     cfg.cache_mode = g_mode;
+    if (progressive_divisor > 1) {
+        cfg.resolution_stages = {{0, progressive_divisor}};
+        cfg.cache_progressive_images = cache;
+    }
     cfg.load_masks = cfg.load_depths = cfg.load_normals = false;
     if (cache) {
-        cfg.downscale_cache_divisor = D;
+        cfg.downscale_cache_divisor = progressive_divisor > 1 ? 0 : D;
         cfg.image_dir = image_dir.string();
         cfg.downscale_rounding_mode = rounding;
     }
@@ -84,6 +89,7 @@ std::vector<uint8_t> fetch(const std::string& image, const fs::path& image_dir, 
     DataManager dm(cfg, {0}, {0}, {image}, {}, {}, {}, {(int)w}, {(int)h}, {}, {}, viewmat,
                    {10.0f, 10.0f, 4.0f, 3.0f}, std::vector<float>(8, 0.0f), {}, {}, {}, {},
                    {}, {}, {}, {0}, {});
+    if (progressive_divisor > 1) return dm.next_train_step().subs[0]->rgb_buffer;
     DecodedBatch b;
     dm.fetch_one(0, b);
     return b.rgb_buffer;
@@ -119,6 +125,10 @@ void test_paths(const fs::path& root) {
           "BMP is not cached");
     check(dscache::path_for((images / "a.png").string(), images.string(), 1).empty(),
           "divisor 1 is not cached");
+    const auto nested = dscache::path_for_size((images / "cam0" / "b.png").string(), 4, 3, images.string());
+    const fs::path expected = images.parent_path() / ".spirula-progressive" / "images" / "4x3" / "cam0";
+    check(fs::path(nested).parent_path() == expected, "nested progressive levels stay outside source images");
+    check(dsparse::relative_under(nested, images.string()).empty(), "image discovery cannot ingest cache files");
 }
 
 // Cache off and on agree, and the second load comes from the written file.
@@ -216,6 +226,35 @@ void test_capped(const fs::path& root, const std::string& name,
     }
 }
 
+void test_progressive(const fs::path& root) {
+    for (bool sixteen : {false, true}) {
+        for (int turns : {0, 1}) {
+            const fs::path images = root / "progressive" / std::to_string(sixteen) / std::to_string(turns);
+            const fs::path src = images / "rgba.png";
+            const auto file = sixteen ? png::encode(pattern<uint16_t>(4, 65535).data(), W, H, 4, 16)
+                                      : png::encode(pattern<uint8_t>(4, 255).data(), W, H, 4, 8);
+            write_bytes(src, file);
+            const float over[3] = {0.3f, 0.7f, 1.0f};
+            const auto direct = fetch(src.string(), images, false, over, turns, 0, "floor", 2);
+            const auto cold = fetch(src.string(), images, true, over, turns, 0, "floor", 2);
+            const auto warm = fetch(src.string(), images, true, over, turns, 0, "floor", 2);
+            const std::string cached = dscache::path_for_size(src.string(), W / D / 2, H / D / 2);
+            check(dscache::usable_size(cached, W / D / 2, H / D / 2), "progressive native shape survives EXIF turn");
+            check((stbi_is_16_bit(cached.c_str()) != 0) == sixteen, "progressive cache preserves bit depth");
+            check(max_diff(direct, cold, sixteen) <= 1 && cold == warm,
+                  "progressive alpha compositing agrees within one level, cold and warm are identical");
+            write_bytes(cached, {'b', 'a', 'd'});
+            const auto repaired = fetch(src.string(), images, true, over, turns, 0, "floor", 2);
+            check(repaired == warm && dscache::usable_size(cached, W / D / 2, H / D / 2),
+                  "corrupt progressive cache is repaired without changing pixels");
+            const auto stamp = fs::last_write_time(src);
+            fs::last_write_time(src, stamp + std::chrono::seconds(1));
+            check(dscache::path_for_size(src.string(), W / D / 2, H / D / 2) != cached,
+                  "source revision invalidates progressive cache key");
+        }
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -225,6 +264,7 @@ int main() {
         const fs::path root = base / (mode == CacheMode::CPU ? "cpu" : "disk");
         std::printf("-- %s\n", mode == CacheMode::CPU ? "cpu" : "disk");
         test_paths(root);
+        if (mode == CacheMode::DISK) test_progressive(root);
         test_format(root, "png8", png::encode(pattern<uint8_t>(3, 255).data(), W, H, 3, 8),
                     false, 0);
         test_format(root, "png16", png::encode(pattern<uint16_t>(3, 65535).data(), W, H, 3, 16),

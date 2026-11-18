@@ -19,8 +19,21 @@ nothing extrapolates the count or the degree -- only what they cost.
 
 Two models of what a step costs, both updated once per window of
 `refine_every` steps -- so every window holds the same share of densify
-steps -- from the window's wall time per step, outliers past 3x the median
-dropped (the pipeline builds when the SH degree steps up are one-offs).
+steps -- from the window's wall time per step. Samples past 3x the median
+are dropped only when they occupy at most 5% of the window (at least one
+sample): pipeline builds are rare, but repeated disk-decoding stalls are real
+training time and must remain in the mean. With recurring stalls, the faster
+samples fit the compute cost, and the full mean fits a host-throughput floor.
+Future segments cost the larger of that floor and their projected compute
+cost: GPU work can overlap image preparation. The floor carries 20% relative
+uncertainty and decays when windows stop showing recurring stalls. Image
+loading is classified per image, not per rendered pixel, because the source
+file can stay the same across progressive stages.
+
+GPU timings retain the batch's actual resolution, including sparse densify
+samples. A fallback never borrows GPU cells from a different resolution.
+Each fit closes after the window's final step breakdown has arrived; the
+displayed breakdown uses the current resolution's rows from the recent window.
 
 ### With the step breakdown: one term per column
 
@@ -28,12 +41,16 @@ Where the backend times every kernel (Vulkan; docs/notes/step-timing.md) the
 breakdown already says how much of a step follows the splats, how much the
 splats and the pixels together, and how much neither:
 
-    a + (b0 + b1 * k) * N + exp(s0 + s1 * ln N)
+    a + (b0 + b1 * k) * N + exp(s0 + s1 * ln N + q * ln r)
 
 `N` in millions of splats, `k` the SH coefficients the step trains (0, 3, 8,
 15). Each term is filtered on its own measurement: `[b0, b1]` on the splats
-column, which is linear in `N`; `[s0, s1]` on the log of the splat x pixel
-column; `a` on what the wall time has beyond the two. `s1` -- how splat x
+column, which is linear in `N`; `[s0, s1, q]` on the log of the splat x pixel
+column; `a` on what the wall time has beyond the two. `r` is the pixel ratio
+relative to the loaded image size. The pixel exponent `q` starts at 0.45 +- 0.2
+and is learned when resolution changes; keeping it fixed confounds a change
+in pixel work with a change in the splat exponent. Mixed-resolution timing
+windows are omitted from this fit. `s1` -- how splat x
 pixel work grows with the count -- starts at 0.45 +- 0.15 and is learned as
 the count moves (garden ended at 0.40 with floater suppression strong, 0.42
 without). Nothing here is a guess at how a lump splits, which is what the
@@ -77,6 +94,54 @@ The checkpoint saves still to come, at the seconds per million splats the
 saves so far took; a save is excluded from its step's wall time for that
 reason.
 
+On a 6,000-step bicycle replay (3M cap, SH3, loaded at half size, progressive
+switches at steps 1,014 and 2,535), mean absolute ETA error over the five
+1,000-step checkpoints fell from 9.4% to 6.8% of whole-run time. At step 2,000
+the error fell from -23.8% to -8.7%; the run took 175.7 seconds. Before the
+change, the timing filter discarded 34–41% of the steps around that point as
+outliers. GPU growth hides some of those producer stalls, so simply adding
+them as fixed overhead overshoots instead. These are replay results on one
+trace, not an assertion that every scene improves by the same amount.
+
+A full 30,000-step bicycle run with the same 3M cap, half-size inputs and
+automatic progressive stages took 833.4 seconds with the disk cache enabled.
+Replaying its nine 3,000-step checkpoints reduced mean absolute ETA error
+from 2.5% to 1.6% of run time. At step 9,000 the underestimate fell from 8.1%
+to 4.6%. Projected VRAM peaks were within -5.0% to +2.1% for both versions.
+
+The full-resolution London run (3504 x 2336, 30,000 steps, 10M SH3 splats,
+automatic stages at 2,604 and 8,680, disk cache initially cold) took 5,629.9
+seconds of training. Across its 29 checkpoints, mean absolute ETA error
+**increased from 10.71% to 11.64%** of run time. During the warmed half-size
+stage (steps 4,000–8,000), it increased from 9.79% to 20.35%; at full size
+(9,000 onward), it fell slightly from 3.75% to 3.59%. The fitted pixel
+exponent was 0.674 during the half-size stage, against the old fixed 0.45.
+The host-throughput floor contributed zero there: this regression is in
+extrapolating GPU work across resolutions, not retained image-loading stalls.
+Peak trainer allocation was 5.834 GiB; projected peaks were within -5.1% to
++2.4% for both forecasters. Held-out raw PSNR/SSIM were
+24.6626/0.76769 over 248 views; aligned values were 25.2057/0.78635.
+
+![Original and updated forecasts on complete bicycle and London traces](assets/progressive-forecast-comparison.svg)
+
+Both forecasters replay the identical complete trace for each dataset. Runs
+used Vulkan on an RTX 5070, default 3DGS settings, `max_resolution=0`, and
+`cache_downscaled_images=true`; only the stated iteration count, splat cap
+and loaded divisor differ. Their default sampling seed was time-based, so
+these are paired forecast replays, not controlled training-quality comparisons.
+Thin vertical lines mark the actual resolution changes. Memory is the trainer's
+tracked peak allocation, not whole-device use reported by the driver. The
+London process wrote its final model, all 30,000 trace samples and all eval
+metrics; its execution wrapper reported exit 143 after evaluation, with no
+OOM recorded. The scope peaked at 17.5 GiB of host memory including file
+cache. The shutdown signal's origin was not established.
+
+Few resolution stages cannot cleanly separate pixel scaling from changing
+splat counts and evolving footprints. Cold PNG creation is also a transient
+workload that the remaining-time model does not forecast separately. The
+reported sigma describes model uncertainty, not a statistically calibrated
+confidence interval; these workload changes can exceed it.
+
 A regularizer that starts mid-run (`ForecastSetup::reg_start_step`, the PCA
 regularizer's `--pca-reg-start-iter`): its seconds per million splats are
 measured apart (`add_regularizer`, the median of the last nine), taken out of
@@ -100,8 +165,13 @@ over the full size's):
 pixels, `f_b` the share of the splat term in the splat x pixel kernels; both
 come from the step breakdown (docs/notes/step-timing.md), converted from the
 `r` they were measured at to full size, with priors 0.75 and 0.5 before it
-has measured. `r^0.45` is the splat x pixel kernels' exponent, measured there.
-Without progressive resolution `r = 1` and the model is the one above. On a
+has measured. The power-law fallback uses `r^0.45`, the splat x pixel kernels' measured
+pixel exponent; the column model learns its own exponent across stages.
+Without progressive resolution `r = 1` and the model is the one above.
+Measured steps carry their actual batch divisor, including the early and late
+batches delivered by disk prefetch near a stage boundary. Before the first
+fitted window, the provisional wall-time estimate integrates the same stages
+using equal fixed/splat shares rather than extending the coarse rate. On a
 synthetic run of 1/4, 1/2 then full size the ETA at step 1000 (1/4 size) was
 6% over the truth where the last 100 steps' rate said half of it.
 
@@ -191,7 +261,10 @@ well each predicted the next window, from a prior of 0.2 / 0.3 / 0.5 that
 leans linear: under-reading a peak is the costly mistake. `r^0.35` is the
 category's measured exponent in the pixel ratio (docs/notes/step-timing.md);
 under progressive resolution the Image category and the arena's per-pixel
-slices are projected in proportion to `r`. The peak is the larger of the
+slices are projected in proportion to `r`. The projection splits at resolution
+boundaries even while the splat count is held constant. Pool high-water sizes
+are normalized by the finest batch resolution seen, so a late coarse batch
+from disk prefetch does not make retained finer buffers look larger per pixel. The peak is the larger of the
 high-water measured so far and the demand at the count that asks most, taken
 once. What widens it:
 

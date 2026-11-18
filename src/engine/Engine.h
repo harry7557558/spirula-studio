@@ -767,7 +767,8 @@ void engine_save_checkpoint(
     int step,
     int background_export_height = 512,
     std::string basename = "",
-    bool y_up = false
+    bool y_up = false,
+    std::string region_camera_hash = ""
 );
 
 // Requires seeded world buffers and initialized appearance channels; returns the saved step.

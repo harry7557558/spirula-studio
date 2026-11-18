@@ -9,6 +9,7 @@
 #include "data/DatasetParser.h"
 #include "app/gui/NavCamera.h"
 #include "app/gui/PreviewRenderer.h"
+#include "app/gui/HardwareSplatRenderer.h"
 #include "app/gui/ViewportInput.h"
 
 #include <array>
@@ -83,10 +84,17 @@ public:
         std::function<void(const char* gamut, int transfer, bool linear)>
             apply_color_space,
         std::function<void()> on_primitive_changed);
+    void attach_hardware(const ViewerRenderConfig& cfg, const std::string& path,
+                         const std::string& key, const float center[3], float unit);
     void detach();
     // A saved placement can change the frame without changing element counts.
     void invalidate_framing() { _framed_key.clear(); }
+    bool allocation_failed() const { return _last_error.find("GPU allocation failed:") != std::string::npos ||
+        _last_error.find("out of GPU memory:") != std::string::npos ||
+        _last_error.find("out of memory") != std::string::npos ||
+        _last_error.find("OUT_OF_DEVICE_MEMORY") != std::string::npos; }
     bool attached() const { return _mode == Mode::Engine; }
+    bool hardware_active() const { return _mode == Mode::Hardware; }
 
     // Hide the controls the view link makes shared -- navigation, camera
     // model, field of view, reset -- so a row of linked panels shows them
@@ -266,7 +274,7 @@ private:
     double _glide_t0 = 0.0;
     NavCamera _glide_from, _glide_to, _glide_last;
 
-    enum class Mode { None, Preview, Engine };
+    enum class Mode { None, Preview, Engine, Hardware };
 
     void compute_framing(const spirula::TrainerSession& session);
     // The client-frame default pose (web viewer cam.reset() + orbit(0,-250)),
@@ -325,6 +333,7 @@ private:
     void draw_engine(bool training, const ImVec2& avail, int step);
     void pump_engine(bool training, const ImVec2& avail, int step);
     unsigned pump_preview(const ImVec2& avail, int& W, int& H);
+    unsigned pump_hardware(int W, int H);
     void draw_preview(const ImVec2& avail);
     void draw_wipe(const ImVec2& tl, const ImVec2& size) const;
     bool wipe_input(const ImVec2& tl, const ImVec2& size);
@@ -335,6 +344,11 @@ private:
     unsigned _preview_tex = 0;
 
     Mode _mode = Mode::None;
+    HardwareSplatRenderer _hardware;
+    unsigned _hardware_tex = 0;
+    std::string _hardware_path;
+    float _hardware_center[3]{};
+    float _hardware_unit = 1;
     RenderWorker _worker;
     PreviewRenderer _preview;
     std::array<float, 16> _preview_frame{};   // ParsedDataset::train_to_normalized

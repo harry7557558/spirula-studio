@@ -167,6 +167,7 @@ uniform vec2  uCenter;              // cx, cy (pixels)
 uniform vec2  uViewport;            // width, height (pixels)
 uniform float uNear;
 uniform float uOpacityScale;
+uniform bool uLogScale;            // native textures retain thin splats in log space
 
 flat out vec4 vColor;
 flat out vec2 vCenterPx;
@@ -174,9 +175,8 @@ flat out float vDepth;              // projCam front-depth (used by the pick pas
 #if PRIM == 2
 flat out vec3 vGro;                 // G * (ray_origin - mean_cam), ray_origin = 0
 flat out mat3 vG;                   // maps cam-space offsets into the unit gaussian frame
-#else
-flat out vec3 vConic;
 #endif
+flat out vec3 vConic;
 
 ${TEX_FETCH}
 ${PROJ_GLSL}
@@ -282,11 +282,12 @@ void main() {
 
   vec3 pc = uViewR * (pw - uCamPos);
   vDepth = projCam(pc).z;
-  if (vDepth < uNear) { cull(); return; }
+  if (vDepth <= uNear) { cull(); return; }
 
   vec4 q = fetch1(uRot, idx);
+  q = dot(q, q) > 0.0 ? normalize(q) : vec4(0.0, 0.0, 0.0, 1.0);
   vec4 scaleSh = fetch1(uScale, idx);   // xyz = world scale, w = SH quant scale
-  vec3 scale = scaleSh.xyz;
+  vec3 scale = uLogScale ? exp(scaleSh.xyz) : scaleSh.xyz;
   mat3 Rq = quatToMat3(q);
 
   mat2 cov2d;
@@ -302,7 +303,12 @@ void main() {
   pcs[0] = pc;
   for (int i=0;i<3;i++) { pcs[1+i] = pc + axC[i]; pcs[4+i] = pc - axC[i]; }
   vec2 pts[7];
-  for (int i=0;i<7;i++) pts[i] = projCam(pcs[i]).xy;
+  for (int i=0;i<7;i++) {
+#if CAM_MODEL == 0
+    if (pcs[i].z >= 0.0) { cull(); return; }
+#endif
+    pts[i] = projCam(pcs[i]).xy;
+  }
 #if CAM_MODEL == 4
   // unwrap longitude across the +-pi seam relative to the center point so a
   // straddling splat averages coherently (period in pixels = fx * 2*pi)
@@ -332,12 +338,19 @@ void main() {
   mean2d = vec2(0.0);
   for (int i=1;i<7;i++) mean2d += pts[i];
   mean2d /= 6.0;                        // w_mean[0] = 0, w_mean[i] = 1/6
+  vec2 covarianceMean = mean2d;
+#if CAM_MODEL == 0
+  // Match the compute projection's padded viewport covariance clamp.
+  vec2 low = -0.15*uViewport, high = 1.15*uViewport;
+  covarianceMean = clamp(covarianceMean, low, high);
+  for (int i=0;i<7;i++) pts[i] = clamp(pts[i], low, high);
+#endif
   cov2d = mat2(0.0);
-  vec2 d0 = pts[0]-mean2d;
+  vec2 d0 = pts[0]-covarianceMean;
   cov2d[0][0] += 2.0*d0.x*d0.x; cov2d[0][1] += 2.0*d0.x*d0.y;
   cov2d[1][0] += 2.0*d0.y*d0.x; cov2d[1][1] += 2.0*d0.y*d0.y;
   for (int i=1;i<7;i++) {
-    vec2 d = pts[i]-mean2d;
+    vec2 d = pts[i]-covarianceMean;
     cov2d[0][0] += (1.0/6.0)*d.x*d.x; cov2d[0][1] += (1.0/6.0)*d.x*d.y;
     cov2d[1][0] += (1.0/6.0)*d.y*d.x; cov2d[1][1] += (1.0/6.0)*d.y*d.y;
   }
@@ -345,7 +358,7 @@ void main() {
   // normalized gaussian frame (compute_3dgut_iscl_rot in the training code).
   // Flattened splats can have a scale component that flushes to 0 in the f16
   // texture — clamp so 1/scale stays finite (NaN alpha renders as garbage).
-  vec3 iscl = 1.0 / max(scale, vec3(1e-7));
+  vec3 iscl = 1.0 / max(scale, vec3(uLogScale ? 1e-30 : 1e-7));
   mat3 G = mat3(iscl.x, 0.0, 0.0,  0.0, iscl.y, 0.0,  0.0, 0.0, iscl.z)
          * transpose(Rq) * transpose(uViewR);
   vG = G;
@@ -400,10 +413,7 @@ void main() {
 #endif
 
   float a=cov2d[0][0], b=cov2d[0][1], c=cov2d[1][1];
-#if PRIM != 2
-  // conic (inverse covariance) for the fragment shader
   vConic = vec3(c/det, -b/det, a/det);
-#endif
 
   // eigen-decomposition for the oriented bounding quad
   float mid = 0.5*(a+c);
@@ -418,21 +428,32 @@ void main() {
   extend = min(extend, 3.33);
   vec2 semi1 = e1*extend*sqrt(l1);
   vec2 semi2 = e2*extend*sqrt(l2);
+#if PRIM == 2
+  // Eval3d contours need the compute rasterizer's full axis-aligned support.
+  semi1 = vec2(extend*sqrt(a), 0.0);
+  semi2 = vec2(0.0, extend*sqrt(c));
+#endif
 
   // frustum cull by screen bounds
   vec2 be = abs(semi1) + abs(semi2);
   if (mean2d.x+be.x < 0.0 || mean2d.x-be.x > uViewport.x ||
       mean2d.y+be.y < 0.0 || mean2d.y-be.y > uViewport.y) { cull(); return; }
 
-  // cull small splats for rendering speed
-  if (dot(be, be) < 4.0)
-     { cull(); return; }
-
   vCenterPx = mean2d;
   vec2 corner = vec2((gl_VertexID & 1) == 0 ? -1.0 : 1.0,
                      (gl_VertexID & 2) == 0 ? -1.0 : 1.0);
   vec2 px = mean2d + corner.x*semi1 + corner.y*semi2;
-  vColor = vec4(evalColor(pw, scaleSh.w), min(opacity, 0.999));
+#if PRIM == 2
+  // Compute evaluates whole 8px tiles around its clipped, quantized AABB.
+  vec2 lo = clamp(floor((mean2d-be)*65535.0/uViewport), 0.0, 65535.0)*uViewport/65535.0;
+  vec2 hi = clamp(ceil((mean2d+be)*65535.0/uViewport), 0.0, 65535.0)*uViewport/65535.0;
+  vCenterPx = 0.5*(lo+hi);
+  lo.x = floor(lo.x/8.0)*8.0; hi.x = ceil(hi.x/8.0)*8.0;
+  lo.y = uViewport.y-ceil((uViewport.y-lo.y)/8.0)*8.0;
+  hi.y = uViewport.y-floor((uViewport.y-hi.y)/8.0)*8.0;
+  px = mix(lo, hi, 0.5*(corner+1.0));
+#endif
+  vColor = vec4(evalColor(pw, scaleSh.w), opacity);
   gl_Position = vec4(2.0*px/uViewport - 1.0, 0.0, 1.0);
 }
 `;
@@ -457,13 +478,35 @@ uniform vec2 uFocal;
 uniform vec2 uCenter;
 out vec4 fragColor;
 void main() {
-${DOMAIN_DISCARD}
   vec2 d = gl_FragCoord.xy - vCenterPx;
   float sigma = 0.5*(vConic.x*d.x*d.x + vConic.z*d.y*d.y) + vConic.y*d.x*d.y;
   if (sigma < 0.0) discard;
-  float alpha = vColor.a * exp(-sigma);
-  if (alpha < 1.0/255.0) discard;
+  float alpha = min(0.999, vColor.a * exp(-sigma));
+  if (alpha <= 1.0/255.0) discard;
   fragColor = vec4(vColor.rgb, alpha);
+}
+`;
+
+const EVAL3D_TILE_GLSL = /* glsl */`
+flat in vec3 vConic;
+flat in vec2 vCenterPx;
+uniform vec2 uViewport;
+bool tileHit(vec2 frag) {
+  vec2 low = floor(vec2(frag.x, uViewport.y-frag.y)/8.0)*8.0;
+  low.y = uViewport.y-low.y-8.0;
+  low -= vCenterPx;
+  vec2 high = low+8.0;
+  vec3 abc = vConic*(0.5/log(vColor.a*255.0));
+  float a = abc.x, b = abc.y, c = abc.z;
+  vec2 u = clamp(vec2(low.x,high.x)*(-b/c),low.y,high.y);
+  vec2 v = clamp(vec2(low.y,high.y)*(-b/a),low.x,high.x);
+  b *= 2.0;
+  float mx = min(a*low.x*low.x+b*low.x*u.x+c*u.x*u.x,
+                 a*high.x*high.x+b*high.x*u.y+c*u.y*u.y);
+  float my = min(a*v.x*v.x+b*v.x*low.y+c*low.y*low.y,
+                 a*v.y*v.y+b*v.y*high.y+c*high.y*high.y);
+  float mc = max(max(low.x,-high.x),max(low.y,-high.y));
+  return min(mc,min(mx,my)-1.0) < 0.0;
 }
 `;
 
@@ -478,8 +521,10 @@ uniform vec2 uFocal;
 uniform vec2 uCenter;
 out vec4 fragColor;
 ${PROJ_GLSL}
+${EVAL3D_TILE_GLSL}
 void main() {
 ${DOMAIN_DISCARD}
+  if (!tileHit(gl_FragCoord.xy)) discard;
   vec2 uv = (gl_FragCoord.xy - uCenter) / uFocal;
 #if CAM_MODEL == 1
   vec3 gro = vG * vec3(uv, 0.0) + vGro;   // parallel rays: origin on the image plane
@@ -488,10 +533,11 @@ ${DOMAIN_DISCARD}
   vec3 gro = vGro;                        // rays start at the camera origin
   vec3 grd = vG * unprojectCam(uv);
 #endif
+  if (dot(gro, grd) >= 0.0) discard;
   vec3 gcrod = cross(grd, gro);
   float sigma = 0.5 * dot(gcrod, gcrod) / dot(grd, grd);
   float alpha = vColor.a * exp(-sigma);
-  if (alpha < 1.0/255.0) discard;
+  if (alpha <= 1.0/255.0) discard;
   fragColor = vec4(vColor.rgb, alpha);
 }
 `;
@@ -516,16 +562,11 @@ uniform vec2 uPixelOffset;
 out vec4 fragColor;
 void main() {
   vec2 frag = gl_FragCoord.xy + uPixelOffset;
-#if CAM_MODEL == 2
-  if (length((frag - uCenter) / uFocal) > 3.14159265358979) discard;
-#elif CAM_MODEL == 3
-  if (length((frag - uCenter) / uFocal) > 2.0) discard;
-#endif
   vec2 d = frag - vCenterPx;
   float sigma = 0.5*(vConic.x*d.x*d.x + vConic.z*d.y*d.y) + vConic.y*d.x*d.y;
   if (sigma < 0.0) discard;
-  float alpha = vColor.a * exp(-sigma);
-  if (alpha < 1.0/255.0) discard;
+  float alpha = min(0.999, vColor.a * exp(-sigma));
+  if (alpha <= 1.0/255.0) discard;
   fragColor = vec4(vDepth*alpha, 0.0, 0.0, alpha);
 }
 `;
@@ -540,8 +581,10 @@ uniform vec2 uCenter;
 uniform vec2 uPixelOffset;
 out vec4 fragColor;
 ${PROJ_GLSL}
+${EVAL3D_TILE_GLSL}
 void main() {
   vec2 frag = gl_FragCoord.xy + uPixelOffset;
+  if (!tileHit(frag)) discard;
 #if CAM_MODEL == 2
   if (length((frag - uCenter) / uFocal) > PI) discard;
 #elif CAM_MODEL == 3
@@ -559,7 +602,7 @@ void main() {
   vec3 gcrod = cross(grd, gro);
   float sigma = 0.5 * dot(gcrod, gcrod) / dot(grd, grd);
   float alpha = vColor.a * exp(-sigma);
-  if (alpha < 1.0/255.0) discard;
+  if (alpha <= 1.0/255.0) discard;
   // ray parameter of max response -> convert to the projCam depth convention
   float t = -dot(gro, grd) / dot(grd, grd);
   if (t <= 0.0) discard;
@@ -623,14 +666,11 @@ vec3 encode3(vec3 c){ return vec3(encode(c.r),encode(c.g),encode(c.b)); }
 
 void main() {
   vec4 hdr = texture(uHdr, vUv);
-  // hdr.a holds transmittance (background visibility); coverage = 1 - a.
-  // hdr.rgb is premultiplied (composited over black); unpremultiply to grade.
-  float cov = clamp(1.0 - hdr.a, 0.0, 1.0);
-  vec3 rgb = cov > 1e-4 ? hdr.rgb / cov : vec3(0.0);
-  rgb *= uExposure;
-  if (uIsLinear == 0) rgb = eotf3(clamp(rgb, 0.0, 1.0));
+  // The compute renderer applies its display transfer to composited RGB.
+  vec3 rgb = hdr.rgb * uExposure;
+  if (uIsLinear == 0) rgb = eotf3(rgb);
   rgb = encode3(uGamut * rgb);
-  vec3 outc = mix(uBackground, clamp(rgb, 0.0, 1.0), cov);
+  vec3 outc = rgb + clamp(hdr.a, 0.0, 1.0) * uBackground;
   outColor = vec4(clamp(outc,0.0,1.0), 1.0);
 }
 `;

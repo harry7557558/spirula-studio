@@ -27,8 +27,8 @@ const char* covisibility_source_name(CovisibilitySource s);
 bool covisibility_source_from_name(const std::string& s, CovisibilitySource& out);
 
 // Graph cuts the joint camera-point visibility graph; ViewGraph cuts the
-// cameras by covisibility and derives the regions from camera positions.
-enum class PartitionMethod { Graph = 0, ViewGraph };
+// cameras by covisibility. Voronoi uses convex camera-centroid cells.
+enum class PartitionMethod { Graph = 0, ViewGraph, Voronoi };
 const char* partition_method_name(PartitionMethod m);
 bool partition_method_from_name(const std::string& s, PartitionMethod& out);
 
@@ -51,17 +51,22 @@ struct PartitionOptions {
     CovisibilitySource source = CovisibilitySource::Auto;
     // Projection covisibility subsamples the cloud to this many points.
     int max_projected_points = 200000;
+    float projection_depth_slack = 0.0f;
     // Proximity covisibility: neighbours per camera.
     int proximity_neighbours = 8;
 };
 
-// Who sees what: point i is seen by frames [beg[i], beg[i+1]) of `frame`.
+// Projection rows are shared by nearby file-order points to bound observer storage.
 struct Covisibility {
     std::vector<int64_t> beg;
     std::vector<int32_t> frame;
+    std::vector<int32_t> point_row;
     graph::WeightedGraph cameras;
+    bool camera_graph_built = true;
     CovisibilitySource source = CovisibilitySource::Proximity;
-    int64_t num_points() const { return beg.empty() ? 0 : (int64_t)beg.size() - 1; }
+    int64_t num_points() const { return point_row.empty() ? (beg.empty() ? 0 : (int64_t)beg.size() - 1) : (int64_t)point_row.size(); }
+    int64_t begin(int64_t i) const { return beg[point_row.empty() ? (size_t)i : (size_t)point_row[(size_t)i]]; }
+    int64_t end(int64_t i) const { return beg[(point_row.empty() ? (size_t)i : (size_t)point_row[(size_t)i]) + 1]; }
     bool has_tracks() const { return !frame.empty(); }
 };
 

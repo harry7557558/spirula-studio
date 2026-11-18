@@ -1,6 +1,7 @@
 // Screenshot.cpp -- see Screenshot.h.
 
 #include "app/gui/Screenshot.h"
+#include "app/gui/GlLoader.h"
 
 #include "app/TrainerCore.h"
 #include "checkpoint/Resume.h"
@@ -397,6 +398,32 @@ std::string write_screenshot(ShotJob& j) {
 // ---------------------------------------------------------------------------
 
 bool ViewportPanel::request_capture(int W, int H, std::function<void(ViewResult&&)> done) {
+    if (_mode == Mode::Hardware && !_shot_done) {
+        ViewResult result; result.W = W; result.H = H;
+        try {
+            pump_hardware(W, H);
+            _hardware.finish_sort();
+            pump_hardware(W, H);
+            _hardware.finish_sort();
+            const unsigned texture = pump_hardware(W, H);
+            std::vector<uint8_t> rgba((size_t)W*H*4);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+            if (auto error = glGetError()) {
+                while (const auto next = glGetError())
+                    if (next == GL_OUT_OF_MEMORY) error = next;
+                throw std::runtime_error(error == GL_OUT_OF_MEMORY
+                    ? "Insufficient GPU memory for hardware screenshot readback"
+                    : "Hardware screenshot readback failed: OpenGL error " + std::to_string(error));
+            }
+            result.rgb8.resize((size_t)W*H*3);
+            for (int y = 0; y < H; ++y) for (int x = 0; x < W; ++x)
+                std::copy_n(rgba.data()+((size_t)(H-1-y)*W+x)*4, 3,
+                            result.rgb8.data()+((size_t)y*W+x)*3);
+        } catch (const std::exception& e) { result.error = e.what(); }
+        done(std::move(result));
+        return true;
+    }
     if (_mode != Mode::Engine || _shot_done) return false;
     _shot_w = W;
     _shot_h = H;
@@ -618,7 +645,7 @@ void GuiApp::take_viewer_screenshots() {
 std::vector<CompareView::PaneShot> CompareView::splat_panes() {
     std::vector<PaneShot> out;
     for (auto& m : _models)
-        if (m->attached && m->src.kind() == SplatViewer::Kind::Splats && m->panel.attached())
+        if (m->attached && m->src.kind() == SplatViewer::Kind::Splats && (m->panel.attached() || m->panel.hardware_active()))
             out.push_back({&m->panel, m->path, m->src.file(), m->src.num_splats()});
     return out;
 }

@@ -1,6 +1,7 @@
 // TrainerCore.cpp -- see TrainerCore.h.
 
 #include "app/TrainerCore.h"
+#include "checkpoint/RegionCameras.h"
 #include "app/ForecastTrace.h"
 #include "backend/api/BackendRuntime.h"
 #include "core/Env.h"
@@ -1051,7 +1052,21 @@ void TrainerSession::load_region() {
     }
 }
 
+RegionCameras TrainerSession::build_region_cameras() const {
+    std::vector<int32_t> idx((size_t)ds.num_cameras, 0);
+    std::vector<float> centers((size_t)ds.num_cameras * 3);
+    for (int64_t i = 0; i < ds.num_cameras; i++)
+        for (int r = 0; r < 3; r++) centers[(size_t)i * 3 + r] = ds.c2w[(size_t)i * 12 + r * 4 + 3];
+    RegionCameras cameras;
+    cameras.field = LabelField::build(centers.data(), idx.data(), nullptr, ds.num_cameras, 4);
+    cameras.train_from_dataset.scale = cfg.relative_scale.value_or(1.0f);
+    for (int k = 0; k < 3; k++)
+        cameras.train_from_dataset.t[k] = -cameras.train_from_dataset.scale * ds.center[k];
+    return cameras;
+}
+
 void TrainerSession::setup_region() {
+    roi_cameras.reset();
     if (!roi) {
         engine_set_region({}, {}, {}, {}, {}, {}, 1.0f);
         return;
@@ -1062,14 +1077,8 @@ void TrainerSession::setup_region() {
     RegionProgram prog;
     std::string err;
     if (!compile_region(*roi, prog, err, rs, shift)) throw std::runtime_error(err);
-    // The training cameras, indexed, orient each splat's normal on the device.
-    std::vector<int32_t> idx((size_t)ds.num_cameras);
-    std::vector<float> centers((size_t)ds.num_cameras * 3);
-    for (int64_t i = 0; i < ds.num_cameras; i++) {
-        idx[(size_t)i] = (int32_t)std::min<int64_t>(i, 254);
-        for (int r = 0; r < 3; r++) centers[(size_t)i * 3 + r] = ds.c2w[(size_t)i * 12 + r * 4 + 3];
-    }
-    const LabelField cams = LabelField::build(centers.data(), idx.data(), nullptr, ds.num_cameras, 4);
+    roi_cameras = std::make_shared<RegionCameras>(build_region_cameras());
+    const LabelField& cams = roi_cameras->field;
     static const std::vector<float> none;
     auto tv = [](const std::vector<float>& v) -> TorchTensorView {
         if (v.empty()) return {};
@@ -1121,10 +1130,11 @@ void TrainerSession::set_alpha_config(DataManagerConfig& dm,
 }
 
 void TrainerSession::set_downscale_cache(DataManagerConfig& dm) const {
+    dm.cache_progressive_images = cfg.cache_downscaled_images && cfg.progressive_resolution;
+    dm.image_dir = (fs::path(cfg.data) / cfg.image_dir).lexically_normal().string();
     const float d = cfg.train_resolution_divisor;
     if (!cfg.cache_downscaled_images || !(d >= 2.0f) || d != std::floor(d)) return;
     dm.downscale_cache_divisor = (int)d;
-    dm.image_dir = (fs::path(cfg.data) / cfg.image_dir).lexically_normal().string();
     dm.downscale_rounding_mode = cfg.downscale_rounding_mode;
 }
 
@@ -1841,8 +1851,9 @@ void TrainerSession::save_checkpoint(int step, bool full) {
         std::snprintf(suffix, sizeof suffix, "_step-%09d", step);
         basename += suffix;
     }
+    const std::string camera_hash = roi_cameras ? save_region_cameras(out_dir.string(), *roi_cameras) : "";
     engine_save_checkpoint(out_dir.string(), full, step, cfg.background_export_height,
-                           basename, cfg.export_y_up);
+                           basename, cfg.export_y_up, camera_hash);
     if (cfg.save_only_latest_checkpoint) {
         std::vector<fs::path> stale;
         for (const auto& e : fs::directory_iterator(out_dir)) {
@@ -1951,6 +1962,7 @@ TimeBreakdown TrainerSession::time_breakdown(bool whole_run) const {
 
 void TrainerSession::observe_memory(int step, int64_t splats_ran) {
     MemorySample m;
+    m.resolution_divisor = engine_train_resolution_divisor();
     m.step = step;
     m.splats_ran = splats_ran;
     m.splats_next = _live_splats.load();
@@ -2136,7 +2148,9 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         const bool probe_step = cfg.pca_reg_neighbors > 0 && step < cfg.pca_reg_start_iter &&
                                 step % kPcaRegProbeEvery == 10;
         if (probe_step) sample.gpu.at(StepPart::Regularizer, StepScale::Splats) = 0.0;
-        else _forecast.add_step(step, latency - save_s, splats_ran, splat_gpu_s);
+        sample.resolution_divisor = engine_train_resolution_divisor();
+        if (!probe_step) _forecast.add_step(step, latency - save_s, splats_ran, splat_gpu_s,
+                                           sample.resolution_divisor);
         sample.step = step;
         sample.wall_s = latency;
         sample.save_s = save_s;
