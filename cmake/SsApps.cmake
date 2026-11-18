@@ -750,6 +750,8 @@ if(SS_BUILD_GUI)
         target_compile_definitions(dataset_prep_streaming_test PRIVATE
             SS_BUILD_SAM=1 SS_HAVE_BLUR_GPU=1)
         target_link_libraries(dataset_prep_streaming_test PRIVATE ss_mask_worker ss_sam ss_blur)
+        add_test(NAME dataset_mask_resume_complete_test COMMAND dataset_prep_streaming_test --complete-only)
+        set_tests_properties(dataset_mask_resume_complete_test PROPERTIES LABELS "cpu;headless" TIMEOUT 30)
         if(SS_ENABLE_PATENTED)
             target_sources(dataset_prep_streaming_test PRIVATE
                 ${SS_SRC}/app/FrameDecodeVulkan.cpp)
