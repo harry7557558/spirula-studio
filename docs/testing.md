@@ -335,6 +335,18 @@ returned SPS preserves the coded grid. The grid/rotated-tile checks measured
 8.0/13.7 dB before this correction and 47.9/47.5 dB afterward. The same test
 also checks grid assembly, crop, rotation, mirroring, dimensions, and EXIF.
 
+## CPU-only training holdout regression
+
+`data_manager_validation_test` generates two RGB images and checks that disk
+prefetch delivers 64 training steps without pulling in the held-out view.
+It also covers CPU caching, an empty holdout, indexed fetch, teardown with a
+full ready queue, and retry or abort after a missing-file error. No GPU,
+models, or input dataset are needed.
+
+```sh
+ctest --test-dir build_vulkan -R "^data_manager_validation_test$" --output-on-failure --no-tests=error
+```
+
 ## CPU-only subprocess lifecycle regression
 
 `subprocess_lifecycle_test` builds in the existing Vulkan development tree,
