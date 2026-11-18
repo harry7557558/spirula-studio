@@ -1225,10 +1225,15 @@ void TrainerSession::load_dataset() {
             log(lfmt(lmsg::dense_seed_automatic, {cfg.seed_pointcloud}));
         }
     }
-    if (cfg.depth_dir == "depths" && fs::is_directory(data_dir / lidar_layout::kDepths, ec))
-        cfg.depth_dir = lidar_layout::kDepths;
-    if (cfg.normal_dir == "normals" && fs::is_directory(data_dir / lidar_layout::kNormals, ec))
-        cfg.normal_dir = lidar_layout::kNormals;
+    // Any spelling of a scan folder counts, because later checks compare these strings.
+    const auto use_scan_dir = [&](std::string& dir, const char* plain, const char* scan) {
+        const fs::path want = data_dir / scan;
+        if (fs::is_directory(want, ec) &&
+            (dir == plain || fs::equivalent(data_dir / dir, want, ec)))
+            dir = scan;
+    };
+    use_scan_dir(cfg.depth_dir, "depths", lidar_layout::kDepths);
+    use_scan_dir(cfg.normal_dir, "normals", lidar_layout::kNormals);
     if (cfg.depth_dir != lidar_layout::kDepths) {
         cfg.lidar_depth_weight = 0.0f;
     } else {
