@@ -32,6 +32,12 @@ on. Skip it if you know what a gyro bias is.
 - **DJI Osmo 360 `.OSV` files carry a 1 kHz fused attitude quaternion and one
   accelerometer reading per frame**, plus the lens intrinsics. No raw gyro is
   written and there is no GPS.
+- **The Osmo 360 II declares a new schema name (`dvtm_OQ102.proto`) but
+  writes the Avata 360's `eagle4_wa530` format** — DJI picks the wire format by
+  product, not by the declared name. It adds a 1 kHz raw accelerometer (its
+  `IMU_raw_attitude` also logs a gyro, which the reader leaves alone) to the
+  Osmo 360's 1 kHz fused attitude; a handheld clip still has no GPS (section
+  2.3, one clip).
 - **A Kandao QooCam 3 Ultra `.mp4` carries a 0.83 to 1 kHz gyro+accelerometer
   log** and a timestamp per frame on the same clock, and from firmware 1.0.1 a
   1 Hz GPS log that moves (section 2.4, seven clips).
@@ -194,6 +200,25 @@ is written, so the report says `IMU absent` and the attitude alone gives
 rotation but not up; a hover also reads `GPS not usable` (no spread), which is
 the right answer. The `.LRF` proxy carries the same metadata at 30 fps; its
 second attitude batch (`3.3.2.2`) is not read.
+
+**DJI Osmo 360 II** (declares `dvtm_OQ102.proto`) writes the Avata 360's
+field numbers: DJI picks the wire format by product, not by the declared name
+(telemetry-parser's `Schema::detect` routes "Osmo 360 II" and the Air to Wa530
+the same way), so `read_dji` maps the declared name onto the Avata 360 layout.
+Checked on a handheld 25 fps clip (313 frames): the clip header reads IMU rate
+1000 and fps 25.0 at the Avata's fields; ISO and colour temperature parse,
+the shutter field's shape differs and is skipped; a handheld clip writes no
+GPS, altitude or drone fields. It carries what the Osmo 360 lacks,
+`IMU_raw_attitude` at `3.3.5`: a first-sample timestamp on its own clock and
+~42 six-float `ImuRawData` per frame (gyro rad/s, accelerometer g, norms
+1.0-1.2), the integration the fused attitude summarizes. The reader takes the
+accelerometer only and spreads the samples over the frame interval -- a raw
+gyro flips the timeline onto the gyro path, whose IMU-to-lens fit failed on
+both lenses of this clip, while the attitude path needs no fit and measured
+up to 1.0 deg over 112 frames and a metric scale at 5.1 percent sigma.
+Rotating the accelerometer by the fused quaternions puts the world vector at
+-0.996 g on z (sigma 0.077), confirming the Avata's z-down attitude world on
+the handheld camera too.
 
 With no accelerometer nothing in the file says which way the attitude
 quaternion maps, or which way is up in its world. The hand-eye fit therefore
