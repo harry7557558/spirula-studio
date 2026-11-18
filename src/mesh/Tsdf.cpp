@@ -153,6 +153,8 @@ void TsdfVolume::integrate(const TsdfCamera& c, const float* depth, float max_de
     const long npix = (long)c.width * c.height;
     const double block_w = (double)m.voxel * kB;
     auto usable = [&](float d) { return d > 0.0f && (max_depth <= 0.0f || d <= max_depth); };
+    // Band steps of at most half a block, so a band crossing a block lands in it.
+    const int half_steps = std::max(2, (int)std::ceil(2.0 * m.trunc / block_w));
 
     // ---- the blocks each pixel's band [d - trunc, d + trunc] passes through ----
     std::vector<std::vector<int64_t>> found((size_t)thread_count());
@@ -172,9 +174,8 @@ void TsdfVolume::integrate(const TsdfCamera& c, const float* depth, float max_de
                 // Orthographic rays start on the image plane at the pixel's offset.
                 base[k] = o[k] + (ortho ? R[k] * r[0] + R[3 + k] * r[1] : 0.0) - m.origin[k];
             }
-            // Steps of trunc/2 stay under a block, so no block on the band is skipped.
-            for (int s = -2; s <= 2; ++s) {
-                const double along = d + 0.5 * s * m.trunc;
+            for (int s = -half_steps; s <= half_steps; ++s) {
+                const double along = d + m.trunc * s / half_steps;
                 if (along <= 0.0) continue;
                 const int64_t bx = (int64_t)std::floor((base[0] + along * dir[0]) / block_w);
                 const int64_t by = (int64_t)std::floor((base[1] + along * dir[1]) / block_w);

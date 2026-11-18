@@ -87,8 +87,11 @@ std::vector<float> sphere_depth(const TsdfCamera& c) {
     return d;
 }
 
-void test_sphere() {
-    const float voxel = 0.02f, trunc = 4 * voxel;
+// A band past two blocks (20 voxels): oblique views' projective distances skew
+// so wide a band off the sphere, so only its holes are checked.
+void test_sphere(int trunc_voxels) {
+    const bool wide = trunc_voxels > 4;
+    const float voxel = 0.02f, trunc = trunc_voxels * voxel;
     meshing::TsdfVolume vol(voxel, trunc);
     // The six axis directions and the eight cube corners, at distance 3.
     std::vector<std::vector<double>> dirs = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0},
@@ -126,8 +129,8 @@ void test_sphere() {
     const double median = err[err.size() / 2], worst = err.back();
     std::printf("  %zu vertices, %zu faces, radial error median %.4f worst %.4f (voxel %.3f)\n",
                 mesh.V.size(), mesh.F.size(), median, worst, voxel);
-    CHECK(median < 0.1 * voxel);
-    CHECK(worst < voxel);
+    if (!wide) CHECK(median < 0.1 * voxel);
+    if (!wide) CHECK(worst < voxel);
 
     std::map<std::pair<int, int>, int> uses;
     int inward = 0;
@@ -152,7 +155,7 @@ void test_sphere() {
     std::printf("  edges not shared by exactly two faces: %d, faces past 2%% of a voxel "
                 "face wound inward: %d\n", open, inward);
     CHECK(open == 0);
-    CHECK(inward == 0);
+    if (!wide) CHECK(inward == 0);
 }
 
 // Two orthographic views alone: the caps they see, on the sphere. Without other
@@ -195,7 +198,8 @@ void test_depth_from_moments() {
 int main() {
     test_depth_from_moments();
     test_orthographic_alone();
-    test_sphere();
+    test_sphere(4);
+    test_sphere(20);
     if (g_fail) {
         std::printf("tsdf_sphere: %d failure(s)\n", g_fail);
         return 1;
