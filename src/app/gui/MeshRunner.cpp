@@ -35,6 +35,7 @@ struct StageCaption {
 using MStage = meshing::mlog::Stage;
 const StageCaption kStages[] = {
     {MStage::Loading,    &lmsg::mesh_stage_loading},
+    {MStage::Tsdf,       &lmsg::mesh_stage_tsdf},
     {MStage::PointCloud, &lmsg::mesh_stage_point_cloud},
     {MStage::Delaunay,   &lmsg::mesh_stage_delaunay},
     {MStage::Occupancy,  &lmsg::mesh_stage_occupancy},
@@ -224,6 +225,10 @@ void MeshRunner::run(MeshJob job) {
     } else if (!job.data_dir.empty()) {
         argv.push_back("--data");
         argv.push_back(job.data_dir);
+    }
+    if (job.use_data && job.tsdf) {
+        argv.push_back("--method");
+        argv.push_back("tsdf");
     }
     if (job.max_cameras > 0) {
         argv.push_back("--max-cameras");

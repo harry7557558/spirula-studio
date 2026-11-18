@@ -17,6 +17,7 @@ namespace {
 #define SS_MESH_PRESET_FIELDS(X)                                              \
     X("use_data",          use_data)                                          \
     X("max_cameras",       max_cameras)                                       \
+    X("tsdf",              tsdf)                                              \
     X("texture_size",      texture_size)                                      \
     X("iso",               iso)                                               \
     X("bisection_iters",   bisection_iters)                                   \

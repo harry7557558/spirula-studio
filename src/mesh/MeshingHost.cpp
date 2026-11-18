@@ -14,6 +14,8 @@
 #include "mesh/MeshUV.h"
 #include "mesh/Delaunay3D.h"
 #include "mesh/MeshLog.h"
+#include "mesh/MarchingTets.h"
+#include "mesh/Tsdf.h"
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -50,100 +52,6 @@ using Clock = std::chrono::steady_clock;
 static double secs_since(Clock::time_point t0) {
     return std::chrono::duration<double>(Clock::now() - t0).count();
 }
-
-// The 6 tet edges as corner-index pairs.
-static const int kTetEdge[6][2] = {{0,1},{0,2},{0,3},{1,2},{1,3},{2,3}};
-
-// Marching-tetrahedra triangle table. Case bit i is set when occ[i] < iso
-// (the "empty" side). Each triangle is 3 edges; an edge is a corner pair.
-// Winding follows Paul Bourke's PolygoniseTri so normals are consistent.
-struct MTCase { int ntri; int e[2][3][2]; };
-static const MTCase kMT[16] = {
-    /*0000*/ {0, {}},
-    /*0001*/ {1, {{{0,1},{0,2},{0,3}}}},
-    /*0010*/ {1, {{{1,0},{1,3},{1,2}}}},
-    /*0011*/ {2, {{{0,3},{0,2},{1,3}}, {{1,3},{1,2},{0,2}}}},
-    /*0100*/ {1, {{{2,0},{2,1},{2,3}}}},
-    /*0101*/ {2, {{{0,1},{2,3},{0,3}}, {{0,1},{1,2},{2,3}}}},
-    /*0110*/ {2, {{{0,1},{1,3},{2,3}}, {{0,1},{0,2},{2,3}}}},
-    /*0111*/ {1, {{{3,0},{3,2},{3,1}}}},
-    /*1000*/ {1, {{{3,0},{3,2},{3,1}}}},
-    /*1001*/ {2, {{{0,1},{1,3},{2,3}}, {{0,1},{0,2},{2,3}}}},
-    /*1010*/ {2, {{{0,1},{2,3},{0,3}}, {{0,1},{1,2},{2,3}}}},
-    /*1011*/ {1, {{{2,0},{2,1},{2,3}}}},
-    /*1100*/ {2, {{{0,3},{0,2},{1,3}}, {{1,3},{1,2},{0,2}}}},
-    /*1101*/ {1, {{{1,0},{1,3},{1,2}}}},
-    /*1110*/ {1, {{{0,1},{0,2},{0,3}}}},
-    /*1111*/ {0, {}},
-};
-
-static inline int64_t edge_key(int a, int b, int64_t P) {
-    int64_t lo = a < b ? a : b, hi = a < b ? b : a;
-    return lo * P + hi;
-}
-
-// Cut-edge key -> mesh-vertex id, open-addressed. std::unordered_map spends
-// ~120 bytes per entry here plus a bucket array sized from the tet count, which
-// was 1.0 GB of the peak on a 1M-splat model.
-class EdgeTable {
-public:
-    explicit EdgeTable(size_t expect) {
-        size_t cap = 1024;
-        while (cap < expect) cap <<= 1;
-        keys_.assign(cap, kEmpty);
-        vals_.assign(cap, -1);
-        mask_ = cap - 1;
-    }
-    int find(int64_t k) const {
-        size_t i = (size_t)mix(k) & mask_;
-        while (keys_[i] != kEmpty) {
-            if (keys_[i] == k) return vals_[i];
-            i = (i + 1) & mask_;
-        }
-        return -1;
-    }
-    // The id already stored for `k`, or -1 after storing `id` for it.
-    int insert(int64_t k, int id) {
-        if ((load_ + 1) * 4 > (mask_ + 1) * 3) grow();
-        size_t i = (size_t)mix(k) & mask_;
-        while (keys_[i] != kEmpty) {
-            if (keys_[i] == k) return vals_[i];
-            i = (i + 1) & mask_;
-        }
-        keys_[i] = k; vals_[i] = id; ++load_;
-        return -1;
-    }
-    void release() {
-        std::vector<int64_t>().swap(keys_);
-        std::vector<int32_t>().swap(vals_);
-        mask_ = 0; load_ = 0;
-    }
-
-private:
-    static constexpr int64_t kEmpty = INT64_MIN;   // keys are lo*P+hi >= 0
-    static uint64_t mix(int64_t k) {
-        uint64_t x = (uint64_t)k;
-        x ^= x >> 33; x *= 0xff51afd7ed558ccdULL;
-        x ^= x >> 33; x *= 0xc4ceb9fe1a85ec53ULL;
-        return x ^ (x >> 33);
-    }
-    void grow() {
-        const size_t cap = (mask_ + 1) * 2;
-        std::vector<int64_t> nk(cap, kEmpty);
-        std::vector<int32_t> nv(cap, -1);
-        const size_t nmask = cap - 1;
-        for (size_t j = 0; j <= mask_; ++j) {
-            if (keys_[j] == kEmpty) continue;
-            size_t i = (size_t)mix(keys_[j]) & nmask;
-            while (nk[i] != kEmpty) i = (i + 1) & nmask;
-            nk[i] = keys_[j]; nv[i] = vals_[j];
-        }
-        keys_.swap(nk); vals_.swap(nv); mask_ = nmask;
-    }
-    std::vector<int64_t> keys_;
-    std::vector<int32_t> vals_;
-    size_t mask_ = 0, load_ = 0;
-};
 
 // ---------------------------------------------------------------------------
 // Manifold-preserving short-edge merge.
@@ -1531,102 +1439,12 @@ static void improve_mesh_quality(Mesh& mesh, int iters, bool verbose,
                   {total_flips, total_moved, iters});
 }
 
-} // namespace
 
-bool generate_mesh(
-    const float* means, const float* quats,
-    const float* log_scales, const float* logit_opac, const float* features_dc,
-    int num_splats,
-    const float* cam_pos, int num_cameras,
-    const CameraParams& cams,
-    const MeshingConfig& cfg,
-    const std::string& output_path
-) {
+// The opacity field's surface: Delaunay over splat samples, marching
+// tetrahedra at `cfg.iso`. False when there is no surface to extract.
+bool extract_opacity_field(OccupancyEvaluator& ev, const MeshingConfig& cfg,
+                           MeshProgress& prog, Clock::time_point t0, Mesh& mesh) {
     const float iso = cfg.iso;
-    auto t0 = Clock::now();
-
-    // ---- validate the export request BEFORE any heavy work ----
-    std::string formats_csv;
-    for (const auto& f : cfg.formats)
-        formats_csv += (formats_csv.empty() ? "" : ",") + f;
-    if (formats_csv.empty()) formats_csv = "ply";
-    std::vector<MeshFormatSpec> formats = parse_mesh_formats(formats_csv);
-    const std::string out_base = mesh_output_strip_ext(output_path);
-    std::vector<MeshColorMode> modes = cfg.colors;
-    if (modes.empty()) modes.push_back(MeshColorMode::Vertex);
-    std::vector<std::string> dropped;
-    const std::vector<MeshOutputRequest> outputs =
-        plan_mesh_outputs(formats, modes, out_base, &dropped);
-    for (const std::string& d : dropped)
-        mlog::out_raw(mlog::Stage::Wrote, "skipping " + d);
-    if (outputs.empty()) {
-        mlog::err_raw(mlog::Stage::Wrote,
-                      dropped.empty() ? std::string("nothing to write")
-                                      : dropped.front());
-        return false;
-    }
-    bool want_vertex = false, want_texture = false;
-    for (const MeshOutputRequest& r : outputs) {
-        want_vertex = want_vertex || r.mode == MeshColorMode::Vertex;
-        want_texture = want_texture || r.mode == MeshColorMode::Texture;
-    }
-
-    OccupancyEvaluator ev(means, quats, log_scales, logit_opac, features_dc, num_splats,
-                          cam_pos, num_cameras, cams, cfg);
-
-    // ---- debug: dump one camera's occupancy moments and bail out ----
-    // SS_MESH_DEBUG_RENDER=<cam_idx> -> /tmp/ss_moments.f32 (float32 [H,W,3]).
-    if (const char* dbg = spirula::env("MESH_DEBUG_RENDER")) {
-        int cam = std::atoi(dbg);
-        std::vector<float> mom; int W = 0, H = 0;
-        if (!ev.debug_render_moments(cam, mom, W, H)) {
-            mlog::out(mlog::Stage::Debug, mmsg::debug_render_unavailable);
-            return false;
-        }
-        double m0sum = 0; float m0max = 0, mn = 1e30f, mx = -1e30f;
-        size_t seen = 0;
-        for (size_t p = 0; p < (size_t)W * H; ++p) {
-            float m0 = mom[3*p], me = mom[3*p+1];
-            m0sum += m0; m0max = std::max(m0max, m0);
-            if (m0 > 0.5f) { mn = std::min(mn, me); mx = std::max(mx, me); ++seen; }
-        }
-        // A dump of numbers behind SS_MESH_DEBUG_RENDER, read by whoever is
-        // debugging the occupancy field rather than by whoever is waiting for
-        // a mesh. It stays as it is.
-        {
-            char buf[256];
-            std::snprintf(buf, sizeof buf,
-                          "cam %d: %dx%d, mean m0=%.4f max m0=%.4f; "
-                          "depth(m0>0.5) in [%.3f, %.3f] over %zu px",
-                          cam, W, H, m0sum / ((double)W * H), m0max, mn, mx, seen);
-            mlog::out_raw(mlog::Stage::Debug, buf);
-        }
-        FILE* f = std::fopen("/tmp/ss_moments.f32", "wb");
-        if (f) {
-            int hdr[3] = {H, W, 3};
-            std::fwrite(hdr, sizeof(int), 3, f);
-            std::fwrite(mom.data(), sizeof(float), mom.size(), f);
-            std::fclose(f);
-            mlog::out_raw(mlog::Stage::Debug,
-                          "/tmp/ss_moments.f32 (header: H W 3, then floats)");
-        }
-        return true;
-    }
-
-    // Refused here rather than inside the solver, which can only report the
-    // empty result as "no tetrahedra".
-    if ((long long)ev.num_kept() * 7 > delaunay3d::kMaxPoints) {
-        mlog::fail(mlog::Stage::PointCloud, mmsg::too_many_gaussians,
-                   {(long long)ev.num_kept(), (long long)delaunay3d::kMaxPoints,
-                    (long long)(delaunay3d::kMaxPoints / 7)});
-        return false;
-    }
-
-    // Each long phase announces itself BEFORE it runs, not only when it
-    // finishes. A phase that takes minutes and prints only on completion is
-    // indistinguishable from a hang, and it leaves any progress display with
-    // nothing to show.
-    MeshProgress prog(cfg, cfg.on_progress, ev.num_points(), want_vertex, want_texture);
     // ---- 1. point cloud (float everywhere except the Delaunay call) ----
     prog.enter(MeshPhase::PointCloud);
     if (cfg.verbose)
@@ -1731,7 +1549,6 @@ bool generate_mesh(
     if (cfg.verbose)
         mlog::out(mlog::Stage::Bisection, mmsg::bisection_start,
                   {E, cfg.bisection_iters});
-    Mesh mesh;
     mesh.V.resize(E);
     {
         std::vector<float> xyz((size_t)3 * E);
@@ -1804,7 +1621,86 @@ bool generate_mesh(
     pts.clear(); pts.shrink_to_fit();
     tri.cell_adjacents.clear(); tri.cell_adjacents.shrink_to_fit();
     tri.cell_vertices.clear(); tri.cell_vertices.shrink_to_fit();
+    return true;
+}
 
+// The paper's large-scene default: 1024 cells across the scene, here the 5-95
+// percentile box of the splat centres, which ignores far floaters.
+float auto_tsdf_voxel(const float* means, int n) {
+    double diag2 = 0.0;
+    std::vector<float> axis((size_t)n);
+    for (int a = 0; a < 3; ++a) {
+        for (int i = 0; i < n; ++i) axis[(size_t)i] = means[3 * i + a];
+        const size_t lo = (size_t)(0.05 * (n - 1)), hi = (size_t)(0.95 * (n - 1));
+        std::nth_element(axis.begin(), axis.begin() + lo, axis.end());
+        const float vlo = axis[lo];
+        std::nth_element(axis.begin(), axis.begin() + hi, axis.end());
+        diag2 += (double)(axis[hi] - vlo) * (axis[hi] - vlo);
+    }
+    return (float)(std::sqrt(diag2) / 1024.0);
+}
+
+// Every camera's median depth fused into a TSDF, and its zero level.
+bool extract_tsdf(OccupancyEvaluator& ev, const float* means, int num_splats,
+                  const CameraParams& cams, int num_cameras, const MeshingConfig& cfg,
+                  MeshProgress& prog, Mesh& mesh) {
+    const float voxel = cfg.tsdf_voxel > 0.0f ? cfg.tsdf_voxel : auto_tsdf_voxel(means, num_splats);
+    if (!(voxel > 0.0f)) {
+        mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_no_extent);
+        return false;
+    }
+    const float trunc = std::max(cfg.tsdf_trunc, 1.0f) * voxel;
+    TsdfVolume vol(voxel, trunc);
+    auto t = Clock::now();
+    prog.enter(MeshPhase::Fuse);
+    if (cfg.verbose)
+        mlog::out(mlog::Stage::Tsdf, mmsg::tsdf_start,
+                  {num_cameras, mlog::num(voxel, 4), mlog::num(trunc, 4)});
+    std::vector<float> moments, depth;
+    for (int c = 0; c < num_cameras; ++c) {
+        int W = 0, H = 0;
+        if (!ev.render_moments(c, moments, W, H)) {
+            mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_needs_cameras);
+            return false;
+        }
+        depth.resize((size_t)W * H);
+        moments_to_depth(moments.data(), depth.size(), depth.data());
+        TsdfCamera tc{};
+        std::copy(cams.viewmats + 16 * c, cams.viewmats + 16 * (c + 1), tc.viewmat);
+        tc.fx = cams.intrins[4 * c];
+        tc.fy = cams.intrins[4 * c + 1];
+        tc.cx = cams.intrins[4 * c + 2];
+        tc.cy = cams.intrins[4 * c + 3];
+        tc.width = W;
+        tc.height = H;
+        tc.model = cams.camera_models[c];
+        tc.distortion = cams.distortions ? cams.distortions[c] : 0;
+        if (cams.dist_coeffs) std::copy(cams.dist_coeffs + 8 * c, cams.dist_coeffs + 8 * (c + 1), tc.dist);
+        vol.integrate(tc, depth.data(), cfg.tsdf_max_depth);
+    }
+    if (cfg.verbose)
+        mlog::out(mlog::Stage::Tsdf, mmsg::tsdf_fused,
+                  {(long long)vol.num_blocks(), mlog::num((double)vol.bytes() / 1048576.0, 0),
+                   mlog::num(secs_since(t), 2)});
+
+    t = Clock::now();
+    prog.enter(MeshPhase::Extract);
+    vol.extract(mesh);
+    if (cfg.verbose)
+        mlog::out(mlog::Stage::Tsdf, mmsg::marching_done,
+                  {(long long)mesh.F.size(), mlog::num(secs_since(t), 2)});
+    if (mesh.F.empty()) {
+        mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_empty);
+        return false;
+    }
+    return true;
+}
+
+// Everything after extraction, whatever made the mesh: merge, culling,
+// cleanup, orientation, colour, export.
+void finish_mesh(Mesh& mesh, OccupancyEvaluator& ev, MeshProgress& prog,
+                 const MeshingConfig& cfg, const std::vector<MeshOutputRequest>& outputs,
+                 bool want_vertex, bool want_texture, Clock::time_point t0) {
     // ---- 7. merge (do this once to reduce chance of GPU OOM during 6b, but risk CPU OOM) ----
     auto t6 = Clock::now();
     prog.raw_faces((double)mesh.F.size());
@@ -2026,6 +1922,116 @@ bool generate_mesh(
     mlog::out(mlog::Stage::Done, mmsg::done_summary,
               {(long long)mesh.V.size(), (long long)mesh.F.size(),
                mlog::num(secs_since(t0), 2)});
+}
+
+} // namespace
+
+bool generate_mesh(
+    const float* means, const float* quats,
+    const float* log_scales, const float* logit_opac, const float* features_dc,
+    int num_splats,
+    const float* cam_pos, int num_cameras,
+    const CameraParams& cams,
+    const MeshingConfig& cfg,
+    const std::string& output_path
+) {
+    auto t0 = Clock::now();
+
+    // ---- validate the export request BEFORE any heavy work ----
+    std::string formats_csv;
+    for (const auto& f : cfg.formats)
+        formats_csv += (formats_csv.empty() ? "" : ",") + f;
+    if (formats_csv.empty()) formats_csv = "ply";
+    std::vector<MeshFormatSpec> formats = parse_mesh_formats(formats_csv);
+    const std::string out_base = mesh_output_strip_ext(output_path);
+    std::vector<MeshColorMode> modes = cfg.colors;
+    if (modes.empty()) modes.push_back(MeshColorMode::Vertex);
+    std::vector<std::string> dropped;
+    const std::vector<MeshOutputRequest> outputs =
+        plan_mesh_outputs(formats, modes, out_base, &dropped);
+    for (const std::string& d : dropped)
+        mlog::out_raw(mlog::Stage::Wrote, "skipping " + d);
+    if (outputs.empty()) {
+        mlog::err_raw(mlog::Stage::Wrote,
+                      dropped.empty() ? std::string("nothing to write")
+                                      : dropped.front());
+        return false;
+    }
+    bool want_vertex = false, want_texture = false;
+    for (const MeshOutputRequest& r : outputs) {
+        want_vertex = want_vertex || r.mode == MeshColorMode::Vertex;
+        want_texture = want_texture || r.mode == MeshColorMode::Texture;
+    }
+
+    OccupancyEvaluator ev(means, quats, log_scales, logit_opac, features_dc, num_splats,
+                          cam_pos, num_cameras, cams, cfg);
+
+    // ---- debug: dump one camera's occupancy moments and bail out ----
+    // SS_MESH_DEBUG_RENDER=<cam_idx> -> /tmp/ss_moments.f32 (float32 [H,W,3]).
+    if (const char* dbg = spirula::env("MESH_DEBUG_RENDER")) {
+        int cam = std::atoi(dbg);
+        std::vector<float> mom; int W = 0, H = 0;
+        if (!ev.render_moments(cam, mom, W, H)) {
+            mlog::out(mlog::Stage::Debug, mmsg::debug_render_unavailable);
+            return false;
+        }
+        double m0sum = 0; float m0max = 0, mn = 1e30f, mx = -1e30f;
+        size_t seen = 0;
+        for (size_t p = 0; p < (size_t)W * H; ++p) {
+            float m0 = mom[3*p], me = mom[3*p+1];
+            m0sum += m0; m0max = std::max(m0max, m0);
+            if (m0 > 0.5f) { mn = std::min(mn, me); mx = std::max(mx, me); ++seen; }
+        }
+        // A dump of numbers behind SS_MESH_DEBUG_RENDER, read by whoever is
+        // debugging the occupancy field rather than by whoever is waiting for
+        // a mesh. It stays as it is.
+        {
+            char buf[256];
+            std::snprintf(buf, sizeof buf,
+                          "cam %d: %dx%d, mean m0=%.4f max m0=%.4f; "
+                          "depth(m0>0.5) in [%.3f, %.3f] over %zu px",
+                          cam, W, H, m0sum / ((double)W * H), m0max, mn, mx, seen);
+            mlog::out_raw(mlog::Stage::Debug, buf);
+        }
+        FILE* f = std::fopen("/tmp/ss_moments.f32", "wb");
+        if (f) {
+            int hdr[3] = {H, W, 3};
+            std::fwrite(hdr, sizeof(int), 3, f);
+            std::fwrite(mom.data(), sizeof(float), mom.size(), f);
+            std::fclose(f);
+            mlog::out_raw(mlog::Stage::Debug,
+                          "/tmp/ss_moments.f32 (header: H W 3, then floats)");
+        }
+        return true;
+    }
+
+    const bool tsdf = cfg.method == MeshMethod::Tsdf;
+    if (tsdf && !ev.has_render_cameras()) {
+        mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_needs_cameras);
+        return false;
+    }
+    // Refused here rather than inside the solver, which can only report the
+    // empty result as "no tetrahedra".
+    if (!tsdf && (long long)ev.num_kept() * 7 > delaunay3d::kMaxPoints) {
+        mlog::fail(mlog::Stage::PointCloud, mmsg::too_many_gaussians,
+                   {(long long)ev.num_kept(), (long long)delaunay3d::kMaxPoints,
+                    (long long)(delaunay3d::kMaxPoints / 7)});
+        return false;
+    }
+
+    // Each long phase announces itself BEFORE it runs: one that prints only on
+    // completion looks like a hang and leaves a progress display nothing to show.
+    MeshProgress prog(cfg, cfg.on_progress, ev.num_points(), want_vertex, want_texture);
+    Mesh mesh;
+    if (tsdf) {
+        long long pixels = 0;
+        for (int c = 0; c < num_cameras; ++c) pixels += (long long)cams.widths[c] * cams.heights[c];
+        prog.tsdf((double)pixels);
+        if (!extract_tsdf(ev, means, num_splats, cams, num_cameras, cfg, prog, mesh)) return false;
+    } else if (!extract_opacity_field(ev, cfg, prog, t0, mesh)) {
+        return false;
+    }
+    finish_mesh(mesh, ev, prog, cfg, outputs, want_vertex, want_texture, t0);
     return true;
 }
 
