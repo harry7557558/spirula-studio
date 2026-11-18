@@ -233,7 +233,7 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ float evaluate_alpha(
-            float3 ray_o, float3 ray_d, float2 /*pix_size*/
+            float3 ray_o, float3 ray_d
         ) const {
             return SlangProjectionUtils::evaluate_alpha_3dgs(
                 mean, iscl_rot, opacity,
@@ -242,7 +242,7 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ RenderOutput evaluate_color(
-            float3 ray_o, float3 ray_d, float2 /*pix_size*/
+            float3 ray_o, float3 ray_d
         ) const {
             float3 out_rgb; float out_depth;
             SlangProjectionUtils::evaluate_color_3dgs(
@@ -305,7 +305,7 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ float evaluate_alpha(
-            float3 ray_o, float3 ray_d, float2 /*pix_size*/
+            float3 ray_o, float3 ray_d
         ) const {
             return SlangProjectionUtils::evaluate_alpha_3dgs(
                 this->mean, this->iscl_rot, this->opacity,
@@ -314,7 +314,7 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ void evaluate_alpha_vjp(
-            float3 ray_o, float3 ray_d, float2 /*pix_size*/, float v_alpha,
+            float3 ray_o, float3 ray_d, float v_alpha,
             FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
         ) const {
             float3 v_mean; float3x3 v_iscl_rot; float v_opacity;
@@ -333,7 +333,7 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ RenderOutput evaluate_color(
-            float3 ray_o, float3 ray_d, float2 /*pix_size*/
+            float3 ray_o, float3 ray_d
         ) const {
             float3 out_rgb; float out_depth;
             SlangProjectionUtils::evaluate_color_3dgs(
@@ -344,7 +344,7 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ void evaluate_color_vjp(
-            float3 ray_o, float3 ray_d, float2 /*pix_size*/, RenderOutput v_render,
+            float3 ray_o, float3 ray_d, RenderOutput v_render,
             FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
         ) const {
             float3 v_mean; float3x3 v_iscl_rot; float v_opacity; float3 v_rgb;
@@ -365,12 +365,12 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ void evaluate_vjp(
-            float3 ray_o, float3 ray_d, float2 pix_size,
+            float3 ray_o, float3 ray_d,
             float v_alpha, RenderOutput v_render,
             FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
         ) const {
-            evaluate_alpha_vjp(ray_o, ray_d, pix_size, v_alpha, v_frag, v_ray_o, v_ray_d);
-            evaluate_color_vjp(ray_o, ray_d, pix_size, v_render, v_frag, v_ray_o, v_ray_d);
+            evaluate_alpha_vjp(ray_o, ray_d, v_alpha, v_frag, v_ray_o, v_ray_d);
+            evaluate_color_vjp(ray_o, ray_d, v_render, v_frag, v_ray_o, v_ray_d);
         }
 
     };

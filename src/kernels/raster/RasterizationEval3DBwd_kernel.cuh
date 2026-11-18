@@ -140,7 +140,6 @@ __global__ void rasterize_to_pixels_bwd_kernel(
     };
     float3 t = { viewmats[3], viewmats[7], viewmats[11] };
     float fx = intrin.x, fy = intrin.y, cx = intrin.z, cy = intrin.w;
-    const float2 pix_size = SlangProjectionUtils::surfel_pix_size((int)camera_model, fx, fy);
     CameraDistortionCoeffsT<distortion> dist_coeffs = dist_coeffs_buffer.load<distortion>(image_id);
 #endif
 
@@ -437,7 +436,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
             // evaluate alpha and early skip
         #if IS_EVAL3D
             float3 ray_d = {ray_d_pix_bin_final.x, ray_d_pix_bin_final.y, ray_d_pix_bin_final.z};
-            float alpha = splat.evaluate_alpha(ray_o, ray_d, pix_size);
+            float alpha = splat.evaluate_alpha(ray_o, ray_d);
             if (alpha <= ALPHA_THRESHOLD || dot(ray_d, ray_d) == 0.0f)
                 continue;
         #else
@@ -447,7 +446,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         #endif
 
         #if IS_EVAL3D
-            RenderOutput color = splat.evaluate_color(ray_o, ray_d, pix_size);
+            RenderOutput color = splat.evaluate_color(ray_o, ray_d);
             if (color.depth <= 0.0f)
                 continue;
         #else
@@ -568,7 +567,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         #endif
             {
             #if IS_EVAL3D
-                splat.evaluate_vjp(ray_o, ray_d, pix_size, v_alpha, v_color, v_splat, v_ray_o_splat, v_ray_d_splat);
+                splat.evaluate_vjp(ray_o, ray_d, v_alpha, v_color, v_splat, v_ray_o_splat, v_ray_d_splat);
             #else
                 splat.evaluate_alpha_vjp(px, py, v_alpha, v_splat, kernel_cut);
                 splat.evaluate_color_vjp(px, py, v_color, v_splat);

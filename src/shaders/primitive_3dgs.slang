@@ -541,8 +541,7 @@ void projection_3dgs<
     }
 
     float compensation;
-    // Surfel: variance 0.5 px^2 is the low-pass's, so its cutoff matches the bounds.
-    const float eps2d = surfel ? 0.5 : (antialiased ? 0.1 : 0.3);
+    const float eps2d = antialiased ? 0.1 : 0.3;
     float det = add_blur(eps2d, covar2d, compensation);
     if (!assume_valid && det <= 0.f) {
         aabb_xyxy = float4(0.0f);

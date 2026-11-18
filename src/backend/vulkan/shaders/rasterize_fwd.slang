@@ -398,7 +398,6 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (kCameraModel == 4)
         ray_o += transform_ray_d(R, float3((px-intrin.z)/intrin.x, (py-intrin.w)/intrin.y, 0));
     float3 ray_d = transform_ray_d(R, raydir);
-    float2 pix_size = surfel_pix_size(kCameraModel, intrin.x, intrin.y);
 
     bool done = !inside;
 
@@ -498,7 +497,7 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
             float alpha = kSurfel != 0
                 ? evaluate_alpha_2dgs(f.mean, f.iscl_rot, f.opacity, ray_o,
-                                      ray_d, pix_size)
+                                      ray_d)
                 : evaluate_alpha_3dgs(f.mean, f.iscl_rot, f.opacity, ray_o,
                                       ray_d);
             if (alpha <= ALPHA_THRESHOLD)
@@ -509,7 +508,7 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             float3 color_normal = float3(0.0f);
             if (kSurfel != 0)
                 evaluate_color_2dgs(f.mean, f.iscl_rot, f.opacity, f.rgb,
-                                    ray_o, ray_d, pix_size, color_rgb,
+                                    ray_o, ray_d, color_rgb,
                                     color_depth, color_normal);
             else
                 evaluate_color_3dgs(f.mean, f.iscl_rot, f.opacity, f.rgb,

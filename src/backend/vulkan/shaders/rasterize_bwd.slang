@@ -678,7 +678,7 @@ struct VFrag3dgut_ {
 // One sweep step for the 3dgut entry.
 [ForceInline]
 void _rb3_step(Raster3dgutBwdParams p, int pix_id, int splat_idx,
-               bool active, float3 ray_o, float2 pix_size, Frag3dgut_ splat,
+               bool active, float3 ray_o, Frag3dgut_ splat,
                inout VFrag3dgut_ v_splat, inout float accum_weight,
                inout float accum_weight_den, inout float max_weight,
                inout float3 total_v_ray_o) {
@@ -693,7 +693,7 @@ void _rb3_step(Raster3dgutBwdParams p, int pix_id, int splat_idx,
     float3 c_normal = float3(0.0f);
     if (kSurfel != 0) {
         alpha = evaluate_2dgs(splat.mean, splat.iscl_rot, splat.opacity,
-                              splat.rgb, ray_o, ray_d, pix_size, c_rgb, c_depth,
+                              splat.rgb, ray_o, ray_d, c_rgb, c_depth,
                               c_normal);
         if (alpha <= ALPHA_THRESHOLD || dot(ray_d, ray_d) == 0.0f) return;
     } else {
@@ -723,7 +723,7 @@ void _rb3_step(Raster3dgutBwdParams p, int pix_id, int splat_idx,
 #endif
     if (kSurfel != 0) {
         evaluate_2dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity, splat.rgb,
-                          ray_o, ray_d, pix_size, v_alpha, v_color.xyz,
+                          ray_o, ray_d, v_alpha, v_color.xyz,
                           v_color.w, v_normal, v_mean, v_ir, v_op, v_rgb,
                           v_ray_o_a, v_ray_d_a);
     } else {
@@ -807,7 +807,6 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float3 tvec = float3(vm[3], vm[7], vm[11]);
     float4 intrin = p.intrins[image_id];
     float3 ray_o = transform_ray_o(R, tvec);
-    float2 pix_size = surfel_pix_size(kCameraModel, intrin.x, intrin.y);
     float3 total_v_ray_o = float3(0.0f);
 
     // ---- load pixel state (2 pixels per thread) ----
@@ -962,7 +961,7 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             float max_weight = 0.0f;
 
             for (int t = 0; t < batch_size + (int)RB_BLOCK - 1; t++) {
-                _rb3_step(p, t - int(tid), splat_idx, active, ray_o, pix_size, splat,
+                _rb3_step(p, t - int(tid), splat_idx, active, ray_o, splat,
                           v_splat, accum_weight, accum_weight_den, max_weight,
                           total_v_ray_o);
                 GroupMemoryBarrierWithGroupSync();

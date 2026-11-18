@@ -19,7 +19,6 @@ struct Vanilla2DGS : public Eval3DPrimitive<sh_degree, true> {
 
 #ifdef __CUDACC__
 
-    // pix_size: see surfel_ray_hit in shaders/projection_utils.slang.
     struct FragmentFwd {
         float3 mean;
         float3x3 iscl_rot;
@@ -47,18 +46,18 @@ struct Vanilla2DGS : public Eval3DPrimitive<sh_degree, true> {
         }
 
         __device__ __forceinline__ float evaluate_alpha(
-            float3 ray_o, float3 ray_d, float2 pix_size
+            float3 ray_o, float3 ray_d
         ) const {
             return SlangProjectionUtils::evaluate_alpha_2dgs(
-                mean, iscl_rot, opacity, ray_o, ray_d, pix_size);
+                mean, iscl_rot, opacity, ray_o, ray_d);
         }
 
         __device__ __forceinline__ RenderOutput evaluate_color(
-            float3 ray_o, float3 ray_d, float2 pix_size
+            float3 ray_o, float3 ray_d
         ) const {
             float3 out_rgb, out_normal; float out_depth;
             SlangProjectionUtils::evaluate_color_2dgs(
-                mean, iscl_rot, opacity, rgb, ray_o, ray_d, pix_size,
+                mean, iscl_rot, opacity, rgb, ray_o, ray_d,
                 &out_rgb, &out_depth, &out_normal);
             return { out_rgb, out_depth, out_normal };
         }
@@ -114,31 +113,31 @@ struct Vanilla2DGS : public Eval3DPrimitive<sh_degree, true> {
         }
 
         __device__ __forceinline__ float evaluate_alpha(
-            float3 ray_o, float3 ray_d, float2 pix_size
+            float3 ray_o, float3 ray_d
         ) const {
             return SlangProjectionUtils::evaluate_alpha_2dgs(
-                mean, iscl_rot, opacity, ray_o, ray_d, pix_size);
+                mean, iscl_rot, opacity, ray_o, ray_d);
         }
 
         __device__ __forceinline__ RenderOutput evaluate_color(
-            float3 ray_o, float3 ray_d, float2 pix_size
+            float3 ray_o, float3 ray_d
         ) const {
             float3 out_rgb, out_normal; float out_depth;
             SlangProjectionUtils::evaluate_color_2dgs(
-                mean, iscl_rot, opacity, rgb, ray_o, ray_d, pix_size,
+                mean, iscl_rot, opacity, rgb, ray_o, ray_d,
                 &out_rgb, &out_depth, &out_normal);
             return { out_rgb, out_depth, out_normal };
         }
 
         __device__ __forceinline__ void evaluate_vjp(
-            float3 ray_o, float3 ray_d, float2 pix_size,
+            float3 ray_o, float3 ray_d,
             float v_alpha, RenderOutput v_render,
             FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
         ) const {
             float3 v_mean; float3x3 v_iscl_rot; float v_opacity; float3 v_rgb;
             float3 v_ray_o_t, v_ray_d_t;
             SlangProjectionUtils::evaluate_2dgs_vjp(
-                mean, iscl_rot, opacity, rgb, ray_o, ray_d, pix_size,
+                mean, iscl_rot, opacity, rgb, ray_o, ray_d,
                 v_alpha, v_render.rgb, v_render.depth, v_render.normal,
                 &v_mean, &v_iscl_rot, &v_opacity, &v_rgb, &v_ray_o_t, &v_ray_d_t);
             v_frag.mean += v_mean;

@@ -1026,34 +1026,19 @@ void compute_2dgs_iscl_rot_vjp(
 
 struct SurfelHit : IDifferentiable {
     float g;       // exp(-r^2/2) at the ray-plane hit; 0 past grazing
-    float g_lp;    // screen-space low-pass, sigma = sqrt(2)/2 px
     float t_hit;   // ray parameter of the plane hit
-    float t_mean;  // ray parameter of the point closest to the mean
 };
 
-// fx, fy: pixels per radian, or per world unit when orthographic.
-[CudaDeviceExport]
-float2 surfel_pix_size(int camera_model, float fx, float fy) {
-    float inv_f = 1.f / sqrt(fx * fy);
-    return camera_model == int(CameraModelType::ORTHOGRAPHIC) ?
-        float2(inv_f, 0.f) : float2(0.f, inv_f);
-}
-
-// pix_size: world size of one pixel at ray parameter t is pix_size.x +
-// pix_size.y * t * |ray_d| (perspective: (0, 1/f); orthographic: (1/f, 0)).
-// Zero disables the low-pass.
+// The bare disc, with no screen-space low-pass: it renders as 3DGUT renders a
+// flat gaussian, so the mesher's moments and a 3dgut view see what trained.
 [Differentiable]
 [ForceInline]
-SurfelHit surfel_ray_hit(
-    float3 mean, float3x3 iscl_rot,
-    float3 ray_o, float3 ray_d, no_diff float2 pix_size
-) {
+SurfelHit surfel_ray_hit(float3 mean, float3x3 iscl_rot, float3 ray_o, float3 ray_d) {
     SurfelHit h;
     float3 gro = mul(iscl_rot, ray_o - mean);
     float3 grd = mul(iscl_rot, ray_d);
-    float dd = dot(ray_d, ray_d);
     // The normal row is unit length, so grd.z / |ray_d| is the cosine.
-    if (grd.z * grd.z > SURFEL_GRAZING_COS2 * dd) {
+    if (grd.z * grd.z > SURFEL_GRAZING_COS2 * dot(ray_d, ray_d)) {
         h.t_hit = -gro.z / grd.z;
         float2 uv = gro.xy + h.t_hit * grd.xy;
         h.g = exp(-0.5f * dot(uv, uv));
@@ -1061,61 +1046,47 @@ SurfelHit surfel_ray_hit(
         h.t_hit = 0.f;
         h.g = 0.f;
     }
-    float3 m = mean - ray_o;
-    h.t_mean = dot(m, ray_d) / dd;
-    float fp = pix_size.x + pix_size.y * h.t_mean * sqrt(dd);
-    if (h.t_mean > 0.f && fp > 0.f) {
-        float3 perp = m - h.t_mean * ray_d;
-        h.g_lp = exp(-dot(perp, perp) / (fp * fp));
-    } else {
-        h.g_lp = 0.f;
-    }
     return h;
 }
 
 [CudaDeviceExport]
 [Differentiable]
 float evaluate_alpha_2dgs(
-    float3 mean, float3x3 iscl_rot, float opacity,
-    float3 ray_o, float3 ray_d, no_diff float2 pix_size
+    float3 mean, float3x3 iscl_rot, float opacity, float3 ray_o, float3 ray_d
 ) {
-    SurfelHit h = surfel_ray_hit(mean, iscl_rot, ray_o, ray_d, pix_size);
-    return opacity * (h.g >= h.g_lp ? h.g : h.g_lp);
+    return opacity * surfel_ray_hit(mean, iscl_rot, ray_o, ray_d).g;
 }
 
-// Where the low-pass wins, depth is the mean's, as in the 2DGS reference
-// rasterizer. The normal faces the ray.
+// The normal faces the ray.
 [CudaDeviceExport]
 [Differentiable]
 float evaluate_2dgs(
     float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
-    float3 ray_o, float3 ray_d, no_diff float2 pix_size,
+    float3 ray_o, float3 ray_d,
     out float3 out_rgb, out float depth, out float3 normal
 ) {
     out_rgb = rgb;
-    SurfelHit h = surfel_ray_hit(mean, iscl_rot, ray_o, ray_d, pix_size);
-    bool on_disc = h.g >= h.g_lp;
-    depth = on_disc ? h.t_hit : h.t_mean;
+    SurfelHit h = surfel_ray_hit(mean, iscl_rot, ray_o, ray_d);
+    depth = h.t_hit;
     float3 n = float3(iscl_rot[2][0], iscl_rot[2][1], iscl_rot[2][2]);
     normal = dot(n, ray_d) > 0.f ? -n : n;
-    return opacity * (on_disc ? h.g : h.g_lp);
+    return opacity * h.g;
 }
 
 [CudaDeviceExport]
 void evaluate_color_2dgs(
     float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
-    float3 ray_o, float3 ray_d, float2 pix_size,
+    float3 ray_o, float3 ray_d,
     out float3 out_rgb, out float depth, out float3 normal
 ) {
-    evaluate_2dgs(mean, iscl_rot, opacity, rgb, ray_o, ray_d, pix_size,
-                  out_rgb, depth, normal);
+    evaluate_2dgs(mean, iscl_rot, opacity, rgb, ray_o, ray_d, out_rgb, depth, normal);
 }
 
 // Alpha and colour in one VJP: the ray-disc hit is computed once.
 [CudaDeviceExport]
 void evaluate_2dgs_vjp(
     float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
-    float3 ray_o, float3 ray_d, float2 pix_size,
+    float3 ray_o, float3 ray_d,
     float v_alpha, float3 v_out_rgb, float v_depth, float3 v_normal,
     out float3 v_mean, out float3x3 v_iscl_rot, out float v_opacity, out float3 v_rgb,
     out float3 v_ray_o, out float3 v_ray_d
@@ -1128,7 +1099,7 @@ void evaluate_2dgs_vjp(
     DifferentialPair<float3> dp_ray_d = diffPair(ray_d);
     bwd_diff(evaluate_2dgs)(
         dp_mean, dp_iscl_rot, dp_opacity, dp_rgb,
-        dp_ray_o, dp_ray_d, pix_size, v_out_rgb, v_depth, v_normal, v_alpha
+        dp_ray_o, dp_ray_d, v_out_rgb, v_depth, v_normal, v_alpha
     );
     v_mean = dp_mean.d;
     v_iscl_rot = dp_iscl_rot.d;
