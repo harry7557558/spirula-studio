@@ -332,6 +332,17 @@ int main() {
               "alignment check: a photo posed with the wrong axes is turned back");
     }
 
+    {
+        // Panoramas alone are a majority of split frames.
+        opt.pinhole = false;
+        app::write_e57_dataset(opt, [](const std::string&) {});
+        std::ifstream file(out / lidar_layout::kDepthKind);
+        std::string kind;
+        file >> kind;
+        check(kind == "ray", "lidar/depths records ray depth for panoramas");
+        opt.pinhole = true;
+    }
+
     // A run without maps or seeds leaves no earlier run's maps or seeds behind.
     opt.depth_maps = false;
     opt.seed_points = 0;

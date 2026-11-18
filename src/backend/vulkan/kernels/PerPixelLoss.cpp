@@ -1132,8 +1132,7 @@ LossValues compute_multi_scale_per_pixel_losses(
         long Hs = ss[1], Ws = ss[2];
         long ppi = Hs * Ws;
 
-        // A coarse render pixel averages holes that the pooled scan map skips,
-        // so the metric depth term runs on scale 0, with its whole weight.
+        // Scale 0 takes the metric term's whole weight: coarse renders average scan holes.
         std::array<float, kNW> scale_weights = loss_weights_0;
         scale_weights[(int)LossWeightIndex::DepthSupMetric] *=
             scale == 0 ? (float)num_loss_scales : 0.0f;

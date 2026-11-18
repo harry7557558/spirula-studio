@@ -914,7 +914,9 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
         throw std::runtime_error(format(lmsg::err_unreadable_model, {sparse.string()}));
     if (opt.scanner_poses_only) sources.clear();
     const std::string sig = signature(opt, anchors_path);
-    if (ours && fresh.empty() && !opt.overwrite) {
+    // A cancelled run leaves no depth kind and maybe some of its own maps, so it needs a rerun.
+    if (ours && fresh.empty() && !opt.overwrite &&
+        (!opt.depth_maps || fs::exists(ds / lidar_layout::kDepthKind, ec))) {
         const JsonValue* last_sig = last.find("signature");
         if (last_sig && last_sig->as_string() == sig) {
             log(format(lmsg::reused, {(sparse / "0").string()}));

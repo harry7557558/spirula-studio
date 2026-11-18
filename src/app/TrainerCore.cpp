@@ -159,14 +159,12 @@ static WarpFaceFit resolve_face_fit(const TrainConfig& c) {
     throw std::runtime_error("unknown warp_face_fit: " + c.warp_face_fit);
 }
 
-// What `depths/` measures when the flag does not say. `spirula geometry`
-// writes ray depth exactly when it had to split the frame, so this asks the
-// same question of the same lens. Wrong is silent: the loss still trains, on
-// a depth field bent by a secant.
+// What the depth maps measure when the flag does not say: a scan writer's record, else
+// the lens test of `spirula geometry`, which writes ray depth when it splits the frame.
+// Wrong is silent: the loss still trains, on a depth field bent by a secant.
 bool resolve_ray_depth(const TrainConfig& c, const ParsedDataset& ds) {
     if (c.input_depth_is_ray_depth.has_value()) return *c.input_depth_is_ray_depth;
-    // The scan writer voted over every frame. A train split or a partition part
-    // can tip this vote the other way on a rig of mixed lenses.
+    // A train split or a partition part can tip the vote below on a rig of mixed lenses.
     if (c.depth_dir == lidar_layout::kDepths) {
         std::ifstream file(fs::path(c.data) / lidar_layout::kDepthKind);
         std::string kind;

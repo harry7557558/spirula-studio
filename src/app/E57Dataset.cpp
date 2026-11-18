@@ -582,8 +582,7 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
         fs::remove(out / lidar_layout::kDepthKind, ec);
         int64_t n_spherical = 0;
         for (const Frame& f : frames) n_spherical += std::strcmp(f.cam.model, "PINHOLE") != 0;
-        // The trainer reads every map of a dataset one way, by majority
-        // (TrainerCore.cpp resolve_ray_depth); a panorama's split needs ray depth.
+        // All maps of a dataset hold one kind, and a panorama's split needs ray depth.
         const bool ray = n_spherical * 2 > (int64_t)frames.size();
         const int n = (int)frames.size();
         std::mutex mu;
