@@ -1425,8 +1425,8 @@ void DataManagerImpl::warn_mask_aspect() const {
         const int32_t mw = _mask_w_per[i], mh = _mask_h_per[i];
         const int32_t w = _widths[i], h = _heights[i];
         if (mw <= 1 || mh <= 1 || w <= 0 || h <= 0) continue;
-        // One pixel of slack for the rounding an honest downscaler does.
-        if (std::fabs((double)mh * w / mw - (double)h) <= 1.0) continue;
+        // Allow one pixel of rounding in the coarser grid.
+        if (std::fabs((double)mw * h - (double)mh * w) <= std::max({w, h, mw, mh})) continue;
         std::lock_guard<std::mutex> lk(mu);
         if (!seen.insert({mw, mh, w, h}).second) continue;
         std::fprintf(stderr, "%s %s\n", dmsg::word_warning.get(),

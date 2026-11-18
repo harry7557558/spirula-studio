@@ -39,9 +39,9 @@ void region_weight(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         s = float3(p.scales[3 * idx], p.scales[3 * idx + 1], p.scales[3 * idx + 2]);
     }
     if (p.use_normal != 0 && p.num_camera_nodes > 0) {
-        uint cam = label_field_nearest(pos, n, false, p.camera_bvh, p.camera_seeds,
+        uint cam = field_seed_nearest(pos, p.camera_bvh, p.camera_seeds,
                                        p.num_camera_nodes);
-        if (cam != 255u) {
+        if (cam != 0xFFFFFFFFu) {
             n = splat_normal(q, s, pos, p.camera_seeds[cam].xyz);
             has_n = true;
         }

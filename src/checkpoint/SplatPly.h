@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <iosfwd>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,6 +27,7 @@ struct SplatCloud {
     int sh_degree = 0;               // 0 when the file carries no f_rest
     int sb_lobes = 0;                // 0 when it carries no sb_params
     std::string primitive;
+    std::string region_camera_hash;
     std::vector<float> means;        // [num, 3]
     std::vector<float> quats;        // [num, 4]  (w, x, y, z)
     std::vector<float> scales;       // [num, 3]  log
@@ -49,6 +51,7 @@ bool is_splat_ply(const std::string& path);
 // `want_sh` false skips the f_rest and sb_params columns, which are most of
 // the file: the mesher only needs geometry and DC colour.
 SplatCloud read_splat_ply(const std::string& path, bool want_sh = true);
+SplatCloud splat_ply_shape(const std::string& path);
 // The same file in runs of up to `chunk_rows` splats, front to back: `fn` gets
 // each run (num = its length, arrays reused between calls), its first splat's
 // index and the file's total. Host memory stays at one run.
@@ -63,6 +66,10 @@ void write_splat_ply(const SplatCloud& c, const std::string& path,
                      const uint8_t* keep = nullptr,
                      const class SplatTransform* moved = nullptr);
 
+void write_splat_ply_rows(const SplatCloud& c, std::ostream& output, std::vector<float>& buffer,
+                           const uint8_t* keep = nullptr,
+                           const class SplatTransform* moved = nullptr);
+
 // A separate, bounded-memory export; geometry and view-dependent colour turn together.
 void transform_splat_ply(const std::string& source, const std::string& destination,
                           const struct Sim3& transform);
@@ -71,7 +78,8 @@ void transform_splat_ply(const std::string& source, const std::string& destinati
 // splat_ply_put_rest() turns a [basis.coeffs(), 3] colour row into the file
 // order that follows the DC.
 std::string splat_ply_header(int64_t vertices, const ColorBasis& basis,
-                             const std::string& primitive = "", bool y_up = false);
+                             const std::string& primitive = "", bool y_up = false,
+                             const std::string& region_camera_hash = "");
 int splat_ply_row_floats(const ColorBasis& basis);
 void splat_ply_put_rest(const float* rest, const ColorBasis& basis, float* out);
 

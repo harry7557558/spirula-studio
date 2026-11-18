@@ -191,7 +191,8 @@ void engine_save_checkpoint(
     int step,
     int background_export_height,
     std::string basename,
-    bool y_up
+    bool y_up,
+    std::string region_camera_hash
 ) {
     if (background_export_height < 1 || background_export_height > 8192)
         throw std::runtime_error("background_export_height must be in [1, 8192]");
@@ -238,9 +239,9 @@ void engine_save_checkpoint(
     StagedFiles staged;
     const fs::path ply_path = staged.add(out_root / (basename.empty() ? "splat.ply" : basename + ".ply"));
     {
-        std::ofstream ply(ply_path, std::ios::binary);
+        spirula::BufferedOutputFile ply(ply_path, std::ios::binary);
         if (!ply) throw std::runtime_error("Failed to open PLY for write: " + ply_path.string());
-        ply << spirula::splat_ply_header(0, basis, s.primitive, y_up);
+        ply << spirula::splat_ply_header(0, basis, s.primitive, y_up, region_camera_hash);
         const spirula::SplatYUp turn;
         std::vector<float3> means, scales, dc, sh;
         std::vector<float4> quats;
@@ -327,7 +328,7 @@ void engine_save_checkpoint(
         if (pending.valid()) pending.get();
         // The fixed-width vertex count lets filtering finish in a single pass.
         ply.seekp(0);
-        ply << spirula::splat_ply_header(kept, basis, s.primitive, y_up);
+        ply << spirula::splat_ply_header(kept, basis, s.primitive, y_up, region_camera_hash);
         ply.close();
         if (!ply) throw std::runtime_error("Failed to write " + ply_path.string());
     }
@@ -336,7 +337,7 @@ void engine_save_checkpoint(
     const SaveClass save_min = full_dump ? SaveClass::Resume : SaveClass::Always;
 
     const fs::path tar_path = staged.add(out_root / (basename.empty() ? "state.tar" : basename + ".tar"));
-    std::ofstream tar(tar_path, std::ios::binary);
+    spirula::BufferedOutputFile tar(tar_path, std::ios::binary);
     if (!tar)
         throw std::runtime_error("Failed to open state.tar for write: " + tar_path.string());
 

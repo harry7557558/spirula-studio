@@ -50,10 +50,12 @@ void usage() {
     std::fprintf(stderr, "\n%s\n", P::head_split.get());
     help_row("--parts <n>", P::opt_parts);
     help_row("--max-images <n>", P::opt_max_images);
-    help_row("--method graph|viewgraph", P::opt_method);
+    help_row("--method graph|viewgraph|voronoi", P::opt_method);
     help_row("--ring <fraction>", P::opt_ring);
     help_row("--ring-min-points <n>", P::opt_ring_min);
     help_row("--max-seeds <n>", P::opt_max_seeds);
+    help_row("--max-projected-points <n>", P::opt_max_projected);
+    help_row("--projection-depth-slack <fraction>", P::opt_projection_depth);
     help_row("--source auto|tracks|projection|proximity", P::opt_source);
     help_row("-o, --output <file>", P::opt_output);
     std::fprintf(stderr, "\n%s\n", P::head_merge.get());
@@ -86,6 +88,17 @@ int run_split(int argc, char** argv) {
         else if (a == "--ring") opt.ring_fraction = (float)std::atof(next());
         else if (a == "--ring-min-points") opt.ring_min_points = std::atoi(next());
         else if (a == "--max-seeds") opt.max_seeds = std::atoi(next());
+        else if (a == "--max-projected-points") {
+            opt.max_projected_points = std::atoi(next());
+            if (opt.max_projected_points < 1) return bad_value("", "--max-projected-points");
+        }
+        else if (a == "--projection-depth-slack") {
+            const char* value = next();
+            char* end = nullptr;
+            opt.projection_depth_slack = std::strtof(value, &end);
+            if (end == value || *end || !std::isfinite(opt.projection_depth_slack) || opt.projection_depth_slack < 0)
+                return bad_value(value, "--projection-depth-slack");
+        }
         else if (a == "--method") {
             const char* v = next();
             if (!spirula::partition_method_from_name(v, opt.method)) return bad_value(v, "--method");
@@ -120,9 +133,13 @@ int run_split(int argc, char** argv) {
 
     auto log = [](const std::string& s) { std::printf("%s\n", s.c_str()); };
     const spirula::Covisibility cov = spirula::build_covisibility(ds, &tracks, opt, log);
-    std::printf("%s\n", format(P::log_covisibility,
-                               {spirula::covisibility_source_name(cov.source),
-                                (long long)(cov.cameras.adj.size() / 2)}).c_str());
+    if (cov.camera_graph_built)
+        std::printf("%s\n", format(P::log_covisibility,
+                                   {spirula::covisibility_source_name(cov.source),
+                                    (long long)(cov.cameras.adj.size() / 2)}).c_str());
+    else
+        std::printf("%s\n", format(P::log_covisibility_without_graph,
+                                   {spirula::covisibility_source_name(cov.source)}).c_str());
     const spirula::ScenePartition part = spirula::partition_scene(ds, cov, opt);
     char cut[32];
     std::snprintf(cut, sizeof cut, "%.1f", 100.0 * part.cut_fraction);
@@ -202,15 +219,15 @@ int run_merge(int argc, char** argv) {
         return 1;
     }
     spirula::MergeStats stats;
-    const spirula::SplatCloud merged = spirula::merge_partition_splats(part, paths, stats);
+    if (output.empty()) output = (fs::path(json).parent_path() / "merged.ply").string();
+    spirula::merge_partition_splats_file(part, paths, output, stats);
     for (int k = 0; k < part.num_parts; k++) {
         const spirula::MergePartStats& s = stats.parts[(size_t)k];
         if (s.ply.empty()) continue;
         std::printf("%s\n", format(P::merge_part, {k, (long long)s.read, (long long)s.kept, s.ply}).c_str());
     }
-    if (output.empty()) output = (fs::path(json).parent_path() / "merged.ply").string();
-    spirula::write_splat_ply(merged, output);
-    std::printf("%s\n", format(P::merge_written, {output, (long long)merged.num}).c_str());
+
+    std::printf("%s\n", format(P::merge_written, {output, (long long)stats.total}).c_str());
     return 0;
 }
 

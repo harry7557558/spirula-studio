@@ -1,6 +1,7 @@
 // TrainerCore.cpp -- see TrainerCore.h.
 
 #include "app/TrainerCore.h"
+#include "checkpoint/RegionCameras.h"
 #include "app/ForecastTrace.h"
 #include "backend/api/BackendRuntime.h"
 #include "core/Env.h"
@@ -1050,7 +1051,21 @@ void TrainerSession::load_region() {
     }
 }
 
+RegionCameras TrainerSession::build_region_cameras() const {
+    std::vector<int32_t> idx((size_t)ds.num_cameras, 0);
+    std::vector<float> centers((size_t)ds.num_cameras * 3);
+    for (int64_t i = 0; i < ds.num_cameras; i++)
+        for (int r = 0; r < 3; r++) centers[(size_t)i * 3 + r] = ds.c2w[(size_t)i * 12 + r * 4 + 3];
+    RegionCameras cameras;
+    cameras.field = LabelField::build(centers.data(), idx.data(), nullptr, ds.num_cameras, 4);
+    cameras.train_from_dataset.scale = cfg.relative_scale.value_or(1.0f);
+    for (int k = 0; k < 3; k++)
+        cameras.train_from_dataset.t[k] = -cameras.train_from_dataset.scale * ds.center[k];
+    return cameras;
+}
+
 void TrainerSession::setup_region() {
+    roi_cameras.reset();
     if (!roi) {
         engine_set_region({}, {}, {}, {}, {}, {}, 1.0f);
         return;
@@ -1061,14 +1076,8 @@ void TrainerSession::setup_region() {
     RegionProgram prog;
     std::string err;
     if (!compile_region(*roi, prog, err, rs, shift)) throw std::runtime_error(err);
-    // The training cameras, indexed, orient each splat's normal on the device.
-    std::vector<int32_t> idx((size_t)ds.num_cameras);
-    std::vector<float> centers((size_t)ds.num_cameras * 3);
-    for (int64_t i = 0; i < ds.num_cameras; i++) {
-        idx[(size_t)i] = (int32_t)std::min<int64_t>(i, 254);
-        for (int r = 0; r < 3; r++) centers[(size_t)i * 3 + r] = ds.c2w[(size_t)i * 12 + r * 4 + 3];
-    }
-    const LabelField cams = LabelField::build(centers.data(), idx.data(), nullptr, ds.num_cameras, 4);
+    roi_cameras = std::make_shared<RegionCameras>(build_region_cameras());
+    const LabelField& cams = roi_cameras->field;
     static const std::vector<float> none;
     auto tv = [](const std::vector<float>& v) -> TorchTensorView {
         if (v.empty()) return {};
@@ -1839,8 +1848,9 @@ void TrainerSession::save_checkpoint(int step, bool full) {
         std::snprintf(suffix, sizeof suffix, "_step-%09d", step);
         basename += suffix;
     }
+    const std::string camera_hash = roi_cameras ? save_region_cameras(out_dir.string(), *roi_cameras) : "";
     engine_save_checkpoint(out_dir.string(), full, step, cfg.background_export_height,
-                           basename, cfg.export_y_up);
+                           basename, cfg.export_y_up, camera_hash);
     if (cfg.save_only_latest_checkpoint) {
         std::vector<fs::path> stale;
         for (const auto& e : fs::directory_iterator(out_dir)) {
