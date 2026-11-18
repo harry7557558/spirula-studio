@@ -9,5 +9,7 @@ namespace lidar_layout {
 inline constexpr const char* kPoints  = "lidar/points.ply";
 inline constexpr const char* kDepths  = "lidar/depths";
 inline constexpr const char* kNormals = "lidar/normals";
+// One word, `ray` or `axial`: the distance the maps in kDepths hold.
+inline constexpr const char* kDepthKind = "lidar/depths/depth_kind.txt";
 
 }  // namespace lidar_layout

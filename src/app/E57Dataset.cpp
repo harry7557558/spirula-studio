@@ -631,6 +631,7 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
         for (const Frame& f : frames) maps.insert(f.stem + ".png");
         remove_others(out / lidar_layout::kDepths, maps);
         remove_others(out / lidar_layout::kNormals, maps);
+        write_depth_kind(out.string(), ray);
     } else {
         fs::remove_all(out / lidar_layout::kDepths, ec);
         fs::remove_all(out / lidar_layout::kNormals, ec);

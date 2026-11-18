@@ -1301,6 +1301,7 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     if (opt.depth_maps) {
         fs::create_directories(ds / lidar_layout::kDepths, ec);
         fs::create_directories(ds / lidar_layout::kNormals, ec);
+        write_depth_kind(ds.string(), ray);
     } else {
         fs::remove_all(ds / lidar_layout::kDepths, ec);
         fs::remove_all(ds / lidar_layout::kNormals, ec);

@@ -2,10 +2,14 @@
 
 #include "core/CameraModel.h"
 #include "data/CameraMath.h"
+#include "data/LidarLayout.h"
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <limits>
+#include <stdexcept>
 #include <utility>
 
 namespace app {
@@ -323,6 +327,15 @@ void render_depth_normal(const ScanCloud& cloud, const MapCamera& cam, bool ray_
             const float face = n[0] * c[0] + n[1] * c[1] + n[2] * c[2] > 0 ? -1.0f : 1.0f;
             for (int a = 0; a < 3; a++) normal[((size_t)y * W + x) * 3 + a] = face * n[a] / len;
         }
+}
+
+void write_depth_kind(const std::string& dataset, bool ray_depth) {
+    const std::filesystem::path path =
+        std::filesystem::path(dataset) / lidar_layout::kDepthKind;
+    std::ofstream out(path, std::ios::binary);
+    out << (ray_depth ? "ray\n" : "axial\n");
+    out.close();
+    if (out.fail()) throw std::runtime_error("cannot write " + path.string());
 }
 
 }  // namespace app

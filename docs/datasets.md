@@ -1193,6 +1193,7 @@ XGRIDS captures) and `spirula e57`.
 |---|---|
 | `lidar/points.ply` | the scan's seed points, `double` coordinates |
 | `lidar/depths/<image>.png` | scan depth, 16-bit millimetres, 0 where the scan has none |
+| `lidar/depths/depth_kind.txt` | `ray` or `axial`: the distance those maps hold |
 | `lidar/normals/<image>.png` | normals from that depth |
 
 No photograph step and no depth model writes these files (the scan step also

@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace app {
@@ -58,5 +59,9 @@ void render_color(const ScanCloud& cloud, const MapCamera& cam, std::vector<uint
 // facing it, all zero where none.
 void render_depth_normal(const ScanCloud& cloud, const MapCamera& cam, bool ray_depth,
                          std::vector<float>& depth, std::vector<float>& normal);
+
+// Records which distance the dataset's scan maps hold. The trainer sees only
+// its own frames, and they can vote the other way on a rig of mixed lenses.
+void write_depth_kind(const std::string& dataset, bool ray_depth);
 
 }  // namespace app

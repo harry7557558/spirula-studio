@@ -230,6 +230,13 @@ int main() {
               fs::path(ds.depth_filenames[1]).parent_path() ==
                   (out / lidar_layout::kDepths).lexically_normal(),
           "the depth maps are read from lidar/depths");
+    {
+        // One panorama and one pinhole do not make a majority of split frames.
+        std::ifstream file(out / lidar_layout::kDepthKind);
+        std::string kind;
+        file >> kind;
+        check(kind == "axial", "lidar/depths records the distance its maps hold");
+    }
 
     // Every camera must send a world point to the pixel its E57 image has it at.
     const float zero[kCameraDistortionParams] = {};

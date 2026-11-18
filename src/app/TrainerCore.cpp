@@ -165,6 +165,13 @@ static WarpFaceFit resolve_face_fit(const TrainConfig& c) {
 // a depth field bent by a secant.
 bool resolve_ray_depth(const TrainConfig& c, const ParsedDataset& ds) {
     if (c.input_depth_is_ray_depth.has_value()) return *c.input_depth_is_ray_depth;
+    // The scan writer voted over every frame. A train split or a partition part
+    // can tip this vote the other way on a rig of mixed lenses.
+    if (c.depth_dir == lidar_layout::kDepths) {
+        std::ifstream file(fs::path(c.data) / lidar_layout::kDepthKind);
+        std::string kind;
+        if (file >> kind) return kind == "ray";
+    }
     int64_t wide = 0, voters = 0;
     for (int64_t i = 0; i < ds.num_cameras; i++) {
         // A frame with no depth map has no opinion on what the depth maps are.
