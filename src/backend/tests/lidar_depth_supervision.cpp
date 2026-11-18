@@ -39,15 +39,18 @@ struct Outcome {
     std::vector<float> target;
 };
 
-// Target in millimetre counts, rendered depth in metres times `ratio`.
-Outcome run(int64_t h, int64_t w, float ratio, float weight) {
+// Target in millimetre counts, rendered depth in metres times `ratio`, or times
+// `hole_ratio` where the map has no depth.
+Outcome run(int64_t h, int64_t w, float ratio, float weight, int scales = 1,
+            float hole_ratio = 0.0f) {
     const int64_t count = h * w;
     DeviceInputs inputs;
     std::vector<float> rendered(count), target(count, 0.0f);
     for (int64_t i = 0; i < count; ++i) {
         const float mm = 500.0f + float((i * 37) % 113) * 170.0f;
-        if (i % 7 != 0) target[i] = mm;
-        rendered[i] = ratio * mm * 0.001f;
+        const bool hole = i % 7 == 0;
+        if (!hole) target[i] = mm;
+        rendered[i] = (hole && hole_ratio > 0.0f ? hole_ratio : ratio) * mm * 0.001f;
     }
     auto rgb = view(inputs.upload(std::vector<float>(3 * count, 0.4f)), {1, h, w, 3});
     auto depth = view(inputs.upload(rendered), {1, h, w, 1});
@@ -69,7 +72,7 @@ Outcome run(int64_t h, int64_t w, float ratio, float weight) {
     // Loss scalars arrive one evaluation behind.
     LossValues losses{};
     for (int replay = 0; replay < 3; ++replay) {
-        losses = compute_multi_scale_per_pixel_losses(1, rgb, rgb, depth, gt,
+        losses = compute_multi_scale_per_pixel_losses(scales, rgb, rgb, depth, gt,
             absent(), absent(), absent(), transmittance, absent(), absent(), absent(),
             absent(), absent(), absent(), false, weights, 0.0f, 0, -1.0f, v_losses, needs,
             1, absent(), absent(), static_cast<int>(DensifyLossMapMode::None), 0.75f, 0.0f, grads);
@@ -112,6 +115,22 @@ int main() {
     for (float g : off.gradient) off_ok &= g == 0.0f;
     std::printf("zero weight: %s\n", off_ok ? "ok" : "FAILED");
     failures += !off_ok;
+
+    // A coarse render pixel averages the holes that the pooled map skips.
+    Outcome holes = run(h, w, 1.0f, weight, 2, 5.0f);
+    bool holes_ok = std::fabs(holes.loss) < 1e-6f;
+    for (float g : holes.gradient) holes_ok &= std::fabs(g) < 1e-6f;
+    std::printf("two scales, far holes: loss=%.3g %s\n", holes.loss, holes_ok ? "ok" : "FAILED");
+    failures += !holes_ok;
+
+    Outcome two = run(h, w, 1.1f, weight, 2);
+    bool two_ok = std::fabs(two.loss - expect) < 1e-3f * expect;
+    for (size_t i = 0; i < two.gradient.size(); ++i)
+        two_ok &= std::fabs(two.gradient[i] - beyond.gradient[i]) <=
+                  1e-3f * std::fabs(beyond.gradient[i]);
+    std::printf("two scales keep the weight: loss=%.6g expect=%.6g %s\n", two.loss, expect,
+                two_ok ? "ok" : "FAILED");
+    failures += !two_ok;
 
     std::printf("%d failing cases\n", failures);
     return failures ? 1 : 0;

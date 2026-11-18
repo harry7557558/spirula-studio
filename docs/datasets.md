@@ -1205,7 +1205,9 @@ uses them as measurements:
   relative error cost the same at 2 m and at 20 m. The Cauchy pull fades for
   large errors, because a scan map draws thin near objects (twigs, a sapling)
   wider than they are. The Pearson term of `depth_supervision_weight` stays
-  off on scan depth, because it ignores the scale the laser measured.
+  off on scan depth, because it ignores the scale the laser measured. The term
+  runs on the finest loss scale only: a coarser scale would average the render
+  over pixels where the map has no depth.
 - **Normals.** `lidar/normals/` is read in place of `normals/`, with no
   per-photo bilateral grid: that grid corrects a model's biased maps.
 - **Seeds.** `sparse/0` keeps the scan's points with their tracks, because
