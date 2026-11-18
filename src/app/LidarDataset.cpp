@@ -1301,7 +1301,8 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     if (opt.depth_maps) {
         fs::create_directories(ds / lidar_layout::kDepths, ec);
         fs::create_directories(ds / lidar_layout::kNormals, ec);
-        write_depth_kind(ds.string(), ray);
+        // A cancelled run can leave maps of both kinds, so the record waits for the last map.
+        fs::remove(ds / lidar_layout::kDepthKind, ec);
     } else {
         fs::remove_all(ds / lidar_layout::kDepths, ec);
         fs::remove_all(ds / lidar_layout::kNormals, ec);
@@ -1468,6 +1469,7 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     }
     if (failure) std::rethrow_exception(failure);
     if (cancelled()) { res.cancelled = true; return res; }
+    if (opt.depth_maps) write_depth_kind(ds.string(), ray);
     if (!off_scan.empty()) {
         std::set<std::string> stems;
         for (uint32_t id : off_scan) stems.insert(stem_of(out.images.at(id).name));

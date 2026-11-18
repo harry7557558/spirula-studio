@@ -578,6 +578,8 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
     if (opt.depth_maps && cloud.size() > 0) {
         fs::create_directories(out / lidar_layout::kDepths, ec);
         fs::create_directories(out / lidar_layout::kNormals, ec);
+        // A cancelled run can leave maps of both kinds, so the record waits for the last map.
+        fs::remove(out / lidar_layout::kDepthKind, ec);
         int64_t n_spherical = 0;
         for (const Frame& f : frames) n_spherical += std::strcmp(f.cam.model, "PINHOLE") != 0;
         // The trainer reads every map of a dataset one way, by majority
