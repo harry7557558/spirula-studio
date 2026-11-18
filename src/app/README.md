@@ -15,7 +15,7 @@ cmake -G Ninja -B build && cmake --build build --target spirula
 ```
 
 - Presets = tyro subcommands: `3dgs` (default), `360-camera`, `in-the-wild`,
-  `centered-object`, `hdr`, `synthetic`, `meshing`, `academic-baseline`.
+  `centered-object`, `hdr`, `synthetic`, `meshing`, `2dgs`, `academic-baseline`.
 - Flag conventions: flattened names (`--sh-degree`, not `--model.sh-degree`);
   `-`/`_` interchangeable; bools take a value (`--warp-to-pinhole 1`);
   `--key=value` works (arity-1 only); `none` clears optionals; tuples take N

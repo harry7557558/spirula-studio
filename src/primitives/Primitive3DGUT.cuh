@@ -15,8 +15,10 @@ namespace SlangHarmonics {
 #include "primitives/PrimitiveBase3DGS.cuh"
 #include "primitives/PrimitiveProjection.cuh"
 
-template<int sh_degree>
-struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
+// surfel: project with 2DGS's flattened bounds (Primitive2DGS.cuh); the world
+// and screen rows are 3DGUT's either way.
+template<int sh_degree, bool surfel = false>
+struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
     static constexpr RenderOutputType pixelType = RenderOutputType::RGB_D;
 
     using WorldBuffer = typename _BasePrimitive3DGUT<sh_degree>::WorldBuffer;
@@ -50,7 +52,7 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
                  int VALUE_BITS = 32>
         inline __device__ void project(
             ProjCameraT<distortion> cam,
-            Vanilla3DGUT<sh_degree>::Screen& proj, float4& aabb, float& sorting_depth, float& radius,
+            Screen& proj, float4& aabb, float& sorting_depth, float& radius,
             uint8_t* sh_packed = nullptr,
             float2*  sh_bounds = nullptr,
             int64_t  sh_base   = 0,
@@ -59,7 +61,7 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
         ) {
             float2 xy;
             float depth;
-            Slang3DGSProj<camera_model, distortion>::fwd_3d(
+            Slang3DGSProj<camera_model, distortion>::template fwd_eval3d<surfel>(
                 false,
                 this->mean, this->quat, this->scale, this->opacity,
                 cam.R, cam.t, cam.fx, cam.fy, cam.cx, cam.cy,
@@ -109,8 +111,8 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
                  bool atomic=true, int VALUE_BITS = 32>
         inline __device__ void project_vjp(
             ProjCameraT<distortion> cam,
-            Vanilla3DGUT<sh_degree>::Screen v_proj,
-            Vanilla3DGUT<sh_degree>::World& v_world, float3x3 &v_R, float3 &v_t,
+            Screen v_proj,
+            World& v_world, float3x3 &v_R, float3 &v_t,
             uint8_t* sh_packed = nullptr,
             float2*  sh_bounds = nullptr,
             int64_t  sh_base   = 0,
@@ -231,7 +233,7 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ float evaluate_alpha(
-            float3 ray_o, float3 ray_d
+            float3 ray_o, float3 ray_d, float2 /*pix_size*/
         ) const {
             return SlangProjectionUtils::evaluate_alpha_3dgs(
                 mean, iscl_rot, opacity,
@@ -240,7 +242,7 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ RenderOutput evaluate_color(
-            float3 ray_o, float3 ray_d
+            float3 ray_o, float3 ray_d, float2 /*pix_size*/
         ) const {
             float3 out_rgb; float out_depth;
             SlangProjectionUtils::evaluate_color_3dgs(
@@ -303,7 +305,7 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ float evaluate_alpha(
-            float3 ray_o, float3 ray_d
+            float3 ray_o, float3 ray_d, float2 /*pix_size*/
         ) const {
             return SlangProjectionUtils::evaluate_alpha_3dgs(
                 this->mean, this->iscl_rot, this->opacity,
@@ -312,7 +314,7 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ void evaluate_alpha_vjp(
-            float3 ray_o, float3 ray_d, float v_alpha,
+            float3 ray_o, float3 ray_d, float2 /*pix_size*/, float v_alpha,
             FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
         ) const {
             float3 v_mean; float3x3 v_iscl_rot; float v_opacity;
@@ -331,7 +333,7 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ RenderOutput evaluate_color(
-            float3 ray_o, float3 ray_d
+            float3 ray_o, float3 ray_d, float2 /*pix_size*/
         ) const {
             float3 out_rgb; float out_depth;
             SlangProjectionUtils::evaluate_color_3dgs(
@@ -342,7 +344,7 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ void evaluate_color_vjp(
-            float3 ray_o, float3 ray_d, RenderOutput v_render,
+            float3 ray_o, float3 ray_d, float2 /*pix_size*/, RenderOutput v_render,
             FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
         ) const {
             float3 v_mean; float3x3 v_iscl_rot; float v_opacity; float3 v_rgb;
@@ -362,8 +364,21 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
             v_ray_d += v_ray_d_t;
         }
 
+        __device__ __forceinline__ void evaluate_vjp(
+            float3 ray_o, float3 ray_d, float2 pix_size,
+            float v_alpha, RenderOutput v_render,
+            FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
+        ) const {
+            evaluate_alpha_vjp(ray_o, ray_d, pix_size, v_alpha, v_frag, v_ray_o, v_ray_d);
+            evaluate_color_vjp(ray_o, ray_d, pix_size, v_render, v_frag, v_ray_o, v_ray_d);
+        }
+
     };
 
 #endif  // #ifdef __CUDACC__
 
 };
+
+template<int sh_degree>
+using Vanilla3DGUT = Eval3DPrimitive<sh_degree, false>;
+

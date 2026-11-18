@@ -245,6 +245,7 @@ bool lens_needs_ut(const Lens& l, int w, int h) {
 std::string resolve_primitive(const std::string& want, const std::string& trained, const Lens& l,
                               int w, int h) {
     if (!want.empty() && want != "auto") return want;
+    if (trained == "2dgs") return trained;
     if (lens_needs_ut(l, w, h)) return "3dgut";
     return trained == "mip" ? "mip" : "3dgs";
 }

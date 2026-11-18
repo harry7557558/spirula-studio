@@ -22,12 +22,19 @@
 #include "primitives/Primitive.cuh"
 
 // Explicit primitive -> rendered channel set. The only place the engine encodes
-// what each primitive renders; update here when adding a primitive (e.g. a
-// normal-rendering one would return RGB_DN).
+// what each primitive renders; update here when adding a primitive.
 inline RenderOutputType engine_primitive_pixel_type(const std::string& primitive) {
     if (primitive == "3dgs" || primitive == "mip" || primitive == "3dgut")
         return RenderOutputType::RGB_D;
+    if (primitive == "2dgs")
+        return RenderOutputType::RGB_DN;
     throw std::runtime_error("engine_primitive_pixel_type: unknown primitive: " + primitive);
+}
+
+// 3DGUT and 2DGS rasterize per-pixel rays, write world-geometry gradients from
+// the rasterizer, and share 3DGUT's projection backward and fused optimizer.
+inline bool engine_primitive_eval3d(const std::string& primitive) {
+    return primitive == "3dgut" || primitive == "2dgs";
 }
 
 // Pick the distortion channel set from the per-channel weights, restricted to

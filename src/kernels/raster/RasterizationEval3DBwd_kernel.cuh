@@ -140,6 +140,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
     };
     float3 t = { viewmats[3], viewmats[7], viewmats[11] };
     float fx = intrin.x, fy = intrin.y, cx = intrin.z, cy = intrin.w;
+    const float2 pix_size = SlangProjectionUtils::surfel_pix_size((int)camera_model, fx, fy);
     CameraDistortionCoeffsT<distortion> dist_coeffs = dist_coeffs_buffer.load<distortion>(image_id);
 #endif
 
@@ -225,6 +226,12 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         RenderOutput v_render_output_local = (inside ?
             v_render_output_buffer.load<SplatPrimitive::pixelType>(pix_id_image_global)
              : RenderOutput::zero());
+    #if IS_EVAL3D
+        // The stored normal is camera space (see the forward); the splats' are world.
+        if constexpr (RenderOutput::has_normal(SplatPrimitive::pixelType))
+            v_render_output_local.normal =
+                SlangProjectionUtils::transform_ray_d(R, v_render_output_local.normal);
+    #endif
         if constexpr (RenderOutput::has_depth(SplatPrimitive::pixelType)) {
             float inv_alpha = 1.0f / fmaxf(1.0f - render_Ts_local, 1e-10f);  // 1/W
             float exp_depth = (inside && render_output_buffer.depths) ?
@@ -248,6 +255,11 @@ __global__ void rasterize_to_pixels_bwd_kernel(
             pix_colors[pix_id_local] = (inside ?
                 render_output_buffer.load<SplatPrimitive::pixelType>(pix_id_image_global)
                 : RenderOutput::zero());
+        #if IS_EVAL3D
+            if constexpr (dist_has_normal(dist_type))
+                pix_colors[pix_id_local].normal =
+                    SlangProjectionUtils::transform_ray_d(R, pix_colors[pix_id_local].normal);
+        #endif
             // Recover the distortion C for the depth channel. Render depth is
             // exp(C_logz/W) (geometric-mean-style log depth), so the un-normalized
             // log-depth mean C_logz = ln(depth) * W. rgb/normal C stay raw.
@@ -425,7 +437,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
             // evaluate alpha and early skip
         #if IS_EVAL3D
             float3 ray_d = {ray_d_pix_bin_final.x, ray_d_pix_bin_final.y, ray_d_pix_bin_final.z};
-            float alpha = splat.evaluate_alpha(ray_o, ray_d);
+            float alpha = splat.evaluate_alpha(ray_o, ray_d, pix_size);
             if (alpha <= ALPHA_THRESHOLD || dot(ray_d, ray_d) == 0.0f)
                 continue;
         #else
@@ -435,7 +447,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         #endif
 
         #if IS_EVAL3D
-            RenderOutput color = splat.evaluate_color(ray_o, ray_d);
+            RenderOutput color = splat.evaluate_color(ray_o, ray_d, pix_size);
             if (color.depth <= 0.0f)
                 continue;
         #else
@@ -552,13 +564,11 @@ __global__ void rasterize_to_pixels_bwd_kernel(
 
             // backward diff splat
         #if IS_EVAL3D
-            float3 v_ray_o_alpha = make_float3(0), v_ray_d_alpha = make_float3(0);
-            float3 v_ray_o_color = make_float3(0), v_ray_d_color = make_float3(0);
+            float3 v_ray_o_splat = make_float3(0), v_ray_d_splat = make_float3(0);
         #endif
             {
             #if IS_EVAL3D
-                splat.evaluate_alpha_vjp(ray_o, ray_d, v_alpha, v_splat, v_ray_o_alpha, v_ray_d_alpha);
-                splat.evaluate_color_vjp(ray_o, ray_d, v_color, v_splat, v_ray_o_color, v_ray_d_color);
+                splat.evaluate_vjp(ray_o, ray_d, pix_size, v_alpha, v_color, v_splat, v_ray_o_splat, v_ray_d_splat);
             #else
                 splat.evaluate_alpha_vjp(px, py, v_alpha, v_splat, kernel_cut);
                 splat.evaluate_color_vjp(px, py, v_color, v_splat);
@@ -580,8 +590,8 @@ __global__ void rasterize_to_pixels_bwd_kernel(
 
         #if IS_EVAL3D
             if (output_viewmat_grad) {
-                total_v_ray_o += v_ray_o_alpha + v_ray_o_color;
-                shared_v_ray_d[pix_id] += v_ray_d_alpha + v_ray_d_color;
+                total_v_ray_o += v_ray_o_splat;
+                shared_v_ray_d[pix_id] += v_ray_d_splat;
             }
         #endif
 

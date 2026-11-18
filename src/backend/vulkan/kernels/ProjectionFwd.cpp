@@ -179,9 +179,11 @@ std::tuple<
         num_sh_buffer, sh_value_bits, sh_bounds_stride);
 }
 
-std::tuple<
+// eval_mode is the shader's kEval3d: 1 for 3DGUT, 2 for 2DGS.
+static std::tuple<
     DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
-> projection_3dgut_forward(
+> projection_eval3d_forward(
+    const uint32_t eval_mode,
     const int64_t num_splats, const ColorBasis color,
     const std::vector<DeviceTensorFloatND> &in_splats,
     TorchTensorView viewmats, TorchTensorView intrins,
@@ -252,9 +254,47 @@ std::tuple<
     p.wgs_per_row = per_row;
 
     backend::vk::SpecList spec{cd.cam, cs.sh_degree, 0u, spec_bits,
-                               cs.sb_lobes, 0u, cd.dist};
+                               cs.sb_lobes, eval_mode, cd.dist};
     vkk::dispatch_ring("projection_fwd.projection_fwd_3dgut", spec, per_row,
                        rows, 1, &p, sizeof(p));
 
     return std::make_tuple(aabb, sorting_depths, splats_screen);
+}
+
+std::tuple<
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+> projection_3dgut_forward(
+    const int64_t num_splats, const ColorBasis color,
+    const std::vector<DeviceTensorFloatND> &in_splats,
+    TorchTensorView viewmats, TorchTensorView intrins,
+    const uint32_t image_width, const uint32_t image_height,
+    const std::string camera_model, const std::string distortion,
+    const TorchTensorView dist_coeffs,
+    DeviceVector<float> radii,
+    const std::optional<TorchTensorView> sh_value_packed,
+    const std::optional<TorchTensorView> sh_value_bounds,
+    const uint32_t num_sh_buffer,
+    const int sh_value_bits,
+    const int64_t sh_bounds_stride
+) {
+    return projection_eval3d_forward(1, num_splats, color, in_splats, viewmats, intrins, image_width, image_height, camera_model, distortion, dist_coeffs, radii, sh_value_packed, sh_value_bounds, num_sh_buffer, sh_value_bits, sh_bounds_stride);
+}
+
+std::tuple<
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+> projection_2dgs_forward(
+    const int64_t num_splats, const ColorBasis color,
+    const std::vector<DeviceTensorFloatND> &in_splats,
+    TorchTensorView viewmats, TorchTensorView intrins,
+    const uint32_t image_width, const uint32_t image_height,
+    const std::string camera_model, const std::string distortion,
+    const TorchTensorView dist_coeffs,
+    DeviceVector<float> radii,
+    const std::optional<TorchTensorView> sh_value_packed,
+    const std::optional<TorchTensorView> sh_value_bounds,
+    const uint32_t num_sh_buffer,
+    const int sh_value_bits,
+    const int64_t sh_bounds_stride
+) {
+    return projection_eval3d_forward(2, num_splats, color, in_splats, viewmats, intrins, image_width, image_height, camera_model, distortion, dist_coeffs, radii, sh_value_packed, sh_value_bounds, num_sh_buffer, sh_value_bits, sh_bounds_stride);
 }

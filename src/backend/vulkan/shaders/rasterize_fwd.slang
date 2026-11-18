@@ -2,8 +2,8 @@
 // kernels/raster/RasterizationEval3DFwd_kernel.cuh; its 2D and eval3d forms
 // are separate entries here because their groupshared fragments differ. One
 // 64-thread workgroup per micro-tile, binned per macro tile; the CUDA template
-// axes are the specialization constants below. Every primitive is RGB_D, so
-// the outputs are hard-wired to rgb + depth.
+// axes are the specialization constants below. 3DGS / Mip / 3DGUT render
+// rgb + depth; 2DGS (kSurfel, the eval3d entry) adds the normal.
 //
 // CUDA's __syncthreads_count(done) early-out is a monotonic groupshared
 // counter each thread bumps once on turning done; the loop-top barrier, which
@@ -302,11 +302,12 @@ void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 }
 
 // ---------------------------------------------------------------------------
-// eval3D (Vanilla3DGUT): per-pixel rays; the projected 2D conic lives in the
-// screen "scale" slot and the ellipse center is the AABB center.
+// eval3D (Vanilla3DGUT, Vanilla2DGS when kSurfel): per-pixel rays; the
+// projected 2D conic lives in the screen "scale" slot and the ellipse center
+// is the AABB center. kDistType 3 / 4 (DN / RGB_DN) are 2DGS only.
 // ---------------------------------------------------------------------------
 
-// Vanilla3DGUT::FragmentFwd
+// Vanilla3DGUT::FragmentFwd, and Vanilla2DGS's
 struct Frag3dgut {
     float3 mean;
     float3x3 iscl_rot;
@@ -330,13 +331,14 @@ struct RasterFwd3dgutParams {
     uint2* aabb;         // [..] packed 2D AABB, aabb16.slang
     int* tile_offsets;   // [I, tile_height, tile_width]
     int* flatten_ids;    // [n_isects]
-    // outputs (RGB_D pixel type)
     float* out_rgb;
     float* out_depth;
+    float* out_normal;   // kSurfel only
     float* out_T;
     int* out_last_ids;
     float* dist_rgb;
     float* dist_depth;
+    float* dist_normal;  // kDistType >= 3 only
     float* out_median;
     RasterScoreIO* score_io;  // kOutputScore only
     uint32_t I;
@@ -396,6 +398,7 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (kCameraModel == 4)
         ray_o += transform_ray_d(R, float3((px-intrin.z)/intrin.x, (py-intrin.w)/intrin.y, 0));
     float3 ray_d = transform_ray_d(R, raydir);
+    float2 pix_size = surfel_pix_size(kCameraModel, intrin.x, intrin.y);
 
     bool done = !inside;
 
@@ -409,8 +412,10 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     float3 pix_rgb = float3(0.0f);
     float pix_depth = 0.0f;
+    float3 pix_normal = float3(0.0f);
     float3 pix2_rgb = float3(0.0f);
     float pix2_depth = 0.0f;
+    float3 pix2_normal = float3(0.0f);
     float pix_score = 0.0f;
 
     int range_start = tile_offsets[tile_id];
@@ -466,11 +471,12 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 Frag3dgut f;
                 f.mean = float3(p.means[3 * wi], p.means[3 * wi + 1],
                                 p.means[3 * wi + 2]);
-                f.iscl_rot = compute_3dgut_iscl_rot(
-                    float4(p.quats[4 * wi], p.quats[4 * wi + 1],
-                           p.quats[4 * wi + 2], p.quats[4 * wi + 3]),
-                    float3(p.scales[3 * wi], p.scales[3 * wi + 1],
-                           p.scales[3 * wi + 2]));
+                float4 q = float4(p.quats[4 * wi], p.quats[4 * wi + 1],
+                                  p.quats[4 * wi + 2], p.quats[4 * wi + 3]);
+                float3 sc = float3(p.scales[3 * wi], p.scales[3 * wi + 1],
+                                   p.scales[3 * wi + 2]);
+                f.iscl_rot = kSurfel != 0 ? compute_2dgs_iscl_rot(q, sc)
+                                          : compute_3dgut_iscl_rot(q, sc);
                 f.opacity = opac;
                 f.rgb = scrg_rgb(r);
                 _batch_ut[tid] = f;
@@ -490,15 +496,24 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 continue;
             Frag3dgut f = _batch_ut[t];
 
-            float alpha = evaluate_alpha_3dgs(f.mean, f.iscl_rot, f.opacity,
-                                              ray_o, ray_d);
+            float alpha = kSurfel != 0
+                ? evaluate_alpha_2dgs(f.mean, f.iscl_rot, f.opacity, ray_o,
+                                      ray_d, pix_size)
+                : evaluate_alpha_3dgs(f.mean, f.iscl_rot, f.opacity, ray_o,
+                                      ray_d);
             if (alpha <= ALPHA_THRESHOLD)
                 continue;
 
             float3 color_rgb;
             float color_depth;
-            evaluate_color_3dgs(f.mean, f.iscl_rot, f.opacity, f.rgb, ray_o,
-                                ray_d, color_rgb, color_depth);
+            float3 color_normal = float3(0.0f);
+            if (kSurfel != 0)
+                evaluate_color_2dgs(f.mean, f.iscl_rot, f.opacity, f.rgb,
+                                    ray_o, ray_d, pix_size, color_rgb,
+                                    color_depth, color_normal);
+            else
+                evaluate_color_3dgs(f.mean, f.iscl_rot, f.opacity, f.rgb,
+                                    ray_o, ray_d, color_rgb, color_depth);
             if (color_depth <= 0.0f)
                 continue;
 
@@ -526,9 +541,12 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 if (kDistType != 0) {
                     pix2_rgb += color_rgb * color_rgb * vis;
                     pix2_depth += acc_depth * acc_depth * vis;
+                    if (kDistType >= 3)
+                        pix2_normal += color_normal * color_normal * vis;
                 }
                 pix_rgb += color_rgb * vis;
                 pix_depth += acc_depth * vis;
+                if (kSurfel != 0) pix_normal += color_normal * vis;
                 if (kOutputScore != 0) pix_score += vis * _score[t];
                 cur_idx = uint(batch_start) + t;
                 T = next_T;
@@ -547,11 +565,17 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             p.score_io.out[pix_id_global] = pix_score / max(1.0f - T, 1e-10f);
         if (kDistType != 0) {
             float W = 1.0f - T;
-            if (kDistType == 2) {
+            if (kDistType == 2 || kDistType == 4) {
                 float3 dr = pix2_rgb * W - pix_rgb * pix_rgb;
                 p.dist_rgb[3 * pix_id_global + 0] = dr.x;
                 p.dist_rgb[3 * pix_id_global + 1] = dr.y;
                 p.dist_rgb[3 * pix_id_global + 2] = dr.z;
+            }
+            if (kDistType >= 3) {
+                float3 dn = pix2_normal * W - pix_normal * pix_normal;
+                p.dist_normal[3 * pix_id_global + 0] = dn.x;
+                p.dist_normal[3 * pix_id_global + 1] = dn.y;
+                p.dist_normal[3 * pix_id_global + 2] = dn.z;
             }
             p.dist_depth[pix_id_global] =
                 pix2_depth * W - pix_depth * pix_depth;
@@ -563,11 +587,22 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         p.out_rgb[3 * pix_id_global + 1] = pix_rgb.y;
         p.out_rgb[3 * pix_id_global + 2] = pix_rgb.z;
         if (p.out_depth_on != 0) p.out_depth[pix_id_global] = out_depth;
+        if (kSurfel != 0) {
+            // composited in world space, stored in camera space
+            pix_normal = undo_transform_ray_d(R, pix_normal);
+            p.out_normal[3 * pix_id_global + 0] = pix_normal.x;
+            p.out_normal[3 * pix_id_global + 1] = pix_normal.y;
+            p.out_normal[3 * pix_id_global + 2] = pix_normal.z;
+        }
         p.out_last_ids[pix_id_global] = int(cur_idx);
     }
 }
 
 #undef _rf_ray
+
+// 2DGS surfels in the eval3d entry.
+[SpecializationConstant]
+const int kSurfel = 0;
 
 // Declared last: spec IDs follow declaration order (see dist_spec.slang).
 [SpecializationConstant]

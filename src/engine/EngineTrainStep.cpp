@@ -67,7 +67,7 @@ static void _visit_accumulate_camera_stats(const std::string& primitive) {
     const int64_t N = engine().cur_num_splats;
     const bool packed = engine().packed;
     const int64_t n_isect = packed ? (int64_t)engine().fwd.camera_ids.size() : (int64_t)C * N;
-    const bool gut = primitive == "3dgut";
+    const bool gut = engine_primitive_eval3d(primitive);
     visit_camera_stats_zero_tensor(C, cam_map, v.cam_sum, v.cam_cnt);
     visit_camera_stats_tensor(
         n_isect, N, C, packed, engine().fwd.camera_ids, engine().fwd.gaussian_ids,
@@ -78,6 +78,7 @@ static void _visit_accumulate_camera_stats(const std::string& primitive) {
 
 
 void _engine_arm_step_forward(const EngineStepConfig& cfg,
+                              const std::string& primitive,
                               DistortionType dist_type, bool image_stages) {
     // The rendered depth and its gradient are two full-resolution floats a
     // pixel; a step none of whose terms reads them leaves both out.
@@ -90,6 +91,8 @@ void _engine_arm_step_forward(const EngineStepConfig& cfg,
             w[(int)LossWeightIndex::MedianDepthNormalReg] == 0.0f &&
             w[(int)LossWeightIndex::MedianNormalSup] == 0.0f &&
             w[(int)LossWeightIndex::MedianRenderNormalReg] == 0.0f &&
+            !(RenderOutput::has_normal(engine_primitive_pixel_type(primitive)) &&
+              w[(int)LossWeightIndex::NormalReg] != 0.0f) &&
             !engine_calib_warp_wants_depth();
     }
     auto& pp = engine().ppisp;
@@ -166,9 +169,8 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     engine_max_weight_begin_step(step, max_steps, cfg.densify);
 
     // Pick the distortion channel set from the per-channel weights, restricted
-    // to the channels this primitive renders (normal is honored only once a
-    // normal-rendering primitive exists). 3dgs/mip and 3dgut all consume the
-    // distortion gradient in their backward.
+    // to the channels this primitive renders (normal only for 2dgs). Every
+    // primitive consumes the distortion gradient in its backward.
     const DistortionType dist_type = engine_distortion_type(
         engine_primitive_pixel_type(primitive),
         cfg.loss.weights[(int)LossWeightIndex::RgbDistReg],
@@ -220,7 +222,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     } else {
         engine().fwd.tile_active = DeviceVector<int32_t>();
     }
-    _engine_arm_step_forward(cfg, dist_type, /*image_stages=*/true);
+    _engine_arm_step_forward(cfg, primitive, dist_type, /*image_stages=*/true);
     engine().fwd.score_pending = cfg.loss.learned_score;
     engine().learned_score.power = cfg.loss.loss_map_power * cfg.densify.score_power;
 

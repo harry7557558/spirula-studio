@@ -53,8 +53,8 @@ void lens_intrinsics(const Lens& l, int w, int h, float out[4], double model_to_
 // is_valid_distortion failing) somewhere in the frame.
 bool lens_needs_ut(const Lens& l, int w, int h);
 // The primitive to render a model trained as `trained` with: `want`, or
-// with none chosen, 3DGUT where the lens needs it and else what it was
-// trained as, 3DGS for any but Mip.
+// with none chosen, 2DGS for a 2DGS model (ray-cast, so any lens), else 3DGUT
+// where the lens needs it and else what it was trained as, 3DGS for any but Mip.
 std::string resolve_primitive(const std::string& want, const std::string& trained, const Lens& l,
                               int w, int h);
 

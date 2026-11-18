@@ -181,7 +181,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(std::optional<float>, relative_scale, std::nullopt, "scene", "expert", "") \
                                                                              \
     /* ==== splats -- what a splat is and how the splats start out ==== */   \
-    X(std::string, primitive, "3dgs", "splats", "basic", "3dgs|mip|3dgut")   \
+    X(std::string, primitive, "3dgs", "splats", "basic", "3dgs|mip|3dgut|2dgs")   \
     X(int, sh_degree, 3, "splats", "basic", "")                              \
     X(int, sb_lobes, 0, "splats", "basic", "")                               \
     X(int, sh_degree_warmup_every, 0, "splats", "expert", "")             \
@@ -468,6 +468,7 @@ inline constexpr TrainPresetInfo kTrainPresets[] = {
     {"hdr"},
     {"synthetic"},
     {"meshing"},
+    {"2dgs"},
     // {"academic-baseline"},  // hidden by default, uncomment to enable
 };
 
@@ -558,6 +559,12 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.median_render_normal_reg_weight = 0.01f;
         c.erank_reg = 0.01f;
         c.erank_reg_s3 = 0.01f;
+        return true;
+    }
+    if (name == "2dgs") {
+        c.primitive = "2dgs";
+        c.depth_distortion_reg = 0.1f;
+        c.normal_reg_weight = 0.04f;
         return true;
     }
     if (name == "academic-baseline") {

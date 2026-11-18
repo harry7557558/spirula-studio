@@ -107,7 +107,7 @@ struct PbProj<let cam : CameraModelType, D : ICameraDistortion,
     [ForceInline]
     [Differentiable]
     static void projection(_projection_3dgs_ARGS(D.kNumParams)) {
-        return projection_3dgs<cam, D, true, eval3d>(
+        return projection_3dgs<cam, D, true, eval3d, false>(
             antialiased, mean, quat, scale, in_opacity, R, t,
             fx, fy, cx, cy, dist_coeffs, image_width, image_height,
             aabb_xyxy, sorting_depth, radius, mean2d, depth, conic, opacity);

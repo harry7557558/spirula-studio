@@ -64,7 +64,8 @@ const Msg* const kCodecs[kNumCodecs] = {&msg::codec_h264, &msg::codec_h265, &msg
 const int kCodecOrder[kNumCodecs] = {0, 1, 2, 4, 3};
 // The splat primitives a model can be rendered as: the automatic choice,
 // then ViewportPanel's names.
-const char* const kPrimitives[4] = {"", "3dgs", "mip", "3dgut"};
+constexpr int kNumPrimitives = 5;
+const char* const kPrimitives[kNumPrimitives] = {"", "3dgs", "mip", "3dgut", "2dgs"};
 
 // Keys the whole panel answers to, beside the viewport's own. A key is an
 // identifier, so it never gets translated.
@@ -1109,13 +1110,13 @@ void RenderSession::draw_effects_section(float full) {
             // Automatic unless one is chosen; only that choice is a word, the
             // rest are identifiers.
             int prim = 0;
-            for (int k = 1; k < 4; k++)
+            for (int k = 1; k < kNumPrimitives; k++)
                 if (y.primitive == kPrimitives[k]) prim = k;
             std::vector<std::string> names = {msg::primitive_auto.get()};
-            for (int k = 1; k < 4; k++) names.push_back(kPrimitives[k]);
+            for (int k = 1; k < kNumPrimitives; k++) names.push_back(kPrimitives[k]);
             ImGui::SetNextItemWidth(w);
             if (ui::BeginComboRaw("##prim", names[(size_t)prim].c_str())) {
-                for (int k = 0; k < 4; k++)
+                for (int k = 0; k < kNumPrimitives; k++)
                     if (ui::SelectableRaw(names[(size_t)k], k == prim)) {
                         y.primitive = kPrimitives[k];
                         project_changed();

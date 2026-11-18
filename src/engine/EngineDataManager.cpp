@@ -620,7 +620,7 @@ int engine_preview_forward(int index, std::string primitive, int sh_degree,
     _set_cur_cam_indices(cam_view);
 
     _install_batch(b, /*with_geometry=*/true, loss.input_depth_is_ray_depth, pass);
-    _engine_arm_step_forward(cfg, dist_type, apply_color_correction);
+    _engine_arm_step_forward(cfg, primitive, dist_type, apply_color_correction);
     forward_3dgs(std::move(primitive), sh_degree, packed,
                  /*output_median=*/false, (int)dist_type);
     if (apply_color_correction) _engine_step_image_stages(cam_view);

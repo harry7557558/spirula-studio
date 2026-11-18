@@ -293,6 +293,53 @@ SS_MSG(preset_meshing_help,
     TR("Ağ çıkarmak üzere splat eğitmek için hazır ayar. Splat'ların kendi "
        "görünüşünden çok, üretilecek ağ geometrisinin niteliğini gözetir."));
 
+SS_MSG(preset_2dgs,
+    EN("2DGS surfels"),
+    JA("2DGS サーフェル"),
+    ZH_HANS("2DGS 面元"),
+    ZH_HANT("2DGS 面元"),
+    KO("2DGS 서펠"),
+    DE("2DGS-Surfels"),
+    FR("Surfels 2DGS"),
+    ES("Surfels 2DGS"),
+    PT("Surfels 2DGS"),
+    IT("Surfel 2DGS"),
+    NL("2DGS-surfels"),
+    RU("Сёрфели 2DGS"),
+    TR("2DGS yüzey öğeleri"));
+
+SS_MSG(preset_2dgs_help,
+    EN("Flat surfels (2D Gaussian splatting) that lie on surfaces: crisper "
+       "depth, normals and meshes, at slightly lower image quality."),
+    JA("表面に沿う平らなサーフェル（2D ガウシアン スプラッティング）で学習します。"
+       "深度・法線・メッシュがより正確になる一方、画質はやや下がります。"),
+    ZH_HANS("使用贴合表面的扁平面元（2D 高斯泼溅）训练：深度、法线和网格更准确，"
+            "图像质量略有下降。"),
+    ZH_HANT("使用貼合表面的扁平面元（2D 高斯潑濺）訓練：深度、法線和網格更準確，"
+            "影像品質略為下降。"),
+    KO("표면에 붙는 평평한 서펠(2D 가우시안 스플래팅)로 학습합니다. 깊이, "
+       "법선, 메시가 더 정확해지는 대신 이미지 품질은 약간 낮아집니다."),
+    DE("Flache Surfels (2D Gaussian Splatting), die auf Oberflächen liegen: "
+       "genauere Tiefe, Normalen und Netze bei etwas geringerer Bildqualität."),
+    FR("Surfels plats (2D Gaussian Splatting) posés sur les surfaces : "
+       "profondeur, normales et maillages plus nets, pour une qualité d'image "
+       "un peu moindre."),
+    ES("Surfels planos (2D Gaussian Splatting) apoyados en las superficies: "
+       "profundidad, normales y mallas más nítidas, con algo menos de calidad "
+       "de imagen."),
+    PT("Surfels planos (2D Gaussian Splatting) assentes nas superfícies: "
+       "profundidade, normais e malhas mais nítidas, com qualidade de imagem "
+       "um pouco menor."),
+    IT("Surfel piatti (2D Gaussian Splatting) adagiati sulle superfici: "
+       "profondità, normali e mesh più nitide, con qualità d'immagine un po' "
+       "inferiore."),
+    NL("Platte surfels (2D Gaussian Splatting) die op oppervlakken liggen: "
+       "scherpere diepte, normalen en meshes, met iets lagere beeldkwaliteit."),
+    RU("Плоские сёрфели (2D Gaussian Splatting), лежащие на поверхностях: "
+       "точнее глубина, нормали и меш, но качество изображения немного ниже."),
+    TR("Yüzeylere oturan düz yüzey öğeleri (2D Gaussian Splatting): daha net "
+       "derinlik, normal ve ağ; görüntü kalitesi biraz düşer."));
+
 SS_MSG(preset_academic_baseline,
     EN("Academic baseline"),
     JA("論文どおりのベースライン"),
@@ -343,6 +390,7 @@ inline constexpr PresetText kPresetText[] = {
     {"hdr",               &preset_hdr,               &preset_hdr_help},
     {"synthetic",         &preset_synthetic,         &preset_synthetic_help},
     {"meshing",           &preset_meshing,           &preset_meshing_help},
+    {"2dgs",              &preset_2dgs,              &preset_2dgs_help},
     // hidden by default, uncomment to enable
    //  {"academic-baseline", &preset_academic_baseline, &preset_academic_baseline_help},
 };

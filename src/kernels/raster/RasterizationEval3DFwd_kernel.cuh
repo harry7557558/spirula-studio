@@ -115,6 +115,7 @@ __global__ void rasterize_to_pixels_fwd_kernel(
     };
     float3 t = { viewmats[3], viewmats[7], viewmats[11] };
     float fx = intrin.x, fy = intrin.y, cx = intrin.z, cy = intrin.w;
+    const float2 pix_size = SlangProjectionUtils::surfel_pix_size((int)camera_model, fx, fy);
     CameraDistortionCoeffsT<distortion> dist_coeffs = dist_coeffs_buffer.load<distortion>(image_id);
 
     float3 ray_o = SlangProjectionUtils::transform_ray_o(R, t);
@@ -243,7 +244,7 @@ __global__ void rasterize_to_pixels_fwd_kernel(
                 continue;
             typename SplatPrimitive::FragmentFwd splat = splat_batch[t];
         #if IS_EVAL3D
-            float alpha = splat.evaluate_alpha(ray_o, ray_d);
+            float alpha = splat.evaluate_alpha(ray_o, ray_d, pix_size);
         #else
             float alpha = splat.evaluate_alpha(px, py, kernel_cut);
         #endif
@@ -251,7 +252,7 @@ __global__ void rasterize_to_pixels_fwd_kernel(
                 continue;
 
         #if IS_EVAL3D
-            const RenderOutput color = splat.evaluate_color(ray_o, ray_d);
+            const RenderOutput color = splat.evaluate_color(ray_o, ray_d, pix_size);
             if (color.depth <= 0.0f)
                 continue;
         #else
@@ -324,6 +325,11 @@ __global__ void rasterize_to_pixels_fwd_kernel(
             else
                 pix_out.depth *= invW;  // expected (arithmetic) ray depth
         }
+    #if IS_EVAL3D
+        // Normals composite in world space and are stored in camera space.
+        if constexpr (RenderOutput::has_normal(SplatPrimitive::pixelType))
+            pix_out.normal = SlangProjectionUtils::undo_transform_ray_d(R, pix_out.normal);
+    #endif
         pix_out.saveParamsToBuffer<SplatPrimitive::pixelType>(render_colors, pix_id_global);
         // index in bin of last gaussian in this pixel
         last_ids[pix_id] = static_cast<int32_t>(cur_idx);

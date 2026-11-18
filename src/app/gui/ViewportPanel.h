@@ -29,8 +29,8 @@ struct ViewBookmarkSet;
 
 // What the viewer's primitive combo offers, in order. These are the
 // `forward_3dgs` primitive names, so they are identifiers, not words.
-inline const char* kViewerPrimitives[] = {"3dgs", "mip", "3dgut"};
-inline constexpr int kNumViewerPrimitives = 3;
+inline const char* kViewerPrimitives[] = {"3dgs", "mip", "3dgut", "2dgs"};
+inline constexpr int kNumViewerPrimitives = 4;
 
 // Color gamuts the render can be converted FROM, in combo order. "" is
 // Rec.709 (no conversion); the rest are gamut_to_rec709's names, which are
