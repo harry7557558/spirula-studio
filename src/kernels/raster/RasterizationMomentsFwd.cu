@@ -36,6 +36,36 @@ using Prim = Vanilla3DGUT<0>;
 
 inline constexpr uint32_t TILE_AREA_M = TILE_SIZE_X * TILE_SIZE_Y;
 
+// The line is fitted to the fragments that take T from kBandHi to kBandLo: the
+// middle half of the light a ray loses (docs/notes/mesh-field.md).
+constexpr float kBandHi = 0.75f, kBandLo = 0.25f;
+constexpr float kMaxSlope = 1000.0f;   // times depth: no profile is sharper
+constexpr float kEntrySigmas = 1.0f;
+// A ray that has lost kSurfaceAlpha of its light stops at a depth gap of
+// kSurfaceGap (relative): what lies beyond is another surface.
+constexpr float kSurfaceAlpha = 0.5f, kSurfaceGap = 0.02f;
+
+// A fragment's share of that band: 0 when it lies outside it. `T` before the
+// fragment, `alpha` its opacity on the ray.
+__device__ __forceinline__ float band_share(float T, float alpha) {
+    return fmaxf(fminf(T, kBandHi) - fmaxf(T * (1.0f - alpha), kBandLo), 0.0f);
+}
+
+// (c0, c1) through the band's mean depth with the slope its spread gives, from
+// the sums of share, share * d and share * d^2 (d: depth - z0); `T` at the end.
+__device__ __forceinline__ void band_line(
+    float sw, float sz, float szz, float z0, float T, float& c0, float& c1
+) {
+    c0 = c1 = 0.0f;
+    if (!(sw > 0.0f)) return;
+    const float ds = sz / sw, zs = z0 + ds;
+    const float range = sqrtf(12.0f * fmaxf(szz / sw - ds * ds, 0.0f));
+    const float end = fmaxf(T, kBandLo);
+    const float dv = sqrtf(-__logf(end)) - sqrtf(-__logf(kBandHi));
+    c1 = fminf(dv / fmaxf(range, 1e-12f), kMaxSlope / zs);
+    c0 = sqrtf(-__logf(0.5f * (kBandHi + end))) - c1 * zs;
+}
+
 // One CUDA block per micro-tile (one thread per pixel); binning is at the
 // macro-tile granularity. Mirrors rasterize_to_pixels_eval3d_fwd_kernel.
 template<CameraModelType camera_model, CameraDistortionType distortion>
@@ -57,7 +87,7 @@ __global__ void moments_fwd_kernel(
     const int macro_log2,
     const int32_t *__restrict__ tile_offsets,  // [I, tile_h, tile_w]
     const int32_t *__restrict__ flatten_ids,   // [n_isects]
-    float3 *__restrict__ render_moments,        // [I, H, W] (m0, mean, std)
+    float3 *__restrict__ render_moments,        // [I, H, W] (m0, c0, c1)
     float3 *__restrict__ render_rgb             // [I, H, W] full-ray DC color, or null
 ) {
     auto block = cg::this_thread_block();
@@ -106,7 +136,9 @@ __global__ void moments_fwd_kernel(
     int32_t pix_id = i * image_width + j;
 
     float T = 1.0f;
-    float z1 = 0.0f, z2 = 0.0f, v1 = 0.0f, v2 = 0.0f, c0 = 0.0f, c1 = 0.0f;
+    // band_share sums, depths taken from the first (z0): float holds no z^2
+    float sw = 0.0f, sz = 0.0f, szz = 0.0f, z0 = 0.0f;
+    float z_last = 0.0f, T_stop = -1.0f;   // the surface's last fragment; T where it stopped
     float3 crgb = make_float3(0.0f, 0.0f, 0.0f);
 
     int32_t range_start = tile_offsets[tile_id];
@@ -166,36 +198,21 @@ __global__ void moments_fwd_kernel(
             const float next_T = T * (1.0f - alpha);
             if (next_T > 1e-4f) {
                 const float vis = alpha * T;
-                // const float v = 1.0f - next_T;
-                const float v = sqrtf(fmaxf(-__logf(fmaxf(next_T, 1e-12f)), 1e-12f));
-            #if 1
-                if (z1 == 0.0f || (z2 == 0.0f && z <= z1))
-                    z1 = z, v1 = v;
-                else {
-                    if (z2 == 0.0f)
-                        z2 = z, v2 = v;
-                    else if (v > c0 + c1 * z) {
-                        if (z < z1) z1 = z, v1 = v;
-                        else z2 = z, v2 = v;
+                // where the ray enters the Gaussian: kEntrySigmas before its peak
+                const float3 grd = make_float3(dot(splat.iscl_rot[0], ray_d),
+                    dot(splat.iscl_rot[1], ray_d), dot(splat.iscl_rot[2], ray_d));
+                const float zb = fmaxf(z - kEntrySigmas * rsqrtf(dot(grd, grd)), 1e-6f);
+                if (T_stop < 0.0f && sw > 0.0f && 1.0f - T >= kSurfaceAlpha &&
+                    zb > z_last * (1.0f + kSurfaceGap))
+                    T_stop = T;
+                if (T_stop < 0.0f) {
+                    const float w = band_share(T, alpha);
+                    if (w > 0.0f) {
+                        if (sw == 0.0f) z0 = zb;
+                        sw += w; sz += w * (zb - z0); szz += w * (zb - z0) * (zb - z0);
                     }
-                    // if (1.0f - next_T <= 0.95f) {
-                    if (1.0f - T <= 0.9f) {  // TODO: too handy
-                        c1 = (v2 - v1) / (z2 - z1);
-                        c0 = v1 - c1 * z1;
-                    }
+                    z_last = zb;
                 }
-            #else
-                if (z > z1)
-                    z2 = z, v2 = v;
-                if ((v1 - 0.5f) * (v2 - 0.5f) < 0.0f) {
-                    // float u1 = __logf(1.0f - v1), u2 = __logf(1.0f - v2);
-                    // c1 = (u2 - u1) / (z2 - z1);
-                    // c0 = u1 - c1 * z1;
-                    c1 = (v2 - v1) / (z2 - z1);
-                    c0 = v1 - c1 * z1;
-                }
-                z1 = z2, v1 = v2;
-            #endif
                 if (render_rgb) {
                     crgb.x += vis * col.rgb.x;
                     crgb.y += vis * col.rgb.y;
@@ -207,7 +224,10 @@ __global__ void moments_fwd_kernel(
     }
 
     if (i < image_height && j < image_width) {
-        render_moments[pix_id] = make_float3(1.0f - T, c0, c1);                                               
+        float c0, c1;
+        const float T_end = T_stop < 0.0f ? T : T_stop;
+        band_line(sw, sz, szz, z0, T_end, c0, c1);
+        render_moments[pix_id] = make_float3(1.0f - T_end, c0, c1);
         if (render_rgb) {
             float inv = (T < 1.0f) ? 1.0f / (1.0f - T) : 0.0f;  // normalize to full-ray color
             render_rgb[pix_id] = make_float3(crgb.x * inv, crgb.y * inv, crgb.z * inv);

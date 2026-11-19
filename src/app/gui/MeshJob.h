@@ -54,7 +54,6 @@ struct MeshJob {
     int quality_iters = 3;
     int floater_min_faces = 10;
     bool cull_unseen = true;
-    int carve_k = 1;
     std::string extra_args;            // appended verbatim
 
     // The file the preview should open when the run finishes: the richest of

@@ -262,10 +262,6 @@ void MeshRunner::run(MeshJob job) {
         argv.push_back("--floater-min-faces");
         argv.push_back(std::to_string(job.floater_min_faces));
     }
-    if (job.carve_k != 1) {
-        argv.push_back("--carve-k");
-        argv.push_back(std::to_string(job.carve_k));
-    }
     if (!job.cull_unseen) argv.push_back("--no-cull-unseen");
     for (const std::string& a : split_args(job.extra_args)) argv.push_back(a);
 #ifdef SS_BACKEND_VULKAN

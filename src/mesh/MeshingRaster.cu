@@ -142,16 +142,57 @@ __device__ __forceinline__ bool occ_bilinear(
 
 
 // ---------------------------------------------------------------------------
-// Occupancy sampling (k-th-smallest over the cameras that see the point)
+// Occupancy fusion (docs/notes/mesh-field.md)
 // ---------------------------------------------------------------------------
+
+// A camera carves alone only if at least 1/kCarveResolution as sharp at the
+// point as the sharpest camera that sees matter there.
+constexpr float kCarveResolution = 2.0f;
+
+// One camera's view of a point at ray depth z, over the pixel corners that saw
+// anything: its occupancy, the largest corner's, and the depth behind the
+// camera's surface (where its fit reaches `iso`). False when no corner did.
+__device__ __forceinline__ bool view_of_point(
+    const float3* img, int W, int H, float u, float v, float z, float iso,
+    float& occ, float& occ_max, float& behind
+) {
+    const float level = sqrtf(-__logf(1.0f - iso));
+    float sx = u - 0.5f, sy = v - 0.5f;
+    int j0 = (int)floorf(sx), i0 = (int)floorf(sy);
+    float fx = sx - j0, fy = sy - i0;
+    int j1 = j0 + 1, i1 = i0 + 1;
+    j0 = min(max(j0, 0), W - 1); j1 = min(max(j1, 0), W - 1);
+    i0 = min(max(i0, 0), H - 1); i1 = min(max(i1, 0), H - 1);
+    const float3 m[4] = { img[i0*W+j0], img[i0*W+j1], img[i1*W+j0], img[i1*W+j1] };
+    const float w[4] = { (1-fx)*(1-fy), fx*(1-fy), (1-fx)*fy, fx*fy };
+    float acc = 0.0f, bacc = 0.0f, wsum = 0.0f;
+    occ_max = 0.0f;
+    for (int t = 0; t < 4; ++t) {
+        const float m0 = m[t].x, c0 = m[t].y, c1 = m[t].z;
+        if (!(m0 > 0.0f) || !(w[t] > 0.0f)) continue;
+        const float e = fmaxf(c0 + c1 * z, 0.0f);
+        const float o = fminf(m0, 1.0f - __expf(-e * e));
+        // a ray that never reaches the level has its surface at infinity
+        float b = -z;
+        if (m0 >= iso && c1 > 0.0f) b = fminf(fmaxf((c0 + c1 * z - level) / c1, -z), z);
+        acc += w[t] * o; bacc += w[t] * b; wsum += w[t];
+        occ_max = fmaxf(occ_max, o);
+    }
+    if (wsum <= 0.0f) return false;
+    occ = fminf(fmaxf(acc / wsum, 0.0f), 1.0f);
+    behind = bacc / wsum;
+    return true;
+}
+
+// acc[i] = (sharpest clear sight, weight, weighted occupancy, sharpest camera
+// voting matter); under f.tsdf (seen, weight, weighted distance in bands, -).
 template<CameraDistortionType distortion>
 __global__ void sample_occ_kernel(
     const float* __restrict__ xyz, int n,
     const float* __restrict__ viewmat, const float* __restrict__ intrin,
     const CameraDistortionCoeffsBuffer dist, int model,
     const float3* __restrict__ moments, int W, int H,
-    int k,
-    float* __restrict__ occ_kmin, int* __restrict__ cnt
+    OccFusion f, float4* __restrict__ acc
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
@@ -159,29 +200,49 @@ __global__ void sample_occ_kernel(
     if (!project_point<distortion>(viewmat, intrin, dist, 0, model, W, H,
                        xyz[3*i], xyz[3*i+1], xyz[3*i+2], u, v, z))
         return;
-    float occ;
-    if (!occ_bilinear(moments, W, H, u, v, z, occ))
+    // the nearest pixel: a blend would invent depths across an edge
+    if (f.tsdf) { u = floorf(u) + 0.5f; v = floorf(v) + 0.5f; }
+    float vote, occ_max, behind;
+    if (!view_of_point(moments, W, H, u, v, z, f.iso, vote, occ_max, behind))
         return;  // abstain
-    // insert occ into the k smallest seen so far (ascending, +inf padded)
-    float* arr = occ_kmin + (size_t)i * k;
-    if (occ < arr[k-1]) {
-        int p = k - 1;
-        while (p > 0 && arr[p-1] > occ) { arr[p] = arr[p-1]; --p; }
-        arr[p] = occ;
+    // pixels per world unit at the point: how sharply this camera sees it
+    const float nu = sqrtf(fmaxf(intrin[0] * intrin[1], 1e-12f)) / fmaxf(z, 1e-9f);
+    const float band = f.band_px / nu;
+    float4 a = acc[i];
+    if (f.tsdf) {
+        const float d = -behind / band;
+        a.x = 1.0f;
+        if (d >= -1.0f) { a.y += nu; a.z += nu * fminf(d, 1.0f); }
+    } else {
+        const float deep = fminf(fmaxf(behind / band - 1.0f, 0.0f), 1.0f);
+        const float w = nu * (1.0f + (f.deep_weight - 1.0f) * deep);
+        a.x = fmaxf(a.x, nu * fmaxf(1.0f - occ_max / f.clean, 0.0f));
+        a.y += w;
+        a.z += w * vote;
+        if (vote >= f.iso) a.w = fmaxf(a.w, nu * (1.0f - deep));
     }
-    cnt[i] += 1;
+    acc[i] = a;
 }
 
 __global__ void finalize_occ_kernel(
-    int n, const float* __restrict__ occ_kmin, const int* __restrict__ cnt,
-    int k, float* __restrict__ occ
+    int n, const float4* __restrict__ acc, OccFusion f, float* __restrict__ occ
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
-    int c = cnt[i];
-    if (c <= 0) { occ[i] = 0.0f; return; }      // unseen -> free space
-    int idx = min(k, c) - 1;                     // k-th smallest (or all if fewer)
-    occ[i] = occ_kmin[(size_t)i * k + idx];
+    const float4 a = acc[i];
+    if (f.tsdf) {
+        // in no camera's band: inside when some camera saw it deeper, else free
+        float o = a.x > 0.0f ? 1.0f : 0.0f;
+        if (a.y > 0.0f) {
+            const float d = a.z / a.y;
+            o = d >= 0.0f ? f.iso * (1.0f - d) : f.iso - (1.0f - f.iso) * d;
+        }
+        occ[i] = o;
+        return;
+    }
+    if (!(a.y > 0.0f)) { occ[i] = 0.0f; return; }   // unseen -> free space
+    const float carved = a.x > 0.0f ? fminf(f.iso * a.w / (kCarveResolution * a.x), 1.0f) : 1.0f;
+    occ[i] = fminf(carved, a.z / a.y);
 }
 
 
@@ -464,24 +525,21 @@ void launch_sample_occ(
     const float* xyz, int n,
     const float* viewmat, const float* intrin, const float* dist,
     int camera_model, int distortion,
-    const float3* moments, int W, int H, int k,
-    float* occ_kmin, int* cnt
+    const float3* moments, int W, int H, const OccFusion& f, float4* acc
 ) {
     if (n <= 0) return;
     const CameraDistortionCoeffsBuffer dcb(const_cast<float*>(dist));
     #define LAUNCH(D) \
         sample_occ_kernel<D><<<_LAUNCH_ARGS_1D(n, 256)>>>( \
-            xyz, n, viewmat, intrin, dcb, camera_model, moments, W, H, k, \
-            occ_kmin, cnt)
+            xyz, n, viewmat, intrin, dcb, camera_model, moments, W, H, f, acc)
     _SS_DISPATCH_DISTORTION(distortion, LAUNCH);
     #undef LAUNCH
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 
-void launch_finalize_occ(int n, const float* occ_kmin, const int* cnt, int k,
-                         float* occ) {
+void launch_finalize_occ(int n, const float4* acc, const OccFusion& f, float* occ) {
     if (n <= 0) return;
-    finalize_occ_kernel<<<_LAUNCH_ARGS_1D(n, 256)>>>(n, occ_kmin, cnt, k, occ);
+    finalize_occ_kernel<<<_LAUNCH_ARGS_1D(n, 256)>>>(n, acc, f, occ);
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 

@@ -333,7 +333,6 @@ static void test_mesh_preset() {
     p.job.quality_iters = 6;
     p.job.floater_min_faces = 50;
     p.job.cull_unseen = false;
-    p.job.carve_k = 3;
     p.job.tsdf = true;
     p.job.extra_args = "--verbose";
     // What the preset must NOT carry.
@@ -360,7 +359,6 @@ static void test_mesh_preset() {
     CHECK_EQ(back.job.quality_iters, p.job.quality_iters);
     CHECK_EQ(back.job.floater_min_faces, p.job.floater_min_faces);
     CHECK_EQ(back.job.cull_unseen, p.job.cull_unseen);
-    CHECK_EQ(back.job.carve_k, p.job.carve_k);
     CHECK_EQ(back.job.tsdf, p.job.tsdf);
     CHECK_EQ(back.job.extra_args, p.job.extra_args);
     CHECK(back.job.checkpoint.empty());
