@@ -339,7 +339,6 @@ OccupancyEvaluator::OccupancyEvaluator(
 
     impl_->kept.alloc(impl_->num_kept);
     upload(impl_->kept.get(), kept.data(), (size_t)impl_->num_kept);
-
     if (cfg.verbose)
         mlog::out(mlog::Stage::Loading, mmsg::gaussians_kept,
                   {impl_->num_kept, N, num_points_, (double)rel_scale});
@@ -475,7 +474,7 @@ void OccupancyEvaluator::generate_point_cloud(std::vector<float>& xyz_out) {
     launch_pointcloud(
         impl_->num_kept, impl_->kept,
         impl_->mean, impl_->ax0, impl_->ax1, impl_->ax2, impl_->invs2,
-        impl_->k2, d_out);
+        impl_->k2, kSampleMinAxisRatio, d_out);
     sync_checked("point cloud");
     download(xyz_out.data(), d_out.get(), n * 3);
 }

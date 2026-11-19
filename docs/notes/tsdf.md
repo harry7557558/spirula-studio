@@ -74,5 +74,3 @@ sizes the fusion stages from this run.
 - DTU Chamfer against the paper's table. If the moments depth of a 2dgs
   model falls short there, render the depth with the model's own primitive
   through the engine (`forward_3dgs` with `output_median`) instead.
-- The opacity-field sampler takes two of its seven points per splat along the
-  third axis, which for a 2dgs splat (`e^-20`) both land on the centre.

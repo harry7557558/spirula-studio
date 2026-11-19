@@ -269,7 +269,7 @@ int main(int argc, char** argv) {
     // === 3. Point cloud, occupancy, bisection, color ===
     float* d_cloud = alloc<float>((size_t)nk * 21);
     meshing::launch_pointcloud(nk, d_kept, d_mean, d_ax0, d_ax1, d_ax2,
-                               d_invs2, d_k2, d_cloud);
+                               d_invs2, d_k2, meshing::kSampleMinAxisRatio, d_cloud);
     backend::device_synchronize();
     if (check_error()) return 1;
     readback(acc, d_cloud, (int64_t)nk * 21);

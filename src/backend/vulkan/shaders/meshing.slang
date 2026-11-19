@@ -469,6 +469,7 @@ struct MeshPointCloudParams {
     float* invs2;
     float* k2;
     float* out_xyz;
+    float min_axis_ratio;
     uint32_t num_kept;
     uint32_t wgs_per_row;
 };
@@ -482,12 +483,13 @@ void mesh_pointcloud(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (gid >= p.num_kept) return;
     int i = int(gid);
     int g = p.kept[i];
-    float k = sqrt(p.k2[g]) * 2.5f;  // address case when splats overlap
+    float k = sqrt(p.k2[g]) * 2.5f;  // 2.5x the cutoff, for overlapping splats
     float3 m = ld3(p.mean, g);
-    float3 is = ld3(p.invs2, g);
-    float3 o0 = ld3(p.ax0, g) * (k * rsqrt(is.x));
-    float3 o1 = ld3(p.ax1, g) * (k * rsqrt(is.y));
-    float3 o2 = ld3(p.ax2, g) * (k * rsqrt(is.z));
+    float3 s = rsqrt(ld3(p.invs2, g));
+    float lo = p.min_axis_ratio * max(s.x, max(s.y, s.z));
+    float3 o0 = ld3(p.ax0, g) * (k * max(s.x, lo));
+    float3 o1 = ld3(p.ax1, g) * (k * max(s.y, lo));
+    float3 o2 = ld3(p.ax2, g) * (k * max(s.z, lo));
     float3 pts[7] = { m, m + o0, m - o0, m + o1, m - o1, m + o2, m - o2 };
     int base = i * 21;
     [ForceUnroll]

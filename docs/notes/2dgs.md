@@ -131,6 +131,36 @@ An action-cam fisheye capture, 7000 steps, 1M splats, longer side 1344 px:
   needs no 2dgs kernel. The paper's own extraction, TSDF fusion, is
   `spirula mesh --method tsdf` ([tsdf.md](tsdf.md)).
 
+## Meshing
+
+The opacity field (`src/mesh/`) samples each splat at its centre and at
+`±k sigma` along each axis. A disc's third sigma (`e^-20`) puts both normal
+samples on the centre, so a flat surface is a sample slab one point thick:
+crossings land on long in-plane Delaunay edges (spike tips a median 20 mm from
+any splat, against 0.8 mm for the mesh as a whole) and the surface tears.
+`kSampleMinAxisRatio` (`src/mesh/MeshingDevice.h`) floors every axis's
+offset at 0.25 of the largest. 3dgs models need it too: a quarter of a 1M-splat
+model's splats had a smallest-to-largest sigma ratio of about 0.
+
+Spike faces (longest edge over 10x the distance to the 8th-nearest splat) and
+uncovered pixels in renders from training views, before and after the floor;
+F is `reference/python/mesh_fscore.py` against the dessert dense cloud with
+the mesh cropped to the cloud's box, as the whole-mesh score is diluted by
+background the cloud never covered:
+
+| model | spike faces | uncovered | F |
+|---|---|---|---|
+| dessert, 2dgs | 73-281 -> 0-1 | 4-13% -> under 1% | 0.718-0.731 -> 0.706-0.707 |
+| dessert, 3dgs | 12-40 -> 0 (3 runs) | 1-2% -> 0.3-1.7% | 0.809-0.815 -> 0.813-0.814 |
+| bicycle `images_4`, 2dgs | 47 -> 21 | 1.8-8.2% -> 0-4.8% | |
+
+- **The ratio**: 0.1 meshed a test cube of discs as two sheets (area 1.98x),
+  its normal samples too close for cameras at grazing angles; on dessert 3dgs,
+  0.2, 0.3 and 0.5 left 31, 34 and 255 spike faces.
+- **Low-pass models** (trained before the bare disc) lose background foliage
+  with the floor: bicycle's hedges went from 6% to 25-35% uncovered. Their
+  collapsed discs had been holding the hedge surface up.
+
 ## No screen-space low-pass
 
 The paper renders `max(G, G_lowpass)`, a screen-space gaussian of sigma

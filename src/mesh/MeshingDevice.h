@@ -88,12 +88,19 @@ void launch_activate(
     float3* mean, float3* ax0, float3* ax1, float3* ax2, float3* invs2,
     float* opac, float* radius, float* k2, int* valid, float3* gcol);
 
-// 7 points per kept Gaussian (center + +/-k sigma along each principal axis),
-// interleaved xyz into out[num_kept * 21].
+// Floor on each axis's sample offset, as a share of the largest. Without it a
+// 2dgs disc (third sigma e^-20) puts both normal samples on its centre, which
+// spikes and holes flat surfaces; 0.1 doubles a cube of discs (docs/notes/2dgs.md).
+constexpr float kSampleMinAxisRatio = 0.25f;
+
+// 7 points per kept Gaussian (center + +/-k sigma along each principal axis,
+// each sigma at least min_axis_ratio * the largest), interleaved xyz into
+// out[num_kept * 21].
 void launch_pointcloud(
     int num_kept, const int* kept,
     const float3* mean, const float3* ax0, const float3* ax1,
-    const float3* ax2, const float3* invs2, const float* k2, float* out);
+    const float3* ax2, const float3* invs2, const float* k2,
+    float min_axis_ratio, float* out);
 
 // Per kept Gaussian: leaf AABB (real space) + remapped Morton code + iota.
 void launch_bvh_prep(

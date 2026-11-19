@@ -1,21 +1,12 @@
 /*
  * Meshing.h
  *
- * Surface mesh extraction from a trained 3D Gaussian Splatting model.
- *
- * Pipeline (see MeshingHost.cpp for the orchestration):
- *   1. Sample a point cloud: 7 points per (kept) Gaussian -- the center plus
- *      6 points at +/- k*sigma along each principal axis, where
- *      k = sqrt(2 ln(opac / ALPHA_THRESHOLD)).
- *   2. Delaunay tetrahedralization of the point cloud (Delaunay3D.h).
- *   3. Marching tetrahedra over an occupancy field (iso = 0.5), with the
- *      crossing point on each cut edge found by bisection (not lerp).
- *   4. Manifold-preserving merge of short edges (local adaptive threshold).
- *   5. Write the mesh to a binary PLY.
- *
- * The occupancy field and all per-point GPU work live in Meshing.cu; the
- * OccupancyEvaluator owns the device-side Gaussian buffers + spatial grid and
- * is reused for both vertex evaluation and edge bisection.
+ * Surface mesh extraction from a trained splat model. The opacity field:
+ * samples around every splat (launch_pointcloud, mesh/MeshingDevice.h), their
+ * Delaunay tetrahedralization, marching tetrahedra at `iso` with every cut
+ * edge bisected, then merge, cleanup and export (mesh/MeshingHost.cpp). TSDF
+ * fusion is the other method (docs/notes/tsdf.md). OccupancyEvaluator owns the
+ * device buffers and answers every field query.
  */
 #ifndef SPIRULA_MESHING_H
 #define SPIRULA_MESHING_H

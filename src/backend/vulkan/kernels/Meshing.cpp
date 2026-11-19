@@ -44,9 +44,11 @@ static_assert(sizeof(MeshActivateParams) == 15 * 8 + 2 * 4, "layout");
 
 struct MeshPointCloudParams {
     uint64_t kept, mean, ax0, ax1, ax2, invs2, k2, out_xyz;
+    float min_axis_ratio;
     uint32_t num_kept, wgs_per_row;
 };
-static_assert(sizeof(MeshPointCloudParams) == 8 * 8 + 2 * 4, "layout");
+static_assert(sizeof(MeshPointCloudParams) == 8 * 8 + 3 * 4 + 4 /*pad*/,
+              "layout");
 
 struct MeshBvhPrepParams {
     uint64_t kept, mean, ax0, ax1, ax2, invs2, k2, leafMin, leafMax, morton,
@@ -253,7 +255,8 @@ void launch_activate(
 void launch_pointcloud(
     int num_kept, const int* kept,
     const float3* mean, const float3* ax0, const float3* ax1,
-    const float3* ax2, const float3* invs2, const float* k2, float* out
+    const float3* ax2, const float3* invs2, const float* k2,
+    float min_axis_ratio, float* out
 ) {
     if (num_kept <= 0) return;
     MeshPointCloudParams p{};
@@ -265,6 +268,7 @@ void launch_pointcloud(
     p.invs2 = (uint64_t)invs2;
     p.k2 = (uint64_t)k2;
     p.out_xyz = (uint64_t)out;
+    p.min_axis_ratio = min_axis_ratio;
     p.num_kept = (uint32_t)num_kept;
     dispatch_flat_ring("meshing.mesh_pointcloud", {}, num_kept, 256, &p,
                        sizeof(p), &p.wgs_per_row);
