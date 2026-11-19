@@ -358,7 +358,7 @@ std::tuple<
     const DeviceTensor3D<int32_t> last_ids, // [I, image_height, image_width]
     RenderOutput::TensorTuple render_outputs,
     std::optional<RenderOutput::TensorTuple> distortion_fwd_outputs,
-    DistortionType dist_type,  // distortion channel set (None/D/RGB_D; DN/RGB_DN need a normal primitive)
+    DistortionType dist_type,  // None/D/RGB_D: 3DGUT renders no normal
     DeviceTensor3D<float> loss_map,  // [..., image_height, image_width, 1]
     DeviceTensor3D<float> accum_weight_map,  // [I, H, W]
     DensifyAccumMode accum_mode,
@@ -381,8 +381,7 @@ std::tuple<
     using Fn = decltype(&A(None,None,false));
 #define ROW(DT) { { A(DT,None,false), A(DT,None,true) }, { A(DT,Max,false), A(DT,Max,true) }, \
                   { A(DT,Sum,false),  A(DT,Sum,true)  }, { A(DT,Avg,false), A(DT,Avg,true) } }
-    // [dist_type: None/D/RGB_D][DensifyAccumMode][median]. DN/RGB_DN omitted
-    // (placeholders until a normal-rendering primitive exists).
+    // [dist_type: None/D/RGB_D][DensifyAccumMode][median]
     static constexpr Fn funcs[3][4][2] = { ROW(None), ROW(D), ROW(RGB_D) };
 #undef ROW
 #undef F
@@ -391,7 +390,88 @@ std::tuple<
                    dist_type == DistortionType::D     ? 1 :
                    dist_type == DistortionType::RGB_D ? 2 : -1;
     if (di < 0)
-        throw std::runtime_error("rasterize_to_pixels_3dgut_bwd: distortion type not instantiated (normal needs a normal-rendering primitive)");
+        throw std::runtime_error("rasterize_to_pixels_3dgut_bwd: 3DGUT renders no normal distortion");
+    // No map means nothing to accumulate, whatever the caller asked for.
+    if (accum_weight_map.data_ptr() == nullptr) accum_mode = DensifyAccumMode::None;
+    return funcs[di][(int)accum_mode]
+                [v_median.data_ptr() != nullptr](
+        num_splats, splats_w, splats_s, gaussian_ids,
+        viewmats, intrins, cmt(camera_model), cdt(distortion), dist_coeffs, aabb,
+        image_width, image_height, tile_offsets, flatten_ids,
+        macro_log2,
+        render_Ts, last_ids, render_outputs, distortion_fwd_outputs, loss_map, accum_weight_map,
+        max_weight, max_weight_scale,
+        v_render_outputs, v_render_Ts, v_median, v_distortion_outputs,
+        v_dist_rgb_per_depth, v_splats_w, v_splats_s,
+        need_viewmat_grad
+    );
+}
+
+
+
+// ================
+// Vanilla2DGS
+// ================
+
+/*[AutoHeaderGeneratorExport]*/
+std::tuple<
+    std::vector<DeviceTensorFloatND>, std::vector<DeviceTensorFloatND>,  // gradient
+    DeviceTensor2D<float>,  // v_viewmats
+    DeviceVector<float>  // accum_weight
+> rasterize_to_pixels_2dgs_bwd(
+    // Gaussian parameters
+    int64_t num_splats,
+    std::vector<DeviceTensorFloatND> splats_w,
+    std::vector<DeviceTensorFloatND> splats_s,
+    DeviceVector<int32_t> gaussian_ids,
+    TorchTensorView viewmats,  // [..., C, 4, 4]
+    TorchTensorView intrins,  // [..., C, 4], fx, fy, cx, cy
+    const std::string camera_model,
+    const std::string distortion,
+    const TorchTensorView dist_coeffs,
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    // image size
+    const uint32_t image_width,
+    const uint32_t image_height,
+    // intersections
+    const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
+    const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
+    // forward outputs
+    const DeviceTensor3D<float> render_Ts,  // [I, image_height, image_width]
+    const DeviceTensor3D<int32_t> last_ids, // [I, image_height, image_width]
+    RenderOutput::TensorTuple render_outputs,
+    std::optional<RenderOutput::TensorTuple> distortion_fwd_outputs,
+    DistortionType dist_type,
+    DeviceTensor3D<float> loss_map,  // [..., image_height, image_width, 1]
+    DeviceTensor3D<float> accum_weight_map,  // [I, H, W]
+    DensifyAccumMode accum_mode,
+    // [num_splats] running peak of alpha * T, atomic-maxed times
+    // max_weight_scale; empty to skip.
+    DeviceVector<float> max_weight,
+    float max_weight_scale,
+    // gradients of outputs
+    RenderOutput::TensorTuple v_render_outputs,
+    const DeviceTensor3D<float> v_render_Ts, // [..., image_height, image_width, 1]
+    const DeviceTensor3D<float> v_median, // [..., image_height, image_width], optional
+    std::optional<RenderOutput::TensorTuple> v_distortion_outputs,
+    float v_dist_rgb_per_depth,  // used when v_distortion_outputs has no rgb
+    std::optional<std::vector<DeviceTensorFloatND>> v_splats_w,
+    std::optional<std::vector<DeviceTensorFloatND>> v_splats_s,
+    bool need_viewmat_grad
+) {
+#define A(DT,AM,M) F(DT,DensifyAccumMode::AM,M)
+#define F(DT,AM,M) rasterize_to_pixels_eval3d_bwd_tensor<Vanilla2DGS<0>, DistortionType::DT, AM, M>
+    using Fn = decltype(&A(None,None,false));
+#define ROW(DT) { { A(DT,None,false), A(DT,None,true) }, { A(DT,Max,false), A(DT,Max,true) }, \
+                  { A(DT,Sum,false),  A(DT,Sum,true)  }, { A(DT,Avg,false), A(DT,Avg,true) } }
+    // [dist_type: None/D/RGB_D/DN/RGB_DN][DensifyAccumMode][median]
+    static constexpr Fn funcs[5][4][2] = {
+        ROW(None), ROW(D), ROW(RGB_D), ROW(DN), ROW(RGB_DN) };
+#undef ROW
+#undef F
+#undef A
+    const int di = (int)dist_type;
     // No map means nothing to accumulate, whatever the caller asked for.
     if (accum_weight_map.data_ptr() == nullptr) accum_mode = DensifyAccumMode::None;
     return funcs[di][(int)accum_mode]

@@ -29,7 +29,16 @@
 
 namespace meshing {
 
+// Opacity: the opacity field over a Delaunay of splat samples. Tsdf: per-camera
+// median depth fused into a truncated signed distance volume
+// (docs/notes/tsdf.md); it needs cameras.
+enum class MeshMethod { Opacity, Tsdf };
+
 struct MeshingConfig {
+    MeshMethod method = MeshMethod::Opacity;
+    float tsdf_voxel = 0.0f;      // world units; 0: the splat centres' 5-95% box diagonal / 1024
+    float tsdf_trunc = 4.0f;      // voxels
+    float tsdf_max_depth = 0.0f;  // world units; 0: no cap
     float iso = 0.5f;            // isosurface level on occupancy in [0,1]
     float merge_factor = 1.0f;   // local merge threshold multiplier; <=0 disables
     int   bisection_iters = 3;  // bisection steps per cut edge; a linear
@@ -199,11 +208,10 @@ public:
                               const int* faces, int n_faces,
                               unsigned char* visible_out);
 
-    // Debug: render camera `cam_idx`'s occupancy moments (m0, mean_depth,
-    // std_depth) into `out` [width*height*3], row-major. Returns false if the
-    // rasterize-and-sample render path is unavailable (no camera intrinsics).
-    bool debug_render_moments(int cam_idx, std::vector<float>& out,
-                              int& width, int& height);
+    // Render camera `cam_idx`'s occupancy moments (opacity, c0, c1; see
+    // moments_to_depth in mesh/Tsdf.h) into `out` [width*height*3], row-major.
+    // False without the camera render path.
+    bool render_moments(int cam_idx, std::vector<float>& out, int& width, int& height);
 
 private:
     struct Impl;

@@ -276,7 +276,7 @@ int main(int argc, char** argv) {
             shq_b_tv, shv_tv, shv_b_tv, non_sh, SplatVisitState{}, {}, radii,
             densify_score,
             1.28e-4f, 1.5e-3f, 0.02f, 0.025f, 5e-3f, 2.5e-4f, 2.5e-3f, 10.f,
-            0.01f, 0.01f, 0.01f, 0.f, 0.f, 0.f, 1e-3f, 1e-3f,
+            0.01f, 0.01f, 0.01f, 0.f, 0.f, 0.f, /*surfel=*/false, 1e-3f, 1e-3f,
             /*max_screen_size=*/0.3f, /*max_screen_size_penalty=*/1.f,
             /*use_scale_agnostic_mean=*/true, /*color_trust_linear=*/false,
             1e-4f, ttv(d_steps, {N, 1}), /*quantization_level=*/1);

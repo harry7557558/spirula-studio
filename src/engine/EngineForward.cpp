@@ -240,7 +240,7 @@ int64_t engine_bin_finer_isects() {
 }
 
 void forward_3dgs(
-    std::string primitive,   // "3dgs", "mip", "3dgut"
+    std::string primitive,   // "3dgs", "mip", "3dgut", "2dgs"
     int sh_degree,
     bool packed,
     bool output_median,      // also emit per-pixel median depth
@@ -384,8 +384,10 @@ void forward_3dgs(
                 sh_value_packed_opt, sh_value_bounds_opt, num_sh_buffer, sh_value_bits, sh_bounds_stride);
             cam_ids = a; gauss_ids = b; aabb_vec = c; depths_vec = d;
             engine().fwd.splats_s = e;
-        } else if (primitive == "3dgut") {
-            auto [a, b, c, d, e] = projection_3dgut_packed_forward(
+        } else if (engine_primitive_eval3d(primitive)) {
+            auto fn = primitive == "2dgs" ? projection_2dgs_packed_forward
+                                          : projection_3dgut_packed_forward;
+            auto [a, b, c, d, e] = fn(
                 engine().cur_num_splats, color, in_splats,
                 _dt2d_tv(engine().camera.viewmats), _dv_tv(engine().camera.intrins),
                 (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
@@ -430,8 +432,10 @@ void forward_3dgs(
                 sh_value_packed_opt, sh_value_bounds_opt, num_sh_buffer, sh_value_bits, sh_bounds_stride);
             aabb_2d = a; depths_2d = b;
             engine().fwd.splats_s = c;
-        } else if (primitive == "3dgut") {
-            auto [a, b, c] = projection_3dgut_forward(
+        } else if (engine_primitive_eval3d(primitive)) {
+            auto fn = primitive == "2dgs" ? projection_2dgs_forward
+                                          : projection_3dgut_forward;
+            auto [a, b, c] = fn(
                 engine().cur_num_splats, color, in_splats,
                 _dt2d_tv(engine().camera.viewmats), _dv_tv(engine().camera.intrins),
                 (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
@@ -460,8 +464,8 @@ void forward_3dgs(
     // Handing the projected conic to the intersector buys the tighter
     // ellipse-vs-tile test instead of the conservative AABB one.
     ProjEllipseView ellipse = proj_ellipse_view(
-        engine().fwd.splats_s[0].data_ptr(), primitive == "3dgut");
-    if (primitive != "3dgut")  // the 3DGUT rasterizer draws the full gaussian
+        engine().fwd.splats_s[0].data_ptr(), engine_primitive_eval3d(primitive));
+    if (!engine_primitive_eval3d(primitive))  // eval3d rasterizers draw the full kernel
         ellipse.max_sigma = engine().fwd.kernel_cut;
 
     auto& bin = bin_choice();
@@ -545,8 +549,10 @@ void forward_3dgs(
             tile_offsets, flatten_ids, engine().fwd.macro_log2,
             dist_type, output_median, output_depth, score, engine().fwd.kernel_cut);
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
-    } else if (primitive == "3dgut") {
-        auto [r, rTs, lids, dist, med] = rasterize_to_pixels_3dgut_fwd(
+    } else if (engine_primitive_eval3d(primitive)) {
+        auto fn = primitive == "2dgs" ? rasterize_to_pixels_2dgs_fwd
+                                      : rasterize_to_pixels_3dgut_fwd;
+        auto [r, rTs, lids, dist, med] = fn(
             engine().cur_num_splats,
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
             _dt2d_tv(engine().camera.viewmats), _dv_tv(engine().camera.intrins),

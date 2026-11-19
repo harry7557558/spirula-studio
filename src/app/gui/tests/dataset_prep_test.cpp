@@ -15,6 +15,7 @@
 #include "app/gui/PickSheet.h"
 #include "app/gui/mask/MaskLayer.h"
 #include "core/SourcePath.h"
+#include "data/ImageDiscovery.h"
 #include "data/LidarLayout.h"
 #include "external/stb_image_write.h"
 #include "i18n/catalog/Log.h"
@@ -180,6 +181,8 @@ void test_camera_scan_skips_mask_edits() {
     for (const char* dir : {mk::kLayerDirName, gui::kFeatureMaskDirName, "lookalike"})
         for (const char* f : {"cam0/f0.base.png", "cam0/f0.drop.png", "cam0/f0.keep.png"})
             write_png(root / dir / f, 16, 12, 255);
+    write_png(root / image_discovery::kProgressiveCache / "images" / "4x3" / "cached.png", 4, 3, 127);
+    write_png(root / "cam0" / image_discovery::kProgressiveCache / "external" / "cached.png", 4, 3, 127);
     const std::vector<std::string> cams = gui::camera_subfolders(root.string());
     std::string listed;
     for (const std::string& c : cams) listed += c + " ";
@@ -189,6 +192,13 @@ void test_camera_scan_skips_mask_edits() {
     for (const std::string& c : cams)
         edits |= c.rfind(mk::kLayerDirName, 0) == 0 || c.rfind(gui::kFeatureMaskDirName, 0) == 0;
     check(!edits, "camera scan: nothing under mask_edits/ or feature_masks/: " + listed);
+    check(!gui::folder_has_images((root / image_discovery::kProgressiveCache).string()),
+          "a cache-only folder is not a photo source");
+    const auto groups = app::group_frames_by_camera(root.string());
+    bool cached_group = false;
+    for (const auto& group : groups)
+        cached_group |= image_discovery::generated_cache(group.first);
+    check(!cached_group, "frame masking does not create cameras from generated levels");
     check(cams.size() == 3 && cams[0] == "cam0" && cams[1] == "cam1",
           "camera scan: cam0, cam1 and the lookalike, nothing else: " + listed);
     check(gui::is_mask_edits_folder((root / mk::kLayerDirName).string()) &&

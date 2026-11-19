@@ -9,6 +9,7 @@
 // still be replaced by COLMAP's equivalent to bisect a failure.
 
 #include "sfm/Pipeline.h"
+#include "data/ImageDiscovery.h"
 
 #include <algorithm>
 #include <array>
@@ -94,26 +95,17 @@ bool isImageExt(const std::string& e) {
 // `._00168.bin` stops the reconstruction on a magic the reader cannot place.
 bool isSidecar(const fs::path& p) {
     const std::string n = p.filename().string();
-    return n.size() > 2 && n[0] == '.' && n[1] == '_';
+    return image_discovery::generated_cache(p) ||
+           (n.size() > 2 && n[0] == '.' && n[1] == '_');
 }
 
 // Does `root` hold an image outside `nested`? Reinterpreting `auto DATASET`
 // as `auto DATASET/images` is allowed only when it cannot lose one: otherwise
 // a capture of two folders loses half, under names the trainer cannot resolve.
 bool holdsImagesOutside(const fs::path& root, const fs::path& nested) {
-    std::error_code walk, ec;
-    for (auto it = fs::recursive_directory_iterator(
-             root, fs::directory_options::follow_directory_symlink, walk);
-         !walk && it != fs::recursive_directory_iterator(); it.increment(walk)) {
-        if (it->is_directory(ec)) {
-            if (fs::equivalent(it->path(), nested, ec)) it.disable_recursion_pending();
-            continue;
-        }
-        if (it->is_regular_file(ec) && isImageExt(it->path().extension().string()) &&
-            !isSidecar(it->path()))
-            return true;
-    }
-    return false;
+    return image_discovery::holds_images_outside(root, nested, [](const fs::path& p) {
+        return isImageExt(p.extension().string()) && !isSidecar(p);
+    });
 }
 
 // Path of `p` relative to the directory it was enumerated from. NOT
@@ -476,6 +468,7 @@ MetricGpsEvidence metricGpsEvidence(const SfmConfig& cfg, const SensorCaptures& 
     for (auto it = fs::recursive_directory_iterator(
              imagedir, fs::directory_options::follow_directory_symlink, walk);
          !walk && it != fs::recursive_directory_iterator(); it.increment(walk)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (!it->is_regular_file(ec) || isSidecar(it->path()) ||
             !isImageExt(it->path().extension().string()))
             continue;
@@ -958,6 +951,7 @@ void adoptFileColorSpace(SfmConfig& cfg, const std::string& imagedir,
     for (auto it = fs::recursive_directory_iterator(
              imagedir, fs::directory_options::follow_directory_symlink, walk);
          !walk && it != fs::recursive_directory_iterator(); it.increment(walk)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (!it->is_regular_file(ec)) continue;
         if (!isImageExt(it->path().extension().string()) || isSidecar(it->path()))
             continue;
@@ -1257,13 +1251,15 @@ void printFolderCoverage(const std::vector<Reconstruction>& models,
 static std::map<std::string, std::string> imageStemMap(const std::string& imagedir) {
     std::map<std::string, std::string> stem2name;
     if (imagedir.empty()) return stem2name;
-    for (const auto& e : fs::recursive_directory_iterator(imagedir))
-        if (e.is_regular_file() && !isSidecar(e.path())) {
-            fs::path rel = relativeTo(e.path(), imagedir);
+    for (fs::recursive_directory_iterator it(imagedir), end; it != end; ++it) {
+        if (image_discovery::skip_cache(it)) continue;
+        if (it->is_regular_file() && !isSidecar(it->path())) {
+            fs::path rel = relativeTo(it->path(), imagedir);
             fs::path stem = rel;
             stem.replace_extension();
             stem2name[stem.generic_string()] = rel.generic_string();
         }
+    }
     return stem2name;
 }
 
@@ -1662,6 +1658,7 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
     std::vector<fs::path> found;
     for (auto it = fs::recursive_directory_iterator(imagedir, fs::directory_options::follow_directory_symlink);
          it != fs::recursive_directory_iterator(); ++it) {
+        if (image_discovery::skip_cache(it)) continue;
         if (it->is_directory() &&
             std::any_of(skip.begin(), skip.end(), [&](const std::string& d) {
                 return fs::equivalent(it->path(), d, skip_ec);

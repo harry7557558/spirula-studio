@@ -3,6 +3,7 @@
 // intrinsics and area-filtered pixels per epoch. Host only.
 
 #include "data/DataManager.h"
+#include "data/DownscaleCache.h"
 #include "data/ResolutionSchedule.h"
 
 #include "external/stb_image_write.h"
@@ -107,6 +108,7 @@ std::string write_image(const fs::path& dir) {
 void data_manager(const std::string& image, CacheMode mode, const char* name) {
     DataManagerConfig cfg;
     cfg.cache_mode = mode;
+    cfg.cache_progressive_images = true;
     cfg.load_masks = cfg.load_depths = cfg.load_normals = false;
     cfg.resolution_stages = {{0, 2}, {1, 1}};
     std::vector<float> viewmat(16, 0.0f);
@@ -141,6 +143,18 @@ void data_manager(const std::string& image, CacheMode mode, const char* name) {
         }
         check(halves == 1 && fulls == 63, tag + "one pass at half size, the rest at the loaded size");
         check(shapes, tag + "each batch's size, intrinsics and pixels match its divisor");
+        const auto cached = dscache::path_for_size(image, 4, 4);
+        check(dscache::usable_size(cached, 4, 4), tag + "progressive level persisted on disk");
+        {
+            auto again = make(0);
+            bool reused = false;
+            for (int k = 0; k < 64; ++k) {
+                const auto& b = *again->next_train_step().subs[0];
+                if (b.resolution_divisor == 2)
+                    reused = b.rgb_buffer[3] == 50 && b.width == 4;
+            }
+            check(reused, tag + "warm cache retains area-filtered pixels");
+        }
         auto resumed = make(1);
         bool all_full = true;
         for (int k = 0; k < 4; ++k) all_full &= resumed->next_train_step().subs[0]->width == W;

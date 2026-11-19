@@ -1,7 +1,7 @@
 #pragma once
 
 // A partition of space by labelled seed points: every point of space belongs
-// to the nearest seed under a metric that knows which side a seed was seen
+// to the nearest seed, Euclidean or aware of which side a seed was seen
 // from (shaders/region.slang has the constants and the layout; this is the
 // host mirror). Density-adaptive and unbounded by construction, and a wall
 // seen from one room does not claim the other room's air. Built once, then
@@ -26,6 +26,7 @@ struct LabelField {
     // Seeds [n,4]: xyz, and label | direction << 8 stored as float bits.
     // Nodes [m,8]: (lo, first) (hi, count); count 0 = inner, children first
     // and first + 1.
+    bool euclidean = false;
     std::vector<float> seeds;
     std::vector<float> nodes;
 
@@ -36,7 +37,7 @@ struct LabelField {
     // `dirs` [n,3] unit vectors toward where each point was seen from, or
     // null; a zero vector marks a seed seen from everywhere.
     static LabelField build(const float* xyz, const int32_t* labels, const float* dirs,
-                            int64_t n, int leaf_size = 8);
+                            int64_t n, int leaf_size = 8, bool euclidean = false);
 
     // Nearest seed's label; `n` is the query's normal, null for none.
     int label(const double p[3], const double* n = nullptr) const;
@@ -44,6 +45,8 @@ struct LabelField {
         const double p[3] = {x, y, z};
         return label(p);
     }
+    // Index in the reordered seed array; -1 if no finite-distance seed exists.
+    int64_t nearest_seed(const double p[3]) const;
     void labels_of(const float* xyz, int64_t n, int32_t* out) const;
 
     int num_labels() const;
@@ -58,11 +61,14 @@ struct LabelField {
     static uint32_t oct_encode(const float dir[3]);
     static void oct_decode(uint32_t bits, float out[3]);
 
-    // "SSLF", u32 version 1, u64 seeds, u64 nodes, then the two arrays.
+    // "SSLF", u32 version (1: directional, 2: Euclidean), u64 seeds, u64 nodes, arrays.
     void write(std::string& out) const;
     static bool read(const char* data, size_t size, size_t& consumed, LabelField& out);
     void write_file(const std::string& path) const;
     static LabelField read_file(const std::string& path);
+
+private:
+    int64_t query(const double p[3], const double* n, bool index) const;
 };
 
 // The cells of one label, as a Region. Holds the field by shared pointer so

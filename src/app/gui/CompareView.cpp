@@ -10,6 +10,8 @@
 #include "app/gui/edit/SplatDoc.h"
 #include "checkpoint/SplatPly.h"
 #include "core/Camera.h"
+#include "core/HostMemory.h"
+#include "backend/api/BackendRuntime.h"
 #include "data/Json.h"
 #include "engine/Engine.h"
 #include "i18n/catalog/Edit.h"
@@ -31,6 +33,19 @@ namespace rmsg = spirula::i18n::msg::render;
 namespace gui {
 
 namespace {
+
+std::string promotion_error(const SplatViewer& source, bool editing) {
+    const uint64_t count = uint64_t(source.num_splats());
+    const uint64_t rest = uint64_t((source.sh_degree()+1)*(source.sh_degree()+1)-1);
+    const uint64_t available = spirula::availableCommitBytes();
+    if (editing && available && count*(112+12*rest)+(256ull<<20) > available*3/4)
+        return msg::viewer_hardware_edit_memory.get();
+    const auto memory = backend::memory_usage();
+    // World attributes at minimum SH8 precision plus projection records, AABBs and depth.
+    if (memory.has_total && count*(96+3*rest) > memory.total_bytes)
+        return msg::viewer_hardware_compute_memory.get();
+    return {};
+}
 
 // The placement, as the row-major 3x4 similarity ViewportPanel takes.
 // `base_*` is the alignment onto the first model's frame; the hand
@@ -201,6 +216,10 @@ std::vector<std::string> CompareView::drain_log() {
 // ---------------------------------------------------------------------------
 
 void CompareView::attach(Model& m) {
+    if (m.src.kind() == SplatViewer::Kind::Splats && m.src.hardware() && !HardwareSplatRenderer::available()) {
+        m.src.open(m.path, m.slot, &_engine_mutex, 0);
+        return;
+    }
     switch (m.src.kind()) {
         case SplatViewer::Kind::Points:
             // A reconstruction has cameras worth seeing; a loose point file
@@ -214,8 +233,11 @@ void CompareView::attach(Model& m) {
                                         m.src.scene_key());
             break;
         default:
-            m.panel.attach_scene(m.src.render_config(), m.src.make_hooks(),
-                                 m.src.scene_key());
+            if (m.src.hardware())
+                m.panel.attach_hardware(m.src.render_config(), m.src.file(), m.src.scene_key(),
+                                        m.src.frame_center(), m.src.frame_unit());
+            else
+                m.panel.attach_scene(m.src.render_config(), m.src.make_hooks(), m.src.scene_key());
             // A file being looked at can be drawn a different way than it was
             // trained; a training session cannot, so only this path offers the
             // controls.
@@ -340,10 +362,45 @@ void CompareView::poll() {
         if (gone == _edit_index && edit_dirty()) confirm_discard_edits(drop);
         else drop();
     }
+    for (int i = 0; i < count(); ++i) {
+        auto& m = *_models[(size_t)i];
+        if (m.attached && m.src.kind() == SplatViewer::Kind::Splats &&
+            !m.src.hardware() && m.src.hardware_supported() && HardwareSplatRenderer::available() &&
+            m.panel.allocation_failed() &&
+            (i != _edit_index || (!_edit_loading.load() && !edit_dirty())) &&
+            (i != _render_index || (!_render.exporting() && !_render.dirty())) && !m.after_compute_load) {
+            if (i == _edit_index) end_edit();
+            if (i == _render_index) end_render();
+            m.action_error = msg::viewer_hardware_recovered.get();
+            m.panel.detach();
+            m.src.release_screen_buffers();
+            m.src.close();
+            if (count() == 1) {
+                std::lock_guard<std::mutex> lk(_engine_mutex);
+                engine_reset(); _overlay_key.clear();
+            }
+            m.src.open(m.path, m.slot, &_engine_mutex, 1);
+            m.attached = false;
+        }
+    }
     for (auto& m : _models)
         if (!m->attached && m->src.ready()) attach(*m);
     ensure_viewer_overlay();
     update_placements();
+    for (int i = 0; i < count(); ++i) {
+        auto& m = *_models[(size_t)i];
+        if (m.after_compute_load && m.src.state() == SplatViewer::State::Failed) {
+            m.action_error = m.src.error();
+            m.after_compute_load = 0;
+            m.src.open(m.path, m.slot, &_engine_mutex, 1);
+            continue;
+        }
+        if (!m.attached || !m.after_compute_load) continue;
+        const int action = m.after_compute_load;
+        m.after_compute_load = 0;
+        if (action == 1) begin_edit(i);
+        else begin_render(i);
+    }
     if (_edit_when_ready && _edit_index < 0 && !_edit_loading.load() &&
         !_models.empty() && _models[0]->attached) {
         _edit_when_ready = false;
@@ -443,6 +500,15 @@ void CompareView::begin_edit(int index) {
     end_edit();
     Model& m = *_models[index];
     if (!m.src.ready()) return;
+    if (m.src.hardware() && m.src.kind() == SplatViewer::Kind::Splats) {
+        m.action_error = promotion_error(m.src, true);
+        if (!m.action_error.empty()) return;
+        m.panel.detach();
+        m.src.open(m.path, m.slot, &_engine_mutex, false);
+        m.attached = false;
+        m.after_compute_load = 1;
+        return;
+    }
     _edit_index = index;
     _edit_error.clear();
     if (_render_allowed)
@@ -561,6 +627,16 @@ void CompareView::begin_render(int index) {
             end_edit();
             begin_render(index);
         });
+        return;
+    }
+    auto& m = *_models[(size_t)index];
+    if (m.src.hardware() && m.src.kind() == SplatViewer::Kind::Splats) {
+        m.action_error = promotion_error(m.src, false);
+        if (!m.action_error.empty()) return;
+        m.panel.detach();
+        m.src.open(m.path, m.slot, &_engine_mutex, false);
+        m.attached = false;
+        m.after_compute_load = 2;
         return;
     }
     if (_render_index >= 0 && _render_index != index) end_render(true);
@@ -991,6 +1067,30 @@ void CompareView::draw_pane(int index, const ImVec2& size, const std::function<v
         ui::help_on_hover_raw(f.c_str());
     }
     if (m.src.ready()) {
+    #if 0
+        if (m.src.kind() == SplatViewer::Kind::Splats && m.src.hardware_supported() &&
+            HardwareSplatRenderer::available() && !edit_dirty()) {
+            ImGui::SameLine();
+            bool hardware = m.src.hardware();
+            ImGui::BeginDisabled(_render.exporting());
+            if (ui::CheckboxRaw("OpenGL", &hardware)) {
+                m.action_error.clear();
+                if (index == _edit_index) end_edit(false);
+                if (index == _render_index) end_render();
+                m.panel.detach();
+                m.src.release_screen_buffers();
+                m.src.close();
+                if (hardware && count() == 1) {
+                    std::lock_guard<std::mutex> lk(_engine_mutex);
+                    engine_reset(); _overlay_key.clear();
+                }
+                m.src.open(m.path, m.slot, &_engine_mutex, hardware ? 1 : 0);
+                m.attached = false;
+            }
+            ImGui::EndDisabled();
+            ui::help_on_hover(msg::viewer_hardware_help);
+        }
+    #endif
         // The way in and out of editing lives on the pane it edits: with two
         // models open, which one a toolbar button meant would be a guess.
         ImGui::SameLine();
@@ -1043,6 +1143,8 @@ void CompareView::draw_pane(int index, const ImVec2& size, const std::function<v
                              {(long long)m.src.num_splats(),
                               (long long)m.src.sh_degree()});
     }
+
+    if (!m.action_error.empty()) ui::TextDisabledRaw(m.action_error);
 
     // Navigation is the view's, not a pane's: linked, it lives on the toolbar.
     m.panel.show_nav_controls(!_link);

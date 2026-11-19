@@ -38,6 +38,7 @@ struct MeshJob {
     bool formats[kNumMeshFormats] = {true, false, false, false, false};
 
     int max_cameras = 0;               // 0 = every camera
+    bool tsdf = false;                 // --method tsdf; needs use_data
     int texture_size = 0;              // 0 = auto (texture mode only)
 
     // Canonical UUID for native children; empty uses shared precedence and prevents

@@ -271,7 +271,7 @@ static int run(int lobes) {
             kLrScales, kLrOpacs, kLrDc, kLrSh, kLrSb,
             /*max_gauss_ratio=*/10.f,
             /*scale_reg=*/0.1f, /*mcmc_op=*/0.01f, /*mcmc_scale=*/0.01f,
-            /*erank=*/0.1f, /*erank_s3=*/0.02f, /*quat_norm=*/0.01f, kDcReg,
+            /*erank=*/0.1f, /*erank_s3=*/0.02f, /*quat_norm=*/0.01f, /*surfel=*/false, kDcReg,
             kShReg, /*max_screen_size=*/0.02f, /*max_screen_size_penalty=*/1.f,
             /*use_scale_agnostic_mean=*/false, cfg.ctl, kEpsTr, kStep,
             cfg.level);
@@ -348,7 +348,7 @@ static int run(int lobes) {
             radii, dv<float>(s_score, N), kLrMeans, kLrQuats, kLrScales,
             kLrOpacs, kLrDc, /*max_gauss_ratio=*/10.f, /*scale_reg=*/0.1f,
             /*mcmc_op=*/0.01f, /*mcmc_scale=*/0.01f, /*erank=*/0.1f,
-            /*erank_s3=*/0.02f, /*quat_norm=*/0.01f, kDcReg, kShReg,
+            /*erank_s3=*/0.02f, /*quat_norm=*/0.01f, /*surfel=*/false, kDcReg, kShReg,
             /*max_screen_size=*/0.02f, /*max_screen_size_penalty=*/1.f,
             /*use_scale_agnostic_mean=*/false, color_trust, s_non_sh,
             SplatVisitState{},

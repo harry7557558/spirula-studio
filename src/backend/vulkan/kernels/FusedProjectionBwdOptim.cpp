@@ -44,7 +44,7 @@ struct FpboParams {
     uint32_t wgs_per_row;
     uint32_t num_sh_buffer;
     uint32_t has_visit, skip_unrendered_reg;
-    uint32_t sb_base, _pad0;
+    uint32_t sb_base, surfel;
 };
 static_assert(sizeof(FpboParams) == 53 * 8 + 21 * 4 + 17 * 4,
               "params layout must match the slang struct");
@@ -82,8 +82,8 @@ void launch_fpbo_vk(
     const float scale_regularization_weight,
     const float mcmc_opacity_reg_weight, const float mcmc_scale_reg_weight,
     const float erank_reg_weight, const float erank_reg_weight_s3,
-    const float quat_norm_reg_weight, const float dc_reg_weight,
-    const float sh_reg_weight,
+    const float quat_norm_reg_weight, const bool surfel,
+    const float dc_reg_weight, const float sh_reg_weight,
     const float max_screen_size, const float max_screen_size_penalty,
     bool use_scale_agnostic_mean, bool color_trust_linear, float eps_tr,
     std::variant<int32_t, TorchTensorView> step, int quantization_level) {
@@ -242,6 +242,7 @@ void launch_fpbo_vk(
     p.has_densify_score = densify_score.data_ptr() ? 1u : 0u;
     p.num_sh_buffer = num_sh_buffer;
     p.sb_base = cs.sb_base;
+    p.surfel = surfel ? 1u : 0u;
     p.C = C;
     p.N = (uint32_t)N;
     p.width = image_width;
@@ -283,7 +284,7 @@ void launch_fpbo_vk(
         lr_features_sh, lr_features_sb, max_gauss_ratio,                    \
         scale_regularization_weight,                                        \
         mcmc_opacity_reg_weight, mcmc_scale_reg_weight, erank_reg_weight,   \
-        erank_reg_weight_s3, quat_norm_reg_weight, dc_reg_weight,           \
+        erank_reg_weight_s3, quat_norm_reg_weight, surfel, dc_reg_weight,   \
         sh_reg_weight, max_screen_size, max_screen_size_penalty,            \
         use_scale_agnostic_mean, color_trust_linear,                        \
         eps_tr, step, quantization_level
@@ -316,6 +317,7 @@ void launch_fpbo_vk(
         const float mcmc_opacity_reg_weight,                                \
         const float mcmc_scale_reg_weight, const float erank_reg_weight,    \
         const float erank_reg_weight_s3, const float quat_norm_reg_weight,  \
+        const bool surfel,                                                  \
         const float dc_reg_weight, const float sh_reg_weight,               \
         const float max_screen_size, const float max_screen_size_penalty,   \
         bool use_scale_agnostic_mean, bool color_trust_linear,              \
@@ -335,8 +337,9 @@ static void _fpbo_call(bool eval3d, bool antialiased, _FPBO_PARAMS) {
                    max_gauss_ratio,
                    scale_regularization_weight, mcmc_opacity_reg_weight,
                    mcmc_scale_reg_weight, erank_reg_weight,
-                   erank_reg_weight_s3, quat_norm_reg_weight, dc_reg_weight,
-                   sh_reg_weight, max_screen_size, max_screen_size_penalty,
+                   erank_reg_weight_s3, quat_norm_reg_weight, surfel,
+                   dc_reg_weight, sh_reg_weight, max_screen_size,
+                   max_screen_size_penalty,
                    use_scale_agnostic_mean, color_trust_linear, eps_tr, step,
                    quantization_level);
 }

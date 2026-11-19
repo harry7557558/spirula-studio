@@ -4,22 +4,36 @@
 // applying a part must keep exactly its frames, and the merge must keep each
 // model's splats on its own side (checkpoint/SplatMerge.h).
 
+#include "app/TrainerCore.h"
+#include "config/TrainConfigJson.h"
 #include "checkpoint/SplatMerge.h"
+#include "checkpoint/RegionCameras.h"
+#include "checkpoint/SplatTransform.h"
+#include "core/BufferedFile.h"
+#include "core/Sha256.h"
 #include "checkpoint/SplatPly.h"
+#include "core/SphericalBeta.h"
 #include "data/JsonWrite.h"
+#include "data/DatasetParser.h"
+#include "data/SparseEdit.h"
+#include "data/Json.h"
 #include "data/RegionProgram.h"
 #include "data/ScenePartition.h"
 #include "data/SceneTransform.h"
 #include "external/stb_image.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <exception>
+#include <limits>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -80,6 +94,72 @@ Corridor make_corridor(int n_cam, int pts_per_cam, unsigned seed, double reach =
     return c;
 }
 
+void check_voronoi_graph_free() {
+    using namespace spirula;
+    auto compare = [&](const ParsedDataset& ds, const SparseStats* tracks, PartitionOptions opt,
+                       CovisibilitySource expected, const std::string& name) {
+        opt.method = PartitionMethod::Voronoi;
+        opt.parts = 2;
+        opt.ring_min_points = 1;
+        const auto fast = build_covisibility(ds, tracks, opt);
+        auto full_opt = opt;
+        full_opt.method = PartitionMethod::ViewGraph;
+        const auto full = build_covisibility(ds, tracks, full_opt);
+        const auto a = partition_scene(ds, full, opt), b = partition_scene(ds, fast, opt);
+        std::string af, bf;
+        a.field->write(af); b.field->write(bf);
+        check(full.camera_graph_built && fast.camera_graph_built == (expected == CovisibilitySource::Proximity),
+              name + ": graph is omitted only for observer-based Voronoi");
+        check(full.source == expected && fast.source == expected && full.beg == fast.beg &&
+                  full.frame == fast.frame && full.point_row == fast.point_row,
+              name + ": observation rows and source fallback are exact");
+        check(a.num_parts == b.num_parts && a.frame_names == b.frame_names && a.frame_centers == b.frame_centers &&
+                  a.frame_label == b.frame_label && a.point_label == b.point_label && a.ring == b.ring &&
+                  a.part_points == b.part_points && af == bf && a.core_pieces == b.core_pieces &&
+                  a.cut_fraction == b.cut_fraction && a.view_share == b.view_share,
+              name + ": field, ownership, rings, seeds and topology match the full graph exactly");
+        if (!fast.camera_graph_built) {
+            bool refused = false;
+            try { partition_scene(ds, fast, full_opt); } catch (const std::runtime_error&) { refused = true; }
+            check(refused, name + ": graph-free cache cannot enter a graph partition method");
+        }
+        return b;
+    };
+    auto tracks = make_corridor(100, 1, 735);
+    tracks.tracks.track_beg.assign(1, 0);
+    tracks.tracks.track_image.clear();
+    const int lengths[] = {0, 1, 2, 48, 49, 96, 97};
+    for (int i = 0; i < tracks.ds.points.num(); i++) {
+        for (int j = 0; j < lengths[i % 7]; j++)
+            tracks.tracks.track_image.push_back((j / 2 * 7 + i) % 99);
+        tracks.tracks.track_beg.push_back((int64_t)tracks.tracks.track_image.size());
+    }
+    PartitionOptions opt;
+    opt.source = CovisibilitySource::Tracks;
+    compare(tracks.ds, &tracks.tracks, opt, CovisibilitySource::Tracks, "strided duplicate tracks with isolated camera");
+    tracks.tracks.track_beg.assign(1, 0);
+    tracks.tracks.track_image.clear();
+    for (int i = 0; i < tracks.ds.points.num(); i++) {
+        tracks.tracks.track_image.push_back(i % 100);
+        tracks.tracks.track_beg.push_back((int64_t)tracks.tracks.track_image.size());
+    }
+    compare(tracks.ds, &tracks.tracks, opt, CovisibilitySource::Tracks, "tracks without camera edges");
+    auto projection = make_corridor(10, 2, 736);
+    opt.source = CovisibilitySource::Projection;
+    opt.max_projected_points = 1;
+    const auto shared = compare(projection.ds, nullptr, opt, CovisibilitySource::Projection, "shared projection row");
+    check(*std::min_element(shared.point_label.begin(), shared.point_label.end()) !=
+              *std::max_element(shared.point_label.begin(), shared.point_label.end()),
+          "shared observer row includes points with different Voronoi owners");
+    for (size_t i = 0; i < projection.ds.intrins.size(); i += 4) {
+        projection.ds.intrins[i] = 1e8f;
+        projection.ds.intrins[i + 1] = 1e8f;
+    }
+    compare(projection.ds, nullptr, opt, CovisibilitySource::Proximity, "projection without camera edges");
+    opt.source = CovisibilitySource::Proximity;
+    compare(projection.ds, nullptr, opt, CovisibilitySource::Proximity, "explicit proximity");
+}
+
 // The cut of a corridor must be a single change of label along x.
 int label_changes(const std::vector<int32_t>& labels) {
     int n = 0;
@@ -111,8 +191,68 @@ void write_text(const fs::path& p, const std::string& s) {
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
     using namespace spirula;
+    if (argc == 4 && std::string(argv[1]) == "--camera-metadata") {
+        try {
+            const JsonValue config = json_parse_file(argv[2]);
+            if (!train_config_json_has_fields(config)) throw std::runtime_error("not a training config");
+            TrainerSession session;
+            train_config_from_json(config, session.cfg);
+            if (session.cfg.partition.empty() || session.cfg.partition_part < 0)
+                throw std::runtime_error("camera metadata control requires a partitioned run");
+            session.load_dataset();
+            if (!session.roi) throw std::runtime_error("partitioned run has no ownership region");
+            const RegionCameras cameras = session.build_region_cameras();
+            fs::create_directories(argv[3]);
+            const std::string hash = save_region_cameras(argv[3], cameras);
+            std::printf("camera metadata: %s, cameras: %lld\n", hash.c_str(),
+                        (long long)cameras.field.num_seeds());
+            return 0;
+        } catch (const std::exception& error) {
+            std::fprintf(stderr, "%s\n", error.what());
+            return 1;
+        }
+    }
+    if (argc == 5 && std::string(argv[1]) == "--overlap-seeds") {
+        try {
+            const ScenePartition original = read_partition(argv[3]);
+            DatasetParserConfig config;
+            config.require_image_files = false;
+            const ParsedDataset dataset = parse_dataset(argv[2], config, "");
+            const SparseStats tracks = read_sparse_stats(argv[2]);
+            PartitionOptions options = original.options;
+            options.outside_seed_fraction = 1.0f;
+            const Covisibility visibility = build_covisibility(dataset, &tracks, options);
+            const ScenePartition overlap = partition_scene(dataset, visibility, options);
+            if (!original.field || !overlap.field) throw std::runtime_error("missing ownership field");
+            std::string original_field, overlap_field;
+            original.field->write(original_field);
+            overlap.field->write(overlap_field);
+            if (original.frame_names != overlap.frame_names || original.frame_label != overlap.frame_label ||
+                original.frame_centers != overlap.frame_centers || original.ring != overlap.ring ||
+                original.point_label != overlap.point_label || original_field != overlap_field)
+                throw std::runtime_error("outside seed control changed camera or ownership assignments");
+            for (int k = 0; k < original.num_parts; k++) {
+                const auto& before = original.part_points[(size_t)k];
+                const auto& after = overlap.part_points[(size_t)k];
+                if (!std::includes(after.begin(), after.end(), before.begin(), before.end()))
+                    throw std::runtime_error("outside seed control lost existing seeds");
+                std::printf("part %d seed points: %zu -> %zu\n", k, before.size(), after.size());
+            }
+            write_partition(overlap, argv[4], fs::absolute(argv[2]).lexically_normal().string());
+            std::printf("Camera assignments, rings and ownership field are unchanged.\n");
+            return 0;
+        } catch (const std::exception& error) {
+            std::fprintf(stderr, "%s\n", error.what());
+            return 1;
+        }
+    }
+    if (argc != 1) {
+        std::fprintf(stderr, "usage: scene_partition_test [--overlap-seeds DATASET PARTITION OUTPUT | --camera-metadata CONFIG DIRECTORY]\n");
+        return 2;
+    }
+    check_voronoi_graph_free();
     const Corridor corr = make_corridor(60, 40, 5);
     const ParsedDataset& ds = corr.ds;
 
@@ -170,6 +310,127 @@ int main() {
         }
         check(has_own && has_borrowed && s0.size() < (size_t)ds.points.num(),
               "part 0 seeds from its own points and its ring's, not the whole cloud");
+    }
+
+    {
+        PartitionOptions vo = opt;
+        vo.method = PartitionMethod::Voronoi;
+        const ScenePartition v = partition_scene(ds, cov, vo);
+        check(v.num_parts == 2 && label_changes(v.frame_label) == 1,
+              "Voronoi cells divide the corridor once");
+        check(v.field->num_seeds() == 2, "Voronoi ownership stores only its centroids");
+        bool consistent = true;
+        for (int64_t i = 0; i < ds.num_cameras; i++) {
+            const float* c = v.frame_centers.data() + i * 3;
+            consistent &= v.field->label(c[0], c[1], c[2]) == v.frame_label[(size_t)i];
+        }
+        for (int64_t i = 0; i < ds.points.num(); i++)
+            consistent &= v.field->label(ds.points.xyz.data() + i * 3) == v.point_label[(size_t)i];
+        check(consistent, "Voronoi camera and point owners agree with the merge field");
+        const double q[3] = {10, 1, 0}, forward[3] = {1, 0, 0}, backward[3] = {-1, 0, 0};
+        check(v.field->label(q, forward) == v.field->label(q, backward) &&
+                  v.field->label(q, forward) == v.field->label(q), "Voronoi ownership is independent of splat orientation");
+        check(partition_scene(ds, cov, vo).frame_label == v.frame_label, "Voronoi split is deterministic");
+        auto isolated_camera = ds;
+        isolated_camera.c2w[3] = 10000;
+        const auto robust = partition_scene(isolated_camera, cov, vo);
+        check(robust.num_parts == 2 && robust.core_count(0) >= 20 && robust.core_count(1) >= 20 &&
+                  robust.frame_label.size() == (size_t)ds.num_cameras &&
+                  robust.field->label(10000, 0, 5) == robust.frame_label[0],
+              "an isolated pose does not consume a centroid and still receives an owner");
+        vo.parts = 0;
+        vo.max_images = 15;
+        const ScenePartition limited = partition_scene(ds, cov, vo);
+        bool capped = true;
+        for (int k = 0; k < limited.num_parts; k++) capped &= limited.core_count(k) <= 15;
+        check(capped, "Voronoi automatic count respects the core image cap");
+        auto crowded = ds;
+        for (int64_t i = 0; i < crowded.num_cameras; i++)
+            crowded.c2w[(size_t)i * 12 + 3] = i == 59 ? 10000.0f : (float)((i + 1) / 2);
+        auto tight = vo;
+        tight.max_images = 2;
+        const auto restored = partition_scene(crowded, cov, tight);
+        bool tight_cap = restored.num_parts == 31;
+        for (int k = 0; k < restored.num_parts; k++) tight_cap &= restored.core_count(k) <= 2;
+        check(tight_cap, "automatic Voronoi restores isolated fitting poses when more distinct cells are required");
+        PartitionMethod parsed;
+        check(partition_method_from_name("voronoi", parsed) && parsed == PartitionMethod::Voronoi,
+              "Voronoi CLI method parses");
+        const fs::path path = fs::temp_directory_path() / "spirula_voronoi_test.json";
+        write_partition(v, path.string(), "synthetic");
+        const auto roundtrip = read_partition(path.string());
+        check(roundtrip.options.method == PartitionMethod::Voronoi && roundtrip.point_label == v.point_label &&
+                  roundtrip.field->euclidean,
+              "Voronoi method and ownership round-trip");
+        std::string error;
+        const auto roi = region_from_json(json_parse(region_to_json(LabelRegion(v.field, 0))), "", error);
+        RegionProgram roi_program;
+        check(roi && compile_region(*roi, roi_program, error) && roi_program.field->euclidean &&
+                  program_contains(roi_program, q, forward) == program_contains(roi_program, q, backward),
+              "Voronoi mode survives standalone ROI JSON and compiled program");
+        fs::remove(path);
+        fs::path binary = path;
+        binary.replace_extension(".bin");
+        fs::remove(binary);
+        std::atomic<bool> cancel{true};
+        bool cancelled = false;
+        try { partition_scene(ds, cov, vo, {}, &cancel); } catch (const PartitionCancelled&) { cancelled = true; }
+        check(cancelled, "Voronoi cancellation is honored");
+        auto invalid = ds;
+        invalid.c2w[3] = std::numeric_limits<float>::quiet_NaN();
+        bool rejected = false;
+        try { partition_scene(invalid, cov, vo); } catch (const std::runtime_error&) { rejected = true; }
+        check(rejected, "non-finite Voronoi camera positions are refused before field indexing");
+        vo.parts = 2;
+        for (int64_t i = 0; i < invalid.num_cameras; i++)
+            for (int r = 0; r < 3; r++) invalid.c2w[(size_t)i * 12 + r * 4 + 3] = 0;
+        rejected = false;
+        try { partition_scene(invalid, cov, vo); } catch (const std::runtime_error&) { rejected = true; }
+        check(rejected, "coincident camera positions cannot silently create empty Voronoi parts");
+        for (double coordinate : {std::numeric_limits<double>::quiet_NaN(),
+                                  std::numeric_limits<double>::infinity(), 1e20}) {
+            auto malformed = ds;
+            malformed.points.xyz[0] = coordinate;
+            rejected = false;
+            try { partition_scene(malformed, cov, vo); }
+            catch (const std::runtime_error& e) {
+                rejected = std::string(e.what()).find("cannot assign sparse point 0") != std::string::npos;
+            }
+            check(rejected, "tracked unsupported sparse coordinates fail before ownership indexing");
+        }
+    }
+
+    {
+        auto disconnected = cov;
+        std::vector<graph::Edge> edges;
+        for (uint32_t i = 0; i < cov.cameras.n(); i++)
+            for (uint32_t e = cov.cameras.offs[i]; e < cov.cameras.offs[i + 1]; e++)
+                if (i < 55 && cov.cameras.adj[e] < 55 && i < cov.cameras.adj[e])
+                    edges.push_back({i, cov.cameras.adj[e], cov.cameras.w[e]});
+        disconnected.cameras = graph::build_graph(60, edges);
+        auto requested = opt;
+        requested.parts = 4;
+        const auto split = partition_scene(ds, disconnected, requested);
+        check(split.num_parts == 4, "isolated cameras do not consume the requested view-graph cuts");
+        disconnected.beg.assign(1, 0);
+        disconnected.frame.clear();
+        for (int64_t i = 0; i < cov.num_points(); i++) {
+            for (int64_t j = cov.begin(i); j < cov.end(i); j++)
+                if (cov.frame[(size_t)j] < 55) disconnected.frame.push_back(cov.frame[(size_t)j]);
+            disconnected.beg.push_back((int64_t)disconnected.frame.size());
+        }
+        requested.method = PartitionMethod::Graph;
+        const auto joint_split = partition_scene(ds, disconnected, requested);
+        check(joint_split.num_parts == 4, "isolated cameras do not consume the requested joint-graph cuts");
+        requested.method = PartitionMethod::ViewGraph;
+        edges.clear();
+        for (uint32_t i = 1; i < 60; i++) if (i != 30) edges.push_back({i - 1, i, 1});
+        disconnected.cameras = graph::build_graph(60, edges);
+        requested.parts = 1;
+        bool refused = false;
+        try { partition_scene(ds, disconnected, requested); }
+        catch (const std::runtime_error&) { refused = true; }
+        check(refused, "too few requested parts for disconnected groups is explicit");
     }
 
     // ---- a surface both parts see: owners must not interleave ----
@@ -262,6 +523,26 @@ int main() {
         Covisibility c3 = build_covisibility(ds, &corr.tracks, o3);
         check(c3.source == CovisibilitySource::Projection && c3.has_tracks(),
               "projection covisibility from the seed cloud");
+        o3.max_projected_points = 101;
+        const auto shared = build_covisibility(ds, nullptr, o3);
+        check(shared.num_points() == ds.points.num() && shared.beg.size() <= 102 &&
+                  shared.point_row.size() == (size_t)ds.points.num(), "projection observer rows are shared within the requested sample budget");
+        check(shared.begin(0) == shared.begin(1) && shared.end(0) == shared.end(1),
+              "unsampled points reuse their sampled point's observer span");
+        Covisibility expanded = shared;
+        expanded.point_row.clear();
+        expanded.beg.assign(1, 0);
+        expanded.frame.clear();
+        for (int64_t i = 0; i < ds.points.num(); i++) {
+            expanded.frame.insert(expanded.frame.end(), shared.frame.begin() + shared.begin(i),
+                                  shared.frame.begin() + shared.end(i));
+            expanded.beg.push_back((int64_t)expanded.frame.size());
+        }
+        const auto compact_partition = partition_scene(ds, shared, o3);
+        const auto expanded_partition = partition_scene(ds, expanded, o3);
+        check(compact_partition.point_label == expanded_partition.point_label &&
+                  compact_partition.ring == expanded_partition.ring,
+              "shared projection rows preserve partition ownership and camera rings");
         ScenePartition p3 = partition_scene(ds, c3, o3);
         check(p3.num_parts == 2 && label_changes(p3.frame_label) == 1,
               "projection source cuts the corridor once too");
@@ -282,8 +563,57 @@ int main() {
         check(c5.source == CovisibilitySource::Proximity, "auto falls through to proximity");
     }
 
+    {
+        auto layered = make_corridor(2, 1, 2).ds;
+        layered.c2w[15] = 0;
+        layered.points.xyz.clear();
+        for (int i = 0; i < 4; i++) {
+            const double x = -0.3 + 0.2 * i;
+            layered.points.xyz.insert(layered.points.xyz.end(), {x, 0, 3, x + 0.001, 0, 3, 2 * x, 0, 1});
+        }
+        layered.points.xyz.insert(layered.points.xyz.end(), {0, 0.3, 3, 0.002, 0.6, 1});
+        layered.points.rgb.resize(layered.points.xyz.size());
+        PartitionOptions depth_options;
+        depth_options.source = CovisibilitySource::Projection;
+        const auto frustum = build_covisibility(layered, nullptr, depth_options);
+        depth_options.projection_depth_slack = 0.1f;
+        const auto occluded = build_covisibility(layered, nullptr, depth_options);
+        bool walls = occluded.source == CovisibilitySource::Projection;
+        for (int i = 0; i < 4; i++) {
+            walls &= frustum.end(i * 3 + 2) - frustum.begin(i * 3 + 2) == 2;
+            walls &= occluded.end(i * 3) - occluded.begin(i * 3) == 2;
+            walls &= occluded.end(i * 3 + 2) == occluded.begin(i * 3 + 2);
+        }
+        check(walls, "projected depth rejects a back wall while retaining supported foreground");
+        check(occluded.end(12) - occluded.begin(12) == 2 && occluded.end(13) - occluded.begin(13) == 2,
+              "one sparse foreground point does not erase nearby background in its coarse cell");
+        depth_options.source = CovisibilitySource::Auto;
+        const auto tracked = build_covisibility(ds, &corr.tracks, depth_options);
+        check(tracked.source == CovisibilitySource::Tracks && tracked.frame == cov.frame,
+              "projected depth filtering leaves real observation tracks unchanged");
+        const auto depth_partition = partition_scene(layered, occluded, depth_options);
+        fs::path depth_path = fs::temp_directory_path() / "spirula_projection_depth_test.json";
+        write_partition(depth_partition, depth_path.string(), "synthetic");
+        check(read_partition(depth_path.string()).options.projection_depth_slack == 0.1f,
+              "projected depth option round-trips with the partition");
+        fs::remove(depth_path);
+        depth_path.replace_extension(".bin");
+        fs::remove(depth_path);
+        depth_options.projection_depth_slack = -1;
+        bool invalid = false;
+        try { build_covisibility(layered, nullptr, depth_options); }
+        catch (const std::runtime_error&) { invalid = true; }
+        check(invalid, "invalid projected depth slack is rejected");
+    }
+
     // ---- files, and applying a part ----
     const fs::path tmp = fs::temp_directory_path() / "spirula_scene_partition_test";
+    auto no_partials = [](const fs::path& output) {
+        const auto prefix = output.filename().string() + ".partial-";
+        for (const auto& entry : fs::directory_iterator(output.parent_path()))
+            if (entry.path().filename().string().rfind(prefix, 0) == 0) return false;
+        return true;
+    };
     std::error_code ec;
     fs::remove_all(tmp, ec);
     fs::create_directories(tmp / "dataset", ec);
@@ -374,6 +704,100 @@ int main() {
 
         MergeStats st;
         SplatCloud merged = merge_partition_splats(p, runs, st);
+        const auto streamed_path = (tmp / "streamed.ply").string();
+        MergeStats streamed_stats;
+        merge_partition_splats_file(p, runs, streamed_path, streamed_stats);
+        const auto streamed = read_splat_ply(streamed_path);
+        check(streamed.means == merged.means && streamed.features_sh == merged.features_sh &&
+                  streamed.quats == merged.quats && streamed.scales == merged.scales &&
+                  streamed.opacities == merged.opacities && streamed.features_dc == merged.features_dc &&
+                  streamed_stats.total == merged.num, "streamed merge matches the in-memory merge");
+        write_text(streamed_path + ".partial", "unrelated temporary file");
+        std::atomic<int> ready{0};
+        std::array<std::exception_ptr, 2> errors;
+        std::vector<std::thread> workers;
+        for (int worker = 0; worker < 2; worker++) workers.emplace_back([&, worker] {
+            int logged_parts = 0;
+            MergeStats local;
+            try {
+                merge_partition_splats_file(p, runs, streamed_path, local, [&](const std::string&) {
+                    if (++logged_parts != p.num_parts) return;
+                    ready.fetch_add(1);
+                    while (ready.load() < 2) std::this_thread::yield();
+                });
+            } catch (...) { errors[(size_t)worker] = std::current_exception(); }
+        });
+        for (auto& worker : workers) worker.join();
+        std::ifstream sentinel(streamed_path + ".partial");
+        std::string sentinel_text;
+        std::getline(sentinel, sentinel_text);
+        check(!errors[0] && !errors[1] && read_splat_ply(streamed_path).features_sh == merged.features_sh &&
+                  sentinel_text == "unrelated temporary file" && no_partials(streamed_path),
+              "concurrent merges publish complete files and preserve unrelated temporary files");
+        sentinel.close();
+        fs::remove(streamed_path + ".partial");
+        SplatCloud empty;
+        empty.sh_degree = 2;
+        empty.sb_lobes = 1;
+        const auto empty_path = (tmp / "empty.ply").string();
+        const auto empty_output = (tmp / "empty-merged.ply").string();
+        write_splat_ply(empty, empty_path);
+        MergeStats empty_stats;
+        const auto empty_memory = merge_partition_splats(p, {empty_path}, empty_stats);
+        merge_partition_splats_file(p, {empty_path}, empty_output, empty_stats);
+        const auto empty_file = splat_ply_shape(empty_output);
+        check(empty_memory.num == 0 && empty_file.num == 0 && empty_memory.basis() == empty.basis() &&
+                  empty_file.basis() == empty.basis(), "empty input PLYs preserve their SH and spherical-beta basis");
+        int logged = 0;
+        bool changed_rejected = false;
+        try {
+            merge_partition_splats_file(p, runs, streamed_path, streamed_stats, [&](const std::string&) {
+                if (++logged != 2) return;
+                auto changed0 = c0, changed1 = c1;
+                changed0.primitive = changed1.primitive = "mip";
+                write_splat_ply(changed0, (r0 / "splat.ply").string());
+                write_splat_ply(changed1, (r1 / "splat.ply").string());
+            });
+        } catch (const std::exception&) { changed_rejected = true; }
+        check(changed_rejected && read_splat_ply(streamed_path).primitive.empty() &&
+                  no_partials(streamed_path),
+              "primitive changes between merge passes preserve the previous output");
+        write_splat_ply(c0, (r0 / "splat.ply").string());
+        write_splat_ply(c1, (r1 / "splat.ply").string());
+        logged = 0;
+        changed_rejected = false;
+        try {
+            merge_partition_splats_file(p, runs, streamed_path, streamed_stats, [&](const std::string&) {
+                if (++logged != 2) return;
+                auto changed = c0;
+                changed.sh_degree = 2;
+                changed.features_sh.assign((size_t)changed.num * changed.coeffs() * 3, 0);
+                write_splat_ply(changed, (r0 / "splat.ply").string());
+            });
+        } catch (const std::exception&) { changed_rejected = true; }
+        check(changed_rejected && read_splat_ply(streamed_path).features_sh == streamed.features_sh &&
+                  no_partials(streamed_path),
+              "basis growth between merge passes is rejected before padding or publication");
+        write_splat_ply(c0, (r0 / "splat.ply").string());
+        auto lobed = c1;
+        lobed.sb_lobes = 1;
+        lobed.features_sh.resize((size_t)lobed.num * 15);
+        for (int64_t i = 0; i < lobed.num; i++) {
+            std::copy_n(c1.features_sh.data() + i * 9, 9, lobed.features_sh.data() + i * 15);
+            sb::dark_lobe(lobed.features_sh.data() + i * 15 + 9);
+        }
+        write_splat_ply(lobed, (r1 / "splat.ply").string());
+        const auto lobed_merge = merge_partition_splats(p, runs, streamed_stats);
+        merge_partition_splats_file(p, runs, streamed_path, streamed_stats);
+        const auto lobed_stream = read_splat_ply(streamed_path);
+        check(lobed_stream.sb_lobes == 1 && lobed_stream.features_sh == lobed_merge.features_sh,
+              "streamed mixed SH and spherical-beta bases preserve rows and dark padding");
+        write_splat_ply(c1, (r1 / "splat.ply").string());
+        bool refused = false;
+        try { merge_partition_splats_file(p, runs, (r0 / "splat.ply").string(), streamed_stats); }
+        catch (const std::exception&) { refused = true; }
+        check(refused && read_splat_ply((r0 / "splat.ply").string()).num == c0.num,
+              "streamed merge refuses to overwrite an input");
         check(st.parts[0].read == 640 && st.parts[1].read == 640, "both models read");
         check(st.parts[0].kept + st.parts[1].kept == merged.num && merged.num > 0,
               "merged count is the sum of what each part kept");
@@ -446,6 +870,191 @@ int main() {
         check(st.parts[0].read > 0 && st.parts[0].kept == 0 &&
                   retained_classic.num > 0 && retained_classic.primitive.empty(),
               "a clipped Mip part does not change the retained classic render mode");
+    }
+    {
+        ScenePartition oriented;
+        oriented.num_parts = 1;
+        oriented.ring.resize(1);
+        oriented.frame_label.assign(300, 0);
+        for (int i = 0; i < 299; i++)
+            oriented.frame_centers.insert(oriented.frame_centers.end(), {(float)(300 - i), 0, 5});
+        oriented.frame_centers.insert(oriented.frame_centers.end(), {0, 0, -1});
+        const float xyz[6] = {0, 0, 0, 0, 0, 0};
+        const float dirs[6] = {0, 0, 1, 0, 0, -1};
+        const int32_t labels[2] = {0, 1};
+        oriented.field = std::make_shared<LabelField>(LabelField::build(xyz, labels, dirs, 2));
+        auto c = splats_along_x(-1, 1, 1, 0, 0);
+        c.scales[2] = -3;
+        const auto input = (tmp / "oriented.ply").string();
+        write_splat_ply(c, input);
+        MergeStats stats;
+        const auto merged = merge_partition_splats(oriented, {input}, stats);
+        check(merged.num == 0, "merge orientation finds nearest camera beyond index 255 after spatial reordering");
+        const auto blocked = tmp / "blocked.ply";
+        fs::create_directory(blocked);
+        bool failed = false;
+        try { merge_partition_splats_file(oriented, {input}, blocked.string(), stats); }
+        catch (const std::exception&) { failed = true; }
+        check(failed && fs::is_directory(blocked) && no_partials(blocked),
+              "failed merge publication removes its partial file and preserves the destination");
+    }
+    {
+        ScenePartition tied;
+        tied.num_parts = 2;
+        tied.ring.resize(2);
+        tied.frame_label = {0, 0};
+        tied.frame_centers = {-1, 0, 0, 1, 0, 0};
+        const float xyz[6] = {0, 0, 0, 0, 0, 0};
+        const float dirs[6] = {-1, 0, 0, 1, 0, 0};
+        const int32_t labels[2] = {0, 1};
+        tied.field = std::make_shared<LabelField>(LabelField::build(xyz, labels, dirs, 2));
+        auto c = splats_along_x(-1, 1, 1, 0, 0);
+        c.scales[0] = -4;
+        const auto input = (tmp / "camera-tie.ply").string();
+        const auto output = (tmp / "camera-tie-merged.ply").string();
+        write_splat_ply(c, input);
+        for (int reverse = 0; reverse < 2; reverse++) {
+            MergeStats stats;
+            const auto merged = merge_partition_splats(tied, {input}, stats);
+            merge_partition_splats_file(tied, {input}, output, stats);
+            check(merged.num == 1 - reverse && read_splat_ply(output).num == merged.num,
+                  "symmetric camera ties use training BVH order in both merge paths");
+            std::swap(tied.frame_centers[0], tied.frame_centers[3]);
+        }
+    }
+    {
+        const auto directory = tmp / "camera-metadata";
+        fs::create_directory(directory);
+        ScenePartition p;
+        p.num_parts = 2;
+        p.ring.resize(2);
+        p.frame_label = {0, 0};
+        p.frame_centers = {-1, 0, 0, 1, 0, 0};
+        const float xyz[6] = {0, 0, 0, 0, 0, 0};
+        const float dirs[6] = {-1, 0, 0, 1, 0, 0};
+        const int32_t labels[2] = {0, 1};
+        p.field = std::make_shared<LabelField>(LabelField::build(xyz, labels, dirs, 2));
+        auto c = splats_along_x(-1, 1, 1, 0, 0);
+        c.scales[0] = -4;
+        const auto old_ply = (directory / "old.ply").string();
+        const auto new_ply = (directory / "new.ply").string();
+        const auto output = (directory / "merged.ply").string();
+        auto marked = [&](const std::string& path, const SplatCloud& cloud, const std::string& hash) {
+            BufferedOutputFile file(path, std::ios::binary);
+            file << splat_ply_header(cloud.num, cloud.basis(), cloud.primitive, false, hash);
+            std::vector<float> buffer;
+            write_splat_ply_rows(cloud, file, buffer);
+            file.close();
+            if (!file) throw std::runtime_error("cannot write camera metadata fixture");
+        };
+        auto rejected = [&](const auto& action) {
+            try { action(); } catch (const std::exception&) { return true; }
+            return false;
+        };
+        RegionCameras left, right;
+        const int32_t camera_label = 0;
+        left.field = LabelField::build(p.frame_centers.data(), &camera_label, nullptr, 1, 4);
+        right.field = LabelField::build(p.frame_centers.data() + 3, &camera_label, nullptr, 1, 4);
+        const auto left_hash = save_region_cameras(directory.string(), left);
+        const auto right_hash = save_region_cameras(directory.string(), right);
+        marked(old_ply, c, left_hash);
+        marked(new_ply, c, right_hash);
+        MergeStats stats;
+        check(left_hash != right_hash && save_region_cameras(directory.string(), left) == left_hash &&
+                  merge_partition_splats(p, {old_ply}, stats).num == 1 &&
+                  merge_partition_splats(p, {new_ply}, stats).num == 0,
+              "checkpoint camera hashes retain their own uploaded camera set across later saves");
+        merge_partition_splats_file(p, {old_ply}, output, stats);
+        check(read_splat_ply(output).region_camera_hash.empty(), "merged exports discard checkpoint camera references");
+        write_splat_ply(read_splat_ply(old_ply), output);
+        check(read_splat_ply(output).region_camera_hash.empty(), "edited exports discard checkpoint camera references");
+        auto moved = left;
+        moved.train_from_dataset.scale = 2;
+        const double rotation[9] = {0, -1, 0, 1, 0, 0, 0, 0, 1};
+        std::copy(rotation, rotation + 9, moved.train_from_dataset.R);
+        std::copy_n(std::array<double, 3>{5, 6, 7}.data(), 3, moved.train_from_dataset.t);
+        const float camera[3] = {5, 4, 7};
+        moved.field = LabelField::build(camera, &camera_label, nullptr, 1, 4);
+        Sim3 transform;
+        transform.s = 2;
+        std::copy(rotation, rotation + 9, transform.R);
+        std::copy(moved.train_from_dataset.t, moved.train_from_dataset.t + 3, transform.t);
+        auto transformed = c;
+        transform_splats(transformed, transform);
+        marked(new_ply, transformed, save_region_cameras(directory.string(), moved));
+        SceneTransform conflicting;
+        conflicting.scale = 17;
+        const double center[3] = {0, 0, 0};
+        write_text(directory / "scene_transform.json", scene_transform_json(conflicting, "none", center));
+        const auto restored = merge_partition_splats(p, {new_ply}, stats);
+        merge_partition_splats_file(p, {new_ply}, output, stats);
+        check(restored.num == 1 && restored.means == c.means && read_splat_ply(output).means == c.means,
+              "checkpoint metadata restores its own scene frame instead of mutable run metadata");
+        std::vector<float> many;
+        for (int i = 300; i >= 1; i--) many.insert(many.end(), {(float)i, 0, 0});
+        many.insert(many.end(), {-0.5f, 0, 0});
+        std::vector<int32_t> many_labels(301, 0);
+        RegionCameras large;
+        large.field = LabelField::build(many.data(), many_labels.data(), nullptr, 301, 4);
+        const auto large_hash = save_region_cameras(directory.string(), large);
+        const auto loaded = read_region_cameras(old_ply, large_hash);
+        const double origin[3] = {0, 0, 0};
+        const auto nearest = loaded.field.nearest_seed(origin);
+        check(nearest >= 0 && loaded.field.seeds[(size_t)nearest * 4] == -0.5f &&
+                  loaded.field.seeds.size() == large.field.seeds.size() &&
+                  std::memcmp(loaded.field.seeds.data(), large.field.seeds.data(), large.field.seeds.size() * sizeof(float)) == 0 &&
+                  loaded.field.nodes == large.field.nodes,
+              "camera metadata preserves reordered BVH indices beyond 255 cameras");
+        marked(new_ply, c, left_hash);
+        const auto blob = directory / ("roi-cameras-" + left_hash + ".bin");
+        fs::rename(blob, blob.string() + ".saved");
+        check(read_splat_ply(new_ply).num == 1 && rejected([&] {
+                  merge_partition_splats_file(p, {new_ply}, output, stats);
+              }) && read_splat_ply(output).num == 1,
+              "missing companion metadata rejects merging but leaves ordinary viewing and published output intact");
+        fs::rename(blob.string() + ".saved", blob);
+        BufferedInputFile source(blob, std::ios::binary);
+        const std::string bytes((std::istreambuf_iterator<char>(source)), {});
+        source.close();
+        write_text(blob, "tampered");
+        check(rejected([&] { merge_partition_splats(p, {new_ply}, stats); }) &&
+                  rejected([&] { save_region_cameras(directory.string(), left); }),
+              "tampered camera metadata never silently falls back or overwrites a hash collision");
+        write_text(blob, bytes);
+        std::string malformed = bytes;
+        const uint64_t huge = UINT64_MAX;
+        std::memcpy(malformed.data() + 120, &huge, sizeof(huge));
+        Sha256 digest;
+        digest.update(reinterpret_cast<const uint8_t*>(malformed.data()), malformed.size());
+        const auto malformed_hash = digest.hex();
+        write_text(directory / ("roi-cameras-" + malformed_hash + ".bin"), malformed);
+        check(rejected([&] { read_region_cameras(new_ply, malformed_hash); }),
+              "camera metadata rejects overflowing serialized counts before allocating");
+        BufferedInputFile marked_source(new_ply, std::ios::binary);
+        std::string invalid_ply((std::istreambuf_iterator<char>(marked_source)), {});
+        marked_source.close();
+        invalid_ply.replace(invalid_ply.find(left_hash), left_hash.size(), "../escape");
+        write_text(new_ply, invalid_ply);
+        check(read_splat_ply(new_ply).num == 1 && rejected([&] {
+                  merge_partition_splats(p, {new_ply}, stats);
+              }), "malformed PLY camera references are ignored by viewing but rejected by merging");
+        auto invalid = left;
+        invalid.field.seeds[0] = std::numeric_limits<float>::quiet_NaN();
+        check(rejected([&] { save_region_cameras(directory.string(), invalid); }) &&
+                  rejected([&] { read_region_cameras(new_ply, "../escape"); }),
+              "invalid camera coordinates and arbitrary metadata paths are rejected");
+        invalid = large;
+        const uint32_t root = 0;
+        std::memcpy(&invalid.field.nodes[3], &root, sizeof(root));
+        check(rejected([&] { save_region_cameras(directory.string(), invalid); }),
+              "camera metadata rejects cyclic BVHs");
+        bool changed = false;
+        check(rejected([&] {
+                  merge_partition_splats_file(p, {old_ply}, output, stats, [&](const std::string&) {
+                      if (!changed) { marked(old_ply, c, right_hash); changed = true; }
+                  });
+              }) && read_splat_ply(output).num == 1 && no_partials(output),
+              "changing a checkpoint camera reference between merge passes preserves the published output");
     }
     fs::remove_all(tmp, ec);
 

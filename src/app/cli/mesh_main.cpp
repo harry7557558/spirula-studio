@@ -222,6 +222,10 @@ void print_help(const char* argv0) {
     help_row("--chart-angle-deg <a>", mmsg::help_chart_angle,
              {(double)d.m.chart_angle_deg});
     std::printf("\n");
+    help_row("--method <m>", mmsg::help_method, {"opacity"});
+    help_row("--tsdf-voxel <v>", mmsg::help_tsdf_voxel, {(double)d.m.tsdf_voxel});
+    help_row("--tsdf-trunc <v>", mmsg::help_tsdf_trunc, {(double)d.m.tsdf_trunc});
+    help_row("--tsdf-max-depth <v>", mmsg::help_tsdf_max_depth, {(double)d.m.tsdf_max_depth});
     help_row("--iso <v>", mmsg::help_iso);
     help_row("--merge-factor <v>", mmsg::help_merge_factor,
              {(double)d.m.merge_factor});
@@ -292,6 +296,15 @@ Options parse_args(int argc, char** argv) {
         else if (key == "texture_size")    o.m.texture_size = parse_i(key, next());
         else if (key == "tex_gutter_px")   o.m.tex_gutter_px = parse_i(key, next());
         else if (key == "chart_angle_deg") o.m.chart_angle_deg = parse_f(key, next());
+        else if (key == "method") {
+            const std::string v = next();
+            if (v == "opacity") o.m.method = meshing::MeshMethod::Opacity;
+            else if (v == "tsdf") o.m.method = meshing::MeshMethod::Tsdf;
+            else throw std::runtime_error("--method: expected opacity or tsdf, got '" + v + "'");
+        }
+        else if (key == "tsdf_voxel")      o.m.tsdf_voxel = parse_f(key, next());
+        else if (key == "tsdf_trunc")      o.m.tsdf_trunc = parse_f(key, next());
+        else if (key == "tsdf_max_depth")  o.m.tsdf_max_depth = parse_f(key, next());
         else if (key == "iso")             o.iso = parse_f(key, next());
         else if (key == "merge_factor")    o.m.merge_factor = parse_f(key, next());
         else if (key == "bisection_iters") o.m.bisection_iters = parse_i(key, next());
@@ -431,6 +444,10 @@ int spirula_mesh_main(int argc, char** argv) {
             }
         }
         const bool using_cameras = cams.num() > 0;
+        if (!using_cameras && o.m.method == meshing::MeshMethod::Tsdf) {
+            mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_needs_cameras);
+            return 1;
+        }
         if (!using_cameras)
             mlog::warn(mlog::Stage::Loading, cmsg::mesh_no_cameras);
 

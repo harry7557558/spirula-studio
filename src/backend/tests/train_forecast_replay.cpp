@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < tr.steps.size(); ++i) {
         const ForecastTraceStep& t = tr.steps[i];
         if (t.reg_kind) tc.add_regularizer(t.reg, t.reg_splats, t.reg_kind == 1);
-        if (t.wall >= 0.0) tc.add_step(t.sample.step, t.wall, t.splats, t.gpu);
+        if (t.wall >= 0.0) tc.add_step(t.sample.step, t.wall, t.splats, t.gpu, t.sample.resolution_divisor);
         tc.add_breakdown(t.sample);
         if (t.sample.save_s > 0.0) tc.add_save(t.sample.save_s, t.splats);
         if ((t.sample.step + 1) % every != 0 || i + 1 >= tr.steps.size()) continue;

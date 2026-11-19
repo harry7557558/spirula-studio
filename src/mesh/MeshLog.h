@@ -38,6 +38,7 @@ namespace mlog {
 // is written in.
 enum class Stage {
     Loading,
+    Tsdf,
     PointCloud,
     Delaunay,
     Occupancy,
@@ -64,6 +65,7 @@ inline const spirula::i18n::Msg& stage_msg(Stage s) {
     namespace m = spirula::i18n::msg::mesh;
     switch (s) {
         case Stage::Loading:      return m::stage_loading;
+        case Stage::Tsdf:         return m::stage_tsdf;
         case Stage::PointCloud:   return m::stage_point_cloud;
         case Stage::Delaunay:     return m::stage_delaunay;
         case Stage::Occupancy:    return m::stage_occupancy;

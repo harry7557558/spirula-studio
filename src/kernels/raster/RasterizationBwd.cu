@@ -253,8 +253,7 @@ inline std::tuple<
     using Fn = decltype(&A(None,None,false));
 #define ROW(DT) { { A(DT,None,false), A(DT,None,true) }, { A(DT,Max,false), A(DT,Max,true) }, \
                   { A(DT,Sum,false),  A(DT,Sum,true)  }, { A(DT,Avg,false), A(DT,Avg,true) } }
-    // [dist_type: None/D/RGB_D][DensifyAccumMode][median]. DN/RGB_DN omitted
-    // (placeholders until a normal-rendering primitive exists).
+    // [dist_type: None/D/RGB_D][DensifyAccumMode][median]
     static constexpr Fn funcs[3][4][2] = { ROW(None), ROW(D), ROW(RGB_D) };
 #undef ROW
 #undef F
@@ -263,7 +262,7 @@ inline std::tuple<
                    dist_type == DistortionType::D     ? 1 :
                    dist_type == DistortionType::RGB_D ? 2 : -1;
     if (di < 0)
-        throw std::runtime_error("rasterize_to_pixels_bwd: distortion type not instantiated (normal needs a normal-rendering primitive)");
+        throw std::runtime_error("rasterize_to_pixels_bwd: 3DGS renders no normal distortion");
     // No map means nothing to accumulate, whatever the caller asked for.
     if (accum_weight_map.data_ptr() == nullptr) accum_mode = DensifyAccumMode::None;
     const bool md = v_median.data_ptr() != nullptr;

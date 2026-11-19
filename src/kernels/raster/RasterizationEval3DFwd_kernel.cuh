@@ -324,6 +324,11 @@ __global__ void rasterize_to_pixels_fwd_kernel(
             else
                 pix_out.depth *= invW;  // expected (arithmetic) ray depth
         }
+    #if IS_EVAL3D
+        // Normals composite in world space and are stored in camera space.
+        if constexpr (RenderOutput::has_normal(SplatPrimitive::pixelType))
+            pix_out.normal = SlangProjectionUtils::undo_transform_ray_d(R, pix_out.normal);
+    #endif
         pix_out.saveParamsToBuffer<SplatPrimitive::pixelType>(render_colors, pix_id_global);
         // index in bin of last gaussian in this pixel
         last_ids[pix_id] = static_cast<int32_t>(cur_idx);

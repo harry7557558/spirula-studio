@@ -20,7 +20,7 @@ struct MeshProgressReport {
 using MeshProgressSink = std::function<void(const MeshProgressReport&)>;
 
 enum class MeshPhase {
-    PointCloud, Delaunay, Occupancy, CutEdges, Bisection, Marching, Merge,
+    Fuse, Extract, PointCloud, Delaunay, Occupancy, CutEdges, Bisection, Marching, Merge,
     Pass1, Pass2, Quality, Orient, Color, Write, Atlas, Bake, Count
 };
 
@@ -30,6 +30,9 @@ public:
     MeshProgress(const MeshingConfig& cfg, const MeshProgressSink& sink, double points,
                  bool vertex_color, bool texture);
 
+    // A TSDF run over `pixels` camera pixels in all: the opacity-field stages
+    // drop out, and the fusion's stages size from the pixels.
+    void tsdf(double pixels);
     void edges(double e);
     void raw_faces(double f);
     // The mesh as it stands after a merge pass, which sets what every later stage costs.
@@ -51,6 +54,8 @@ private:
     double _done = 0.0;
     // Sizes: measured once the stage that makes them has run, estimated until then.
     double _points = 0, _edges = 0, _raw_faces = 0, _faces[4] = {}, _texels = 0;
+    bool _tsdf = false;
+    double _pixels = 0;
     int _faces_known = 0;
     bool _edges_known = false, _raw_known = false;
     double _host_base = 0.0, _device_base = 0.0;

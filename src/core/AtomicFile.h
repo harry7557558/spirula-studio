@@ -1,5 +1,8 @@
 #pragma once
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -11,6 +14,20 @@
 #endif
 
 namespace spirula {
+
+inline std::filesystem::path reserve_file_directory(const std::filesystem::path& output) {
+    static std::atomic<uint64_t> sequence{0};
+    for (int attempt = 0; attempt < 100; attempt++) {
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        const std::filesystem::path path = output.string() + ".partial-" + std::to_string(stamp) + "-" +
+                                          std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
+        std::error_code ec;
+        if (std::filesystem::create_directory(path, ec)) return path;
+        if (ec && ec != std::errc::file_exists)
+            throw std::runtime_error("cannot reserve temporary directory: " + path.string() + ": " + ec.message());
+    }
+    throw std::runtime_error("cannot reserve temporary directory: " + output.string());
+}
 
 inline void replace_file(const std::filesystem::path& temporary, const std::filesystem::path& destination) {
 #ifdef _WIN32

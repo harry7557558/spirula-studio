@@ -227,3 +227,47 @@ std::tuple<
     #undef LAUNCH
     return {};
 }
+
+
+// ================
+// Vanilla2DGS
+// ================
+
+/*[AutoHeaderGeneratorExport]*/
+std::tuple<
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+> projection_2dgs_forward(
+    const int64_t num_splats, const ColorBasis color,
+    const std::vector<DeviceTensorFloatND> &in_splats,
+    TorchTensorView viewmats, TorchTensorView intrins,
+    const uint32_t image_width, const uint32_t image_height,
+    const std::string camera_model, const std::string distortion,
+    const TorchTensorView dist_coeffs,
+    DeviceVector<float> radii,
+    const std::optional<TorchTensorView> sh_value_packed,
+    const std::optional<TorchTensorView> sh_value_bounds,
+    const uint32_t num_sh_buffer,
+    const int sh_value_bits,
+    // SH value-bounds cell stride. 0 = FPBO per-splat-block layout
+    // (256 * 3 * num_sh_buffer cells/bound). 256 = non-FPBO per-cell-block
+    // layout. Plumbed unchanged from EngineForward.cpp.
+    const int64_t sh_bounds_stride
+) {
+    const int max_sh_degree = sh_only_degree(color, "projection_2dgs_forward");
+    int sh_degree = Vanilla2DGS<0>::WorldBuffer(in_splats).sh_degree();
+    sh_degree = min(sh_degree, max_sh_degree);
+    uint32_t C = (uint32_t)std::get<2>(viewmats)[0];
+    const float* vm = (const float*)std::get<0>(viewmats);
+    const float4* intr = (const float4*)std::get<0>(intrins);
+    const uint8_t* vp = sh_value_packed.has_value()
+        ? (const uint8_t*)std::get<0>(sh_value_packed.value()) : nullptr;
+    const float2* vb = sh_value_bounds.has_value()
+        ? (const float2*)std::get<0>(sh_value_bounds.value()) : nullptr;
+    #define LAUNCH(n) if (sh_degree == (n)) \
+        return launch_projection_fused_fwd_kernel<Vanilla2DGS<n>>( \
+            num_splats, in_splats, vm, intr, C, image_width, image_height, cmt(camera_model), cdt(distortion), dist_coeffs, radii, \
+            vp, vb, num_sh_buffer, sh_value_bits, sh_bounds_stride);
+    LAUNCH(3) LAUNCH(2) LAUNCH(1) LAUNCH(0) LAUNCH(4)
+    #undef LAUNCH
+    return {};
+}

@@ -33,14 +33,14 @@ struct RasterFwd3dgutParams {
     uint64_t s_screen;
     uint64_t viewmats, intrins, dist_coeffs, aabb;
     uint64_t tile_offsets, flatten_ids;
-    uint64_t out_rgb, out_depth, out_T, out_last_ids;
-    uint64_t dist_rgb, dist_depth, out_median;
+    uint64_t out_rgb, out_depth, out_normal, out_T, out_last_ids;
+    uint64_t dist_rgb, dist_depth, dist_normal, out_median;
     uint64_t score_io;
     uint32_t I, N, n_isects, width, height, tile_width, tile_height,
         macro_log2;
     uint32_t out_depth_on, _pad0;
 };
-static_assert(sizeof(RasterFwd3dgutParams) == 19 * 8 + 10 * 4,
+static_assert(sizeof(RasterFwd3dgutParams) == 21 * 8 + 10 * 4,
               "params layout must match the slang struct");
 
 // Mirrors RasterScoreIO in shaders/rasterize_fwd.slang.
@@ -79,34 +79,39 @@ struct RasterOutputs {
     DeviceTensor3D<int32_t> last_ids;
 };
 
-uint32_t dist_spec(DistortionType dist_type) {
-    switch (dist_type) {
-        case DistortionType::None: return 0;
-        case DistortionType::D: return 1;
-        case DistortionType::RGB_D: return 2;
-        default:
-            throw std::runtime_error(
-                "rasterize_to_pixels_fwd: distortion type not instantiated "
-                "(normal needs a normal-rendering primitive)");
-    }
+// kDistType: the DistortionType's index. DN / RGB_DN need normals (2DGS).
+uint32_t dist_spec(DistortionType dist_type, bool normals) {
+    if (dist_has_normal(dist_type) && !normals)
+        throw std::runtime_error(
+            "rasterize_to_pixels_fwd: this primitive renders no normal "
+            "distortion");
+    return (uint32_t)dist_type;
 }
 
 RasterOutputs alloc_raster_outputs(int64_t batch, uint32_t image_height,
                                    uint32_t image_width,
                                    DistortionType dist_type,
-                                   bool output_median, bool output_depth) {
+                                   bool output_median, bool output_depth,
+                                   bool normals = false) {
     RasterOutputs o;
-    RenderOutput::resize<RenderOutputType::RGB_D>(
-        o.renders, batch, image_height, image_width, PoolSlot::Renders,
-        output_depth);
-    if (dist_type == DistortionType::D)
-        RenderOutput::resizeDistortion<DistortionType::D>(
-            o.distortions, batch, image_height, image_width,
+    if (normals)
+        RenderOutput::resize<RenderOutputType::RGB_DN>(
+            o.renders, batch, image_height, image_width, PoolSlot::Renders,
+            output_depth);
+    else
+        RenderOutput::resize<RenderOutputType::RGB_D>(
+            o.renders, batch, image_height, image_width, PoolSlot::Renders,
+            output_depth);
+#define _SS_RESIZE_DIST(DT)                                                \
+    if (dist_type == DistortionType::DT)                                   \
+        RenderOutput::resizeDistortion<DistortionType::DT>(                \
+            o.distortions, batch, image_height, image_width,               \
             PoolSlot::Distortions);
-    else if (dist_type == DistortionType::RGB_D)
-        RenderOutput::resizeDistortion<DistortionType::RGB_D>(
-            o.distortions, batch, image_height, image_width,
-            PoolSlot::Distortions);
+    _SS_RESIZE_DIST(D)
+    _SS_RESIZE_DIST(RGB_D)
+    _SS_RESIZE_DIST(DN)
+    _SS_RESIZE_DIST(RGB_DN)
+#undef _SS_RESIZE_DIST
     o.render_Ts.resize(PoolSlot::RenderTs, batch, image_height, image_width);
     o.last_ids.resize(PoolSlot::RenderLastIds, batch, image_height,
                       image_width);
@@ -189,7 +194,7 @@ launch_raster_2d_fwd(
 
     // Spec IDs as in the 3dgut entry; only the score map reads gaussian_ids.
     const bool packed = score.enabled() && gaussian_ids.data_ptr();
-    backend::vk::SpecList spec{0u, dist_spec(dist_type),
+    backend::vk::SpecList spec{0u, dist_spec(dist_type, false),
                                output_median ? 1u : 0u, packed ? 1u : 0u,
                                score.enabled() ? 1u : 0u};
     static_assert(sizeof(RasterFwd2dParams) <= 128,
@@ -268,15 +273,14 @@ std::tuple<
                                 output_depth, score, kernel_cut);
 }
 
-/* API definition matching kernels/raster/RasterizationEval3DFwd.cuh */
+namespace {
 
-std::tuple<
-    RenderOutput::TensorTuple,  // renders
-    DeviceTensor3D<float>,  // transmittances
-    DeviceTensor3D<int32_t>,  // last_ids
-    RenderOutput::TensorTuple,  // distortions, optional
-    DeviceTensor3D<float>  // median depth, optional
-> rasterize_to_pixels_3dgut_fwd(
+// Vanilla3DGUT, or Vanilla2DGS when surfel: rgb + depth (+ normal).
+std::tuple<RenderOutput::TensorTuple, DeviceTensor3D<float>,
+           DeviceTensor3D<int32_t>, RenderOutput::TensorTuple,
+           DeviceTensor3D<float>>
+launch_raster_eval3d_fwd(
+    bool surfel,
     int64_t num_splats,
     std::vector<DeviceTensorFloatND> splats_w,
     std::vector<DeviceTensorFloatND> splats_s,
@@ -305,7 +309,7 @@ std::tuple<
 
     RasterOutputs o = alloc_raster_outputs(batch, image_height, image_width,
                                            dist_type, output_median,
-                                           output_depth);
+                                           output_depth, surfel);
 
     Vanilla3DGUT<0>::WorldBuffer wb(splats_w);
     Vanilla3DGUT<0>::ScreenBuffer sb(splats_s);
@@ -325,10 +329,12 @@ std::tuple<
     p.out_rgb = (uint64_t)std::get<0>(o.renders).data_ptr();
     p.out_depth = vkk::or_fallback(std::get<1>(o.renders).data_ptr());
     p.out_depth_on = output_depth ? 1u : 0u;
+    p.out_normal = vkk::or_fallback(std::get<2>(o.renders).data_ptr());
     p.out_T = (uint64_t)o.render_Ts.data_ptr();
     p.out_last_ids = (uint64_t)o.last_ids.data_ptr();
     p.dist_rgb = (uint64_t)std::get<0>(o.distortions).data_ptr();
     p.dist_depth = (uint64_t)std::get<1>(o.distortions).data_ptr();
+    p.dist_normal = (uint64_t)std::get<2>(o.distortions).data_ptr();
     p.out_median = (uint64_t)o.render_median.data_ptr();
     p.score_io = score_io(score, gaussian_ids, num_splats);
     p.I = (uint32_t)batch;
@@ -343,12 +349,13 @@ std::tuple<
     p.macro_log2 = (uint32_t)macro_log2;
 
     // Spec IDs: 0 = camera model, 1 = dist type, 2 = median,
-    // 3 = kRasterPacked (gaussian_ids present), 4 = score map,
-    // 5 = distortion tier.
-    backend::vk::SpecList spec{cd.cam, dist_spec(dist_type),
+    // 3 = kRasterPacked (gaussian_ids present), 4 = score map, 5 = kSurfel,
+    // 6 = distortion tier.
+    backend::vk::SpecList spec{cd.cam, dist_spec(dist_type, surfel),
                                output_median ? 1u : 0u,
                                gaussian_ids.data_ptr() ? 1u : 0u,
-                               score.enabled() ? 1u : 0u, cd.dist};
+                               score.enabled() ? 1u : 0u, surfel ? 1u : 0u,
+                               cd.dist};
     dispatch_raster("rasterize_fwd.rasterize_fwd_3dgut", spec,
                     (uint32_t)batch, tile_width, tile_height, macro_log2,
                     vkk::raster_work(p.n_isects, macro_log2, batch,
@@ -357,4 +364,70 @@ std::tuple<
 
     return std::make_tuple(o.renders, o.render_Ts, o.last_ids, o.distortions,
                            o.render_median);
+}
+
+}  // namespace
+
+/* API definitions matching kernels/raster/RasterizationEval3DFwd.cuh */
+
+std::tuple<
+    RenderOutput::TensorTuple,  // renders
+    DeviceTensor3D<float>,  // transmittances
+    DeviceTensor3D<int32_t>,  // last_ids
+    RenderOutput::TensorTuple,  // distortions, optional
+    DeviceTensor3D<float>  // median depth, optional
+> rasterize_to_pixels_3dgut_fwd(
+    int64_t num_splats,
+    std::vector<DeviceTensorFloatND> splats_w,
+    std::vector<DeviceTensorFloatND> splats_s,
+    DeviceVector<int32_t> gaussian_ids,
+    TorchTensorView viewmats,  // [..., C, 4, 4]
+    TorchTensorView intrins,  // [..., C, 4], fx, fy, cx, cy
+    const std::string camera_model,
+    const std::string distortion,
+    const TorchTensorView dist_coeffs,
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB
+    const uint32_t image_width,
+    const uint32_t image_height,
+    const DeviceTensor3D<int32_t> tile_offsets,
+    const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,
+    DistortionType dist_type,
+    bool output_median,
+    bool output_depth,
+    SplatScoreRender score
+) {
+    return launch_raster_eval3d_fwd(
+        false, num_splats, splats_w, splats_s, gaussian_ids, viewmats, intrins, camera_model, distortion, dist_coeffs, aabb, image_width, image_height, tile_offsets, flatten_ids, macro_log2, dist_type, output_median, output_depth, score);
+}
+
+std::tuple<
+    RenderOutput::TensorTuple,  // renders
+    DeviceTensor3D<float>,  // transmittances
+    DeviceTensor3D<int32_t>,  // last_ids
+    RenderOutput::TensorTuple,  // distortions, optional
+    DeviceTensor3D<float>  // median depth, optional
+> rasterize_to_pixels_2dgs_fwd(
+    int64_t num_splats,
+    std::vector<DeviceTensorFloatND> splats_w,
+    std::vector<DeviceTensorFloatND> splats_s,
+    DeviceVector<int32_t> gaussian_ids,
+    TorchTensorView viewmats,  // [..., C, 4, 4]
+    TorchTensorView intrins,  // [..., C, 4], fx, fy, cx, cy
+    const std::string camera_model,
+    const std::string distortion,
+    const TorchTensorView dist_coeffs,
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB
+    const uint32_t image_width,
+    const uint32_t image_height,
+    const DeviceTensor3D<int32_t> tile_offsets,
+    const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,
+    DistortionType dist_type,
+    bool output_median,
+    bool output_depth,
+    SplatScoreRender score
+) {
+    return launch_raster_eval3d_fwd(
+        true, num_splats, splats_w, splats_s, gaussian_ids, viewmats, intrins, camera_model, distortion, dist_coeffs, aabb, image_width, image_height, tile_offsets, flatten_ids, macro_log2, dist_type, output_median, output_depth, score);
 }

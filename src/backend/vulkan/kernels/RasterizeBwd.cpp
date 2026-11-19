@@ -43,6 +43,7 @@ struct Raster3dgutBwdParams {
     uint64_t out_rgb, out_depth, dist_rgb, dist_depth, awmap;
     uint64_t v_out_rgb, v_out_depth, v_render_Ts, v_median, v_dist_rgb,
         v_dist_depth;
+    uint64_t out_normal, dist_normal, v_out_normal, v_dist_normal;
     uint64_t v_means, v_quats, v_scales, v_s_screen;
     uint64_t o_accum_weight, o_accum_weight_den, o_max_weight, v_viewmats;
     uint32_t I, N, n_isects, width, height, tile_width, tile_height, macro_log2;
@@ -51,22 +52,19 @@ struct Raster3dgutBwdParams {
     float max_weight_scale;
     uint32_t _pad0;
 };
-static_assert(sizeof(Raster3dgutBwdParams) == 32 * 8 + 12 * 4,
+static_assert(sizeof(Raster3dgutBwdParams) == 36 * 8 + 12 * 4,
               "params layout must match the slang struct");
 
-uint32_t dist_spec_bwd(DistortionType dist_type) {
-    switch (dist_type) {
-        case DistortionType::None: return 0;
-        case DistortionType::D: return 1;
-        case DistortionType::RGB_D: return 2;
-        default:
-            throw std::runtime_error(
-                "rasterize_to_pixels_bwd: distortion type not instantiated "
-                "(normal needs a normal-rendering primitive)");
-    }
+// kDistType: the DistortionType's index. DN / RGB_DN need normals (2DGS).
+uint32_t dist_spec_bwd(DistortionType dist_type, bool normals) {
+    if (dist_has_normal(dist_type) && !normals)
+        throw std::runtime_error(
+            "rasterize_to_pixels_bwd: this primitive renders no normal "
+            "distortion");
+    return (uint32_t)dist_type;
 }
 
-// rasterize_bwd.slang's kRbDepthBound / kRbDistRgbFromDepth.
+// rasterize_bwd.slang's kRbDepthBound / kRbDistRgbFromDepth / kRbNormalBound.
 uint32_t raster_bwd_state_flags(
     const RenderOutput::TensorTuple& render_outputs,
     const RenderOutput::TensorTuple& v_render_outputs,
@@ -78,6 +76,8 @@ uint32_t raster_bwd_state_flags(
     if (v_distortion_outputs.has_value() &&
         !std::get<0>(v_distortion_outputs.value()).data_ptr())
         f |= 2u;
+    if (std::get<2>(v_render_outputs).data_ptr())
+        f |= 4u;
     return f;
 }
 
@@ -116,7 +116,7 @@ std::tuple<
     std::optional<std::vector<DeviceTensorFloatND>> v_splats_w,
     std::optional<std::vector<DeviceTensorFloatND>> v_splats_s
 ) {
-    const uint32_t spec_dist = dist_spec_bwd(dist_type);
+    const uint32_t spec_dist = dist_spec_bwd(dist_type, false);
     if (accum_weight_map.data_ptr() == nullptr)
         accum_mode = DensifyAccumMode::None;
     const bool aw = accum_any(accum_mode);
@@ -224,13 +224,13 @@ std::tuple<
                            o_accum_weight);
 }
 
-/* API definition matching kernels/raster/RasterizationEval3DBwd.cuh */
+namespace {
 
-std::tuple<
-    std::vector<DeviceTensorFloatND>, std::vector<DeviceTensorFloatND>,
-    DeviceTensor2D<float>,
-    DeviceVector<float>
-> rasterize_to_pixels_3dgut_bwd(
+// Vanilla3DGUT, or Vanilla2DGS when surfel.
+std::tuple<std::vector<DeviceTensorFloatND>, std::vector<DeviceTensorFloatND>,
+           DeviceTensor2D<float>, DeviceVector<float>>
+launch_raster_eval3d_bwd(
+    bool surfel,
     int64_t num_splats,
     std::vector<DeviceTensorFloatND> splats_w,
     std::vector<DeviceTensorFloatND> splats_s,
@@ -267,7 +267,7 @@ std::tuple<
 ) {
     (void)loss_map;  // declared but unused by the CUDA kernel as well
     const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
-    const uint32_t spec_dist = dist_spec_bwd(dist_type);
+    const uint32_t spec_dist = dist_spec_bwd(dist_type, surfel);
     if (accum_weight_map.data_ptr() == nullptr)
         accum_mode = DensifyAccumMode::None;
     const bool aw = accum_any(accum_mode);
@@ -330,14 +330,19 @@ std::tuple<
         p.last_ids = (uint64_t)last_ids.data_ptr();
         p.out_rgb = (uint64_t)std::get<0>(render_outputs).data_ptr();
         p.out_depth = vkk::or_fallback(std::get<1>(render_outputs).data_ptr());
+        p.out_normal = vkk::or_fallback(std::get<2>(render_outputs).data_ptr());
+        p.v_out_normal = vkk::or_fallback(std::get<2>(v_render_outputs).data_ptr());
         if (distortion_fwd_outputs.has_value()) {
             p.dist_rgb = vkk::or_fallback(
                 std::get<0>(distortion_fwd_outputs.value()).data_ptr());
             p.dist_depth = vkk::or_fallback(
                 std::get<1>(distortion_fwd_outputs.value()).data_ptr());
+            p.dist_normal = vkk::or_fallback(
+                std::get<2>(distortion_fwd_outputs.value()).data_ptr());
         } else {
             p.dist_rgb = vkk::null_fallback();
             p.dist_depth = vkk::null_fallback();
+            p.dist_normal = vkk::null_fallback();
         }
         p.awmap = vkk::or_fallback(accum_weight_map.data_ptr());
         p.v_out_rgb = (uint64_t)std::get<0>(v_render_outputs).data_ptr();
@@ -349,9 +354,12 @@ std::tuple<
                 std::get<0>(v_distortion_outputs.value()).data_ptr());
             p.v_dist_depth = vkk::or_fallback(
                 std::get<1>(v_distortion_outputs.value()).data_ptr());
+            p.v_dist_normal = vkk::or_fallback(
+                std::get<2>(v_distortion_outputs.value()).data_ptr());
         } else {
             p.v_dist_rgb = vkk::null_fallback();
             p.v_dist_depth = vkk::null_fallback();
+            p.v_dist_normal = vkk::null_fallback();
         }
         p.v_dist_rgb_per_depth = v_dist_rgb_per_depth;
         p.state_flags = raster_bwd_state_flags(render_outputs,
@@ -378,13 +386,15 @@ std::tuple<
         p.macro_log2 = (uint32_t)macro_log2;
 
         // Spec IDs: cam(0), dist(1), median(2), accum(3), viewmat(4),
-        // packed(5), max weight(6), distortion tier(7).
+        // packed(5), max weight(6), surfel(7), distortion tier(8).
         backend::vk::SpecList spec{
             cd.cam,         spec_dist,
             md ? 1u : 0u,   (uint32_t)accum_mode,
             need_viewmat_grad ? 1u : 0u, packed ? 1u : 0u,
-            mw ? 1u : 0u,   cd.dist};
-        const char* entry = spec_dist == 0 && !md && (p.state_flags & 1u) == 0
+            mw ? 1u : 0u,   surfel ? 1u : 0u, cd.dist};
+        // The nodepth body skips the colour VJP, which carries 2DGS's normal.
+        const char* entry =
+            !surfel && spec_dist == 0 && !md && (p.state_flags & 1u) == 0
             ? "rasterize_bwd_nodepth.rasterize_bwd_3dgut_nodepth"
             : "rasterize_bwd.rasterize_bwd_3dgut";
         vkk::dispatch_ring_budgeted(
@@ -397,4 +407,94 @@ std::tuple<
 
     return std::make_tuple(v_splats_w.value(), v_splats_s.value(),
                            v_viewmats_buf, o_accum_weight);
+}
+
+}  // namespace
+
+/* API definitions matching kernels/raster/RasterizationEval3DBwd.cuh */
+
+std::tuple<
+    std::vector<DeviceTensorFloatND>, std::vector<DeviceTensorFloatND>,
+    DeviceTensor2D<float>,
+    DeviceVector<float>
+> rasterize_to_pixels_3dgut_bwd(
+    int64_t num_splats,
+    std::vector<DeviceTensorFloatND> splats_w,
+    std::vector<DeviceTensorFloatND> splats_s,
+    DeviceVector<int32_t> gaussian_ids,
+    TorchTensorView viewmats,
+    TorchTensorView intrins,
+    const std::string camera_model,
+    const std::string distortion,
+    const TorchTensorView dist_coeffs,
+    DeviceTensor2D<uint2> aabb,
+    const uint32_t image_width,
+    const uint32_t image_height,
+    const DeviceTensor3D<int32_t> tile_offsets,
+    const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,
+    const DeviceTensor3D<float> render_Ts,
+    const DeviceTensor3D<int32_t> last_ids,
+    RenderOutput::TensorTuple render_outputs,
+    std::optional<RenderOutput::TensorTuple> distortion_fwd_outputs,
+    DistortionType dist_type,
+    DeviceTensor3D<float> loss_map,
+    DeviceTensor3D<float> accum_weight_map,
+    DensifyAccumMode accum_mode,
+    DeviceVector<float> max_weight,
+    float max_weight_scale,
+    RenderOutput::TensorTuple v_render_outputs,
+    const DeviceTensor3D<float> v_render_Ts,
+    const DeviceTensor3D<float> v_median,
+    std::optional<RenderOutput::TensorTuple> v_distortion_outputs,
+    float v_dist_rgb_per_depth,
+    std::optional<std::vector<DeviceTensorFloatND>> v_splats_w,
+    std::optional<std::vector<DeviceTensorFloatND>> v_splats_s,
+    bool need_viewmat_grad
+) {
+    return launch_raster_eval3d_bwd(
+        false, num_splats, splats_w, splats_s, gaussian_ids, viewmats, intrins, camera_model, distortion, dist_coeffs, aabb, image_width, image_height, tile_offsets, flatten_ids, macro_log2, render_Ts, last_ids, render_outputs, distortion_fwd_outputs, dist_type, loss_map, accum_weight_map, accum_mode, max_weight, max_weight_scale, v_render_outputs, v_render_Ts, v_median, v_distortion_outputs, v_dist_rgb_per_depth, v_splats_w, v_splats_s, need_viewmat_grad);
+}
+
+std::tuple<
+    std::vector<DeviceTensorFloatND>, std::vector<DeviceTensorFloatND>,
+    DeviceTensor2D<float>,
+    DeviceVector<float>
+> rasterize_to_pixels_2dgs_bwd(
+    int64_t num_splats,
+    std::vector<DeviceTensorFloatND> splats_w,
+    std::vector<DeviceTensorFloatND> splats_s,
+    DeviceVector<int32_t> gaussian_ids,
+    TorchTensorView viewmats,
+    TorchTensorView intrins,
+    const std::string camera_model,
+    const std::string distortion,
+    const TorchTensorView dist_coeffs,
+    DeviceTensor2D<uint2> aabb,
+    const uint32_t image_width,
+    const uint32_t image_height,
+    const DeviceTensor3D<int32_t> tile_offsets,
+    const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,
+    const DeviceTensor3D<float> render_Ts,
+    const DeviceTensor3D<int32_t> last_ids,
+    RenderOutput::TensorTuple render_outputs,
+    std::optional<RenderOutput::TensorTuple> distortion_fwd_outputs,
+    DistortionType dist_type,
+    DeviceTensor3D<float> loss_map,
+    DeviceTensor3D<float> accum_weight_map,
+    DensifyAccumMode accum_mode,
+    DeviceVector<float> max_weight,
+    float max_weight_scale,
+    RenderOutput::TensorTuple v_render_outputs,
+    const DeviceTensor3D<float> v_render_Ts,
+    const DeviceTensor3D<float> v_median,
+    std::optional<RenderOutput::TensorTuple> v_distortion_outputs,
+    float v_dist_rgb_per_depth,
+    std::optional<std::vector<DeviceTensorFloatND>> v_splats_w,
+    std::optional<std::vector<DeviceTensorFloatND>> v_splats_s,
+    bool need_viewmat_grad
+) {
+    return launch_raster_eval3d_bwd(
+        true, num_splats, splats_w, splats_s, gaussian_ids, viewmats, intrins, camera_model, distortion, dist_coeffs, aabb, image_width, image_height, tile_offsets, flatten_ids, macro_log2, render_Ts, last_ids, render_outputs, distortion_fwd_outputs, dist_type, loss_map, accum_weight_map, accum_mode, max_weight, max_weight_scale, v_render_outputs, v_render_Ts, v_median, v_distortion_outputs, v_dist_rgb_per_depth, v_splats_w, v_splats_s, need_viewmat_grad);
 }

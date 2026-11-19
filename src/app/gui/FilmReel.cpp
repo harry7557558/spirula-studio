@@ -1,5 +1,6 @@
 // FilmReel.cpp -- see FilmReel.h.
 
+#include "data/ImageDiscovery.h"
 #include "app/gui/FilmReel.h"
 
 #include <algorithm>
@@ -268,12 +269,14 @@ std::vector<std::string> OutputWatch::listing() const {
     std::error_code ec;
     for (fs::recursive_directory_iterator
              it(_dir, fs::directory_options::skip_permission_denied, ec), end;
-         !ec && it != end; it.increment(ec))
+         !ec && it != end; it.increment(ec)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (it->is_regular_file(ec)) {
             const auto extension = it->path().extension().string();
             if (extension == ".png" || extension == ".jpg" || extension == ".jpeg")
                 out.push_back(it->path().string());
         }
+    }
     return out;
 }
 

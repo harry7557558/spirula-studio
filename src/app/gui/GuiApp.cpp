@@ -9827,6 +9827,11 @@ void GuiApp::draw_mesh_options() {
         ui::InputInt(msg::mesh_max_cameras, &_mesh_job.max_cameras);
         _mesh_job.max_cameras = std::max(0, _mesh_job.max_cameras);
         ui::help_on_hover(msg::mesh_max_cameras_help);
+        int method = _mesh_job.tsdf ? 1 : 0;
+        ImGui::SetNextItemWidth(px(220.0f));
+        if (ui::Combo(msg::mesh_method, &method, {&msg::mesh_method_opacity, &msg::mesh_method_tsdf}))
+            _mesh_job.tsdf = method == 1;
+        ui::help_on_hover(msg::mesh_method_help);
         ImGui::Unindent();
     }
 
@@ -10446,7 +10451,6 @@ bool GuiApp::launch_batch_merge(BatchTask& task, const BatchRow& row) {
             for (const std::string& r : runs) found += !r.empty();
             if (found == 0) throw std::runtime_error(pmsg::err_nothing_to_merge.get());
             spirula::MergeStats st;
-            const spirula::SplatCloud merged = spirula::merge_partition_splats(p, runs, st);
             char stamp[32];
             const std::time_t now = std::time(nullptr);
             std::strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", std::localtime(&now));
@@ -10454,7 +10458,7 @@ bool GuiApp::launch_batch_merge(BatchTask& task, const BatchRow& row) {
             std::error_code ec;
             fs::create_directories(outputs, ec);
             const std::string out = (fs::path(outputs) / (stem + "_merged_" + stamp + ".ply")).string();
-            spirula::write_splat_ply(merged, out);
+            spirula::merge_partition_splats_file(p, runs, out, st);
             _merge_result = out;
         } catch (const std::exception& e) {
             _merge_error = e.what();
@@ -12353,14 +12357,16 @@ void GuiApp::draw_basic_options() {
     {
         // Primitive names are the config's own values, written into
         // config.json and accepted by `--primitive`; they are not translated.
-        static const char* prims[] = {"3dgs", "mip", "3dgut"};
-        int pi = _cfg.primitive == "mip" ? 1 : _cfg.primitive == "3dgut" ? 2 : 0;
+        static const char* prims[] = {"3dgs", "mip", "3dgut", "2dgs"};
+        int pi = 0;
+        for (int k = 0; k < 4; k++)
+            if (_cfg.primitive == prims[k]) pi = k;
         ImGui::SetNextItemWidth(w);
-        if (ui::ComboRaw(ui::detail::label(msg::opt_primitive), &pi, prims, 3)) {
+        if (ui::ComboRaw(ui::detail::label(msg::opt_primitive), &pi, prims, 4)) {
             _cfg.primitive = prims[pi];
             _cfg_ui.touched.insert("primitive");
         }
-        ui::help_on_hover(msg::opt_primitive_help);
+        ui::help_on_hover(spirula::i18n::msg::field::primitive_help);
         if (_cfg.primitive == "3dgut")
             ui::TextColoredWrapped(kWarn, msg::opt_primitive_3dgut_warn);
     }
@@ -12379,12 +12385,14 @@ void GuiApp::draw_basic_options() {
         }
     }
     ui::help_on_hover(msg::opt_resolution_help);
+#if 0
     ImGui::SetNextItemWidth(w);
     if (ui::InputInt(fld::max_resolution, &_cfg.max_resolution)) {
         _cfg.max_resolution = std::clamp(_cfg.max_resolution, 0, 32768);
         _cfg_ui.touched.insert("max_resolution");
     }
     ui::help_on_hover(fld::max_resolution_help);
+#endif
 
 #if 0
     if (ui::Checkbox(fld::progressive_resolution, &_cfg.progressive_resolution))

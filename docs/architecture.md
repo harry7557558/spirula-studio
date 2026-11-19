@@ -107,12 +107,18 @@ asserted only by parity tests.
 
 ## Primitives
 
-3DGS, Mip (anti-aliased 3DGS), and 3DGUT are compile-time *types*, not runtime
-branches: `Primitive.cuh`, `Primitive3DGS.cuh`, `Primitive3DGUT.cuh`,
-`PrimitiveBase3DGS.cuh`. Camera model, SH degree and distortion are value
-parameters. This is what makes `src/instantiations/` (111 generated instantiation TUs)
-necessary on the CUDA side, and what maps to Slang specialization constants on
-the Vulkan side.
+3DGS, Mip (anti-aliased 3DGS), 3DGUT and 2DGS are compile-time *types*, not
+runtime branches: `Primitive.cuh`, `Primitive3DGS.cuh`, `Primitive3DGUT.cuh`,
+`Primitive2DGS.cuh`, `PrimitiveBase3DGS.cuh`. Camera model, SH degree and
+distortion are value parameters. This is what makes the generated
+instantiation TUs in `src/instantiations/` necessary on the CUDA side, and
+what maps to Slang specialization constants on the Vulkan side.
+
+3DGUT and 2DGS share the eval3d raster path: a ray per pixel, for every camera
+model, and a fragment evaluated along it (a 3D Gaussian's peak response, or a
+ray-disc hit). 2DGS keeps 3DGS's storage and 3DGUT's screen buffer, so it
+needs no layout of its own; it adds a normal render
+([notes/2dgs.md](notes/2dgs.md)).
 
 The view-dependent colour is an axis of its own, orthogonal to the primitive:
 a `ColorBasis` (`core/ColorBasis.h`) says what one splat's colour row holds --

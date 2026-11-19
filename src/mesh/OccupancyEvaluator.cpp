@@ -454,7 +454,7 @@ OccupancyEvaluator::OccupancyEvaluator(
 
 OccupancyEvaluator::~OccupancyEvaluator() { delete impl_; }
 
-bool OccupancyEvaluator::debug_render_moments(
+bool OccupancyEvaluator::render_moments(
     int cam_idx, std::vector<float>& out, int& width, int& height
 ) {
     if (!impl_->rctx) return false;

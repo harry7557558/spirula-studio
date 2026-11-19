@@ -22,6 +22,7 @@
 #include <cstring>
 #include <fstream>
 #include <random>
+#include <utility>
 #include <vector>
 #include "backend/tests/ScreenRows.h"
 
@@ -172,6 +173,7 @@ int main(int argc, char** argv) {
         int vw_mask;   // which v_splats_world tensors exist
         bool per_splat_steps;
         bool densify;
+        bool surfel = false;   // 2dgs: 3dgut's optimizer with the surfel scales
     };
     // Rows 1 and 2 differ only in the tier, so the NONE fast path is read
     // against a distorted neighbour.
@@ -186,9 +188,15 @@ int main(int argc, char** argv) {
         {2, true, 3, 0, 1, 1, false, false, true, 7, false, false},
         {0, true, 0, 0, 4, 0, false, false, false, 31, false, true},
         {0, true, 0, 0, 4, 1, true, false, false, 31, false, false},
+        {2, false, 0, 2, 3, 0, false, false, true, 7, false, true, true},
+        {2, true, 3, 0, 1, 1, false, false, true, 7, false, false, true},
     };
 
+    // The float ranges the surfel rows write, held to zero violations: the
+    // global allowance below would let a broken scale clamp through.
+    std::vector<std::pair<size_t, size_t>> surfel_ranges;
     for (const Cfg& cfg : cfgs) {
+        const size_t floats_before = acc_f.size();
         backend::memset_sync(d_radii, 0, N * sizeof(float));
         const bool level1 = cfg.level == 1;
 
@@ -433,7 +441,7 @@ int main(int argc, char** argv) {
                /*lr_features_sh=*/1.25e-4f, /*lr_features_sb=*/2.5e-3f,
                /*max_gauss_ratio=*/10.f,
                /*scale_reg=*/0.1f, /*mcmc_op=*/0.01f, /*mcmc_scale=*/0.01f,
-               /*erank=*/0.1f, /*erank_s3=*/0.02f, /*quat_norm=*/0.01f,
+               /*erank=*/0.1f, /*erank_s3=*/0.02f, /*quat_norm=*/0.01f, cfg.surfel,
                /*dc_reg=*/0.02f, /*sh_reg=*/0.05f,
                /*max_screen_size=*/0.02f, /*max_screen_size_penalty=*/1.f,
                cfg.sam, cfg.ctl,
@@ -483,6 +491,7 @@ int main(int argc, char** argv) {
         if (cfg.densify)
             readback_f(acc_f, d_ds, N);
         readback_i(acc_c, (const int32_t*)d_visit, N);
+        if (cfg.surfel) surfel_ranges.push_back({floats_before, acc_f.size()});
     }
 
     if (dumping) {
@@ -545,6 +554,14 @@ int main(int argc, char** argv) {
     if (violf)
         std::printf("fpbo_parity: first float violation at %lld\n",
                     (long long)first_viol);
+    int64_t violf_surfel = 0;
+    for (const auto& r : surfel_ranges)
+        for (size_t i = r.first; i < r.second; i++)
+            violf_surfel += std::fabs((double)acc_f[i] - (double)reff[i]) >
+                            5e-3 + 1e-3 * std::fabs((double)reff[i]);
+    if (violf_surfel)
+        std::printf("fpbo_parity: %lld float violations in the surfel rows\n",
+                    (long long)violf_surfel);
     double fracf = nf ? (double)violf / (double)nf : 0.0;
     double fracc = nc ? (double)violc / (double)nc : 0.0;
     std::printf(
@@ -557,7 +574,7 @@ int main(int argc, char** argv) {
     // >1 quantum on Intel/llvmpipe. Confirmed benign by comparing those
     // devices against an NVIDIA-Vulkan dump of the SAME shader (identical
     // scatter); floats compare with zero violations on all devices.
-    bool pass = fracf <= 2e-3 && fracc <= 5e-3;
+    bool pass = fracf <= 2e-3 && fracc <= 5e-3 && violf_surfel == 0;
     std::printf(pass ? "fpbo_parity: PASSED\n" : "fpbo_parity: FAILED\n");
     return pass ? 0 : 1;
 }

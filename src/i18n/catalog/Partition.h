@@ -66,54 +66,34 @@ SS_MSG(head_merge,
     TR("merge seçenekleri"));
 
 SS_MSG(opt_parts,
-    EN("How many parts. 0 splits until every part has at most --max-images "
-       "cameras. Default: 0"),
-    JA("パートの数。0 なら各パートのカメラが --max-images 以下になるまで分割しま"
-       "す。既定: 0"),
-    ZH_HANS("分区数量。0 表示一直拆到每个分区的相机数不超过 --max-images。默认：0"),
-    ZH_HANT("分區數量。0 表示一直拆到每個分區的相機數不超過 --max-images。預設：0"),
-    KO("파트 수. 0이면 모든 파트의 카메라가 --max-images 이하가 될 때까지 나눕니다. "
-       "기본값: 0"),
-    DE("Wie viele Teile. 0 teilt, bis jeder Teil höchstens --max-images Kameras "
-       "hat. Standard: 0"),
-    FR("Nombre de parties. 0 découpe jusqu'à ce que chaque partie ait au plus "
-       "--max-images caméras. Défaut : 0"),
-    ES("Cuántas partes. 0 divide hasta que cada parte tenga como máximo "
-       "--max-images cámaras. Predeterminado: 0"),
-    PT("Quantas partes. 0 divide até cada parte ter no máximo --max-images "
-       "câmaras. Predefinição: 0"),
-    IT("Quante parti. 0 divide finché ogni parte ha al massimo --max-images "
-       "fotocamere. Predefinito: 0"),
-    NL("Hoeveel delen. 0 splitst tot elk deel hoogstens --max-images camera's "
-       "heeft. Standaard: 0"),
-    RU("Сколько частей. 0 делит, пока в каждой части не останется не больше "
-       "--max-images камер. По умолчанию: 0"),
-    TR("Kaç parça. 0, her parçada en çok --max-images kamera kalana dek böler. "
-       "Varsayılan: 0"));
+    EN("Number of parts; 0 uses --max-images as a camera target. Default: 0."),
+    JA("パート数。0 は --max-images をカメラ数の目安に使用。既定: 0。"),
+    ZH_HANS("分区数；0 使用 --max-images 作为相机数量目标。默认：0。"),
+    ZH_HANT("分區數；0 使用 --max-images 作為相機數量目標。預設：0。"),
+    KO("파트 수. 0은 --max-images를 카메라 수 목표로 사용. 기본값: 0."),
+    DE("Anzahl der Teile; 0 nutzt --max-images als Kameraziel. Standard: 0."),
+    FR("Nombre de parties ; 0 vise --max-images caméras. Défaut : 0."),
+    ES("Número de partes; 0 usa --max-images como objetivo de cámaras. Valor inicial: 0."),
+    PT("Número de partes; 0 usa --max-images como meta de câmaras. Padrão: 0."),
+    IT("Numero di parti; 0 usa --max-images come obiettivo di fotocamere. Default: 0."),
+    NL("Aantal delen; 0 gebruikt --max-images als cameradoel. Standaard: 0."),
+    RU("Число частей; 0 задаёт цель по камерам через --max-images. По умолчанию: 0."),
+    TR("Parça sayısı; 0 kamera hedefi olarak --max-images kullanır. Varsayılan: 0."));
 
 SS_MSG(opt_max_images,
-    EN("Most cameras a part trains with, core and ring, when --parts is 0. "
-       "Default: 2000"),
-    JA("--parts が 0 のときの、パートが学習に使うカメラ（コアとリング）の上限。既定: 2000"),
-    ZH_HANS("--parts 为 0 时每个分区训练所用相机（核心加环）的上限。默认：2000"),
-    ZH_HANT("--parts 為 0 時每個分區訓練所用相機（核心加環）的上限。預設：2000"),
-    KO("--parts가 0일 때 파트가 학습에 쓰는 카메라(핵심과 링) 상한. 기본값: 2000"),
-    DE("Höchstzahl an Kameras, Kern und Ring, mit denen ein Teil trainiert, wenn "
-       "--parts 0 ist. Standard: 2000"),
-    FR("Nombre maximal de caméras, cœur et anneau, avec lesquelles une partie "
-       "s'entraîne quand --parts vaut 0. Défaut : 2000"),
-    ES("Máximo de cámaras, núcleo y anillo, con las que entrena una parte cuando "
-       "--parts es 0. Predeterminado: 2000"),
-    PT("Máximo de câmaras, núcleo e anel, com que uma parte treina quando --parts "
-       "é 0. Predefinição: 2000"),
-    IT("Massimo di fotocamere, nucleo e anello, con cui una parte si addestra "
-       "quando --parts è 0. Predefinito: 2000"),
-    NL("Meeste camera's, kern en ring, waarmee een deel traint als --parts 0 is. "
-       "Standaard: 2000"),
-    RU("Наибольшее число камер, ядро и кольцо, на которых обучается часть, когда "
-       "--parts равно 0. По умолчанию: 2000"),
-    TR("--parts 0 iken bir parçanın eğitimde kullandığı en çok kamera sayısı, "
-       "çekirdek ve halka. Varsayılan: 2000"));
+    EN("Target cameras per part when --parts is 0. Overlap can exceed it. Default: 2000."),
+    JA("--parts が 0 のときのカメラ数の目安。重複で超える場合があります。既定: 2000。"),
+    ZH_HANS("--parts 为 0 时每区的相机数量目标。重叠可超出此值。默认：2000。"),
+    ZH_HANT("--parts 為 0 時每區的相機數量目標。重疊可超出此值。預設：2000。"),
+    KO("--parts가 0일 때 파트별 카메라 수 목표. 중첩으로 초과할 수 있음. 기본값: 2000."),
+    DE("Kameraziel je Teil bei --parts 0. Überlappung kann es überschreiten. Standard: 2000."),
+    FR("Cible de caméras par partie si --parts vaut 0. Le recouvrement peut la dépasser. Défaut : 2000."),
+    ES("Objetivo de cámaras por parte si --parts es 0. El solapamiento puede superarlo. Valor inicial: 2000."),
+    PT("Meta de câmaras por parte se --parts for 0. A sobreposição pode excedê-la. Padrão: 2000."),
+    IT("Obiettivo di fotocamere per parte con --parts 0. La sovrapposizione può superarlo. Default: 2000."),
+    NL("Cameradoel per deel bij --parts 0. Overlap kan dit overschrijden. Standaard: 2000."),
+    RU("Цель по числу камер при --parts 0. Перекрытие может её превысить. По умолчанию: 2000."),
+    TR("--parts 0 iken parça başına kamera hedefi. Örtüşme bunu aşabilir. Varsayılan: 2000."));
 
 SS_MSG(opt_ring,
     EN("A camera outside a part joins its ring when at least this share of the "
@@ -157,45 +137,34 @@ SS_MSG(opt_ring_min,
     TR("... ve bunlardan en az bu kadarı. Varsayılan: 20"));
 
 SS_MSG(opt_max_seeds,
-    EN("Seed points the ownership field keeps, strided from the cloud; the "
-       "cameras are always in it. Default: 1000000"),
-    JA("所有領域フィールドに残す初期点の数（点群から等間隔に抽出）。カメラは常に含"
-       "まれます。既定: 1000000"),
-    ZH_HANS("归属场保留的种子点数，从点云等距抽取；相机始终包含。默认：1000000"),
-    ZH_HANT("歸屬場保留的種子點數，從點雲等距抽取；相機始終包含。預設：1000000"),
-    KO("소유 필드가 유지하는 시드 점 수(점 구름에서 등간격 추출). 카메라는 항상 포함"
-       "됩니다. 기본값: 1000000"),
-    DE("Startpunkte, die das Zugehörigkeitsfeld behält, gleichmäßig aus der Wolke "
-       "gezogen; die Kameras sind immer dabei. Standard: 1000000"),
-    FR("Points d'amorce gardés par le champ d'appartenance, prélevés à pas "
-       "constant dans le nuage ; les caméras y sont toujours. Défaut : 1000000"),
-    ES("Puntos semilla que conserva el campo de pertenencia, tomados a paso "
-       "constante de la nube; las cámaras siempre están. Predeterminado: 1000000"),
-    PT("Pontos semente que o campo de pertença guarda, tirados a passo constante "
-       "da nuvem; as câmaras estão sempre lá. Predefinição: 1000000"),
-    IT("Punti seme che il campo di appartenenza tiene, presi a passo costante "
-       "dalla nuvola; le fotocamere ci sono sempre. Predefinito: 1000000"),
-    NL("Zaadpunten die het eigendomsveld bewaart, met vaste stap uit de wolk; de "
-       "camera's zitten er altijd in. Standaard: 1000000"),
-    RU("Начальных точек, которые хранит поле принадлежности, взятых с шагом из "
-       "облака; камеры входят всегда. По умолчанию: 1000000"),
-    TR("Aidiyet alanının buluttan sabit adımla tuttuğu tohum noktası sayısı; "
-       "kameralar her zaman içindedir. Varsayılan: 1000000"));
+    EN("Maximum sampled points for graph ownership fields. Default: 1000000."),
+    JA("グラフ所有領域の点サンプル上限。既定: 1000000。"),
+    ZH_HANS("图归属场的最大采样点数。默认：1000000。"),
+    ZH_HANT("圖歸屬場的最大採樣點數。預設：1000000。"),
+    KO("그래프 소유 영역의 최대 샘플 점 수. 기본값: 1000000."),
+    DE("Maximale Punktzahl für Graph-Zugehörigkeitsfelder. Standard: 1000000."),
+    FR("Maximum de points pour les champs du graphe. Défaut : 1000000."),
+    ES("Máximo de puntos del campo de propiedad del grafo. Predeterminado: 1000000."),
+    PT("Máximo de pontos do campo de propriedade do grafo. Padrão: 1000000."),
+    IT("Massimo di punti per i campi di proprietà del grafo. Default: 1000000."),
+    NL("Maximaal punten voor eigendomsvelden van de graaf. Standaard: 1000000."),
+    RU("Предел точек для полей принадлежности графа. По умолчанию: 1000000."),
+    TR("Grafik sahiplik alanları için azami örnek nokta. Varsayılan: 1000000."));
 
 SS_MSG(opt_method,
-    EN("- graph cuts the cameras and the points together where the least view crosses, so each camera sees most of its part;\n- viewgraph cuts the cameras alone and takes regions from their positions. Default: graph"),
-    JA("- graph はカメラと点をまとめて、視野の交差が最も少ない所で切り、各カメラが自分のパートを最もよく見るようにします。\n- viewgraph はカメラだけを切り、領域は位置から決めます。 既定: graph"),
-    ZH_HANS("- graph 把相机和点一起在视野交叉最少处切分，让每台相机看到的大多是自己的分区；\n- viewgraph 只切分相机，区域按相机位置推出。 默认：graph"),
-    ZH_HANT("- graph 把相機和點一起在視野交叉最少處切分，讓每台相機看到的大多是自己的分區；\n- viewgraph 只切分相機，區域按相機位置推出。 預設：graph"),
-    KO("- graph는 카메라와 점을 함께, 시야가 가장 적게 걸치는 곳에서 잘라 각 카메라가 자기 파트를 가장 많이 보게 합니다.\n- viewgraph는 카메라만 자르고 영역은 위치에서 정합니다. 기본값: graph"),
-    DE("- graph (Standard): Kameras und Punkte gemeinsam schneiden, mit möglichst wenig Sicht über Grenzen.\n- viewgraph: nur Kameras schneiden und Bereiche aus ihren Positionen ableiten."),
-    FR("- graph (défaut) : coupe caméras et points en minimisant les vues traversant les limites.\n- viewgraph : coupe les caméras seules et tire les régions de leurs positions."),
-    ES("- graph corta cámaras y puntos juntos por donde menos vista cruza, para que cada cámara vea sobre todo su parte;\n- viewgraph corta solo las cámaras y saca las regiones de sus posiciones. Predeterminado: graph"),
-    PT("- graph (padrão): divide câmeras e pontos, minimizando vistas que cruzam fronteiras.\n- viewgraph: divide só câmeras e obtém regiões das suas posições."),
-    IT("- graph (default): divide camere e punti minimizzando le viste che attraversano i confini.\n- viewgraph: divide solo camere e ricava regioni dalle loro posizioni."),
-    NL("- graph (standaard): verdeelt camera’s en punten met zo weinig mogelijk zicht over grenzen.\n- viewgraph: verdeelt alleen camera’s en leidt gebieden af uit hun posities."),
-    RU("- graph (по умолчанию): делит камеры и точки, сводя к минимуму обзор через границы.\n- viewgraph: делит только камеры; области определяет по их положениям."),
-    TR("- graph kameraları ve noktaları birlikte, sınırı en az görüşün kestiği yerden böler;\n- böylece her kamera çoğunlukla kendi parçasını görür.\n- viewgraph yalnızca kameraları böler, bölgeleri konumlarından çıkarır. Varsayılan: graph"));
+    EN("- viewgraph (default): group covisible cameras.\n- graph: group cameras and visible points.\n- voronoi: compact cells around camera clusters."),
+    JA("- viewgraph（既定）: 共視カメラをまとめます。\n- graph: カメラと可視点をまとめます。\n- voronoi: カメラ群の周りを凸領域に分割します。"),
+    ZH_HANS("- viewgraph（默认）：按共视关系分组相机。\n- graph：将相机和可见点共同分组。\n- voronoi：围绕相机簇划分紧凑区域。"),
+    ZH_HANT("- viewgraph（預設）：按共視關係分組相機。\n- graph：將相機和可見點共同分組。\n- voronoi：圍繞相機群劃分緊湊區域。"),
+    KO("- viewgraph(기본): 공가시 카메라를 묶습니다.\n- graph: 카메라와 가시점을 함께 묶습니다.\n- voronoi: 카메라 군집 주위의 조밀한 영역입니다."),
+    DE("- viewgraph (Standard): gemeinsam sehende Kameras.\n- graph: Kameras und sichtbare Punkte gruppieren.\n- voronoi: kompakte Zellen um Kameragruppen."),
+    FR("- viewgraph (défaut) : caméras à vues communes.\n- graph : groupe caméras et points visibles.\n- voronoi : cellules compactes autour des caméras."),
+    ES("- viewgraph (predeterminado): cámaras covisibles.\n- graph: agrupa cámaras y puntos visibles.\n- voronoi: celdas compactas alrededor de las cámaras."),
+    PT("- viewgraph (padrão): câmeras com vistas comuns.\n- graph: agrupa câmeras e pontos visíveis.\n- voronoi: células compactas em torno das câmeras."),
+    IT("- viewgraph (default): camere con viste comuni.\n- graph: raggruppa camere e punti visibili.\n- voronoi: celle compatte attorno ai gruppi di camere."),
+    NL("- viewgraph (standaard): camera's met gedeeld zicht.\n- graph: groepeert camera's en zichtbare punten.\n- voronoi: compacte cellen rond cameragroepen."),
+    RU("- viewgraph (по умолчанию): камеры с общим обзором.\n- graph: группы камер и видимых точек.\n- voronoi: компактные ячейки вокруг групп камер."),
+    TR("- viewgraph (varsayılan): ortak görüşlü kameralar.\n- graph: kameraları ve görünen noktaları gruplar.\n- voronoi: kamera grupları çevresinde kompakt hücreler."));
 
 SS_MSG(opt_source,
     EN("- Where covisibility comes from.\n- auto takes the model's own tracks, else projects the seed cloud into every frame, else uses camera positions alone.\n- Default: auto"),
@@ -226,6 +195,36 @@ SS_MSG(opt_output,
     NL("Waar de partitie wordt geschreven. Standaard: <dataset>/partition.json"),
     RU("Куда записать разбиение. По умолчанию: <dataset>/partition.json"),
     TR("Bölümlemenin yazılacağı yer. Varsayılan: <dataset>/partition.json"));
+
+SS_MSG(opt_max_projected,
+    EN("Maximum points sampled for projection covisibility. Default: 200000."),
+    JA("投影共視性の点サンプル上限。既定: 200000。"),
+    ZH_HANS("投影共视关系的最大采样点数。默认：200000。"),
+    ZH_HANT("投影共視關係的最大採樣點數。預設：200000。"),
+    KO("투영 공가시성의 최대 샘플 점 수. 기본값: 200000."),
+    DE("Maximale Punktzahl für projizierte Kovisibilität. Standard: 200000."),
+    FR("Points échantillonnés pour la covisibilité projetée. Maximum : 200000."),
+    ES("Máximo de puntos para covisibilidad proyectada. Predeterminado: 200000."),
+    PT("Máximo de pontos para covisibilidade projetada. Padrão: 200000."),
+    IT("Massimo di punti per covisibilità proiettata. Default: 200000."),
+    NL("Maximaal punten voor geprojecteerde covisibiliteit. Standaard: 200000."),
+    RU("Предел точек для проекции совидимости. По умолчанию: 200000."),
+    TR("Yansıtılan ortak görünürlük için azami nokta. Varsayılan: 200000."));
+
+SS_MSG(opt_projection_depth,
+    EN("Projected occlusion depth slack; 0 off, 0.1 = 10% (experimental)."),
+    JA("投影遮蔽の深度余裕。0 は無効、0.1 は 10%（実験的）。"),
+    ZH_HANS("投影遮挡深度余量；0 关闭，0.1 = 10%（实验性）。"),
+    ZH_HANT("投影遮擋深度餘量；0 關閉，0.1 = 10%（實驗性）。"),
+    KO("투영 가림 깊이 여유. 0 끄기, 0.1 = 10% (실험적)."),
+    DE("Tiefentoleranz für projizierte Verdeckung; 0 aus, 0.1 = 10% (experimentell)."),
+    FR("Marge de profondeur pour l'occlusion projetée ; 0 désactive, 0.1 = 10% (expérimental)."),
+    ES("Margen de profundidad de oclusión proyectada; 0 desactiva, 0.1 = 10% (experimental)."),
+    PT("Margem de profundidade da oclusão projetada; 0 desliga, 0.1 = 10% (experimental)."),
+    IT("Margine di profondità per l'occlusione proiettata; 0 disattiva, 0.1 = 10% (sperimentale)."),
+    NL("Dieptemarge voor geprojecteerde occlusie; 0 uit, 0.1 = 10% (experimenteel)."),
+    RU("Запас глубины проекционного перекрытия; 0 выкл., 0.1 = 10% (экспериментально)."),
+    TR("Yansıtılan örtülme derinliği payı; 0 kapalı, 0.1 = %10 (deneysel)."));
 
 SS_MSG(opt_runs,
     EN("Folder of training runs to find the parts' models in, by their "
@@ -371,6 +370,21 @@ SS_MSG(log_covisibility,
     NL("Covisibiliteit uit {0}: cameraparen {1}"),
     RU("Совидимость из {0}: пар камер {1}"),
     TR("{0} kaynaklı ortak görünürlük: kamera çifti {1}"));
+
+SS_MSG(log_covisibility_without_graph,
+    EN("Covisibility from {0}: camera pairs not stored"),
+    JA("{0} による共視性: カメラ対は保存しません"),
+    ZH_HANS("来自 {0} 的共视关系：不保存相机对"),
+    ZH_HANT("來自 {0} 的共視關係：不保存相機對"),
+    KO("{0} 기반 공가시성: 카메라 쌍 저장 안 함"),
+    DE("Kovisibilität aus {0}: Kamerapaare nicht gespeichert"),
+    FR("Covisibilité issue de {0} : paires de caméras non stockées"),
+    ES("Covisibilidad a partir de {0}: pares de cámaras sin almacenar"),
+    PT("Covisibilidade a partir de {0}: pares de câmaras não guardados"),
+    IT("Covisibilità da {0}: coppie di fotocamere non memorizzate"),
+    NL("Covisibiliteit uit {0}: cameraparen niet opgeslagen"),
+    RU("Совидимость из {0}: пары камер не сохранены"),
+    TR("{0} kaynaklı ortak görünürlük: kamera çiftleri saklanmadı"));
 
 SS_MSG(log_summary,
     EN("Parts: {0}   covisibility cut across parts: {1}%   ownership field seeds: {2}"),
@@ -627,6 +641,15 @@ SS_MSG(meth_viewgraph,
     IT("Prima le fotocamere (grafo delle viste)"), NL("Eerst camera's (zichtgraaf)"),
     RU("Сначала камеры (граф видов)"), TR("Önce kameralar (görüş grafı)"));
 
+SS_MSG(meth_voronoi,
+    EN("Compact cells (Voronoi)"), JA("凸領域（ボロノイ）"),
+    ZH_HANS("紧凑区域（Voronoi）"), ZH_HANT("緊湊區域（Voronoi）"),
+    KO("조밀한 영역(Voronoi)"), DE("Kompakte Zellen (Voronoi)"),
+    FR("Cellules compactes (Voronoi)"), ES("Celdas compactas (Voronoi)"),
+    PT("Células compactas (Voronoi)"), IT("Celle compatte (Voronoi)"),
+    NL("Compacte cellen (Voronoi)"), RU("Компактные ячейки (Вороного)"),
+    TR("Kompakt hücreler (Voronoi)"));
+
 SS_MSG(lbl_source,
     EN("Covisibility"), JA("共視性"), ZH_HANS("共视关系"), ZH_HANT("共視關係"),
     KO("공가시성"), DE("Kovisibilität"), FR("Covisibilité"), ES("Covisibilidad"),
@@ -689,32 +712,19 @@ SS_MSG(mode_max,
     IT("Fotocamere per parte"), NL("Camera's per deel"), RU("Камер на часть"),
     TR("Parça başına kamera"));
 SS_MSG(mode_help,
-    EN("Either ask for a count, or for a ceiling on how many cameras a part's "
-       "core may hold -- what one training run of this GPU can take."),
-    JA("パート数を指定するか、パートのコアに入るカメラ数の上限（この GPU の 1 回の"
-       "学習でこなせる量）を指定します。"),
-    ZH_HANS("要么指定分区数量，要么指定每个分区核心可容纳的相机上限，即本 GPU 一次"
-            "训练能承受的量。"),
-    ZH_HANT("要麼指定分區數量，要麼指定每個分區核心可容納的相機上限，即本 GPU 一次"
-            "訓練能承受的量。"),
-    KO("파트 수를 지정하거나, 파트 핵심에 들어갈 카메라 수의 상한(이 GPU의 한 번 "
-       "학습이 감당할 양)을 지정합니다."),
-    DE("Entweder eine Anzahl verlangen oder eine Obergrenze, wie viele Kameras der "
-       "Kern eines Teils haben darf -- was ein Trainingslauf dieser GPU schafft."),
-    FR("Soit un nombre de parties, soit un plafond de caméras dans le cœur d'une "
-       "partie -- ce qu'un entraînement sur ce GPU peut absorber."),
-    ES("O bien un número de partes, o bien un tope de cámaras en el núcleo de una "
-       "parte: lo que una ejecución en esta GPU puede asumir."),
-    PT("Ou um número de partes, ou um teto de câmaras no núcleo de uma parte -- o "
-       "que um treino nesta GPU consegue aguentar."),
-    IT("O un numero di parti, oppure un tetto alle fotocamere nel nucleo di una "
-       "parte -- quanto un addestramento su questa GPU può reggere."),
-    NL("Vraag om een aantal, of om een plafond voor hoeveel camera's de kern van "
-       "een deel mag hebben -- wat één trainingsrun op deze GPU aankan."),
-    RU("Либо число частей, либо потолок числа камер в ядре части -- то, что один "
-       "запуск обучения на этой GPU способен взять."),
-    TR("Ya bir sayı isteyin, ya da bir parçanın çekirdeğindeki kamera sayısına "
-       "bir üst sınır -- bu GPU'da tek bir eğitimin kaldırabileceği kadar."));
+    EN("Choose a part count or a camera target per part. Overlapping cameras can exceed the target."),
+    JA("パート数か各パートのカメラ数の目安を指定。重複カメラで目安を超える場合があります。"),
+    ZH_HANS("选择分区数或每区相机数量目标。重叠相机可使数量超出目标。"),
+    ZH_HANT("選擇分區數或每區相機數量目標。重疊相機可使數量超出目標。"),
+    KO("파트 수 또는 파트별 카메라 수 목표를 선택. 중첩 카메라로 목표를 초과할 수 있습니다."),
+    DE("Anzahl der Teile oder Kameraziel je Teil wählen. Überlappende Kameras können das Ziel überschreiten."),
+    FR("Choisissez un nombre de parties ou une cible de caméras par partie. Le recouvrement peut dépasser la cible."),
+    ES("Elija un número de partes o un objetivo de cámaras por parte. El solapamiento puede superar el objetivo."),
+    PT("Escolha o número de partes ou uma meta de câmaras por parte. A sobreposição pode exceder a meta."),
+    IT("Scegli il numero di parti o un obiettivo di fotocamere per parte. La sovrapposizione può superarlo."),
+    NL("Kies een aantal delen of een cameradoel per deel. Overlappende camera's kunnen het doel overschrijden."),
+    RU("Выберите число частей или цель по камерам на часть. Перекрывающиеся камеры могут превысить цель."),
+    TR("Parça sayısı veya parça başına kamera hedefi seçin. Örtüşen kameralar hedefi aşabilir."));
 
 SS_MSG(lbl_ring,
     EN("Ring share"), JA("リングの割合"), ZH_HANS("外环比例"), ZH_HANT("外環比例"),
@@ -1043,19 +1053,19 @@ SS_MSG(pq_title,
     NL("Delen in de wachtrij zetten"), RU("Поставить части в очередь"),
     TR("Parçaları sıraya al"));
 SS_MSG(pq_runs,
-    EN("Training runs to queue: {0}, one per part of {1}"),
-    JA("キューに入れる学習: {0} 件（{1} のパートごとに 1 件）"),
-    ZH_HANS("将排入的训练：{0} 次，{1} 的每个分区一次"),
-    ZH_HANT("將排入的訓練：{0} 次，{1} 的每個分區一次"),
-    KO("큐에 넣을 학습: {0}개, {1}의 파트마다 하나"),
-    DE("Einzureihende Trainingsläufe: {0}, einer je Teil von {1}"),
-    FR("Entraînements à mettre en file : {0}, un par partie de {1}"),
-    ES("Ejecuciones a poner en cola: {0}, una por parte de {1}"),
-    PT("Treinos a pôr em fila: {0}, um por parte de {1}"),
-    IT("Esecuzioni da mettere in coda: {0}, una per parte di {1}"),
-    NL("Trainingsruns in de wachtrij: {0}, één per deel van {1}"),
-    RU("Запусков обучения в очередь: {0}, по одному на часть {1}"),
-    TR("Sıraya alınacak eğitim: {0}, {1} parçası başına bir"));
+    EN("Training runs to queue: {0}, one per part of {1}\nSplat and step limits apply to each part."),
+    JA("キューに入れる学習: {0} 件（{1} のパートごとに 1 件）\nスプラット数・ステップ数の上限はパートごとです。"),
+    ZH_HANS("将排入的训练：{0} 次，{1} 的每个分区一次\n泼溅数量和步数上限分别应用于每个分区。"),
+    ZH_HANT("將排入的訓練：{0} 次，{1} 的每個分區一次\n潑濺數量和步數上限分別套用至每個分區。"),
+    KO("큐에 넣을 학습: {0}개, {1}의 파트마다 하나\n스플랫 수와 스텝 수 제한은 파트마다 적용됩니다."),
+    DE("Einzureihende Trainingsläufe: {0}, einer je Teil von {1}\nSplat- und Schrittlimits gelten pro Teil."),
+    FR("Entraînements à mettre en file : {0}, un par partie de {1}\nLes limites de splats et d'étapes valent par partie."),
+    ES("Ejecuciones a poner en cola: {0}, una por parte de {1}\nLos límites de splats y pasos se aplican a cada parte."),
+    PT("Treinos a pôr em fila: {0}, um por parte de {1}\nOs limites de splats e passos valem para cada parte."),
+    IT("Esecuzioni da mettere in coda: {0}, una per parte di {1}\nI limiti di splat e passi valgono per ogni parte."),
+    NL("Trainingsruns in de wachtrij: {0}, één per deel van {1}\nSplat- en staplimieten gelden per deel."),
+    RU("Запусков обучения в очередь: {0}, по одному на часть {1}\nЛимиты сплатов и шагов задаются для каждой части."),
+    TR("Sıraya alınacak eğitim: {0}, {1} parçası başına bir\nSplat ve adım sınırları her parça için geçerlidir."));
 SS_MSG(pq_merge,
     EN("Merge the parts once all have trained"),
     JA("すべて学習し終えたらパートを結合する"),

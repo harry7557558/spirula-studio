@@ -140,6 +140,8 @@ private:
         uint64_t load_id = 0;       // a new one each time the file is read
         uint64_t uid = 0;           // the pane's own, for as long as it is open
         bool attached = false;
+        int after_compute_load = 0;
+        std::string action_error;
         // Placement in the shared frame. `align` puts the model in the FIRST
         // model's frame rather than in its own; the rest is the hand
         // adjustment on top of that.

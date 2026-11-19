@@ -23,7 +23,7 @@
 [SpecializationConstant]
 const int kCameraModel = 0;   // CameraModelType; 3dgut entry only
 [SpecializationConstant]
-const int kDistType = 0;      // 0 None | 1 D | 2 RGB_D
+const int kDistType = 0;      // 0 None | 1 D | 2 RGB_D | 3 DN | 4 RGB_DN
 [SpecializationConstant]
 const int kOutputMedian = 0;
 [SpecializationConstant]
@@ -35,6 +35,8 @@ const int kViewmatGrad = 0;   // 3dgut entry only
 const int kPacked = 0;        // gaussian_ids present
 [SpecializationConstant]
 const int kMaxWeight = 0;     // o_max_weight bound
+[SpecializationConstant]
+const int kSurfel = 0;        // 2DGS in the 3dgut entry: surfel fragment, normals
 
 static const uint TILE_SIZE_DX = 8;
 static const uint TILE_SIZE_DY = 8;
@@ -61,6 +63,8 @@ static const int RB_DIST_N = kDistType != 0 ? (int)RB_BLOCK : 1;
 static const int RB_MED_N = kOutputMedian != 0 ? (int)RB_BLOCK : 1;
 static const int RB_AW_N = kAccumWeight != 0 ? (int)RB_BLOCK : 1;
 static const int RB_VMG_N = kViewmatGrad != 0 ? (int)RB_BLOCK : 1;
+static const int RB_NRM_N = kSurfel != 0 ? (int)RB_BLOCK : 1;
+static const int RB_DN_N = kDistType >= 3 ? (int)RB_BLOCK : 1;
 
 // ---- shared pixel state (indexed by local pixel id 0..63) ----------------
 groupshared float2 _rb_Tg[RB_BLOCK];     // (T, v_T), evolves during sweep
@@ -69,6 +73,10 @@ groupshared float4 _rb_C[RB_DIST_N];     // distortion totals C
 groupshared float4 _rb_S[RB_DIST_N];     // distortion second moments S
 groupshared float4 _rb_vdist[RB_DIST_N]; // v of distortion image
 groupshared float _rb_W[RB_DIST_N];      // 1 - T_final
+groupshared float3 _rb_vnrm[RB_NRM_N];   // v_render normal
+groupshared float3 _rb_Cn[RB_DN_N];      // normal distortion C, S, v
+groupshared float3 _rb_Sn[RB_DN_N];
+groupshared float3 _rb_vdistn[RB_DN_N];
 groupshared float _rb_awmap[RB_AW_N];
 groupshared float _rb_medv[RB_MED_N];
 groupshared float _rb_medzg[RB_MED_N];
@@ -84,10 +92,11 @@ groupshared uint _rb_binmax;             // 1 + max last_id over the tile's pixe
 groupshared float _rb_red[RB_THREADS];   // viewmat-grad reduction scratch
 
 // state_flags: the render's depth and its gradient are bound (a render whose
-// depth nothing reads has neither), and the RGB distortion gradient is that
-// multiple of the depth one instead of a buffer.
+// depth nothing reads has neither), the RGB distortion gradient is that
+// multiple of the depth one instead of a buffer, the normal gradient is bound.
 static const uint kRbDepthBound = 1u;
 static const uint kRbDistRgbFromDepth = 2u;
+static const uint kRbNormalBound = 4u;
 
 // Load the per-pixel color/distortion/median state shared by both entries.
 // `pix` is the local pixel id, `gpix` the in-image pixel id (valid only when
@@ -136,7 +145,7 @@ void _rb_load_pixel_state(
                        out_rgb[3 * image_pix + 2], out_depth[image_pix]);
             Dv.w = dist_depth[image_pix];
             v_d.w = v_dist_depth[image_pix];
-            if (kDistType == 2) {
+            if (kDistType == 2 || kDistType == 4) {
                 Dv.xyz = float3(dist_rgb[3 * image_pix],
                                 dist_rgb[3 * image_pix + 1],
                                 dist_rgb[3 * image_pix + 2]);
@@ -166,10 +175,46 @@ void _rb_load_pixel_state(
     }
 }
 
-// Shared compositing adjoint for both primitive families.
+// The normal channel's share of _rb_load_pixel_state (kSurfel only); call
+// after it, which sets _rb_W.
 [ForceInline]
-bool _rb_pixel_grad(int pix_id, float alpha, float4 color,
-                    out float v_alpha, out float4 v_color) {
+void _rb_load_normal_state(uint pix, bool inside, uint image_pix,
+                           float* out_normal, float* dist_normal,
+                           float* v_out_normal, float* v_dist_normal,
+                           uint state_flags, float3x3 R) {
+    if (kSurfel == 0) return;
+    // The stored normal is camera space (see the forward); the splats' are world.
+    float3 v_n = inside && (state_flags & kRbNormalBound) != 0
+        ? float3(v_out_normal[3 * image_pix], v_out_normal[3 * image_pix + 1],
+                 v_out_normal[3 * image_pix + 2])
+        : float3(0.0f);
+    _rb_vnrm[pix] = transform_ray_d(R, v_n);
+    if (kDistType >= 3) {
+        float3 C = float3(0.0f), Dv = float3(0.0f), v_d = float3(0.0f);
+        if (inside) {
+            C = transform_ray_d(R, float3(out_normal[3 * image_pix],
+                                          out_normal[3 * image_pix + 1],
+                                          out_normal[3 * image_pix + 2]));
+            Dv = float3(dist_normal[3 * image_pix],
+                        dist_normal[3 * image_pix + 1],
+                        dist_normal[3 * image_pix + 2]);
+            v_d = float3(v_dist_normal[3 * image_pix],
+                         v_dist_normal[3 * image_pix + 1],
+                         v_dist_normal[3 * image_pix + 2]);
+        }
+        float Wr = _rb_W[pix];
+        float invW = Wr > 1e-10f ? (1.0f / Wr) : 0.0f;
+        _rb_Cn[pix] = C;
+        _rb_Sn[pix] = (Dv + C * C) * invW;
+        _rb_vdistn[pix] = v_d;
+    }
+}
+
+// Shared compositing adjoint for both primitive families; normal is 2DGS's.
+[ForceInline]
+bool _rb_pixel_grad(int pix_id, float alpha, float4 color, float3 normal,
+                    out float v_alpha, out float4 v_color,
+                    out float3 v_normal) {
     float T1 = _rb_Tg[pix_id].x;
     float v_T1 = _rb_Tg[pix_id].y;
     float ra = 1.0f / (1.0f - alpha);
@@ -225,6 +270,24 @@ bool _rb_pixel_grad(int pix_id, float alpha, float4 color,
         v_T0 += alpha * g;
     }
 
+    v_normal = float3(0.0f);
+    if (kSurfel != 0) {
+        float3 v_n = _rb_vnrm[pix_id];
+        float dn = dot(normal, v_n);
+        v_alpha += T0 * dn;
+        v_normal = v_n * (alpha * T0);
+        v_T0 += alpha * dn;
+        if (kDistType >= 3) {
+            float3 v_d = _rb_vdistn[pix_id];
+            float W = _rb_W[pix_id];
+            v_normal += (normal * W - _rb_Cn[pix_id]) * v_d * (2.0f * alpha * T0);
+            float g = dot(_rb_Sn[pix_id] + normal * normal * W -
+                              normal * _rb_Cn[pix_id] * 2.0f, v_d);
+            v_alpha += T0 * g;
+            v_T0 += alpha * g;
+        }
+    }
+
     if (kDistType != 0) v_color.w *= 1.0f / max(color.w, DEPTH_DIST_EPS);
     v_color.w += v_depth_median;
 #ifdef SS_RASTER_NODEPTH
@@ -249,7 +312,7 @@ struct Raster2dBwdParams {  // via params ring
     int* last_ids;       // [I,H,W]
     float* out_rgb;      // [I,H,W,3]
     float* out_depth;    // [I,H,W]
-    float* dist_rgb;     // kDistType == 2
+    float* dist_rgb;     // kDistType == 2 or 4
     float* dist_depth;   // kDistType != 0
     float* awmap;        // kAccumWeight
     float* v_out_rgb;
@@ -335,7 +398,9 @@ void _rb2_step(int pix_id, int splat_idx, bool active,
 
     float v_alpha;
     float4 v_color;
-    _rb_pixel_grad(pix_id, alpha, color, v_alpha, v_color);
+    float3 v_normal_unused;
+    _rb_pixel_grad(pix_id, alpha, color, float3(0.0f), v_alpha, v_color,
+                   v_normal_unused);
 
     _rb2_alpha_vjp(splat, delta, sigma, vis, dvis, v_alpha, v_splat);
     v_splat.rgb += v_color.xyz;
@@ -542,7 +607,7 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 #endif
 
 // ---------------------------------------------------------------------------
-// 3DGUT backward
+// 3DGUT backward, and 2DGS's (kSurfel)
 // ---------------------------------------------------------------------------
 
 struct Raster3dgutBwdParams {  // via params ring
@@ -570,6 +635,10 @@ struct Raster3dgutBwdParams {  // via params ring
     float* v_median;
     float* v_dist_rgb;
     float* v_dist_depth;
+    float* out_normal;     // kSurfel
+    float* dist_normal;    // kDistType >= 3
+    float* v_out_normal;   // kSurfel
+    float* v_dist_normal;  // kDistType >= 3
     float* v_means;
     float* v_quats;
     float* v_scales;
@@ -618,46 +687,65 @@ void _rb3_step(Raster3dgutBwdParams p, int pix_id, int splat_idx,
     if (splat_idx > asint(rb.w)) return;
     float3 ray_d = rb.xyz;
 
-    float alpha = evaluate_alpha_3dgs(splat.mean, splat.iscl_rot,
-                                      splat.opacity, ray_o, ray_d);
-    if (alpha <= ALPHA_THRESHOLD || dot(ray_d, ray_d) == 0.0f) return;
-
+    float alpha;
     float3 c_rgb;
     float c_depth;
-    evaluate_color_3dgs(splat.mean, splat.iscl_rot, splat.opacity, splat.rgb,
-                        ray_o, ray_d, c_rgb, c_depth);
+    float3 c_normal = float3(0.0f);
+    if (kSurfel != 0) {
+        alpha = evaluate_2dgs(splat.mean, splat.iscl_rot, splat.opacity,
+                              splat.rgb, ray_o, ray_d, c_rgb, c_depth,
+                              c_normal);
+        if (alpha <= ALPHA_THRESHOLD || dot(ray_d, ray_d) == 0.0f) return;
+    } else {
+        alpha = evaluate_alpha_3dgs(splat.mean, splat.iscl_rot, splat.opacity,
+                                    ray_o, ray_d);
+        if (alpha <= ALPHA_THRESHOLD || dot(ray_d, ray_d) == 0.0f) return;
+        evaluate_color_3dgs(splat.mean, splat.iscl_rot, splat.opacity,
+                            splat.rgb, ray_o, ray_d, c_rgb, c_depth);
+    }
     if (c_depth <= 0.0f) return;
     float4 color = float4(c_rgb, c_depth);
 
     float v_alpha;
     float4 v_color;
-    _rb_pixel_grad(pix_id, alpha, color, v_alpha, v_color);
+    float3 v_normal;
+    _rb_pixel_grad(pix_id, alpha, color, c_normal, v_alpha, v_color, v_normal);
 
     float3 v_mean;
     float3x3 v_ir;
     float v_op;
-    float3 v_ray_o_a, v_ray_d_a;
-    evaluate_alpha_3dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity, ray_o,
-                            ray_d, v_alpha, v_mean, v_ir, v_op, v_ray_o_a,
-                            v_ray_d_a);
-    v_splat.mean += v_mean;
-    v_splat.iscl_rot += v_ir;
-    v_splat.opacity += v_op;
-
-#ifdef SS_RASTER_NODEPTH
-    float3 v_ray_o_c = float3(0.0f), v_ray_d_c = float3(0.0f);
-    v_splat.rgb += v_color.xyz;
-#else
     float3 v_rgb;
-    float3 v_ray_o_c, v_ray_d_c;
-    evaluate_color_3dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity,
-                            splat.rgb, ray_o, ray_d, v_color.xyz, v_color.w,
-                            v_mean, v_ir, v_op, v_rgb, v_ray_o_c, v_ray_d_c);
+    float3 v_ray_o_a, v_ray_d_a;
+    float3 v_ray_o_c = float3(0.0f), v_ray_d_c = float3(0.0f);
+#ifdef SS_RASTER_NODEPTH
+    v_color.w = 0.0f;
+    v_normal = float3(0.0f);
+#endif
+    if (kSurfel != 0) {
+        evaluate_2dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity, splat.rgb,
+                          ray_o, ray_d, v_alpha, v_color.xyz,
+                          v_color.w, v_normal, v_mean, v_ir, v_op, v_rgb,
+                          v_ray_o_a, v_ray_d_a);
+    } else {
+        evaluate_alpha_3dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity,
+                                ray_o, ray_d, v_alpha, v_mean, v_ir, v_op,
+                                v_ray_o_a, v_ray_d_a);
+#ifdef SS_RASTER_NODEPTH
+        v_rgb = v_color.xyz;
+#else
+        v_splat.mean += v_mean;
+        v_splat.iscl_rot += v_ir;
+        v_splat.opacity += v_op;
+        evaluate_color_3dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity,
+                                splat.rgb, ray_o, ray_d, v_color.xyz,
+                                v_color.w, v_mean, v_ir, v_op, v_rgb,
+                                v_ray_o_c, v_ray_d_c);
+#endif
+    }
     v_splat.mean += v_mean;
     v_splat.iscl_rot += v_ir;
     v_splat.opacity += v_op;
     v_splat.rgb += v_rgb;
-#endif
 
     if (kAccumWeight != 0 || kMaxWeight != 0) {
         float T0 = _rb_Tg[pix_id].x;
@@ -748,6 +836,9 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             p.dist_rgb, p.dist_depth, p.v_out_rgb, p.v_out_depth,
             p.v_dist_rgb, p.v_dist_depth, p.awmap, p.v_median,
             p.state_flags, p.v_dist_rgb_per_depth);
+        _rb_load_normal_state(pix, inside, img_off + gpix, p.out_normal,
+                              p.dist_normal, p.v_out_normal, p.v_dist_normal,
+                              p.state_flags, R);
     }
     { uint prev; InterlockedMax(_rb_binmax, uint(bin_local + 1), prev); }
     GroupMemoryBarrierWithGroupSync();
@@ -852,7 +943,9 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 wscale = float3(p.scales[3 * splat_wid],
                                 p.scales[3 * splat_wid + 1],
                                 p.scales[3 * splat_wid + 2]);
-                splat.iscl_rot = compute_3dgut_iscl_rot(quat, wscale);
+                splat.iscl_rot = kSurfel != 0
+                    ? compute_2dgs_iscl_rot(quat, wscale)
+                    : compute_3dgut_iscl_rot(quat, wscale);
                 float* s_row = scrg_row(p.s_screen, int(splat_sid));
                 splat.opacity = scrg_opac(s_row);
                 splat.rgb = scrg_rgb(s_row);
@@ -877,8 +970,12 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             if (active) {
                 float4 v_quat;
                 float3 v_scale;
-                compute_3dgut_iscl_rot_vjp(quat, wscale, v_splat.iscl_rot,
-                                           v_quat, v_scale);
+                if (kSurfel != 0)
+                    compute_2dgs_iscl_rot_vjp(quat, wscale, v_splat.iscl_rot,
+                                              v_quat, v_scale);
+                else
+                    compute_3dgut_iscl_rot_vjp(quat, wscale, v_splat.iscl_rot,
+                                               v_quat, v_scale);
                 _rb_atomic_add(p.v_means + 3 * splat_wid, v_splat.mean.x);
                 _rb_atomic_add(p.v_means + 3 * splat_wid + 1, v_splat.mean.y);
                 _rb_atomic_add(p.v_means + 3 * splat_wid + 2, v_splat.mean.z);

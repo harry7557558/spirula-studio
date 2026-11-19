@@ -7,15 +7,18 @@
 #include "data/Json.h"
 #include "data/JsonWrite.h"
 #include "data/Knn.h"
+#include "data/VoronoiPartition.h"
 #include "external/stb_image.h"
 #include "external/stb_image_write.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <limits>
 #include <numeric>
 #include <stdexcept>
 #include <unordered_map>
@@ -165,7 +168,7 @@ FrameView frame_view(const ParsedDataset& ds, int64_t i) {
     return f;
 }
 
-bool frame_sees(const FrameView& f, const double p[3]) {
+bool frame_sees(const FrameView& f, const double p[3], double* pixel = nullptr, double* depth = nullptr) {
     const double d[3] = {p[0] - f.t[0], p[1] - f.t[1], p[2] - f.t[2]};
     double ray[3];
     for (int r = 0; r < 3; r++)
@@ -174,29 +177,60 @@ bool frame_sees(const FrameView& f, const double p[3]) {
     if (!(len > 1e-12)) return false;
     if (f.cos_max > -1.5 && ray[2] / len < f.cos_max) return false;
     double px[2];
-    return camhost::ray_in_frame(f.cam, ray, px);
+    if (depth) *depth = len;
+    return camhost::ray_in_frame(f.cam, ray, pixel ? pixel : px);
 }
 
-// Pair weights from who sees what: every pair of frames sharing a point gets
-// one. Long tracks are strided so one point seen everywhere does not cost a
-// quadratic number of pairs.
-graph::WeightedGraph camera_graph_of(const std::vector<int64_t>& beg,
-                                     const std::vector<int32_t>& frame, size_t n_frames,
-                                     const std::atomic<bool>* cancel = nullptr) {
-    graph::EdgeAccumulator acc;
-    acc.reserve(frame.size() * 4);
+template <class Visit>
+void visit_camera_tracks(const std::vector<int64_t>& beg, const std::vector<int32_t>& frame,
+                         const std::atomic<bool>* cancel, Visit&& visit) {
     constexpr int64_t kMaxTrack = 48;
+    std::array<uint32_t, kMaxTrack> sampled;
     for (size_t i = 0; i + 1 < beg.size(); i++) {
         if (i % 65536 == 0) stop_if(cancel);
         const int64_t lo = beg[i], hi = beg[i + 1];
         const int64_t m = hi - lo;
         if (m < 2) continue;
         const int64_t step = m > kMaxTrack ? (m + kMaxTrack - 1) / kMaxTrack : 1;
-        for (int64_t a = lo; a < hi; a += step)
-            for (int64_t b = a + step; b < hi; b += step)
-                acc.add((uint32_t)frame[(size_t)a], (uint32_t)frame[(size_t)b], 1.0);
+        size_t n = 0;
+        for (int64_t a = lo; a < hi; a += step) sampled[n++] = (uint32_t)frame[(size_t)a];
+        if (!visit(sampled.data(), n)) return;
     }
+}
+
+graph::WeightedGraph camera_graph_of(const std::vector<int64_t>& beg,
+                                     const std::vector<int32_t>& frame, size_t n_frames,
+                                     const std::atomic<bool>* cancel = nullptr) {
+    graph::EdgeAccumulator acc;
+    acc.reserve(std::min<size_t>(frame.size(), 1u << 20));
+    visit_camera_tracks(beg, frame, cancel, [&](const uint32_t* sampled, size_t n) {
+        for (size_t a = 0; a < n; a++)
+            for (size_t b = a + 1; b < n; b++) acc.add(sampled[a], sampled[b], 1.0);
+        return true;
+    });
     return acc.build(n_frames);
+}
+
+bool set_camera_graph(Covisibility& cov, size_t n_frames, PartitionMethod method,
+                       const std::atomic<bool>* cancel) {
+    cov.camera_graph_built = method != PartitionMethod::Voronoi;
+    if (cov.camera_graph_built) {
+        cov.cameras = camera_graph_of(cov.beg, cov.frame, n_frames, cancel);
+        return !cov.cameras.adj.empty();
+    }
+    cov.cameras = {};
+    cov.cameras.offs.assign(n_frames + 1, 0);
+    bool edge = false;
+    visit_camera_tracks(cov.beg, cov.frame, cancel, [&](const uint32_t* sampled, size_t n) {
+        uint32_t first = UINT32_MAX;
+        for (size_t i = 0; i < n; i++) {
+            if (sampled[i] >= n_frames) continue;
+            if (first == UINT32_MAX) first = sampled[i];
+            else if (sampled[i] != first) { edge = true; return false; }
+        }
+        return true;
+    });
+    return edge;
 }
 
 int find_root(std::vector<int32_t>& up, int32_t i) {
@@ -205,6 +239,49 @@ int find_root(std::vector<int32_t>& up, int32_t i) {
         i = up[(size_t)i];
     }
     return i;
+}
+
+void camera_track_statistics(const Covisibility& cov, ScenePartition& p,
+                              const std::atomic<bool>* cancel) {
+    std::vector<int32_t> up(p.frame_label.size());
+    std::iota(up.begin(), up.end(), 0);
+    std::vector<int32_t> first((size_t)p.num_parts), hits((size_t)p.num_parts);
+    uint64_t total = 0, cut = 0;
+    visit_camera_tracks(cov.beg, cov.frame, cancel, [&](const uint32_t* sampled, size_t n) {
+        std::fill(first.begin(), first.end(), -1);
+        std::fill(hits.begin(), hits.end(), 0);
+        std::array<uint32_t, 48> valid;
+        size_t count = 0;
+        for (size_t i = 0; i < n; i++) {
+            const uint32_t camera = sampled[i];
+            if (camera >= p.frame_label.size()) continue;
+            valid[count++] = camera;
+            const int32_t part = p.frame_label[camera];
+            hits[(size_t)part]++;
+            if (first[(size_t)part] < 0) first[(size_t)part] = (int32_t)camera;
+            else {
+                const int32_t a = find_root(up, first[(size_t)part]), b = find_root(up, (int32_t)camera);
+                if (a != b) up[(size_t)std::max(a, b)] = std::min(a, b);
+            }
+        }
+        const uint64_t pairs = count * (count ? count - 1 : 0) / 2;
+        total += pairs;
+        cut += pairs;
+        for (int32_t h : hits) cut -= uint64_t(h) * (h ? h - 1 : 0) / 2;
+        // The pair graph excludes self-edges even when a track repeats a camera.
+        std::sort(valid.begin(), valid.begin() + count);
+        for (size_t i = 0; i < count;) {
+            size_t end = i + 1;
+            while (end < count && valid[end] == valid[i]) end++;
+            total -= (end - i) * (end - i - 1) / 2;
+            i = end;
+        }
+        return true;
+    });
+    p.core_pieces.assign((size_t)p.num_parts, 0);
+    for (size_t i = 0; i < up.size(); i++)
+        if (find_root(up, (int32_t)i) == (int32_t)i) p.core_pieces[(size_t)p.frame_label[i]]++;
+    p.cut_fraction = total ? double(cut) / double(total) : 0.0;
 }
 
 // Owner per point of `pick`: the nearest camera's part, diffused over a
@@ -237,16 +314,24 @@ std::vector<int32_t> own_points(const ParsedDataset& ds, const Covisibility& cov
                 s[(size_t)j * K + frame_label[(size_t)c]] = 1.0f;
         }
     }
-    std::vector<int32_t> frames;
-    std::vector<int64_t> beg((size_t)n + 1, 0);
+    std::vector<int32_t> frame_storage;
+    std::vector<int64_t> beg((size_t)n, 0), end((size_t)n, 0);
+    const bool shared_rows = !cov.point_row.empty();
     if (tracked)
         for (int64_t j = 0; j < n; j++) {
             const int64_t i = pick[(size_t)j];
-            frames.insert(frames.end(), cov.frame.begin() + cov.beg[(size_t)i],
-                          cov.frame.begin() + cov.beg[(size_t)i + 1]);
-            beg[(size_t)j + 1] = (int64_t)frames.size();
-            std::sort(frames.begin() + beg[(size_t)j], frames.end());
+            if (shared_rows) {
+                beg[(size_t)j] = cov.begin(i);
+                end[(size_t)j] = cov.end(i);
+            } else {
+                beg[(size_t)j] = (int64_t)frame_storage.size();
+                frame_storage.insert(frame_storage.end(), cov.frame.begin() + cov.begin(i),
+                                     cov.frame.begin() + cov.end(i));
+                end[(size_t)j] = (int64_t)frame_storage.size();
+                std::sort(frame_storage.begin() + beg[(size_t)j], frame_storage.end());
+            }
         }
+    const auto& frames = shared_rows ? cov.frame : frame_storage;
     // Two points link as strongly as the share of one's observers that are,
     // or are covisible with, the other's: tracks are too short to share frames.
     const graph::WeightedGraph& g = cov.cameras;
@@ -270,9 +355,9 @@ std::vector<int32_t> own_points(const ParsedDataset& ds, const Covisibility& cov
                 float a = 1.0f;
                 if (tracked) {
                     const int32_t* oi = &frames[(size_t)beg[(size_t)j]];
-                    const int32_t* oi_end = &frames[0] + beg[(size_t)j + 1];
+                    const int32_t* oi_end = &frames[0] + end[(size_t)j];
                     int64_t hits = 0;
-                    for (int64_t y = beg[(size_t)o]; y < beg[(size_t)o + 1]; y++) {
+                    for (int64_t y = beg[(size_t)o]; y < end[(size_t)o]; y++) {
                         const uint32_t b = (uint32_t)frames[(size_t)y];
                         bool linked = std::binary_search(oi, oi_end, (int32_t)b);
                         for (const int32_t* x = oi; x < oi_end && !linked; x++)
@@ -280,7 +365,7 @@ std::vector<int32_t> own_points(const ParsedDataset& ds, const Covisibility& cov
                                                         cam_adj.begin() + g.offs[(size_t)*x + 1], b);
                         hits += linked;
                     }
-                    const int64_t m = beg[(size_t)o + 1] - beg[(size_t)o];
+                    const int64_t m = end[(size_t)o] - beg[(size_t)o];
                     a = m > 0 ? (float)hits / (float)m : 0.0f;
                 }
                 nb[(size_t)j * kNb + e] = o;
@@ -378,8 +463,8 @@ Visibility visibility_of(const ParsedDataset& ds, const Covisibility& cov,
     v.pbeg.assign((size_t)n + 1, 0);
     for (int64_t j = 0; j < n; j++) {
         const int64_t i = pick[(size_t)j];
-        v.pcam.insert(v.pcam.end(), cov.frame.begin() + cov.beg[(size_t)i],
-                      cov.frame.begin() + cov.beg[(size_t)i + 1]);
+        v.pcam.insert(v.pcam.end(), cov.frame.begin() + cov.begin(i),
+                      cov.frame.begin() + cov.end(i));
         v.pbeg[(size_t)j + 1] = (int64_t)v.pcam.size();
         std::sort(v.pcam.begin() + v.pbeg[(size_t)j], v.pcam.end());
     }
@@ -597,6 +682,24 @@ int absorb_tiny_parts(std::vector<int32_t>& home, std::vector<int32_t>& own,
     return renumber_parts(home, own);
 }
 
+
+void account_for_disconnected_parts(const graph::WeightedGraph& g, graph::LabelCutOptions& options) {
+    if (!options.parts) return;
+    std::vector<uint32_t> all((size_t)g.n());
+    std::iota(all.begin(), all.end(), 0u);
+    const auto components = graph::connected_components(g, all);
+    size_t tiny = 0;
+    for (const auto& component : components) {
+        double cameras = 0;
+        for (uint32_t node : component) cameras += options.cost ? options.cost[node] : 1.0;
+        tiny += cameras < options.min_final;
+    }
+    if (components.size() - tiny > options.parts)
+        throw std::runtime_error("partition: requested parts fewer than disconnected groups; use voronoi or increase parts");
+    // Absorbed disconnected groups must not consume the requested cuts.
+    options.parts += tiny;
+}
+
 }  // namespace
 
 // ===========================================================================
@@ -614,11 +717,16 @@ const char* covisibility_source_name(CovisibilitySource s) {
 }
 
 const char* partition_method_name(PartitionMethod m) {
-    return m == PartitionMethod::ViewGraph ? "viewgraph" : "graph";
+    switch (m) {
+        case PartitionMethod::Graph: return "graph";
+        case PartitionMethod::ViewGraph: return "viewgraph";
+        case PartitionMethod::Voronoi: return "voronoi";
+    }
+    return "viewgraph";
 }
 
 bool partition_method_from_name(const std::string& s, PartitionMethod& out) {
-    for (PartitionMethod m : {PartitionMethod::Graph, PartitionMethod::ViewGraph})
+    for (PartitionMethod m : {PartitionMethod::Graph, PartitionMethod::ViewGraph, PartitionMethod::Voronoi})
         if (s == partition_method_name(m)) { out = m; return true; }
     return false;
 }
@@ -637,7 +745,8 @@ bool covisibility_source_from_name(const std::string& s, CovisibilitySource& out
 namespace {
 
 bool covisibility_from_tracks(const ParsedDataset& ds, const SparseStats& st, Covisibility& out,
-                              const PartitionLog& log, const std::atomic<bool>* cancel) {
+                              const PartitionOptions& opt, const PartitionLog& log,
+                              const std::atomic<bool>* cancel) {
     if (st.empty() || (int64_t)st.track_beg.size() - 1 != ds.points.num()) return false;
     const FrameIndex index(ds.image_filenames);
     std::vector<int32_t> image_frame(st.image_names.size(), -1);
@@ -658,7 +767,7 @@ bool covisibility_from_tracks(const ParsedDataset& ds, const SparseStats& st, Co
         }
         out.beg.push_back((int64_t)out.frame.size());
     }
-    out.cameras = camera_graph_of(out.beg, out.frame, (size_t)ds.num_cameras, cancel);
+    set_camera_graph(out, (size_t)ds.num_cameras, opt.method, cancel);
     out.source = CovisibilitySource::Tracks;
     (void)log;
     return true;
@@ -669,7 +778,7 @@ bool covisibility_from_projection(const ParsedDataset& ds, const PartitionOption
     const int64_t n_pts = ds.points.num();
     const int64_t n_cam = ds.num_cameras;
     if (n_pts == 0 || n_cam == 0) return false;
-    const int64_t stride = std::max<int64_t>(1, n_pts / std::max(1, opt.max_projected_points));
+    const int64_t stride = std::max<int64_t>(1, (n_pts + std::max(1, opt.max_projected_points) - 1) / std::max(1, opt.max_projected_points));
     std::vector<int64_t> sample;
     for (int64_t i = 0; i < n_pts; i += stride) sample.push_back(i);
     std::vector<FrameView> views((size_t)n_cam);
@@ -681,9 +790,34 @@ bool covisibility_from_projection(const ParsedDataset& ds, const PartitionOption
     for (int64_t c = 0; c < n_cam; c++) {
         if (cancelled(cancel)) continue;
         std::vector<int32_t>& s = seen[(size_t)c];
-        for (size_t k = 0; k < sample.size(); k++)
-            if (frame_sees(views[(size_t)c], &ds.points.xyz[(size_t)sample[k] * 3]))
-                s.push_back((int32_t)k);
+        const auto& view = views[(size_t)c];
+        if (opt.projection_depth_slack <= 0) {
+            for (size_t k = 0; k < sample.size(); k++)
+                if (frame_sees(view, &ds.points.xyz[(size_t)sample[k] * 3])) s.push_back((int32_t)k);
+            continue;
+        }
+        const int side = std::max({1, view.cam.width, view.cam.height});
+        const int width = std::max(1, 64 * view.cam.width / side);
+        const int height = std::max(1, 64 * view.cam.height / side);
+        std::vector<float> nearest((size_t)width * height, std::numeric_limits<float>::infinity());
+        auto second = nearest;
+        struct Observed { int32_t point, cell; float depth; };
+        std::vector<Observed> projected;
+        for (size_t k = 0; k < sample.size(); k++) {
+            double pixel[2], depth;
+            if (!frame_sees(view, &ds.points.xyz[(size_t)sample[k] * 3], pixel, &depth)) continue;
+            const int x = std::clamp((int)(pixel[0] * width / std::max(1, view.cam.width)), 0, width - 1);
+            const int y = std::clamp((int)(pixel[1] * height / std::max(1, view.cam.height)), 0, height - 1);
+            const size_t cell = (size_t)y * width + x;
+            const float d = (float)depth;
+            projected.push_back({(int32_t)k, (int32_t)cell, d});
+            if (d < nearest[cell]) { second[cell] = nearest[cell]; nearest[cell] = d; }
+            else if (d < second[cell]) second[cell] = d;
+        }
+        // One sparse foreground point cannot occlude an entire coarse cell.
+        for (const auto& point : projected)
+            if (point.depth <= second[(size_t)point.cell] * (1.0f + opt.projection_depth_slack))
+                s.push_back(point.point);
     }
     stop_if(cancel);
     std::vector<int64_t> count(sample.size() + 1, 0);
@@ -696,20 +830,14 @@ bool covisibility_from_projection(const ParsedDataset& ds, const PartitionOption
         for (int64_t c = 0; c < n_cam; c++)
             for (int32_t k : seen[(size_t)c]) frame[(size_t)fill[(size_t)k]++] = (int32_t)c;
     }
-    // Spread back over every point: the unsampled ones get their sample's
-    // observers, so the tables stay one row per seed point.
-    out.beg.assign(1, 0);
-    out.frame.clear();
-    out.frame.reserve(frame.size() * (size_t)stride);
-    for (int64_t i = 0; i < n_pts; i++) {
-        const size_t k = (size_t)(i / stride);
-        for (int64_t j = count[k]; j < count[k + 1]; j++) out.frame.push_back(frame[(size_t)j]);
-        out.beg.push_back((int64_t)out.frame.size());
-    }
-    // The graph from the sample alone; the copies would only scale it.
-    out.cameras = camera_graph_of(count, frame, (size_t)n_cam, cancel);
+    seen.clear();
+    seen.shrink_to_fit();
+    out.point_row.resize((size_t)n_pts);
+    for (int64_t i = 0; i < n_pts; i++) out.point_row[(size_t)i] = (int32_t)(i / stride);
+    out.beg = std::move(count);
+    out.frame = std::move(frame);
     out.source = CovisibilitySource::Projection;
-    return out.cameras.adj.size() > 0;
+    return set_camera_graph(out, (size_t)n_cam, opt.method, cancel);
 }
 
 void covisibility_from_proximity(const ParsedDataset& ds, const PartitionOptions& opt,
@@ -756,8 +884,10 @@ void covisibility_from_proximity(const ParsedDataset& ds, const PartitionOptions
             acc.add((uint32_t)i, (uint32_t)j, 1.0 + std::max(0.0, cosang));
         }
     out.cameras = acc.build((size_t)n);
+    out.camera_graph_built = true;
     out.beg.assign((size_t)ds.points.num() + 1, 0);
     out.frame.clear();
+    out.point_row.clear();
     out.source = CovisibilitySource::Proximity;
 }
 
@@ -771,10 +901,12 @@ Covisibility build_covisibility(const ParsedDataset& ds, const SparseStats* trac
                                 const PartitionOptions& opt, const PartitionLog& log,
                                 const std::atomic<bool>* cancel) {
     Covisibility out;
+    if (!std::isfinite(opt.projection_depth_slack) || opt.projection_depth_slack < 0)
+        throw std::runtime_error("partition: projection depth slack must be finite and nonnegative");
     if (ds.num_cameras == 0) return out;
     const CovisibilitySource want = opt.source;
     if ((want == CovisibilitySource::Auto || want == CovisibilitySource::Tracks) && tracks &&
-        covisibility_from_tracks(ds, *tracks, out, log, cancel))
+        covisibility_from_tracks(ds, *tracks, out, opt, log, cancel))
         return out;
     if (want == CovisibilitySource::Tracks)
         say(log, "no usable tracks; falling back to projection");
@@ -814,6 +946,8 @@ ScenePartition partition_scene(const ParsedDataset& ds, const Covisibility& cov,
                                const std::atomic<bool>* cancel) {
     const int64_t n_cam = ds.num_cameras;
     if (n_cam == 0) throw std::runtime_error("partition: the dataset has no cameras");
+    if (!cov.camera_graph_built && opt.method != PartitionMethod::Voronoi)
+        throw std::runtime_error("partition: this method requires a camera graph");
     ScenePartition p;
     p.options = opt;
     p.source = cov.source;
@@ -829,12 +963,14 @@ ScenePartition partition_scene(const ParsedDataset& ds, const Covisibility& cov,
         const int64_t stride = std::max<int64_t>(1, (n_pts + std::max(1, opt.max_seeds) - 1) /
                                                         std::max(1, opt.max_seeds));
         for (int64_t i = 0; i < n_pts; i += stride)
-            if (!tracked || cov.beg[(size_t)i] < cov.beg[(size_t)i + 1]) pick.push_back(i);
+            if (!tracked || cov.begin(i) < cov.end(i)) pick.push_back(i);
     }
     std::vector<int32_t> own;
     const bool graph_cut = opt.method == PartitionMethod::Graph && tracked && n_pts > 0;
 
-    if (graph_cut) {
+    if (opt.method == PartitionMethod::Voronoi) {
+        partition_voronoi(p, cancel);
+    } else if (graph_cut) {
         const Visibility vis = visibility_of(ds, cov, pick, p.frame_centers, n_cam, cancel);
         stop_if(cancel);
         const int64_t min_final = std::max<int64_t>(2, n_cam / 50);
@@ -864,6 +1000,7 @@ ScenePartition partition_scene(const ParsedDataset& ds, const Covisibility& cov,
             co.cost = cost.data();
             co.min_final = (size_t)min_final;
             co.cancel = cancel;
+            account_for_disconnected_parts(joint, co);
             const std::vector<int32_t> label = graph::cut_labels(joint, co);
             stop_if(cancel);
             p.frame_label.assign(label.begin(), label.begin() + n_cam);
@@ -911,6 +1048,7 @@ ScenePartition partition_scene(const ParsedDataset& ds, const Covisibility& cov,
         co.min_part = 2;
         co.min_final = (size_t)std::max<int64_t>(2, n_cam / 50);
         co.cancel = cancel;
+        account_for_disconnected_parts(cov.cameras, co);
         p.frame_label = graph::cut_labels(cov.cameras, co);
         stop_if(cancel);
 
@@ -964,29 +1102,37 @@ ScenePartition partition_scene(const ParsedDataset& ds, const Covisibility& cov,
     if (p.num_parts > 254) throw std::runtime_error("partition: more than 254 parts");
     stop_if(cancel);
 
-    p.core_pieces.assign((size_t)p.num_parts, 0);
-    for (int k = 0; k < p.num_parts; k++) {
-        std::vector<uint32_t> nodes;
-        for (int64_t i = 0; i < n_cam; i++)
-            if (p.frame_label[(size_t)i] == k) nodes.push_back((uint32_t)i);
-        p.core_pieces[(size_t)k] = (int32_t)graph::connected_components(cov.cameras, nodes).size();
-    }
+    if (!cov.camera_graph_built) {
+        camera_track_statistics(cov, p, cancel);
+    } else {
+        p.core_pieces.assign((size_t)p.num_parts, 0);
+        for (int k = 0; k < p.num_parts; k++) {
+            std::vector<uint32_t> nodes;
+            for (int64_t i = 0; i < n_cam; i++)
+                if (p.frame_label[(size_t)i] == k) nodes.push_back((uint32_t)i);
+            p.core_pieces[(size_t)k] = (int32_t)graph::connected_components(cov.cameras, nodes).size();
+        }
 
-    // ---- how much the cut severed ----
-    {
-        double total = 0, cut = 0;
-        const graph::WeightedGraph& g = cov.cameras;
-        for (uint32_t i = 0; i < g.n(); i++)
-            for (uint32_t k = g.offs[i]; k < g.offs[i + 1]; k++) {
-                total += g.w[k];
-                if (p.frame_label[i] != p.frame_label[g.adj[k]]) cut += g.w[k];
-            }
-        p.cut_fraction = total > 0 ? cut / total : 0.0;
+        // ---- how much the cut severed ----
+        {
+            double total = 0, cut = 0;
+            const graph::WeightedGraph& g = cov.cameras;
+            for (uint32_t i = 0; i < g.n(); i++)
+                for (uint32_t k = g.offs[i]; k < g.offs[i + 1]; k++) {
+                    total += g.w[k];
+                    if (p.frame_label[i] != p.frame_label[g.adj[k]]) cut += g.w[k];
+                }
+            p.cut_fraction = total > 0 ? cut / total : 0.0;
+        }
     }
 
     // ---- point ownership, and the field that carries it into space ----
     p.point_label.assign((size_t)n_pts, -1);
-    {
+    if (opt.method == PartitionMethod::Voronoi) {
+#pragma omp parallel for schedule(static)
+        for (int64_t i = 0; i < n_pts; i++)
+            p.point_label[(size_t)i] = p.field->label(&ds.points.xyz[(size_t)i * 3]);
+    } else {
         if (!graph_cut)
             own = own_points(ds, cov, p.frame_label, p.frame_centers, p.num_parts, pick, tracked, cancel);
         std::vector<float> xyz, dirs;
@@ -997,7 +1143,7 @@ ScenePartition partition_scene(const ParsedDataset& ds, const Covisibility& cov,
             const double* q = &ds.points.xyz[(size_t)i * 3];
             float d[3] = {0, 0, 0};
             if (tracked) {
-                for (int64_t k = cov.beg[(size_t)i]; k < cov.beg[(size_t)i + 1]; k++) {
+                for (int64_t k = cov.begin(i); k < cov.end(i); k++) {
                     const float* c = &p.frame_centers[(size_t)cov.frame[(size_t)k] * 3];
                     float v[3] = {(float)(c[0] - q[0]), (float)(c[1] - q[1]), (float)(c[2] - q[2])};
                     const float len = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
@@ -1027,6 +1173,11 @@ ScenePartition partition_scene(const ParsedDataset& ds, const Covisibility& cov,
     }
     stop_if(cancel);
 
+    for (int64_t i = 0; i < n_pts; i++)
+        if (p.point_label[(size_t)i] < 0 || p.point_label[(size_t)i] >= p.num_parts)
+            throw std::runtime_error("partition: cannot assign sparse point " + std::to_string(i) +
+                                     "; coordinates must be finite and within float distance range");
+
     // ---- rings: outside cameras that see enough of a part ----
     p.ring.assign((size_t)p.num_parts, {});
     if (cov.has_tracks() && cov.num_points() == n_pts) {
@@ -1035,7 +1186,7 @@ ScenePartition partition_scene(const ParsedDataset& ds, const Covisibility& cov,
         std::vector<int64_t> seen_total((size_t)n_cam, 0);
         for (int64_t i = 0; i < n_pts; i++) {
             const int32_t owner = p.point_label[(size_t)i];
-            for (int64_t k = cov.beg[(size_t)i]; k < cov.beg[(size_t)i + 1]; k++) {
+            for (int64_t k = cov.begin(i); k < cov.end(i); k++) {
                 const int32_t f = cov.frame[(size_t)k];
                 seen_per_part[(size_t)f][(size_t)owner]++;
                 seen_total[(size_t)f]++;
@@ -1084,7 +1235,7 @@ ScenePartition partition_scene(const ParsedDataset& ds, const Covisibility& cov,
             for (int64_t i = 0; i < n_pts; i++) {
                 if (p.point_label[(size_t)i] == k) { take[(size_t)i] = 1; continue; }
                 if (!tracked || ((uint32_t)((uint64_t)i * 2654435761u) >> 16) >= keep) continue;
-                for (int64_t t = cov.beg[(size_t)i]; t < cov.beg[(size_t)i + 1]; t++)
+                for (int64_t t = cov.begin(i); t < cov.end(i); t++)
                     if (in_part[(size_t)k][(size_t)cov.frame[(size_t)t]]) { take[(size_t)i] = 1; break; }
             }
             for (int64_t i = 0; i < n_pts; i++)
@@ -1097,7 +1248,7 @@ ScenePartition partition_scene(const ParsedDataset& ds, const Covisibility& cov,
     if (tracked) {
         std::vector<int64_t> seen((size_t)n_cam, 0), mine((size_t)n_cam * p.num_parts, 0);
         for (int64_t i = 0; i < n_pts; i++)
-            for (int64_t k = cov.beg[(size_t)i]; k < cov.beg[(size_t)i + 1]; k++) {
+            for (int64_t k = cov.begin(i); k < cov.end(i); k++) {
                 seen[(size_t)cov.frame[(size_t)k]]++;
                 mine[(size_t)cov.frame[(size_t)k] * p.num_parts + p.point_label[(size_t)i]]++;
             }
@@ -1269,10 +1420,10 @@ std::vector<std::string> write_region_masks(const ParsedDataset& ds, const doubl
             if (!camhost::ray_in_frame(f.cam, ray, px)) continue;
             const int cx = (int)(px[0] / kScale), cy = (int)(px[1] / kScale);
             const int rad = (int)std::clamp(2.0 * spacing * f.cam.fx / (len * kScale), 1.0, 16.0);
-            for (int dy = -rad; dy <= rad; dy++)
-                for (int dx = -rad; dx <= rad; dx++) {
-                    const int x = cx + dx, y = cy + dy;
-                    if (x < 0 || y < 0 || x >= gw || y >= gh) continue;
+            const int x0 = std::max(0, cx - rad), x1 = std::min(gw - 1, cx + rad);
+            const int y0 = std::max(0, cy - rad), y1 = std::min(gh - 1, cy + rad);
+            for (int y = y0; y <= y1; ++y)
+                for (int x = x0; x <= x1; ++x) {
                     const size_t c = (size_t)y * gw + x;
                     if ((float)len < depth[c]) {
                         depth[c] = (float)len;
@@ -1462,6 +1613,7 @@ void write_partition(const ScenePartition& p, const std::string& json_path,
     w.field("max_seeds", p.options.max_seeds);
     w.field("source", covisibility_source_name(p.options.source));
     w.field("max_projected_points", p.options.max_projected_points);
+    w.field("projection_depth_slack", p.options.projection_depth_slack);
     w.field("proximity_neighbours", p.options.proximity_neighbours);
     w.end();
     w.field("num_parts", p.num_parts);
@@ -1513,6 +1665,8 @@ ScenePartition read_partition(const std::string& json_path, std::string* dataset
             covisibility_source_from_name(s->as_string(), p.options.source);
         p.options.max_projected_points =
             (int)o->get_double("max_projected_points", p.options.max_projected_points);
+        p.options.projection_depth_slack =
+            (float)o->get_double("projection_depth_slack", p.options.projection_depth_slack);
         p.options.proximity_neighbours =
             (int)o->get_double("proximity_neighbours", p.options.proximity_neighbours);
     }
