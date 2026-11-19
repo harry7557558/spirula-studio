@@ -1,7 +1,7 @@
 // Application entry: wires the WASM loader, WebGL renderer, camera controller,
 // and the UI panel together.
 
-import { dsNavigation, initWasm, loadModel, sortSplats, freeSplatSh, reduceSh, splatHistogram, meshHistogram, meshEdgeCount, fitSphere, raycastMesh, dsFree, dsFitSphere, dsPickPoint } from './wasm.js';
+import { dsNavigation, initWasm, loadModel, sortSplats, freeSplatSh, freeSplat, freeMesh, reduceSh, splatHistogram, meshHistogram, meshEdgeCount, fitSphere, raycastMesh, dsFree, dsFitSphere, dsPickPoint } from './wasm.js';
 import { loadDatasetFiles, parseDatasetComponent } from './dataset.js';
 import { Renderer } from './renderer.js';
 import { Camera, Nav } from './camera.js';
@@ -343,6 +343,8 @@ function looksLikeDataset(entries) {
 }
 
 async function load(input) {
+  clearTimeout(toastTimer);
+  $('toast').style.display = 'none';
   const entries = toEntries(input);
   try {
     if (looksLikeDataset(entries)) { await loadDataset(entries); return; }
@@ -357,10 +359,28 @@ async function load(input) {
       throw e;
     }
   } catch (e) {
+    clearLoadedModel();
     console.error(e);
     setStatus('Load error: ' + e.message, 'err');
     showToast('Load error: ' + e.message);
   }
+}
+
+function clearLoadedModel() {
+  renderer.clearModel();
+  freeSplat(); freeMesh(); dsFree();
+  model = null; dataset = null;
+  sortWorkerInitModel({ count: 0, posop: new Float32Array(0) });
+  histCache.clear();
+  opts.hoverCam = -1;
+  focusUntil = 0;
+  for (const id of ['st-file', 'st-type', 'st-count', 'st-sh', 'st-sb']) $(id).textContent = '—';
+  for (const id of ['sec-splat', 'sec-mesh', 'sec-dataset']) $(id).classList.add('hidden');
+  for (const id of ['st-splat-stats', 'st-mesh-stats', 'st-dataset-stats', 'ds-component-row', 'sec-hist']) $(id).style.display = 'none';
+  $('drop-hint').style.display = 'flex';
+  $('cam-tooltip').style.display = 'none';
+  syncCenterMenu();
+  dirty = true;
 }
 
 async function loadSingleModel(entries) {
