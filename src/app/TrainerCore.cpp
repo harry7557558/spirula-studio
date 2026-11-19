@@ -639,7 +639,7 @@ build_loss_weights(const TrainConfig& c, int step) {
     float median_factor = std::min((float)step / std::max(c.median_warmup, 1), 1.0f);
     float alpha_reg_factor = c.alpha_reg_weight *
         std::min((float)step / std::max(c.alpha_reg_warmup, 1), 1.0f);
-    float mask = c.apply_loss_for_mask.value_or(false) ? 1.0f : 0.0f;
+    float mask = train_mask_applies_alpha_loss(c) ? 1.0f : 0.0f;
 
     float w_rgb_l1 = std::max(0.0f, c.l1_weight);
     float w_rgb_l2 = std::max(0.0f, c.l2_weight);
@@ -711,6 +711,7 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
             std::max(0.0f, 1.0f - 1.0f / std::max(c.color_shift_reg_ema_period, 1));
     }
     cfg.loss.input_depth_is_ray_depth = st.input_depth_is_ray_depth;
+    cfg.loss.segment_and_ignore_mask = train_mask_is_segment_and_ignore(c);
 
     // ---- optim ---------------------------------------------------------
     float means_lr = scheduled_lr(step, max_steps_lr, c.means_lr, c.means_lr_final);
@@ -1122,7 +1123,7 @@ void TrainerSession::check_config() {
 // eval scores a render against, and what a soft edge renders as.
 void TrainerSession::set_alpha_config(DataManagerConfig& dm,
                                       const std::vector<uint8_t>& alpha) const {
-    if (cfg.load_masks) dm.alpha_masks = alpha;
+    if (train_mask_enabled(cfg)) dm.alpha_masks = alpha;
     if (cfg.background_mode == "color") {
         dm.composite_alpha = alpha;
         for (int c = 0; c < 3; c++) dm.composite_color[c] = cfg.background_color[c];
@@ -1263,16 +1264,17 @@ void TrainerSession::load_dataset() {
 
     // Warp-path guards, plus: a modality no weight reads is not loaded at all.
     alpha_images = probe_alpha_masks(ds.image_filenames);
+    const bool masks_on = train_mask_enabled(cfg);
     has_mask   = (!ds.mask_filenames.empty() || !alpha_images.empty()) &&
-                 cfg.load_masks;
-    if (!alpha_images.empty() && cfg.load_masks) {
+                 masks_on;
+    if (!alpha_images.empty() && masks_on) {
         const long long n = std::count(alpha_images.begin(), alpha_images.end(), 1);
         log(lfmt(ds.mask_filenames.empty() ? lmsg::alpha_masks_found
                                            : lmsg::alpha_masks_with_files,
                  {n, (long long)ds.num_cameras}));
     }
     // Alpha cut-outs treat excluded pixels as empty space.
-    if (!cfg.apply_loss_for_mask.has_value()) {
+    if (cfg.mask_mode == "auto" && masks_on && !cfg.apply_loss_for_mask.has_value()) {
         cfg.apply_loss_for_mask = !alpha_images.empty() && ds.mask_filenames.empty();
         if (*cfg.apply_loss_for_mask) log(lmsg::alpha_masks_cut_out.get());
     }
@@ -1609,6 +1611,7 @@ void TrainerSession::setup_engine() {
     // all-white one becomes the post-split FOV mask (0 past the lens),
     // without which the unseen face regions train as black.
     dm.load_masks  = has_mask || post.any_fov_mask;
+    dm.segment_and_ignore_masks = train_mask_is_segment_and_ignore(cfg);
     dm.load_depths      = has_depth;
     dm.load_normals     = has_normal;
     dm.train_batch_size = train_bs;
@@ -2433,8 +2436,9 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
     dm.seed = (uint64_t)std::max(cfg.sampling_seed,0);
     const std::vector<uint8_t> eval_alpha = probe_alpha_masks(eds.image_filenames);
     const bool eval_masks =
-        (!eds.mask_filenames.empty() || !eval_alpha.empty()) && cfg.load_masks;
+        (!eds.mask_filenames.empty() || !eval_alpha.empty()) && train_mask_enabled(cfg);
     dm.load_masks  = eval_masks || epost.any_fov_mask;
+    dm.segment_and_ignore_masks = train_mask_is_segment_and_ignore(cfg);
     set_alpha_config(dm, eval_alpha);
     dm.load_depths = false;
     dm.load_normals = false;
@@ -2729,7 +2733,8 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                 TorchTensorView{0, 0, {}}, TorchTensorView{0, 0, {}});
             engine_copy_gt_rgb_to_host(
                 TorchTensorView{(uint64_t)(uintptr_t)gt.data(), 4, {B, H, W, Cc}});
-            if (!cfg.apply_loss_for_mask.value_or(false)) {
+            if (!train_mask_applies_alpha_loss(cfg) ||
+                train_mask_is_segment_and_ignore(cfg)) {
                 auto ms = engine_get_gt_alpha_shape();
                 const int64_t mh = std::get<1>(ms), mw = std::get<2>(ms);
                 if (std::get<0>(ms) == B && mh > 0 && mw > 0) {

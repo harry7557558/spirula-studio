@@ -267,7 +267,7 @@ inline __device__ float lerp_0(float x_3, float y_1, float s_0)
     return x_3 + (y_1 - x_3) * s_0;
 }
 
-inline __device__ void per_pixel_losses(float3  render_rgb_0, float3  ref_rgb_0, float render_depth_0, float ref_depth_0, float3  render_normal_0, float3  depth_normal_0, float3  ref_normal_0, float render_Ts_0, float3  rgb_dist_0, float depth_dist_0, float3  normal_dist_0, float median_depth_0, float3  median_normal_0, bool ref_alpha_0, bool has_mask_0, float saturation_threshold_0, FixedArray<float, 19>  weights_0, FixedArray<float, 32>  * _S21)
+inline __device__ void per_pixel_losses(float3  render_rgb_0, float3  ref_rgb_0, float render_depth_0, float ref_depth_0, float3  render_normal_0, float3  depth_normal_0, float3  ref_normal_0, float render_Ts_0, float3  rgb_dist_0, float depth_dist_0, float3  normal_dist_0, float median_depth_0, float3  median_normal_0, bool ref_alpha_0, bool has_mask_0, bool alpha_mask_0, float saturation_threshold_0, FixedArray<float, 19>  weights_0, FixedArray<float, 32>  * _S21)
 {
     bool _S22;
     bool _S23;
@@ -433,7 +433,7 @@ inline __device__ void per_pixel_losses(float3  render_rgb_0, float3  ref_rgb_0,
     float cos_sim_loss_5 = 0.5f - 0.5f * dot_0(_S46, _S25);
     losses_0[int(19)] = weights_0[int(18)] * _S55 * (cos_sim_loss_5 + (F32_sqrt(((F32_max((cos_sim_loss_5), (9.999999960041972e-13f)))))));
     float render_alpha_0 = clamp_0(1.0f - render_Ts_0, 0.0f, 1.0f);
-    float _S56 = float(has_mask_0);
+    float _S56 = float(alpha_mask_0);
     float _S57 = float(ref_alpha_0);
     float _S58 = (F32_max((render_alpha_0), (_S57)));
     losses_0[int(9)] = weights_0[int(8)] * _S56 * - lerp_0((F32_log(((F32_max((1.0f - _S58), (9.99999997475242708e-07f)))))), (F32_log(((F32_max((_S58), (9.99999997475242708e-07f)))))), _S57);
@@ -451,7 +451,7 @@ inline __device__ void per_pixel_losses(float3  render_rgb_0, float3  ref_rgb_0,
     losses_0[int(23)] = _S47;
     losses_0[int(24)] = _S48;
     losses_0[int(25)] = _S49;
-    if(has_mask_0)
+    if(alpha_mask_0)
     {
         mask_0 = !ref_alpha_0;
     }
@@ -460,7 +460,7 @@ inline __device__ void per_pixel_losses(float3  render_rgb_0, float3  ref_rgb_0,
         mask_0 = false;
     }
     losses_0[int(26)] = float(mask_0);
-    if(has_mask_0)
+    if(alpha_mask_0)
     {
         mask_0 = ref_alpha_0;
     }
@@ -545,7 +545,7 @@ inline __device__ void s_bwd_prop_abs_1(DiffPair_vectorx3Cfloatx2C3x3E_0 * _S88,
     return;
 }
 
-inline __device__ void s_bwd_prop_per_pixel_losses_0(DiffPair_vectorx3Cfloatx2C3x3E_0 * dprender_rgb_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dpref_rgb_0, DiffPair_float_0 * dprender_depth_0, DiffPair_float_0 * dpref_depth_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dprender_normal_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dpdepth_normal_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dpref_normal_0, DiffPair_float_0 * dprender_Ts_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dprgb_dist_0, DiffPair_float_0 * dpdepth_dist_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dpnormal_dist_0, DiffPair_float_0 * dpmedian_depth_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dpmedian_normal_0, bool ref_alpha_1, bool has_mask_1, float saturation_threshold_1, FixedArray<float, 19>  * weights_1, FixedArray<float, 32>  * _s_dOut_0)
+inline __device__ void s_bwd_prop_per_pixel_losses_0(DiffPair_vectorx3Cfloatx2C3x3E_0 * dprender_rgb_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dpref_rgb_0, DiffPair_float_0 * dprender_depth_0, DiffPair_float_0 * dpref_depth_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dprender_normal_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dpdepth_normal_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dpref_normal_0, DiffPair_float_0 * dprender_Ts_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dprgb_dist_0, DiffPair_float_0 * dpdepth_dist_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dpnormal_dist_0, DiffPair_float_0 * dpmedian_depth_0, DiffPair_vectorx3Cfloatx2C3x3E_0 * dpmedian_normal_0, bool ref_alpha_1, bool has_mask_1, bool alpha_mask_1, float saturation_threshold_1, FixedArray<float, 19>  * weights_1, FixedArray<float, 32>  * _s_dOut_0)
 {
     DiffPair_vectorx3Cfloatx2C3x3E_0 _S90 = *dprender_rgb_0;
     DiffPair_vectorx3Cfloatx2C3x3E_0 _S91 = *dpref_rgb_0;
@@ -784,7 +784,7 @@ inline __device__ void s_bwd_prop_per_pixel_losses_0(DiffPair_vectorx3Cfloatx2C3
     float _S186 = (F32_max((cos_sim_loss_11), (9.999999960041972e-13f)));
     float _S187 = 1.0f - _S97.primal_0;
     float _S188 = s_primal_ctx_clamp_0(_S187, 0.0f, 1.0f);
-    float _S189 = float(has_mask_1);
+    float _S189 = float(alpha_mask_1);
     float _S190 = (*weights_1)[int(8)] * _S189;
     float _S191 = float(ref_alpha_1);
     float _S192 = (F32_max((_S188), (_S191)));
@@ -1336,13 +1336,13 @@ inline __device__ void s_bwd_prop_per_pixel_losses_0(DiffPair_vectorx3Cfloatx2C3
     return;
 }
 
-inline __device__ void s_bwd_per_pixel_losses_0(DiffPair_vectorx3Cfloatx2C3x3E_0 * _S400, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S401, DiffPair_float_0 * _S402, DiffPair_float_0 * _S403, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S404, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S405, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S406, DiffPair_float_0 * _S407, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S408, DiffPair_float_0 * _S409, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S410, DiffPair_float_0 * _S411, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S412, bool _S413, bool _S414, float _S415, FixedArray<float, 19>  * _S416, FixedArray<float, 32>  * _S417)
+inline __device__ void s_bwd_per_pixel_losses_0(DiffPair_vectorx3Cfloatx2C3x3E_0 * _S400, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S401, DiffPair_float_0 * _S402, DiffPair_float_0 * _S403, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S404, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S405, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S406, DiffPair_float_0 * _S407, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S408, DiffPair_float_0 * _S409, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S410, DiffPair_float_0 * _S411, DiffPair_vectorx3Cfloatx2C3x3E_0 * _S412, bool _S413, bool _S414, bool _S414b, float _S415, FixedArray<float, 19>  * _S416, FixedArray<float, 32>  * _S417)
 {
-    s_bwd_prop_per_pixel_losses_0(_S400, _S401, _S402, _S403, _S404, _S405, _S406, _S407, _S408, _S409, _S410, _S411, _S412, _S413, _S414, _S415, _S416, _S417);
+    s_bwd_prop_per_pixel_losses_0(_S400, _S401, _S402, _S403, _S404, _S405, _S406, _S407, _S408, _S409, _S410, _S411, _S412, _S413, _S414, _S414b, _S415, _S416, _S417);
     return;
 }
 
-inline __device__ void per_pixel_losses_bwd(float3  render_rgb_1, float3  ref_rgb_1, float render_depth_1, float ref_depth_1, float3  render_normal_1, float3  depth_normal_1, float3  ref_normal_1, float render_Ts_1, float3  rgb_dist_1, float depth_dist_1, float3  normal_dist_1, float median_depth_1, float3  median_normal_1, bool ref_alpha_2, bool has_mask_2, float saturation_threshold_2, FixedArray<float, 19>  weights_2, FixedArray<float, 32>  v_losses_0, float3  * v_render_rgb_0, float3  * v_ref_rgb_0, float * v_render_depth_0, float * v_ref_depth_0, float3  * v_render_normal_0, float3  * v_depth_normal_0, float3  * v_ref_normal_0, float * v_render_Ts_0, float3  * v_rgb_dist_0, float * v_depth_dist_0, float3  * v_normal_dist_0, float * v_median_depth_0, float3  * v_median_normal_0)
+inline __device__ void per_pixel_losses_bwd(float3  render_rgb_1, float3  ref_rgb_1, float render_depth_1, float ref_depth_1, float3  render_normal_1, float3  depth_normal_1, float3  ref_normal_1, float render_Ts_1, float3  rgb_dist_1, float depth_dist_1, float3  normal_dist_1, float median_depth_1, float3  median_normal_1, bool ref_alpha_2, bool has_mask_2, bool alpha_mask_2, float saturation_threshold_2, FixedArray<float, 19>  weights_2, FixedArray<float, 32>  v_losses_0, float3  * v_render_rgb_0, float3  * v_ref_rgb_0, float * v_render_depth_0, float * v_ref_depth_0, float3  * v_render_normal_0, float3  * v_depth_normal_0, float3  * v_ref_normal_0, float * v_render_Ts_0, float3  * v_rgb_dist_0, float * v_depth_dist_0, float3  * v_normal_dist_0, float * v_median_depth_0, float3  * v_median_normal_0)
 {
     float3  _S418 = make_float3 (0.0f);
     DiffPair_vectorx3Cfloatx2C3x3E_0 dp_render_rgb_0;
@@ -1386,7 +1386,7 @@ inline __device__ void per_pixel_losses_bwd(float3  render_rgb_1, float3  ref_rg
     (&dp_median_normal_0)->differential_0 = _S418;
     FixedArray<float, 19>  _S419 = weights_2;
     FixedArray<float, 32>  _S420 = v_losses_0;
-    s_bwd_per_pixel_losses_0(&dp_render_rgb_0, &dp_ref_rgb_0, &dp_render_depth_0, &dp_ref_depth_0, &dp_render_normal_0, &dp_depth_normal_0, &dp_ref_normal_0, &dp_render_Ts_0, &dp_rgb_dist_0, &dp_depth_dist_0, &dp_normal_dist_0, &dp_median_depth_0, &dp_median_normal_0, ref_alpha_2, has_mask_2, saturation_threshold_2, &_S419, &_S420);
+    s_bwd_per_pixel_losses_0(&dp_render_rgb_0, &dp_ref_rgb_0, &dp_render_depth_0, &dp_ref_depth_0, &dp_render_normal_0, &dp_depth_normal_0, &dp_ref_normal_0, &dp_render_Ts_0, &dp_rgb_dist_0, &dp_depth_dist_0, &dp_normal_dist_0, &dp_median_depth_0, &dp_median_normal_0, ref_alpha_2, has_mask_2, alpha_mask_2, saturation_threshold_2, &_S419, &_S420);
     *v_render_rgb_0 = dp_render_rgb_0.differential_0;
     *v_ref_rgb_0 = dp_ref_rgb_0.differential_0;
     *v_render_depth_0 = dp_render_depth_0.differential_0;

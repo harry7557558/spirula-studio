@@ -60,6 +60,8 @@ struct DataManagerConfig {
     CacheMode cache_mode = CacheMode::CPU;
 
     bool load_masks   = true;
+    // Interpret grayscale masks as 0-127 ignore, 128-250 segment, 251-255 keep.
+    bool segment_and_ignore_masks = false;
     bool load_depths  = true;
     bool load_normals = true;
 

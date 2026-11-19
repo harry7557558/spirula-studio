@@ -220,5 +220,6 @@ LossValues compute_multi_scale_per_pixel_losses(
     int loss_map_mode,
     float robust_edge_aware_quantile,
     float nms_falloff,
-    PerPixelGrads& grads_out
+    PerPixelGrads& grads_out,
+    bool segment_and_ignore_mask
 );

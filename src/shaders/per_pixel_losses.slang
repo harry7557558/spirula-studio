@@ -146,6 +146,7 @@ float[RawLossIndex::length] per_pixel_losses(
     float3 median_normal,
     bool ref_alpha,
     no_diff bool has_mask,
+    no_diff bool alpha_mask,
     no_diff float saturation_threshold,
     no_diff float[LossWeightIndex::length] weights
 ) {
@@ -168,7 +169,6 @@ float[RawLossIndex::length] per_pixel_losses(
     bool depth_mask = (ref_depth != 0.0f);
     bool normal_mask = (ref_normal.x + ref_normal.y + ref_normal.z > -2.366f &&
                         dot(ref_normal, ref_normal) > 0.25f);
-    bool alpha_mask = has_mask;
 
     // RGB - L1 and L2, plus YUV (BT.601) per-channel L1/L2, for training.
     // RgbL2 stays plain-RGB (PSNR calculation).
@@ -286,6 +286,7 @@ void per_pixel_losses_bwd(
     float3 median_normal,
     bool ref_alpha,
     bool has_mask,
+    bool alpha_mask,
     float saturation_threshold,
     no_diff float[LossWeightIndex::length] weights,
     float[RawLossIndex::length] v_losses,
@@ -332,6 +333,7 @@ void per_pixel_losses_bwd(
         dp_median_normal,
         ref_alpha,
         has_mask,
+        alpha_mask,
         saturation_threshold,
         weights,
         v_losses
