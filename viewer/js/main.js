@@ -606,6 +606,7 @@ function wireInput() {
   let prevPinch = null;
 
   vp.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('#browse-files')) return;
     vp.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x:e.clientX, y:e.clientY, button:e.button });
     if (pointers.size === 2) prevPinch = pinchState(pointers);
@@ -665,8 +666,12 @@ function wireInput() {
     const entries = await gatherEntries(e.dataTransfer);
     if (entries.length) load(entries);
   });
-  $('file-input').addEventListener('change', (e) => { if (e.target.files.length) load(e.target.files); });
-  $('drop-hint').addEventListener('pointerup', () => $('file-input').click());
+  $('file-input').addEventListener('change', (e) => {
+    const files = Array.from(e.target.files);
+    e.target.value = '';
+    if (files.length) load(files);
+  });
+  $('browse-files').addEventListener('click', () => $('file-input').click());
 }
 
 // Recursively collect dropped files (folders via webkitGetAsEntry) into
