@@ -1830,6 +1830,21 @@ SS_MSG(dense_seed_beside_scan,
     RU("Начальные точки: точки LiDAR-скана; плотное облако {0} используется, только если выбрано начальными точками"),
     TR("Başlangıç noktaları: LiDAR taramasının noktaları; yoğun bulut {0} yalnızca başlangıç noktası seçilirse kullanılır"));
 
+SS_MSG(scan_outputs_stale,
+    EN("lidar/ not used: it has no pose record, or the model changed after the scan step wrote it. Run that step again to use the scan"),
+    JA("lidar/ を使いません：姿勢の記録がないか、スキャン工程の後にモデルが変わりました。スキャンを使うにはその工程を再実行してください"),
+    ZH_HANS("未使用 lidar/：它没有位姿记录，或扫描步骤写入后模型已更改。要使用扫描，请重新运行该步骤"),
+    ZH_HANT("未使用 lidar/：它沒有位姿記錄，或掃描步驟寫入後模型已變更。要使用掃描，請重新執行該步驟"),
+    KO("lidar/를 쓰지 않습니다: 자세 기록이 없거나 스캔 단계 뒤에 모델이 바뀌었습니다. 스캔을 쓰려면 그 단계를 다시 실행하세요"),
+    DE("lidar/ nicht verwendet: kein Posen-Protokoll, oder das Modell hat sich nach dem Scan-Schritt geändert. Für den Scan diesen Schritt erneut ausführen"),
+    FR("lidar/ non utilisé : pas de relevé des poses, ou le modèle a changé après l'étape du scan. Relancez cette étape pour utiliser le scan"),
+    ES("lidar/ no usado: no tiene registro de poses, o el modelo cambió tras el paso del escaneo. Repita ese paso para usar el escaneo"),
+    PT("lidar/ não usado: não há registro de poses, ou o modelo mudou após a etapa da varredura. Repita essa etapa para usar a varredura"),
+    IT("lidar/ non usato: manca il registro delle pose, o il modello è cambiato dopo il passo della scansione. Ripeti quel passo per usarla"),
+    NL("lidar/ niet gebruikt: geen posevastlegging, of het model is veranderd na de scanstap. Voer die stap opnieuw uit voor de scan"),
+    RU("lidar/ не используется: нет записи положений, или модель изменилась после шага скана. Повторите этот шаг, чтобы использовать скан"),
+    TR("lidar/ kullanılmadı: poz kaydı yok ya da model tarama adımından sonra değişti. Taramayı kullanmak için o adımı yeniden çalıştırın"));
+
 SS_MSG(scan_seed_points,
     EN("Seed points: {0} of {1} are LiDAR scan points and start at opacity {2}"),
     JA("初期点群：{1} 点のうち {0} 点が LiDAR スキャンの点で、不透明度 {2} から始めます"),

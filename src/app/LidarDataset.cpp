@@ -12,6 +12,7 @@
 #include "data/JsonWrite.h"
 #include "data/LidarLayout.h"
 #include "data/PointCloudFile.h"
+#include "data/ScanStamp.h"
 #include "data/SparseEdit.h"
 #include "external/stb_image.h"
 #include "external/stb_image_write.h"
@@ -914,8 +915,9 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
         throw std::runtime_error(format(lmsg::err_unreadable_model, {sparse.string()}));
     if (opt.scanner_poses_only) sources.clear();
     const std::string sig = signature(opt, anchors_path);
-    // A cancelled run leaves no depth kind and maybe some of its own maps, so it needs a rerun.
-    if (ours && fresh.empty() && !opt.overwrite &&
+    // A cancelled run leaves no depth kind or pose record and maybe some of its own maps,
+    // so it needs a rerun.
+    if (ours && fresh.empty() && !opt.overwrite && fs::exists(ds / lidar_layout::kCameras, ec) &&
         (!opt.depth_maps || fs::exists(ds / lidar_layout::kDepthKind, ec))) {
         const JsonValue* last_sig = last.find("signature");
         if (last_sig && last_sig->as_string() == sig) {
@@ -1298,6 +1300,8 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     std::mutex mu;
     std::exception_ptr failure;
     int64_t done = 0;
+    // The pose record goes first, so a cancelled run cannot pass for the last one.
+    fs::remove(ds / lidar_layout::kCameras, ec);
     // The trainer takes lidar/depths as this scan's: a run without maps
     // must not leave an earlier run's behind.
     if (opt.depth_maps) {
@@ -1611,6 +1615,7 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     fs::create_directories(sparse, ec);
     fs::rename(model_dir, sparse / "0", ec);
     if (ec) throw std::runtime_error("cannot write " + (sparse / "0").string() + ": " + ec.message());
+    scan_stamp::write(ds.string(), (sparse / "0" / "images.bin").string());
     fs::remove_all(tmp, ec);
     log(format(lmsg::done, {ds.string(), (long long)res.images,
                             (long long)out.points.size()}));

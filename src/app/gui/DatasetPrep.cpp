@@ -1147,7 +1147,8 @@ std::vector<std::string> workspace_artifacts(const std::string& workspace,
                              ".progress", sfm::resume::kDir, "matches.bin",
                              "matches.bin.bak", "database.db", kDatasetRecordFile,
                              ".spirula-recon", ".spirula-frames",
-                             lidar_layout::kPoints, lidar_layout::kDepths, lidar_layout::kNormals})
+                             lidar_layout::kPoints, lidar_layout::kDepths, lidar_layout::kNormals,
+                             lidar_layout::kCameras})
         add(name);
     return out;
 }

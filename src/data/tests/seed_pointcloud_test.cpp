@@ -141,6 +141,9 @@ int main() {
             moved.t[0] = 10;
             spirula::sparse_write_model(root.string(), (root / "sparse/edit").string(), keep, &moved);
             const auto selected = parse_colmap_dataset(root.string(), model);
+            check(fs::path(colmap_images_file(root.string(), model)) ==
+                      root / "sparse/edit" / "images.txt",
+                  "the poses a seed folder trains with are the ones the LiDAR check reads");
             model.seed_pointcloud.clear();
             model.recon_dir = "sparse/edit";
             const auto direct = parse_colmap_dataset(root.string(), model);

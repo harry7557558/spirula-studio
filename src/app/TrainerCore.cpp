@@ -30,6 +30,7 @@
 #include "data/RoiDocument.h"
 #include "data/LabelField.h"
 #include "data/LidarLayout.h"
+#include "data/ScanStamp.h"
 #include "dense/Artifact.h"
 #include "data/Knn.h"
 #include "kernels/loss/PcaReg.cuh"
@@ -1220,7 +1221,14 @@ void TrainerSession::seed_at_random() {
 void TrainerSession::load_dataset() {
     std::error_code ec;
     const fs::path data_dir(cfg.data);
-    const bool scan_points = fs::is_regular_file(data_dir / lidar_layout::kPoints, ec);
+    const bool scan_written = fs::is_regular_file(data_dir / lidar_layout::kPoints, ec) ||
+                              fs::is_directory(data_dir / lidar_layout::kDepths, ec);
+    const bool scan = scan_written &&
+        scan_stamp::matches(cfg.data, scan_stamp::pose_file(cfg.data, cfg.data_format,
+                                                            cfg.colmap_recon_dir,
+                                                            parser_seed(cfg.seed_pointcloud)));
+    if (scan_written && !scan) log(lmsg::scan_outputs_stale.get());
+    const bool scan_points = scan && fs::is_regular_file(data_dir / lidar_layout::kPoints, ec);
     // Written back into cfg, so config.json names the cloud this run used.
     if (cfg.seed_pointcloud.empty() && cfg.resume.empty() && cfg.random_init != "always" &&
         (cfg.init_ply.empty() || cfg.init_ply_add_points)) {
@@ -1235,11 +1243,12 @@ void TrainerSession::load_dataset() {
         }
     }
     // Any spelling of a scan folder counts, because later checks compare these strings.
-    const auto use_scan_dir = [&](std::string& dir, const char* plain, const char* scan) {
-        const fs::path want = data_dir / scan;
+    // A stale scan folder named outright falls back to the plain one.
+    const auto use_scan_dir = [&](std::string& dir, const char* plain, const char* scan_dir) {
+        const fs::path want = data_dir / scan_dir;
         if (fs::is_directory(want, ec) &&
             (dir == plain || fs::equivalent(data_dir / dir, want, ec)))
-            dir = scan;
+            dir = scan ? scan_dir : plain;
     };
     use_scan_dir(cfg.depth_dir, "depths", lidar_layout::kDepths);
     use_scan_dir(cfg.normal_dir, "normals", lidar_layout::kNormals);

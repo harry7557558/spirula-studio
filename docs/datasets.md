@@ -1195,10 +1195,26 @@ XGRIDS captures) and `spirula e57`.
 | `lidar/depths/<image>.png` | scan depth, 16-bit millimetres, 0 where the scan has none |
 | `lidar/depths/depth_kind.txt` | `ray` or `axial`: the distance those maps hold |
 | `lidar/normals/<image>.png` | normals from that depth |
+| `lidar/cameras.json` | the camera poses the files above were made for, written last |
 
 No photograph step and no depth model writes these files (the scan step also
 keeps `lidar/anchors.json` there, the scanner's image poses). So the trainer
-uses them as measurements:
+uses them as measurements, but only while the model still has those poses:
+
+- **Model check.** Before it loads the dataset, the trainer compares
+  `lidar/cameras.json` with the poses in the model it reads (`images.bin`,
+  `images.txt` or `transforms.json`, or the model folder chosen as
+  **Starting points**). Each image that both name must keep its pose. A
+  rebuild, a marker align or an editor save that moves or scales the model
+  fails the check, and so does a scan step that did not finish. Then the
+  trainer logs `lidar/ not used` and trains as if `lidar/` were absent: plain
+  `depths/` and `normals/`, no scan seed opacity, and the dense cloud as the
+  automatic seed. An editor save that only deletes points or cameras keeps
+  `lidar/` in use. Run the scan step again (`spirula lidar` or `spirula e57`)
+  to use the scan after a change. After a scale or move, use `--mode auto` or
+  `refine`: `--mode keep` takes the changed frame as the scan's. A rigid move
+  also fails the check, because the poses change, although the maps would
+  still fit.
 
 - **Depth.** When `lidar/depths/` exists, the trainer reads it in place of
   `depths/` and runs `lidar_depth_weight` (default 0.1): a Cauchy loss on
@@ -1223,7 +1239,12 @@ uses them as measurements:
   earlier run's maps stay behind.
 
 A dataset made before `lidar/` existed trains as before, until its scan step
-runs again.
+runs again. A `lidar/` with no `cameras.json` fails the model check, and the
+next scan step writes the record (the step does not reuse a dataset without it).
+
+The check compares poses only. One limit follows from that: when all cameras
+stand at one point (a single E57 station), a scale about that point leaves
+every pose the same, and the check passes.
 
 Measured on a 60 s window of a 260 s XGRIDS PortalCam capture in a forest:
 180 training photos (three cameras at 1 fps), 491,689 scan seeds, 15,000

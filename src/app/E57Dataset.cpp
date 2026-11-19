@@ -6,6 +6,7 @@
 #include "data/JsonWrite.h"
 #include "data/LidarLayout.h"
 #include "data/PointCloudFile.h"
+#include "data/ScanStamp.h"
 #include "data/SparseEdit.h"
 #include "external/stb_image.h"
 #include "external/stb_image_write.h"
@@ -447,6 +448,8 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
     std::error_code ec;
     if (!opt.overwrite && fs::is_directory(out, ec) && !fs::is_empty(out, ec))
         throw std::runtime_error(format(emsg::err_not_empty, {out.string()}));
+    // The pose record goes first, so a cancelled run cannot pass for the last one.
+    fs::remove(out / lidar_layout::kCameras, ec);
     // Masks are made of these images, by the scanner or by masking, and a new
     // run makes its own; corrections live in mask_edits/ and are re-applied.
     fs::remove_all(out / "masks", ec);
@@ -693,6 +696,7 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
         f << w.str();
         if (!f) throw std::runtime_error("cannot write " + (out / "transforms.json").string());
     }
+    scan_stamp::write(out.string(), (out / "transforms.json").string());
     {
         // E57 is metres by definition, and scanners level their frame
         // (docs/datasets.md, "The frame").

@@ -907,13 +907,14 @@ void test_scan_outputs_are_artifacts() {
     write_png(ws / lidar_layout::kNormals / "cam0" / "a.png", 4, 4, 1);
     write_png(ws / "lidar" / "photos" / "scan" / "a.png", 4, 4, 1);
     std::ofstream(ws / lidar_layout::kPoints) << "ply";
+    std::ofstream(ws / lidar_layout::kCameras) << "{}";
     const std::vector<std::string> arts = gui::workspace_artifacts(ws.string(), {});
     auto listed = [&](fs::path p) {
         return std::find(arts.begin(), arts.end(), p.make_preferred().string()) != arts.end();
     };
     check(listed(ws / lidar_layout::kDepths) && listed(ws / lidar_layout::kNormals) &&
-              listed(ws / lidar_layout::kPoints),
-          "artifacts: the scan's points, depth and normal maps are the run's to clear");
+              listed(ws / lidar_layout::kPoints) && listed(ws / lidar_layout::kCameras),
+          "artifacts: the scan's points, maps and pose record are the run's to clear");
     check(!listed(ws / "lidar") && !listed(ws / "lidar" / "photos"),
           "artifacts: lidar/ itself and its scan photos stay");
 }

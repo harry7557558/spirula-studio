@@ -11,5 +11,7 @@ inline constexpr const char* kDepths  = "lidar/depths";
 inline constexpr const char* kNormals = "lidar/normals";
 // One word, `ray` or `axial`: the distance the maps in kDepths hold.
 inline constexpr const char* kDepthKind = "lidar/depths/depth_kind.txt";
+// The camera poses the files above were made for (data/ScanStamp.h).
+inline constexpr const char* kCameras = "lidar/cameras.json";
 
 }  // namespace lidar_layout

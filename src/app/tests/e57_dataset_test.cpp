@@ -9,7 +9,10 @@
 #include "core/CameraModel.h"
 #include "data/CameraMath.h"
 #include "data/DatasetParser.h"
+#include "data/Json.h"
+#include "data/JsonWrite.h"
 #include "data/LidarLayout.h"
+#include "data/ScanStamp.h"
 #include "data/SceneTransform.h"
 #include "data/tests/E57TestFile.h"
 #include "external/stb_image_write.h"
@@ -19,6 +22,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <iterator>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -237,6 +242,38 @@ int main() {
         file >> kind;
         check(kind == "axial", "lidar/depths records the distance its maps hold");
     }
+    {
+        // Editor saves that leave the poses or change them, written over transforms.json.
+        const fs::path transforms = out / "transforms.json";
+        const std::string poses = scan_stamp::pose_file(opt.output, "", "", "");
+        std::string original;
+        {
+            std::ifstream f(transforms, std::ios::binary);
+            original.assign(std::istreambuf_iterator<char>(f), {});
+        }
+        auto save = [&](const std::function<void(std::vector<JsonValue>&)>& edit) {
+            JsonValue meta = json_parse(original);
+            for (auto& [key, value] : meta.obj)
+                if (key == "frames") edit(value.arr);
+            JsonWriter w;
+            json_write(w, meta);
+            std::ofstream(transforms, std::ios::binary | std::ios::trunc) << w.str();
+        };
+        check(poses == transforms.string() && scan_stamp::matches(opt.output, poses),
+              "lidar/cameras.json records the poses lidar/ was made for");
+        save([](std::vector<JsonValue>& frames) { frames.resize(1); });
+        check(scan_stamp::matches(opt.output, poses), "a dropped camera leaves lidar/ in use");
+        save([](std::vector<JsonValue>& frames) {
+            for (JsonValue& f : frames)
+                for (auto& [key, value] : f.obj)
+                    if (key == "transform_matrix")
+                        for (int r = 0; r < 3; r++) value.arr[(size_t)r].arr[3].num *= 1.01;
+        });
+        check(!scan_stamp::matches(opt.output, poses), "a model scaled by 1 % no longer fits lidar/");
+        save([](std::vector<JsonValue>&) {});
+        fs::remove(out / lidar_layout::kCameras);
+        check(!scan_stamp::matches(opt.output, poses), "lidar/ without a pose record is not used");
+    }
 
     // Every camera must send a world point to the pixel its E57 image has it at.
     const float zero[kCameraDistortionParams] = {};
@@ -340,6 +377,8 @@ int main() {
         std::string kind;
         file >> kind;
         check(kind == "ray", "lidar/depths records ray depth for panoramas");
+        check(scan_stamp::matches(opt.output, scan_stamp::pose_file(opt.output, "", "", "")),
+              "a new run records its poses again");
         opt.pinhole = true;
     }
 

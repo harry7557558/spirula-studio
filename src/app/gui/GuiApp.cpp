@@ -8,6 +8,7 @@
 #include "dense/Versions.h"
 #include "data/SeedPointCount.h"
 #include "data/LidarLayout.h"
+#include "data/ScanStamp.h"
 
 #include "core/ColorBasis.h"
 #include "core/ColorSpace.h"
@@ -12014,6 +12015,22 @@ bool GuiApp::dense_cloud_present() {
         std::error_code ec;
         _scan_probe_found = !_cfg.data.empty() &&
             fs::is_regular_file(fs::path(_cfg.data) / lidar_layout::kPoints, ec);
+        if (_scan_probe_found) {
+            const std::string& seed = _cfg.seed_pointcloud;
+            const std::string poses = scan_stamp::pose_file(
+                _cfg.data, _cfg.data_format, _cfg.colmap_recon_dir,
+                seed == spirula::dense::kSparseSeed ? std::string() : seed);
+            const auto poses_time = fs::last_write_time(poses, ec);
+            const auto stamp_time = fs::last_write_time(fs::path(_cfg.data) / lidar_layout::kCameras, ec);
+            if (poses != _scan_stamp_poses || poses_time != _scan_stamp_poses_time ||
+                stamp_time != _scan_stamp_time) {
+                _scan_stamp_poses = poses;
+                _scan_stamp_poses_time = poses_time;
+                _scan_stamp_time = stamp_time;
+                _scan_stamp_current = scan_stamp::matches(_cfg.data, poses);
+            }
+            _scan_probe_found = _scan_stamp_current;
+        }
     }
     return _dense_probe_found;
 }
