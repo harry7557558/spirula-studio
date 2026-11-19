@@ -19,6 +19,7 @@
 #include "app/gui/PickSheet.h"
 #include "app/gui/Subprocess.h"
 
+#include "core/BufferedFile.h"
 #include "core/HardwareThreads.h"
 #include "core/ImageFile.h"
 #include "core/ImageOrient.h"
@@ -56,6 +57,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <share.h>
 #include <windows.h>
 #else
 #include <ftw.h>
@@ -75,6 +77,7 @@
 #include <fstream>
 #include <future>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <thread>
@@ -1232,8 +1235,106 @@ int DatasetPrep::count_images(const std::string& dir, const std::string& skip) {
     return (int)walk_images(dir, skip).size();
 }
 
+using SourceHashScratch = std::unique_ptr<uint8_t[]>;
+
+#ifdef SS_SOURCE_HASH_TEST_HOOKS
+void source_hash_before_read(const fs::path& file, uintmax_t offset);
+#endif
+
+static std::string hash_frame_source(const fs::path& file, uintmax_t size,
+                                     SourceHashScratch& scratch) {
+    constexpr size_t chunk = spirula::kFileBufferBytes;
+    if (!scratch) scratch.reset(new uint8_t[2 * chunk]);
+    uint8_t* const chunks[] = {scratch.get(), scratch.get() + chunk};
+    size_t lengths[2];
+    std::mutex mutex;
+    std::condition_variable changed;
+    size_t pending = 0;
+    bool finished = false, read_ok = false;
+    std::exception_ptr reader_error;
+    spirula::Sha256 hash;
+
+    const auto read = [&] {
+#ifdef SS_SOURCE_HASH_TEST_HOOKS
+        source_hash_before_read(file, 0);
+#endif
+#ifdef _WIN32
+        auto* opened = _wfsopen(file.c_str(), L"rb", _SH_DENYNO);
+#else
+        auto* opened = std::fopen(file.c_str(), "rb");
+#endif
+        std::unique_ptr<std::FILE, decltype(&std::fclose)> stream(opened, &std::fclose);
+        if (!stream || std::setvbuf(stream.get(), nullptr, _IONBF, 0) != 0) return false;
+        size_t slot = 0;
+        for (uintmax_t left = size; left;) {
+            {
+                std::unique_lock lock(mutex);
+                changed.wait(lock, [&] { return pending < 2 || finished; });
+                if (finished) return false;
+            }
+            const size_t count = (size_t)std::min<uintmax_t>(left, chunk);
+#ifdef SS_SOURCE_HASH_TEST_HOOKS
+            if (left != size) source_hash_before_read(file, size - left);
+#endif
+            if (std::fread(chunks[slot], 1, count, stream.get()) != count ||
+                std::ferror(stream.get())) return false;
+            {
+                std::lock_guard lock(mutex);
+                lengths[slot] = count;
+                ++pending;
+            }
+            changed.notify_one();
+            slot ^= 1;
+            left -= count;
+        }
+        return std::fgetc(stream.get()) == EOF && std::feof(stream.get()) &&
+               !std::ferror(stream.get());
+    };
+
+    std::thread reader([&] {
+        try {
+            read_ok = read();
+        } catch (...) {
+            reader_error = std::current_exception();
+        }
+        {
+            std::lock_guard lock(mutex);
+            finished = true;
+        }
+        changed.notify_one();
+    });
+    try {
+        std::unique_lock lock(mutex);
+        size_t slot = 0;
+        for (;;) {
+            changed.wait(lock, [&] { return pending || finished; });
+            if (finished && (!read_ok || !pending)) break;
+            const size_t count = lengths[slot];
+            lock.unlock();
+            hash.update(chunks[slot], count);
+            lock.lock();
+            // The slot stays pending until SHA no longer reads it.
+            --pending;
+            slot ^= 1;
+            changed.notify_one();
+        }
+    } catch (...) {
+        {
+            std::lock_guard lock(mutex);
+            finished = true;
+        }
+        changed.notify_one();
+        reader.join();
+        throw;
+    }
+    reader.join();
+    if (reader_error) std::rethrow_exception(reader_error);
+    if (!read_ok || hash.total != size) return {};
+    return hash.hex();
+}
+
 static std::string frame_source_identity_impl(
-    const PrepJob& job, const PrepInput& in, bool content,
+    const PrepJob& job, const PrepInput& in, bool content, SourceHashScratch& scratch,
     const std::vector<std::pair<fs::path, fs::path>>* transferred = nullptr) {
     std::error_code ec;
     const fs::path root = fs::absolute(in.path, ec).lexically_normal();
@@ -1280,16 +1381,9 @@ static std::string frame_source_identity_impl(
         append(name.lexically_relative(root).generic_string());
         append(std::to_string(size));
         if (content) {
-            std::ifstream stream(file, std::ios::binary);
-            if (!stream) return {};
-            spirula::Sha256 hash;
-            char buffer[65536];
-            while (stream) {
-                stream.read(buffer, sizeof buffer);
-                hash.update(reinterpret_cast<const uint8_t*>(buffer), (size_t)stream.gcount());
-            }
-            if (!stream.eof()) return {};
-            append(hash.hex());
+            const std::string digest = hash_frame_source(file, size, scratch);
+            if (digest.empty()) return {};
+            append(digest);
             if (fs::file_size(file, ec) != size || ec) return {};
             if (fs::last_write_time(file, ec) != stamp || ec) return {};
         } else append(std::to_string((long long)stamp.time_since_epoch().count()));
@@ -1298,13 +1392,15 @@ static std::string frame_source_identity_impl(
 }
 
 std::string frame_source_identity(const PrepJob& job, const PrepInput& in, bool content) {
-    return frame_source_identity_impl(job, in, content);
+    SourceHashScratch scratch;
+    return frame_source_identity_impl(job, in, content, scratch);
 }
 
 bool snapshot_frame_sources(PrepJob& job, std::string& error) {
+    SourceHashScratch scratch;
     std::vector<std::string> identities;
     for (const PrepInput& in : job.inputs) {
-        std::string identity = frame_source_identity(job, in, true);
+        std::string identity = frame_source_identity_impl(job, in, true, scratch);
         if (identity.empty()) {
             error = "Cannot identify frame source: " + in.path;
             return false;
@@ -1817,14 +1913,17 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
 
     // Only once the images are there, so an interrupted extraction is not
     // recorded as having produced what it was asked for.
-    for (size_t i = 0; i < job.inputs.size(); ++i) {
-        // Move imports were checked at the ownership transfer, before sorting
-        // can relocate their only remaining copies into images_skipped/.
-        if (!job.inputs[i].is_video && job.photo_import == PhotoImport::Move) continue;
-        if (i >= job.source_content.size() ||
-            frame_source_identity(job, job.inputs[i], true) != job.source_content[i]) {
-            error = "Frame source changed during preparation; run frame extraction again.";
-            return false;
+    {
+        SourceHashScratch scratch;
+        for (size_t i = 0; i < job.inputs.size(); ++i) {
+            // Move imports were checked at the ownership transfer, before sorting
+            // can relocate their only remaining copies into images_skipped/.
+            if (!job.inputs[i].is_video && job.photo_import == PhotoImport::Move) continue;
+            if (i >= job.source_content.size() ||
+                frame_source_identity_impl(job, job.inputs[i], true, scratch) != job.source_content[i]) {
+                error = "Frame source changed during preparation; run frame extraction again.";
+                return false;
+            }
         }
     }
     if (done) done(Stage::Frames, job);
@@ -3466,8 +3565,9 @@ bool DatasetPrep::gather_photos(const PrepJob& job, const PrepInput& in,
                 transferred.emplace_back(m.from, fs::exists(m.from, exists_ec) ? m.from : m.to);
             }
             const size_t row = input_index(job, in);
+            SourceHashScratch scratch;
             if (row >= job.source_content.size() ||
-                frame_source_identity_impl(job, in, true, &transferred) != job.source_content[row]) {
+                frame_source_identity_impl(job, in, true, scratch, &transferred) != job.source_content[row]) {
                 error = "Frame source changed during photo transfer; run preparation again.";
                 return false;
             }
