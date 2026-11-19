@@ -80,6 +80,12 @@ inline std::filesystem::path resolve_output_symlink(const std::filesystem::path&
     return path;
 }
 
+inline void close_checked(BufferedOutputFile& stream, const std::filesystem::path& path) {
+    stream.flush();
+    stream.close();
+    if (!stream) throw std::runtime_error("write, flush or close failed: " + path.string());
+}
+
 class AtomicOutputFile {
     struct StagedPath {
         std::filesystem::path path;
@@ -150,9 +156,7 @@ public:
     void close_checked() {
         if (closed_ || !stream_.is_open())
             throw std::logic_error("cannot close output that is not open");
-        stream_.flush();
-        stream_.close();
-        if (!stream_) throw std::runtime_error("write, flush or close failed: " + destination_.string());
+        spirula::close_checked(stream_, destination_);
         closed_ = true;
     }
 

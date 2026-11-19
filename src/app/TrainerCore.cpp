@@ -1853,10 +1853,20 @@ void TrainerSession::restore_checkpoint() {
     log(lfmt(lmsg::resumed_from, {r.tar_path.string(), (long long)start_step}));
 }
 
-void TrainerSession::save_checkpoint(int step, bool full) {
+static std::string checkpoint_run_name(const fs::path& out_dir) {
     fs::path run_path = fs::absolute(out_dir).lexically_normal();
     if (run_path.filename().empty()) run_path = run_path.parent_path();
-    const std::string run_name = run_path.filename().string();
+    return run_path.filename().string();
+}
+
+void TrainerSession::save_checkpoint(int step, bool full) {
+    write_checkpoint(step, full, false);
+    prune_checkpoints();
+}
+
+std::future<void> TrainerSession::write_checkpoint(int step, bool full, bool periodic,
+                                                    const std::function<void()>& writer_gate) {
+    const std::string run_name = checkpoint_run_name(out_dir);
     std::string basename = run_name;
     if (!cfg.save_only_latest_checkpoint) {
         char suffix[32];
@@ -1864,20 +1874,32 @@ void TrainerSession::save_checkpoint(int step, bool full) {
         basename += suffix;
     }
     const std::string camera_hash = roi_cameras ? save_region_cameras(out_dir.string(), *roi_cameras) : "";
-    engine_save_checkpoint(out_dir.string(), full, step, cfg.background_export_height,
-                           basename, cfg.export_y_up, camera_hash);
-    if (cfg.save_only_latest_checkpoint) {
-        std::vector<fs::path> stale;
-        for (const auto& e : fs::directory_iterator(out_dir)) {
-            const std::string b = e.path().filename().string();
-            if (e.is_directory() && b.rfind("step-", 0) == 0 && e.path().extension() == ".ckpt")
-                stale.push_back(e.path());
-            if (e.is_regular_file() && b.rfind(run_name + "_step-", 0) == 0 &&
-                (e.path().extension() == ".ply" || e.path().extension() == ".tar"))
-                stale.push_back(e.path());
-        }
-        for (const auto& p : stale) remove_tree(p);
+    const std::string root = out_dir.string();
+    if (periodic) {
+        const auto vram = _forecast.vram(false);
+        auto save = engine_try_save_checkpoint_async(engine_mutex, vram.peak_mean,
+            root, full, step, cfg.background_export_height, basename, cfg.export_y_up, camera_hash, writer_gate);
+        _perf.checkpoint(step, save.pending.valid(), save.reason);
+        if (save.pending.valid()) return std::move(save.pending);
     }
+    std::lock_guard<std::mutex> lk(engine_mutex);
+    engine_save_checkpoint(root, full, step, cfg.background_export_height, basename, cfg.export_y_up, camera_hash);
+    return {};
+}
+
+void TrainerSession::prune_checkpoints() {
+    if (!cfg.save_only_latest_checkpoint) return;
+    const std::string run_name = checkpoint_run_name(out_dir);
+    std::vector<fs::path> stale;
+    for (const auto& e : fs::directory_iterator(out_dir)) {
+        const std::string b = e.path().filename().string();
+        if (e.is_directory() && b.rfind("step-", 0) == 0 && e.path().extension() == ".ckpt")
+            stale.push_back(e.path());
+        if (e.is_regular_file() && b.rfind(run_name + "_step-", 0) == 0 &&
+            (e.path().extension() == ".ply" || e.path().extension() == ".tar"))
+            stale.push_back(e.path());
+    }
+    for (const auto& p : stale) remove_tree(p);
 }
 
 // One step. Split out of train() so a front-end that keeps its own loop
@@ -2070,13 +2092,24 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
 
     _perf.open(out_dir, _perf_dir);
     int step = start_step;
-    for (; step < cfg.num_iterations; step++) {
+    std::future<void> pending;
+    auto reap = [&] {
+        if (!pending.valid()) return;
+        pending.get();
+        prune_checkpoints();
+    };
+    auto save_ready = [&] {
+        return pending.valid() && pending.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+    };
+    for (; step < cfg.num_iterations; step++) try {
         // Pause gate + render-fairness yield: give viewer render workers an
         // uncontended window to take the engine mutex.
         if (paused.load() && !stop_requested.load()) {
             pause_clock_start();
-            while (paused.load() && !stop_requested.load())
+            while (paused.load() && !stop_requested.load()) {
+                if (save_ready()) reap();
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
             pause_clock_stop();
         }
         if (stop_requested.load()) break;
@@ -2084,6 +2117,21 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         // is time this step took. Timing only the work below reported 6 ms on
         // a step the run was actually spending 24 ms on.
         auto step_start = std::chrono::steady_clock::now();
+        double save_s = 0.0;
+        const bool periodic = step > start_step && cfg.steps_per_save > 0 && step % cfg.steps_per_save == 0;
+        if (periodic || save_ready()) {
+            StepTimingScope saving(StepPart::Saving, StepScale::Splats);
+            const auto t0 = std::chrono::steady_clock::now();
+            reap();
+            if (stop_requested.load()) break;
+            if (periodic) {
+                // The one checkpoint kept is what a crash resumes from, so it carries the optimizer.
+                pending = write_checkpoint(step, cfg.save_full_checkpoint || cfg.save_only_latest_checkpoint,
+                                           true, cb.checkpoint_writer_gate);
+                if (!pending.valid()) prune_checkpoints();
+            }
+            save_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        }
         // One step in ten: on Vulkan each bracket is a queue submission.
         const bool timed = step % 10 == 0;
         // The breakdown also times every densify step, a stratum of its own.
@@ -2101,21 +2149,13 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
 
         std::map<std::string, float> losses;
         std::string data_error;
-        double save_s = 0.0, splat_gpu_s = -1.0, data_wait_s = 0.0;
+        double splat_gpu_s = -1.0, data_wait_s = 0.0;
         int64_t splats_ran = 0, reg_splats = 0;
         bool reg_probed = false;
         ForecastTraceStep traced;
         StepSample sample;
         {
             std::lock_guard<std::mutex> lk(engine_mutex);
-            if (step > start_step && cfg.steps_per_save > 0 && step % cfg.steps_per_save == 0) {
-                StepTimingScope saving(StepPart::Saving, StepScale::Splats);
-                const auto t0 = std::chrono::steady_clock::now();
-                // The one checkpoint kept is what a crash resumes from, so it carries the optimizer.
-                save_checkpoint(step, cfg.save_full_checkpoint || cfg.save_only_latest_checkpoint);
-                save_s = std::chrono::duration<double>(
-                    std::chrono::steady_clock::now() - t0).count();
-            }
             splats_ran = engine_get_cur_num_splats();
             if (timed) engine_step_timing_arm();
             try {
@@ -2253,6 +2293,16 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
             p.losses = std::move(losses);
             cb.on_step(p);
         }
+    } catch (...) {
+        try {
+            reap();
+        } catch (const std::exception& e) {
+            try { log(e.what()); }
+            catch (...) { std::fprintf(stderr, "%s\n", e.what()); }
+        } catch (...) {
+            std::fputs("checkpoint writer failed with a non-standard exception\n", stderr);
+        }
+        throw;
     }
 
     {
@@ -2260,6 +2310,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         _end_time = std::chrono::steady_clock::now();
     }
     training_time_s = elapsed_seconds();
+    reap();
     // Pool capacities are a monotonic high-water mark, so reading them after
     // the loop gives the training-time peak.
     {
@@ -2270,7 +2321,6 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
     engine_profile_capture_vram();
 
     if (cfg.steps_per_save != 0 && save_on_stop.load()) {
-        std::lock_guard<std::mutex> lk(engine_mutex);
         // A run stopped short is one to continue later, so its save must be resumable.
         save_checkpoint(step, cfg.save_full_checkpoint || step < cfg.num_iterations);
         log(lfmt(lmsg::checkpoint_saved, {fs::absolute(out_dir).string()}));

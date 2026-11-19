@@ -65,6 +65,7 @@ e.g. `-- train --data <dataset folder>` for a command-line run.
 |---|---|---|
 | `dense_perf.csv` | the dense step (`DensePerfLog` in `src/app/DenseProcessing.cpp`) | per second and at each change: phase, done, total, rate, process RAM |
 | `train_perf.csv` | the trainer (`src/app/TrainPerfLog.h`) | per second: steps, step time, time waiting for the data loader, sampled GPU time per step, resolution stage, splats, pool VRAM, process RAM |
+| `checkpoint_saves.csv` | the trainer (`src/app/TrainPerfLog.h`) | one decision per periodic save: the pre-step checkpoint number, `overlapped` or `synchronous`, and the reason |
 | `system.csv` | Windows performance counters | CPU per core and total, RAM, disk throughput and busy time, and the CPU, memory, threads and I/O of every `spirula.exe` (a dense step's child included) |
 | `gpu_engines.csv` | Windows GPU engine counters | Spirula's utilization of each engine on each adapter, integrated and discrete |
 | `nvidia.csv` | NVML (the app) or `nvidia-smi` (the script) | utilization, VRAM, clocks, power, temperature, clock-limit reasons |
@@ -73,8 +74,9 @@ e.g. `-- train --data <dataset folder>` for a command-line run.
 The app counts its own process and any it started; the script counts every
 `spirula.exe`.
 
-`SS_TRAIN_PERF=1` alone, without the recorder, writes `train_perf.csv` into the
-run's output folder.
+`SS_TRAIN_PERF=1` alone, without the recorder, writes the two trainer CSVs into
+the run's output folder. A `checkpoint_saves.csv` row records the path picked,
+not whether publication succeeded.
 
 ## Reading the verdicts
 
