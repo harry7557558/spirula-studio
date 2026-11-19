@@ -211,7 +211,7 @@ __global__ void calib_warp_accum_kernel(
         if (mask != nullptr) {
             const int my = min((int)(((float)y + 0.5f) * Hm / H), Hm - 1);
             const int mx = min((int)(((float)x + 0.5f) * Wm / W), Wm - 1);
-            if (mask[((size_t)b * Hm + my) * Wm + mx] == 0) continue;
+            if (mask[((size_t)b * Hm + my) * Wm + mx] != 1) continue;
         }
         const size_t pix = base + (size_t)y * W + x;
         const float e = D == 4 ? cw_inv_depth(depth, Ts, pix) : 0.0f;

@@ -103,10 +103,9 @@ __device__ __forceinline__ float3 bilinear_sample_f3(
     return out;
 }
 
-// Nearest-neighbor bool sampler — masks are boolean, bilinear has no
-// meaningful interpolation. Returns the value of the nearest source pixel.
-__device__ __forceinline__ bool nearest_sample_b(
-    const bool* __restrict__ src,
+// Nearest-neighbor byte/bool samplers — masks are discrete classes, not bilinear.
+__device__ __forceinline__ uint8_t nearest_sample_u8(
+    const uint8_t* __restrict__ src,
     int b, int x_dst, int y_dst,
     int W_dst, int H_dst,
     int W_src, int H_src
@@ -117,6 +116,16 @@ __device__ __forceinline__ bool nearest_sample_b(
     int y = max(0, min(H_src - 1, (int)floorf(v + 0.5f)));
     size_t plane = (size_t)b * (size_t)H_src * (size_t)W_src;
     return src[plane + (size_t)y * W_src + x];
+}
+
+__device__ __forceinline__ bool nearest_sample_b(
+    const bool* __restrict__ src,
+    int b, int x_dst, int y_dst,
+    int W_dst, int H_dst,
+    int W_src, int H_src
+) {
+    return nearest_sample_u8((const uint8_t*)src, b, x_dst, y_dst,
+                             W_dst, H_dst, W_src, H_src) != 0;
 }
 
 

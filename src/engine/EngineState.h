@@ -205,9 +205,9 @@ struct GTData {
     // [B, H, W, 3] in the form it was decoded in when that needs no colour
     // conversion, else float32 (core/PixelFormat.h); never widened in place.
     TorchTensorView        rgb;
-    DeviceTensor3D<float>  depth;
-    DeviceTensor3D<float3> normal;
-    DeviceTensor3D<bool>   alpha;
+    DeviceTensor3D<float>   depth;
+    DeviceTensor3D<float3>  normal;
+    DeviceTensor3D<uint8_t> alpha;
     bool has_gt   = false;
     bool has_mask = false;
 };
@@ -570,9 +570,9 @@ struct CalibWarpState {
     int64_t zeroed_rows = 0;
     // While gt points at the warped copies: the step's own ground truth.
     TorchTensorView src_gt;
-    DeviceTensor3D<float>  src_depth;
-    DeviceTensor3D<float3> src_normal;
-    DeviceTensor3D<bool>   src_alpha;
+    DeviceTensor3D<float>   src_depth;
+    DeviceTensor3D<float3>  src_normal;
+    DeviceTensor3D<uint8_t> src_alpha;
     bool swapped = false;
     bool active_this_step = false;
 };

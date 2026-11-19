@@ -11978,24 +11978,33 @@ void GuiApp::draw_preset_save_modal() {
 // generated editor does: a flag the user set by hand is off limits to the
 // macro options (see train_resolve_macros()).
 void GuiApp::draw_train_mask_mode(float width) {
-    bool cut_out = _cfg.apply_loss_for_mask.value_or(false);
-    const TrainRunner::Phase ph = _runner.phase();
-    if (!_cfg.apply_loss_for_mask.has_value() &&
-        (ph == TrainRunner::Phase::Ready || ph == TrainRunner::Phase::Training ||
-         ph == TrainRunner::Phase::Evaluating ||
-         ph == TrainRunner::Phase::Done))
-        if (auto* s = _runner.session())
-            cut_out = s->cfg.apply_loss_for_mask.value_or(false);
-    int mi = !_cfg.load_masks ? 2 : cut_out ? 1 : 0;
+    int mi = 0;
+    const ResolvedMaskMode m = resolve_train_mask_mode(_cfg);
+    if (m == ResolvedMaskMode::Off) mi = 3;
+    else if (m == ResolvedMaskMode::SegmentAndIgnore) mi = 2;
+    else if (m == ResolvedMaskMode::Segment) mi = 1;
+    else if (_cfg.mask_mode == "auto" && !_cfg.apply_loss_for_mask.has_value()) {
+        const TrainRunner::Phase ph = _runner.phase();
+        if (ph == TrainRunner::Phase::Ready || ph == TrainRunner::Phase::Training ||
+            ph == TrainRunner::Phase::Evaluating ||
+            ph == TrainRunner::Phase::Done)
+            if (auto* s = _runner.session())
+                if (s->cfg.apply_loss_for_mask.value_or(false)) mi = 1;
+    }
     ImGui::SetNextItemWidth(width);
     if (ui::Combo(msg::opt_mask_mode, &mi,
                   {&msg::opt_mask_mode_exclude,
                    &msg::opt_mask_mode_cut_out,
+                   &msg::opt_mask_mode_segment_and_ignore,
                    &msg::opt_mask_mode_off})) {
-        _cfg.load_masks = mi != 2;
+        static constexpr const char* kModes[4] = {
+            "ignore", "segment", "segment_and_ignore", "off"};
+        _cfg.mask_mode = kModes[mi];
+        _cfg.load_masks = mi != 3;
+        _cfg_ui.touched.insert("mask_mode");
         _cfg_ui.touched.insert("load_masks");
-        if (mi != 2) {
-            _cfg.apply_loss_for_mask = mi == 1;
+        if (mi != 3) {
+            _cfg.apply_loss_for_mask = (mi == 1 || mi == 2);
             _cfg_ui.touched.insert("apply_loss_for_mask");
         }
     }

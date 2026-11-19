@@ -97,6 +97,8 @@ struct LossConfig {
     // is converted from linear to ray depth in place (in set_training_data,
     // before the depth bilateral grid). True = already ray depth, no-op.
     bool  input_depth_is_ray_depth = true;
+    // 3-class masks in gt.alpha: 0=ignore, 1=keep, 2=segment.
+    bool  segment_and_ignore_mask = false;
 };
 
 

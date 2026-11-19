@@ -215,7 +215,7 @@ void calib_warp_accum(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         if (p.has_mask != 0) {
             int my = min(int((float(y) + 0.5f) * float(p.Hm) / float(H)), p.Hm - 1);
             int mx = min(int((float(x) + 0.5f) * float(p.Wm) / float(W)), p.Wm - 1);
-            if (u8_load(p.mask, (gindex_t(b) * gindex_t(p.Hm) + gindex_t(my)) * gindex_t(p.Wm) + gindex_t(mx)) == 0u)
+            if (u8_load(p.mask, (gindex_t(b) * gindex_t(p.Hm) + gindex_t(my)) * gindex_t(p.Wm) + gindex_t(mx)) != 1u)
                 continue;
         }
         gindex_t pix = base + gindex_t(y) * gindex_t(W) + gindex_t(x);

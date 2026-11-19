@@ -261,7 +261,7 @@ void run_ms_cfg(Rng& r, const MsCfg& c) {
             ttv(v_losses, {(int)LossIndex::length}), needs, num_train,
             cams ? ttv(cams, {c.B}) : ttv_null(),
             ttv(loss_map_out, {c.B, c.H, c.W, 1}), c.loss_map_mode,
-            c.quantile, c.nms_falloff, grads);
+            c.quantile, c.nms_falloff, grads, false);
     };
 
     run_once();  // primes the one-behind readouts

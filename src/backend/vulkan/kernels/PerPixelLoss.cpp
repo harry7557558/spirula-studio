@@ -70,6 +70,7 @@ constexpr uint32_t kInRefAlpha = 1u << 14;
 constexpr uint32_t kInLossMap = 1u << 15;
 constexpr uint32_t kInRenderRgbFmtShift = 16;
 constexpr uint32_t kInRefRgbFmtShift = 18;
+constexpr uint32_t kInSegIgnMask = 1u << 20;
 // out_flags bits
 constexpr uint32_t kOutVRefDepth = 1u << 3;
 constexpr uint32_t kOutVRefNormal = 1u << 6;
@@ -302,7 +303,7 @@ PplParams build_ppl_params(
     const TorchTensorView& rgb_dist, const TorchTensorView& depth_dist,
     const TorchTensorView& normal_dist, const TorchTensorView& median_depth,
     const TorchTensorView& median_normal, const TorchTensorView& ref_alpha,
-    bool has_mask, float saturation_threshold,
+    bool has_mask, bool segment_and_ignore_mask, float saturation_threshold,
     const std::array<float, kNW>& loss_weights,
     const TorchTensorView& camera_indices
 ) {
@@ -330,6 +331,7 @@ PplParams build_ppl_params(
     set_in(median_depth, p.median_depth);
     set_in(median_normal, p.median_normal);
     if (_has(ref_alpha)) in_flags |= kInRefAlpha;
+    if (segment_and_ignore_mask) in_flags |= kInSegIgnMask;
     in_flags |= (uint32_t)pixel_format(render_rgb) << kInRenderRgbFmtShift;
     in_flags |= (uint32_t)pixel_format(ref_rgb) << kInRefRgbFmtShift;
     p.ref_alpha = vkk::or_fallback(std::get<0>(ref_alpha));
@@ -973,7 +975,8 @@ LossValues compute_multi_scale_per_pixel_losses(
     int loss_map_mode,
     float robust_edge_aware_quantile,
     float nms_falloff,
-    PerPixelGrads& grads_out
+    PerPixelGrads& grads_out,
+    bool segment_and_ignore_mask
 ) {
     pool_begin_phase(PoolPhase::Loss);
     const auto _mode = densify_loss_map_base((DensifyLossMapMode)loss_map_mode);
@@ -1170,7 +1173,7 @@ LossValues compute_multi_scale_per_pixel_losses(
             depth_normal_s[scale], ref_normal_s[scale], render_Ts_s[scale],
             rgb_dist_s[scale], depth_dist_s[scale], normal_dist_s[scale],
             median_depth_s[scale], median_normal_s[scale], ref_alpha_s[scale],
-            has_mask, saturation_threshold, loss_weights_0, camera_indices);
+            has_mask, segment_and_ignore_mask, saturation_threshold, loss_weights_0, camera_indices);
         if (_per_pixel_write && loss_map_ptr) {
             fp.loss_map = (uint64_t)loss_map_ptr;
             fp.in_flags |= kInLossMap;
@@ -1243,7 +1246,7 @@ LossValues compute_multi_scale_per_pixel_losses(
                 ref_normal_s[scale], render_Ts_s[scale], rgb_dist_s[scale],
                 depth_dist_s[scale], normal_dist_s[scale],
                 median_depth_s[scale], median_normal_s[scale],
-                ref_alpha_s[scale], has_mask, saturation_threshold,
+                ref_alpha_s[scale], has_mask, segment_and_ignore_mask, saturation_threshold,
                 loss_weights_0, camera_indices);
             bp.losses = (uint64_t)v_raw_losses;
             uint32_t out_flags = 0;
