@@ -61,6 +61,7 @@ struct ColmapImage {
 struct ColmapPoints3D {
     std::vector<double>   xyz;        // [N, 3] flat
     std::vector<uint8_t>  rgb;        // [N, 3] flat
+    std::vector<float>    opacity;    // [N] start opacity; empty: opacity_init for all
     int64_t num() const { return (int64_t)xyz.size() / 3; }
 };
 
@@ -323,6 +324,10 @@ JsonValue metashape_meta(const std::string& dataset_dir,
 std::string find_colmap_model(const std::string& dataset_dir,
                               const std::string& recon_dir_hint,
                               bool* points_text = nullptr);
+
+// The images file parse_colmap_dataset reads its poses from under `cfg`
+// (recon_dir and seed_pointcloud), "" when it finds no model.
+std::string colmap_images_file(const std::string& dataset_dir, const DatasetParserConfig& cfg);
 
 // Auto-detect (format = "") or dispatch ("colmap" / "nerfstudio" /
 // "metashape").

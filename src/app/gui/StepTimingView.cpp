@@ -5,6 +5,7 @@
 #include "app/SettingCosts.h"
 #include "app/gui/ConfigUI.h"
 #include "app/gui/Ui.h"
+#include "data/LidarLayout.h"
 #include "i18n/TimeFormat.h"
 #include "i18n/catalog/Data.h"
 #include "i18n/catalog/Gui.h"
@@ -348,8 +349,11 @@ void tips(const TimeBreakdown& b, const TrainConfig& cfg, const SavingsContext& 
     }
     off(part(StepPart::Appearance), cfg.use_bilateral_grid, msg::opt_bilateral_grid,
         cfg.use_ppisp, msg::opt_ppisp, basic);
-    off(part(StepPart::Geometry), cfg.load_depths && cfg.depth_supervision_weight > 0.0f,
-        msg::opt_dataset_depths,
+    const bool scan_depth = cfg.depth_dir == lidar_layout::kDepths;
+    off(part(StepPart::Geometry),
+        cfg.load_depths &&
+            (scan_depth ? cfg.lidar_depth_weight : cfg.depth_supervision_weight) > 0.0f,
+        scan_depth ? msg::opt_scan_depths : msg::opt_dataset_depths,
         cfg.load_normals && (cfg.normal_supervision_weight > 0.0f ||
                              cfg.median_normal_supervision_weight > 0.0f),
         msg::opt_dataset_normals, basic);

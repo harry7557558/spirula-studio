@@ -10,7 +10,10 @@
 #include "data/ImageProbe.h"
 #include "data/Json.h"
 #include "data/JsonWrite.h"
+#include "data/LidarLayout.h"
 #include "data/PointCloudFile.h"
+#include "data/ScanStamp.h"
+#include "data/SparseEdit.h"
 #include "external/stb_image.h"
 #include "external/stb_image_write.h"
 #include "i18n/Message.h"
@@ -43,7 +46,7 @@ namespace {
 constexpr double kPi = 3.14159265358979323846;
 // Part of the signature: raised with a fix that changes the result, so a
 // dataset aligned before it is done again rather than reused.
-constexpr int kAlignVersion = 2;
+constexpr int kAlignVersion = 3;
 constexpr const char* kUnalignedDir = "sparse_unaligned";
 
 // The one draw of the scan everything else is taken from: the depth maps'
@@ -912,7 +915,10 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
         throw std::runtime_error(format(lmsg::err_unreadable_model, {sparse.string()}));
     if (opt.scanner_poses_only) sources.clear();
     const std::string sig = signature(opt, anchors_path);
-    if (ours && fresh.empty() && !opt.overwrite) {
+    // A cancelled run leaves no depth kind or pose record and maybe some of its own maps,
+    // so it needs a rerun.
+    if (ours && fresh.empty() && !opt.overwrite && fs::exists(ds / lidar_layout::kCameras, ec) &&
+        (!opt.depth_maps || fs::exists(ds / lidar_layout::kDepthKind, ec))) {
         const JsonValue* last_sig = last.find("signature");
         if (last_sig && last_sig->as_string() == sig) {
             log(format(lmsg::reused, {(sparse / "0").string()}));
@@ -1294,9 +1300,18 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     std::mutex mu;
     std::exception_ptr failure;
     int64_t done = 0;
+    // The pose record goes first, so a cancelled run cannot pass for the last one.
+    fs::remove(ds / lidar_layout::kCameras, ec);
+    // The trainer takes lidar/depths as this scan's: a run without maps
+    // must not leave an earlier run's behind.
     if (opt.depth_maps) {
-        fs::create_directories(ds / "depths", ec);
-        fs::create_directories(ds / "normals", ec);
+        fs::create_directories(ds / lidar_layout::kDepths, ec);
+        fs::create_directories(ds / lidar_layout::kNormals, ec);
+        // A cancelled run can leave maps of both kinds, so the record waits for the last map.
+        fs::remove(ds / lidar_layout::kDepthKind, ec);
+    } else {
+        fs::remove_all(ds / lidar_layout::kDepths, ec);
+        fs::remove_all(ds / lidar_layout::kNormals, ec);
     }
     const int nf = (int)frames.size();
 #pragma omp parallel for schedule(dynamic, 1)
@@ -1385,6 +1400,9 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
                 on += std::fabs((ray ? p.norm() : p.z) - d) <= kOnRatio * d + kOnSlack;
             }
             if (measured >= kOnMinPoints && 2 * on < measured) {
+                std::error_code rm;
+                fs::remove(ds / lidar_layout::kDepths / (stem_of(f.rel) + ".png"), rm);
+                fs::remove(ds / lidar_layout::kNormals / (stem_of(f.rel) + ".png"), rm);
                 std::lock_guard<std::mutex> lk(mu);
                 off_scan.insert(f.image);
                 log(format(lmsg::progress_maps, {(long long)++done, (long long)nf}));
@@ -1398,8 +1416,8 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
                     if (depth[j] > 0 && v <= 65535.0)
                         mm[j] = (uint16_t)std::max<long>(1, std::lround(v));
                 }
-                const fs::path dp = ds / "depths" / (stem + ".png");
-                const fs::path np = ds / "normals" / (stem + ".png");
+                const fs::path dp = ds / lidar_layout::kDepths / (stem + ".png");
+                const fs::path np = ds / lidar_layout::kNormals / (stem + ".png");
                 fs::create_directories(dp.parent_path());
                 fs::create_directories(np.parent_path());
                 if (!save_depth_png16(dp.string(), mm.data(), m.width, m.height))
@@ -1457,6 +1475,7 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     }
     if (failure) std::rethrow_exception(failure);
     if (cancelled()) { res.cancelled = true; return res; }
+    if (opt.depth_maps) write_depth_kind(ds.string(), ray);
     if (!off_scan.empty()) {
         std::set<std::string> stems;
         for (uint32_t id : off_scan) stems.insert(stem_of(out.images.at(id).name));
@@ -1482,6 +1501,10 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     }
     res.sfm_points = (int64_t)out.points.size();
     int64_t observed = 0, observations = 0;
+    std::vector<double> scan_xyz;
+    std::vector<uint8_t> scan_rgb;
+    scan_xyz.reserve(n_seed * 3);
+    scan_rgb.reserve(n_seed * 3);
     for (size_t s = 0; s < n_seed; s++) {
         ColPoint p;
         for (int a = 0; a < 3; a++) p.xyz[a] = seed_xyz[s * 3 + a];
@@ -1505,7 +1528,20 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
             observations++;
         }
         observed += !p.track.empty();
+        scan_xyz.insert(scan_xyz.end(), p.xyz, p.xyz + 3);
+        scan_rgb.insert(scan_rgb.end(), p.rgb, p.rgb + 3);
         out.points[id] = std::move(p);
+    }
+    // The model keeps the scan points for their tracks; this copy says which
+    // of its points the scan measured.
+    const fs::path scan_ply = ds / lidar_layout::kPoints;
+    if (n_seed > 0) {
+        fs::create_directories(scan_ply.parent_path(), ec);
+        spirula::write_ply_points(scan_ply.string(), scan_xyz.data(), scan_rgb.data(),
+                                  (int64_t)n_seed, nullptr, nullptr,
+                                  spirula::PlyCoordinates::Float64);
+    } else {
+        fs::remove(scan_ply, ec);
     }
     res.seed_points = (int64_t)n_seed;
     log(format(lmsg::seed_summary, {(long long)n_seed, fixed(voxel, 3), (long long)res.sfm_points}));
@@ -1579,6 +1615,7 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     fs::create_directories(sparse, ec);
     fs::rename(model_dir, sparse / "0", ec);
     if (ec) throw std::runtime_error("cannot write " + (sparse / "0").string() + ": " + ec.message());
+    scan_stamp::write(ds.string(), (sparse / "0" / "images.bin").string());
     fs::remove_all(tmp, ec);
     log(format(lmsg::done, {ds.string(), (long long)res.images,
                             (long long)out.points.size()}));

@@ -4,7 +4,9 @@
 #include "app/ScanDepth.h"
 #include "core/CameraModel.h"
 #include "data/JsonWrite.h"
+#include "data/LidarLayout.h"
 #include "data/PointCloudFile.h"
+#include "data/ScanStamp.h"
 #include "data/SparseEdit.h"
 #include "external/stb_image.h"
 #include "external/stb_image_write.h"
@@ -446,6 +448,8 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
     std::error_code ec;
     if (!opt.overwrite && fs::is_directory(out, ec) && !fs::is_empty(out, ec))
         throw std::runtime_error(format(emsg::err_not_empty, {out.string()}));
+    // The pose record goes first, so a cancelled run cannot pass for the last one.
+    fs::remove(out / lidar_layout::kCameras, ec);
     // Masks are made of these images, by the scanner or by masking, and a new
     // run makes its own; corrections live in mask_edits/ and are re-applied.
     fs::remove_all(out / "masks", ec);
@@ -575,12 +579,13 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
 
     std::vector<std::string> depth_paths(frames.size()), normal_paths(frames.size());
     if (opt.depth_maps && cloud.size() > 0) {
-        fs::create_directories(out / "depths", ec);
-        fs::create_directories(out / "normals", ec);
+        fs::create_directories(out / lidar_layout::kDepths, ec);
+        fs::create_directories(out / lidar_layout::kNormals, ec);
+        // A cancelled run can leave maps of both kinds, so the record waits for the last map.
+        fs::remove(out / lidar_layout::kDepthKind, ec);
         int64_t n_spherical = 0;
         for (const Frame& f : frames) n_spherical += std::strcmp(f.cam.model, "PINHOLE") != 0;
-        // The trainer reads every map of a dataset one way, by majority
-        // (TrainerCore.cpp resolve_ray_depth); a panorama's split needs ray depth.
+        // All maps of a dataset hold one kind, and a panorama's split needs ray depth.
         const bool ray = n_spherical * 2 > (int64_t)frames.size();
         const int n = (int)frames.size();
         std::mutex mu;
@@ -607,8 +612,10 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
                     if (depth[j] > 0 && v <= 65535.0)
                         mm[j] = (uint16_t)std::max<long>(1, std::lround(v));
                 }
-                const std::string dp = "depths/" + frames[(size_t)k].stem + ".png";
-                const std::string np = "normals/" + frames[(size_t)k].stem + ".png";
+                const std::string dp =
+                    std::string(lidar_layout::kDepths) + "/" + frames[(size_t)k].stem + ".png";
+                const std::string np =
+                    std::string(lidar_layout::kNormals) + "/" + frames[(size_t)k].stem + ".png";
                 if (!save_depth_png16((out / dp).string(), mm.data(), m.width, m.height))
                     throw std::runtime_error("cannot write " + (out / dp).string());
                 write_normal_png(out / np, normal, m.width, m.height);
@@ -626,11 +633,12 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
         res.depth_maps = done;
         std::set<std::string> maps;
         for (const Frame& f : frames) maps.insert(f.stem + ".png");
-        remove_others(out / "depths", maps);
-        remove_others(out / "normals", maps);
+        remove_others(out / lidar_layout::kDepths, maps);
+        remove_others(out / lidar_layout::kNormals, maps);
+        write_depth_kind(out.string(), ray);
     } else {
-        fs::remove_all(out / "depths", ec);
-        fs::remove_all(out / "normals", ec);
+        fs::remove_all(out / lidar_layout::kDepths, ec);
+        fs::remove_all(out / lidar_layout::kNormals, ec);
     }
 
     if (seeds && !seed_xyz.empty()) {
@@ -643,6 +651,10 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
         spirula::write_ply_points((out / "sparse_pc.ply").string(), seed_xyz.data(),
                                   seed_rgb.data(), res.seed_points, nullptr, nullptr,
                                   spirula::PlyCoordinates::Float64);
+        fs::create_directories((out / lidar_layout::kPoints).parent_path(), ec);
+        spirula::write_ply_points((out / lidar_layout::kPoints).string(), seed_xyz.data(),
+                                  seed_rgb.data(), res.seed_points, nullptr, nullptr,
+                                  spirula::PlyCoordinates::Float64);
         if (res.voxel > 0) {
             char edge[32];
             std::snprintf(edge, sizeof edge, "%.3g", res.voxel);
@@ -650,6 +662,10 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
         } else {
             log(format(emsg::seed_all, {(long long)res.seed_points}));
         }
+    } else {
+        // The parser seeds from a sparse_pc.ply that transforms.json does not name.
+        fs::remove(out / "sparse_pc.ply", ec);
+        fs::remove(out / lidar_layout::kPoints, ec);
     }
 
     JsonWriter w;
@@ -680,6 +696,7 @@ E57DatasetResult write_e57_dataset(const E57DatasetOptions& opt,
         f << w.str();
         if (!f) throw std::runtime_error("cannot write " + (out / "transforms.json").string());
     }
+    scan_stamp::write(out.string(), (out / "transforms.json").string());
     {
         // E57 is metres by definition, and scanners level their frame
         // (docs/datasets.md, "The frame").

@@ -201,7 +201,8 @@ and the cloud nonempty. Integer RGB is 0–255; floating RGB is 0–1.
 Relative paths resolve from the dataset directory; absolute paths also work.
 The CLI flag is `--seed-pointcloud lidar.ply`. Left empty, it picks the
 dataset's finished dense cloud (`dense/roma.ply`, [dense.md](dense.md)) when
-there is one; `sparse` always keeps the format's own cloud. In the GUI, Basic
+there is one, except next to a LiDAR scan ([LiDAR data](#lidar-data-in-lidar)): there
+the dense cloud seeds only when chosen. `sparse` always keeps the format's own cloud. In the GUI, Basic
 Options shows a **Starting points** choice only when the dataset has a dense
 cloud or a seed is already set: **Dense cloud**, **Sparse points** or **Other
 PLY file** with a file picker. Otherwise the flag is under All Options. Switching built-in training presets preserves
@@ -1182,6 +1183,92 @@ holding the same file names are a rig, judged and moved whole), and a finished
 dataset can be sorted again by a tighter rule without reconstructing it:
 docs/notes/dataset-rerun.md.
 
+## LiDAR data in `lidar/`
+
+Both scan writers put what the scan measured in a folder of its own:
+`spirula lidar` (the GUI's **Add LiDAR scan...** runs it for E57, LAS, PLY and
+XGRIDS captures) and `spirula e57`.
+
+| file | from the scan |
+|---|---|
+| `lidar/points.ply` | the scan's seed points, `double` coordinates |
+| `lidar/depths/<image>.png` | scan depth, 16-bit millimetres, 0 where the scan has none |
+| `lidar/depths/depth_kind.txt` | `ray` or `axial`: the distance those maps hold |
+| `lidar/normals/<image>.png` | normals from that depth |
+| `lidar/cameras.json` | the camera poses the files above were made for, written last |
+
+No photograph step and no depth model writes these files (the scan step also
+keeps `lidar/anchors.json` there, the scanner's image poses). So the trainer
+uses them as measurements, but only while the model still has those poses:
+
+- **Model check.** Before it loads the dataset, the trainer compares
+  `lidar/cameras.json` with the poses in the model it reads (`images.bin`,
+  `images.txt` or `transforms.json`, or the model folder chosen as
+  **Starting points**). Each image that both name must keep its pose. A
+  rebuild, a marker align or an editor save that moves or scales the model
+  fails the check, and so does a scan step that did not finish. Then the
+  trainer logs `lidar/ not used` and trains as if `lidar/` were absent: plain
+  `depths/` and `normals/`, no scan seed opacity, and the dense cloud as the
+  automatic seed. An editor save that only deletes points or cameras keeps
+  `lidar/` in use. Run the scan step again (`spirula lidar` or `spirula e57`)
+  to use the scan after a change. After a scale or move, use `--mode auto` or
+  `refine`: `--mode keep` takes the changed frame as the scan's. A rigid move
+  also fails the check, because the poses change, although the maps would
+  still fit.
+
+- **Depth.** When `lidar/depths/` exists, the trainer reads it in place of
+  `depths/` and runs `lidar_depth_weight` (default 0.1): a Cauchy loss on
+  the log ratio of rendered to scan depth, scale 3 %. The log makes the same
+  relative error cost the same at 2 m and at 20 m. The Cauchy pull fades for
+  large errors, because a scan map draws thin near objects (twigs, a sapling)
+  wider than they are. The Pearson term of `depth_supervision_weight` stays
+  off on scan depth, because it ignores the scale the laser measured. The term
+  runs on the finest loss scale only: a coarser scale would average the render
+  over pixels where the map has no depth.
+- **Normals.** `lidar/normals/` is read in place of `normals/`, with no
+  per-photo bilateral grid: that grid corrects a model's biased maps.
+- **Seeds.** `sparse/0` keeps the scan's points with their tracks, because
+  partitioning needs them. A seed that matches a point of `lidar/points.ply`
+  starts at `lidar_seed_opacity` (default 0.5), the others at `opacity_init`.
+  A dense cloud does not seed a scan dataset by itself, because it would
+  replace the measured points. **Starting points** names the default
+  **LiDAR scan** and keeps **Dense cloud** as a choice.
+- **Old maps.** Scan maps an older writer left in `depths/` and `normals/`
+  stay on disk, and the trainer reads `lidar/` in their place. A run without
+  maps (`--no-depth`) removes `lidar/depths/` and `lidar/normals/`, so no
+  earlier run's maps stay behind.
+
+A dataset made before `lidar/` existed trains as before, until its scan step
+runs again. A `lidar/` with no `cameras.json` fails the model check, and the
+next scan step writes the record (the step does not reuse a dataset without it).
+
+The check compares poses only. One limit follows from that: when all cameras
+stand at one point (a single E57 station), a scale about that point leaves
+every pose the same, and the check passes.
+
+Measured on a 60 s window of a 260 s XGRIDS PortalCam capture in a forest:
+180 training photos (three cameras at 1 fps), 491,689 scan seeds, 15,000
+steps, 2 M splats. Scores on 120 held-out fisheye frames (masked) and 60
+frames of a fourth camera that never trains, aligned and colour corrected:
+
+| run | fisheye LPIPS-alex | 4th camera PSNR / LPIPS-alex | median depth error, within 5 % | floaters |
+|---|---|---|---|---|
+| no `lidar/` (two runs) | 0.1396 | 21.06 / 0.360 | 2.2 %, 62 % | 22,099 / 22,550 |
+| seed opacity 0.5 | 0.1359 | 21.16 / 0.350 | 2.0 %, 64 % | 19,979 |
+| depth 0.1 | 0.1397 | 21.01 / 0.356 | 1.9 %, 66 % | 26,007 |
+| seed opacity 0.8 | 0.1350 | 21.20 / 0.349 | 2.0 %, 64 % | 19,130 |
+| depth 0.3 | 0.1454 | 20.76 / 0.357 | 1.6 %, 72 % | 29,182 |
+| both (the defaults) | 0.1366 | 21.07 / 0.348 | 1.8 %, 67 % | 21,986 |
+
+Depth error is the splat centres against the scan on the held-out frames.
+Floaters are splats in front of a scan surface in two or more of 60 photos.
+The two runs without `lidar/` differ by 0.001 LPIPS. A higher depth weight
+buys geometry with photo quality and floaters. Seen from 3 m above, roofs
+stay as soft as without `lidar/`: no photograph sees them, and the depth maps
+are drawn into the photographs. With Charbonnier in
+place of Cauchy, depth error fell to 1.5 %, but the twigs in front of a hut
+became blotches: fisheye PSNR -1.6 dB, floaters 36,104.
+
 ## E57 laser scans
 
 Two ways in. On the GUI's dataset screen a laser scan (E57, LAS or PLY) is an
@@ -1207,7 +1294,8 @@ measured on -- and from a Matterport Pro3 on Windows.
 | `masks/` | an image's `imageMask`, when it has one: any non-zero pixel is kept |
 | `transforms.json` | per-frame intrinsics and OpenGL camera-to-world, in full double precision |
 | `sparse_pc.ply` | the point clouds of every scan, posed into one frame and thinned (or all of them, `--points all`); `double` coordinates, since a geo-referenced scan sits millions of metres from its origin |
-| `depths/`, `normals/` | what the laser measured behind every pixel (below); `--no-depth` leaves them out |
+| `lidar/points.ply` | the same points as `sparse_pc.ply`, so the trainer knows them as scan points ([LiDAR data](#lidar-data-in-lidar)) |
+| `lidar/depths/`, `lidar/normals/` | what the laser measured behind every pixel (below); `--no-depth` leaves them out |
 | `gauge.txt` | `oriented 1`, `metric 1` (below) |
 
 `data/E57Reader.h` is the reader, with no libE57Format and no Xerces behind
@@ -1291,9 +1379,9 @@ size and batches without the trainer resampling across the holes. Depth is
 "no ground truth" sentinels `spirula geometry` writes. Pinhole maps hold depth
 along the optical axis and panoramas depth along the ray, and a dataset that
 mixes them follows the trainer's own majority vote (`resolve_ray_depth`). The
-normals are used by default (`normal_supervision_weight` 0.01); depth needs
-`--depth-supervision-weight`, and the loss is scale-and-shift invariant, so
-the laser's metres constrain shape rather than distance. `scan_depth_test`
+normals are used by default (`normal_supervision_weight` 0.01), and so is
+the depth: `lidar_depth_weight` holds the splats to the laser's metres
+([LiDAR data](#lidar-data-in-lidar)). `scan_depth_test`
 checks a plane, a sparse patch in front of it and a sphere around a panorama.
 
 On a tripod scan they improved the structure of held-out faces (SSIM) a

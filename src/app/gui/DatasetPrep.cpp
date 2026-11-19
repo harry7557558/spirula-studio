@@ -6,6 +6,7 @@
 #include "app/CubeLut.h"
 #include "app/LidarDataset.h"
 #include "app/gui/DatasetRecord.h"
+#include "data/LidarLayout.h"
 #include "dense/Artifact.h"
 #include "app/gui/mask/MaskLayer.h"
 #include "sfm/core/Resume.h"
@@ -1135,7 +1136,7 @@ std::vector<std::string> workspace_artifacts(const std::string& workspace,
     if (workspace.empty() || !fs::is_directory(ws, ec)) return out;
 
     auto add = [&](const char* name) {
-        const fs::path p = ws / name;
+        const fs::path p = (ws / name).make_preferred();
         if (fs::is_directory(p, ec) ? !fs::is_empty(p, ec) : fs::exists(p, ec))
             out.push_back(p.string());
     };
@@ -1145,7 +1146,9 @@ std::vector<std::string> workspace_artifacts(const std::string& workspace,
                              "normals", "depths",
                              ".progress", sfm::resume::kDir, "matches.bin",
                              "matches.bin.bak", "database.db", kDatasetRecordFile,
-                             ".spirula-recon", ".spirula-frames"})
+                             ".spirula-recon", ".spirula-frames",
+                             lidar_layout::kPoints, lidar_layout::kDepths, lidar_layout::kNormals,
+                             lidar_layout::kCameras})
         add(name);
     return out;
 }

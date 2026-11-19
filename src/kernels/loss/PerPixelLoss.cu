@@ -190,6 +190,7 @@ __global__ void per_pixel_losses_forward_kernel(
         if (out_loss_map != nullptr) {
             out_loss_map[idx] = fabsf(
                 losses[(int)RawLossIndex::RgbLoss] +
+                losses[(int)RawLossIndex::DepthSupMetric] +
                 losses[(int)RawLossIndex::RenderNormalSup] +
                 losses[(int)RawLossIndex::DepthNormalSup] +
                 losses[(int)RawLossIndex::AlphaSup] +
@@ -1195,6 +1196,11 @@ LossValues compute_multi_scale_per_pixel_losses(
         long Hs = ss[1], Ws = ss[2];
         size_t ppi = (size_t)(Hs * Ws);
 
+        // Scale 0 takes the metric term's whole weight: coarse renders average scan holes.
+        FixedArray<float, (uint)LossWeightIndex::length> scale_weights = loss_weights;
+        scale_weights.m_data[(uint)LossWeightIndex::DepthSupMetric] *=
+            scale == 0 ? (float)num_loss_scales : 0.0f;
+
         // Forward losses
         float* raw_losses_ptr = DevicePool::global().acquire<float>(
             PoolSlot::PplRawLosses, (size_t)(num_train_images+1) * (uint)RawLossIndex::length);
@@ -1231,7 +1237,7 @@ LossValues compute_multi_scale_per_pixel_losses(
             rgb_dist_s[scale], depth_dist_s[scale], normal_dist_s[scale],
             median_depth_s[scale], median_normal_s[scale],
             ref_alpha_s[scale], has_mask, saturation_threshold,
-            loss_weights, num_train_images, camera_indices,
+            scale_weights, num_train_images, camera_indices,
             per_pixel_loss_map_ptr, raw_losses_ptr, losses_ptr
         );
 
@@ -1299,7 +1305,7 @@ LossValues compute_multi_scale_per_pixel_losses(
             rgb_dist_s[scale], depth_dist_s[scale], normal_dist_s[scale],
             median_depth_s[scale], median_normal_s[scale],
             ref_alpha_s[scale], has_mask, saturation_threshold,
-            raw_losses_ptr, loss_weights, _fptr(v_losses),
+            raw_losses_ptr, scale_weights, _fptr(v_losses),
             num_train_images, camera_indices, scale_grads
         );
 
@@ -1492,6 +1498,7 @@ LossValues compute_multi_scale_per_pixel_losses(
         out.rgb_loss        = h_prev[(int)LossIndex::RgbLoss];
         out.rgb_psnr        = h_prev[(int)LossIndex::RgbPSNR];
         out.depth_sup       = h_prev[(int)LossIndex::DepthSup];
+        out.depth_sup_metric = h_prev[(int)LossIndex::DepthSupMetric];
         out.normal_sup      = h_prev[(int)LossIndex::NormalSup];
         out.alpha_sup       = h_prev[(int)LossIndex::AlphaSup];
         out.normal_reg      = h_prev[(int)LossIndex::NormalReg];

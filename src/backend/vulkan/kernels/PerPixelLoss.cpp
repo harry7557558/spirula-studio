@@ -31,9 +31,10 @@ namespace {
 
 using backend::MemcpyKind;
 
-constexpr int kNRaw = (int)RawLossIndex::length;   // 31
-constexpr int kNW = (int)LossWeightIndex::length;  // 19
-constexpr int kNL = (int)LossIndex::length;        // 14
+constexpr int kNRaw = (int)RawLossIndex::length;
+// An odd count keeps both param structs a multiple of 8 bytes (static_asserts below).
+constexpr int kNW = (int)LossWeightIndex::length;
+constexpr int kNL = (int)LossIndex::length;
 
 // ---------------------------------------------------------------------------
 // Param-struct mirrors (shaders/multi_scale_loss.slang etc.)
@@ -1131,6 +1132,11 @@ LossValues compute_multi_scale_per_pixel_losses(
         long Hs = ss[1], Ws = ss[2];
         long ppi = Hs * Ws;
 
+        // Scale 0 takes the metric term's whole weight: coarse renders average scan holes.
+        std::array<float, kNW> scale_weights = loss_weights_0;
+        scale_weights[(int)LossWeightIndex::DepthSupMetric] *=
+            scale == 0 ? (float)num_loss_scales : 0.0f;
+
         float* raw_losses_ptr = DevicePool::global().acquire<float>(
             PoolSlot::PplRawLosses, (size_t)(num_train_images + 1) * kNRaw);
         backend::memset_async(raw_losses_ptr, 0,
@@ -1170,7 +1176,7 @@ LossValues compute_multi_scale_per_pixel_losses(
             depth_normal_s[scale], ref_normal_s[scale], render_Ts_s[scale],
             rgb_dist_s[scale], depth_dist_s[scale], normal_dist_s[scale],
             median_depth_s[scale], median_normal_s[scale], ref_alpha_s[scale],
-            has_mask, saturation_threshold, loss_weights_0, camera_indices);
+            has_mask, saturation_threshold, scale_weights, camera_indices);
         if (_per_pixel_write && loss_map_ptr) {
             fp.loss_map = (uint64_t)loss_map_ptr;
             fp.in_flags |= kInLossMap;
@@ -1179,7 +1185,7 @@ LossValues compute_multi_scale_per_pixel_losses(
         dispatch_ppl("multi_scale_loss.ppl_fwd", ppi, B, fp);
 
         reduce_dispatch("multi_scale_loss.ppl_reduce_fwd", num_train_images,
-                        raw_losses_ptr, losses_ptr, nullptr, loss_weights_0);
+                        raw_losses_ptr, losses_ptr, nullptr, scale_weights);
 
         // Backward. Per-scale grad scratches: at scale 0 alias grads_out;
         // at scale > 0 allocate per-scale-keyed scratch at the input's own
@@ -1234,7 +1240,7 @@ LossValues compute_multi_scale_per_pixel_losses(
                 (size_t)(num_train_images + 1) * kNRaw);
             reduce_dispatch("multi_scale_loss.ppl_reduce_bwd",
                             num_train_images, raw_losses_ptr, _fptr(v_losses),
-                            v_raw_losses, loss_weights_0);
+                            v_raw_losses, scale_weights);
 
             PplParams bp = build_ppl_params(
                 B, ppi, (int)Ws, (int)Hs, render_rgb_s[scale],
@@ -1244,7 +1250,7 @@ LossValues compute_multi_scale_per_pixel_losses(
                 depth_dist_s[scale], normal_dist_s[scale],
                 median_depth_s[scale], median_normal_s[scale],
                 ref_alpha_s[scale], has_mask, saturation_threshold,
-                loss_weights_0, camera_indices);
+                scale_weights, camera_indices);
             bp.losses = (uint64_t)v_raw_losses;
             uint32_t out_flags = 0;
             const TorchTensorView* gs[13] = {
@@ -1414,6 +1420,7 @@ LossValues compute_multi_scale_per_pixel_losses(
         out.rgb_loss        = h_prev[(int)LossIndex::RgbLoss];
         out.rgb_psnr        = h_prev[(int)LossIndex::RgbPSNR];
         out.depth_sup       = h_prev[(int)LossIndex::DepthSup];
+        out.depth_sup_metric = h_prev[(int)LossIndex::DepthSupMetric];
         out.normal_sup      = h_prev[(int)LossIndex::NormalSup];
         out.alpha_sup       = h_prev[(int)LossIndex::AlphaSup];
         out.normal_reg      = h_prev[(int)LossIndex::NormalReg];

@@ -16,6 +16,7 @@
 #include "app/gui/mask/MaskLayer.h"
 #include "core/SourcePath.h"
 #include "data/ImageDiscovery.h"
+#include "data/LidarLayout.h"
 #include "external/stb_image_write.h"
 #include "i18n/catalog/Log.h"
 #include "i18n/catalog/MaskEdit.h"
@@ -898,8 +899,29 @@ void test_geometry_reel_outputs() {
     check(reel.size() == 1, "geometry flush does not duplicate published frames");
 }
 
+// Clear project takes the scan's points and maps, which the trainer reads as measurements.
+// Clear project keeps the scan photos and anchors in lidar/.
+void test_scan_outputs_are_artifacts() {
+    const auto ws = scratch("scan-outputs");
+    write_png(ws / lidar_layout::kDepths / "cam0" / "a.png", 4, 4, 1);
+    write_png(ws / lidar_layout::kNormals / "cam0" / "a.png", 4, 4, 1);
+    write_png(ws / "lidar" / "photos" / "scan" / "a.png", 4, 4, 1);
+    std::ofstream(ws / lidar_layout::kPoints) << "ply";
+    std::ofstream(ws / lidar_layout::kCameras) << "{}";
+    const std::vector<std::string> arts = gui::workspace_artifacts(ws.string(), {});
+    auto listed = [&](fs::path p) {
+        return std::find(arts.begin(), arts.end(), p.make_preferred().string()) != arts.end();
+    };
+    check(listed(ws / lidar_layout::kDepths) && listed(ws / lidar_layout::kNormals) &&
+              listed(ws / lidar_layout::kPoints) && listed(ws / lidar_layout::kCameras),
+          "artifacts: the scan's points, maps and pose record are the run's to clear");
+    check(!listed(ws / "lidar") && !listed(ws / "lidar" / "photos"),
+          "artifacts: lidar/ itself and its scan photos stay");
+}
+
 int main() {
     test_geometry_reel_outputs();
+    test_scan_outputs_are_artifacts();
     test_mask_output_ownership();
     test_source_aware_video_resume();
     test_bare_model_is_not_a_dataset();

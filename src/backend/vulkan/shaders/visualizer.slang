@@ -1183,8 +1183,10 @@ float3 thumb_bilinear_sample_f3(uint* src, uint fmt, int b, int x_dst,
                                 int y_dst, int W_dst, int H_dst, int W_src,
                                 int H_src) {
     // Mirrors Interpolation.cuh resolve_taps + bilinear_sample_f3.
-    float u = (float(x_dst) + 0.5f) * float(W_src) / float(W_dst) - 0.5f;
-    float v = (float(y_dst) + 0.5f) * float(H_src) / float(H_dst) - 0.5f;
+    float u = W_src == W_dst ? float(x_dst)
+                             : (float(x_dst) + 0.5f) * float(W_src) / float(W_dst) - 0.5f;
+    float v = H_src == H_dst ? float(y_dst)
+                             : (float(y_dst) + 0.5f) * float(H_src) / float(H_dst) - 0.5f;
     int x0r = int(floor(u)), y0r = int(floor(v));
     float fx = u - float(x0r), fy = v - float(y0r);
     int x0 = max(0, min(W_src - 1, x0r));

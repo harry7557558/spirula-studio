@@ -3,6 +3,7 @@
 #include "app/AppPaths.h"
 #include "app/LidarDataset.h"
 #include "app/gui/Subprocess.h"
+#include "data/LidarLayout.h"
 #include "data/PointCloudFile.h"
 #include "i18n/Locale.h"
 #include "i18n/catalog/Lidar.h"
@@ -186,7 +187,8 @@ bool run_lidar_step(const LidarJob& job, const std::string& dataset,
     prog.note(cmd, true);
 
     const fs::path root(dataset);
-    OutputWatch watch(reel, root / "normals", image_dir, root / "depths", /*fresh_only=*/true);
+    OutputWatch watch(reel, root / lidar_layout::kNormals, image_dir, root / lidar_layout::kDepths,
+                      /*fresh_only=*/true);
     const int rc = run_process(argv, "", [&](const std::string& raw) {
         const std::string line = trim_right(raw);
         if (line.empty()) return;

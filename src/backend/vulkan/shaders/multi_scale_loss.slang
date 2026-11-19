@@ -24,9 +24,9 @@
 #include "shaders/per_pixel_losses.slang"
 #undef CudaDeviceExport
 
-static const int kNRaw = int(RawLossIndex::length);        // 31
-static const int kNW = int(LossWeightIndex::length);       // 19
-static const int kNL = int(LossIndex::length);             // 14
+static const int kNRaw = int(RawLossIndex::length);
+static const int kNW = int(LossWeightIndex::length);
+static const int kNL = int(LossIndex::length);
 
 // in_flags bits (buffer present)
 static const uint kInCam = 1u << 0;
@@ -129,8 +129,11 @@ uint _ms_load_u8(uint* buf, uint idx) {
 void _ms_taps(int x_dst, int y_dst, int W_dst, int H_dst, int W_src, int H_src,
               out int x0, out int y0, out int x1, out int y1,
               out float w00, out float w01, out float w10, out float w11) {
-    float u = (float(x_dst) + 0.5f) * float(W_src) / float(W_dst) - 0.5f;
-    float v = (float(y_dst) + 0.5f) * float(H_src) / float(H_dst) - 0.5f;
+    // Equal sizes read the pixel itself, as resolve_taps does.
+    float u = W_src == W_dst ? float(x_dst)
+                             : (float(x_dst) + 0.5f) * float(W_src) / float(W_dst) - 0.5f;
+    float v = H_src == H_dst ? float(y_dst)
+                             : (float(y_dst) + 0.5f) * float(H_src) / float(H_dst) - 0.5f;
     int x0_raw = int(floor(u));
     int y0_raw = int(floor(v));
     float fx = u - float(x0_raw);
@@ -372,6 +375,7 @@ void ppl_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         if ((p.in_flags & kInLossMap) != 0) {
             p.loss_map[idx] = abs(
                 losses[int(RawLossIndex::RgbLoss)] +
+                losses[int(RawLossIndex::DepthSupMetric)] +
                 losses[int(RawLossIndex::RenderNormalSup)] +
                 losses[int(RawLossIndex::DepthNormalSup)] +
                 losses[int(RawLossIndex::AlphaSup)] +

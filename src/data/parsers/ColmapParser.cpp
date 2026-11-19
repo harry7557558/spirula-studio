@@ -732,17 +732,31 @@ static std::string find_colmap_recon(const std::string& dataset_dir,
     return {};
 }
 
-ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
-                                    const DatasetParserConfig& cfg) {
-    ColmapModelFmt fmt;
-    std::string near_miss;
+// A seed that names a model folder is the model the run trains with.
+static std::string find_training_recon(const std::string& dataset_dir,
+                                       const DatasetParserConfig& cfg, ColmapModelFmt* fmt,
+                                       bool verbose, std::string* near_miss = nullptr) {
     DatasetParserConfig model_cfg = cfg;
     std::error_code ec;
     if (!cfg.seed_pointcloud.empty() &&
         fs::is_directory(fs::path(dataset_dir) / cfg.seed_pointcloud, ec))
         model_cfg.recon_dir = cfg.seed_pointcloud;
-    std::string recon_dir = find_colmap_recon(dataset_dir, model_cfg, &fmt,
-                                              /*verbose=*/true, &near_miss);
+    return find_colmap_recon(dataset_dir, model_cfg, fmt, verbose, near_miss);
+}
+
+std::string colmap_images_file(const std::string& dataset_dir, const DatasetParserConfig& cfg) {
+    ColmapModelFmt fmt;
+    const std::string dir = find_training_recon(dataset_dir, cfg, &fmt, false);
+    if (dir.empty()) return {};
+    return (fs::path(dir) / (fmt.images == ColmapFmt::Text ? "images.txt" : "images.bin")).string();
+}
+
+ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
+                                    const DatasetParserConfig& cfg) {
+    ColmapModelFmt fmt;
+    std::string near_miss;
+    std::string recon_dir = find_training_recon(dataset_dir, cfg, &fmt,
+                                                /*verbose=*/true, &near_miss);
     if (recon_dir.empty())
         throw std::runtime_error(
             "ColmapParser: no COLMAP reconstruction (cameras and images"

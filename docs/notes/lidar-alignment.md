@@ -19,7 +19,7 @@ the scans' frames), `app/LidarDataset.h` (the dataset),
 ```
 scan.e57 ──► photographs + their scan poses ─┐   (anchors.json)
 scan.las ──► views rendered from where the   ├─► SfM ─► spirula lidar ─► sparse/0 in the scan frame
-             scanner stood (no photographs)  │          (fit, merge,        + depths/ normals/
+             scanner stood (no photographs)  │          (fit, merge,        + lidar/
 photos / videos ─────────────────────────────┘           seeds, tracks)
 ```
 

@@ -9,6 +9,10 @@
 #include "core/CameraModel.h"
 #include "data/CameraMath.h"
 #include "data/DatasetParser.h"
+#include "data/Json.h"
+#include "data/JsonWrite.h"
+#include "data/LidarLayout.h"
+#include "data/ScanStamp.h"
 #include "data/SceneTransform.h"
 #include "data/tests/E57TestFile.h"
 #include "external/stb_image_write.h"
@@ -18,6 +22,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <iterator>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -222,6 +228,52 @@ int main() {
           ds.camera_models[1] == (int)CameraModelType::EQUIRECTANGULAR, "camera models");
     check(ds.gauge_oriented && ds.gauge_metric, "gauge.txt: +Z up, metres");
     check(ds.points.num() == res.seed_points, "the seed cloud");
+    const fs::path out(opt.output);
+    check(read_ply_points((out / lidar_layout::kPoints).string()).num() == res.seed_points,
+          "lidar/points.ply holds the seed cloud");
+    check(ds.depth_filenames.size() == 2 &&
+              fs::path(ds.depth_filenames[1]).parent_path() ==
+                  (out / lidar_layout::kDepths).lexically_normal(),
+          "the depth maps are read from lidar/depths");
+    {
+        // One panorama and one pinhole do not make a majority of split frames.
+        std::ifstream file(out / lidar_layout::kDepthKind);
+        std::string kind;
+        file >> kind;
+        check(kind == "axial", "lidar/depths records the distance its maps hold");
+    }
+    {
+        // Editor saves that leave the poses or change them, written over transforms.json.
+        const fs::path transforms = out / "transforms.json";
+        const std::string poses = scan_stamp::pose_file(opt.output, "", "", "");
+        std::string original;
+        {
+            std::ifstream f(transforms, std::ios::binary);
+            original.assign(std::istreambuf_iterator<char>(f), {});
+        }
+        auto save = [&](const std::function<void(std::vector<JsonValue>&)>& edit) {
+            JsonValue meta = json_parse(original);
+            for (auto& [key, value] : meta.obj)
+                if (key == "frames") edit(value.arr);
+            JsonWriter w;
+            json_write(w, meta);
+            std::ofstream(transforms, std::ios::binary | std::ios::trunc) << w.str();
+        };
+        check(poses == transforms.string() && scan_stamp::matches(opt.output, poses),
+              "lidar/cameras.json records the poses lidar/ was made for");
+        save([](std::vector<JsonValue>& frames) { frames.resize(1); });
+        check(scan_stamp::matches(opt.output, poses), "a dropped camera leaves lidar/ in use");
+        save([](std::vector<JsonValue>& frames) {
+            for (JsonValue& f : frames)
+                for (auto& [key, value] : f.obj)
+                    if (key == "transform_matrix")
+                        for (int r = 0; r < 3; r++) value.arr[(size_t)r].arr[3].num *= 1.01;
+        });
+        check(!scan_stamp::matches(opt.output, poses), "a model scaled by 1 % no longer fits lidar/");
+        save([](std::vector<JsonValue>&) {});
+        fs::remove(out / lidar_layout::kCameras);
+        check(!scan_stamp::matches(opt.output, poses), "lidar/ without a pose record is not used");
+    }
 
     // Every camera must send a world point to the pixel its E57 image has it at.
     const float zero[kCameraDistortionParams] = {};
@@ -316,6 +368,28 @@ int main() {
         check(wrong_way == app::E57Check::Fixed && worst(R_got) < 1e-5,
               "alignment check: a photo posed with the wrong axes is turned back");
     }
+
+    {
+        // Panoramas alone are a majority of split frames.
+        opt.pinhole = false;
+        app::write_e57_dataset(opt, [](const std::string&) {});
+        std::ifstream file(out / lidar_layout::kDepthKind);
+        std::string kind;
+        file >> kind;
+        check(kind == "ray", "lidar/depths records ray depth for panoramas");
+        check(scan_stamp::matches(opt.output, scan_stamp::pose_file(opt.output, "", "", "")),
+              "a new run records its poses again");
+        opt.pinhole = true;
+    }
+
+    // A run without maps or seeds leaves no earlier run's maps or seeds behind.
+    opt.depth_maps = false;
+    opt.seed_points = 0;
+    app::write_e57_dataset(opt, [](const std::string&) {});
+    check(!fs::exists(out / lidar_layout::kDepths) && !fs::exists(out / lidar_layout::kNormals) &&
+              !fs::exists(out / lidar_layout::kPoints) && !fs::exists(out / "sparse_pc.ply"),
+          "--no-depth --points 0 removes the old maps and seed clouds");
+    check(parse_dataset(opt.output, cfg, "").points.num() == 0, "and the parser finds no seeds");
 
     fs::remove_all(dir);
     std::printf(g_failures ? "\n%d FAILED\n" : "\nall passed\n", g_failures);

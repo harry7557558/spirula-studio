@@ -7,6 +7,8 @@
 #include "dense/Artifact.h"
 #include "dense/Versions.h"
 #include "data/SeedPointCount.h"
+#include "data/LidarLayout.h"
+#include "data/ScanStamp.h"
 
 #include "core/ColorBasis.h"
 #include "core/ColorSpace.h"
@@ -7772,7 +7774,8 @@ GuiApp::DatasetFolders GuiApp::workspace_folders(const WorkspaceState& prior) co
 // -1 leaves the automatic budget waiting for a parsed dataset.
 int64_t GuiApp::starting_points() {
     std::error_code ec;
-    const std::string seed = _cfg.seed_pointcloud.empty() && dense_cloud_present()
+    const std::string seed =
+        _cfg.seed_pointcloud.empty() && dense_cloud_present() && !scan_cloud_present()
         ? spirula::dense::artifact_files(_cfg.data).cloud.string()
         : _cfg.seed_pointcloud == spirula::dense::kSparseSeed ? std::string() : _cfg.seed_pointcloud;
     if (!seed.empty()) {
@@ -12009,8 +12012,32 @@ bool GuiApp::dense_cloud_present() {
         _dense_probe_data = _cfg.data;
         _dense_probe_time = now;
         _dense_probe_found = !_cfg.data.empty() && dense_completed(_cfg.data);
+        std::error_code ec;
+        _scan_probe_found = !_cfg.data.empty() &&
+            fs::is_regular_file(fs::path(_cfg.data) / lidar_layout::kPoints, ec);
+        if (_scan_probe_found) {
+            const std::string& seed = _cfg.seed_pointcloud;
+            const std::string poses = scan_stamp::pose_file(
+                _cfg.data, _cfg.data_format, _cfg.colmap_recon_dir,
+                seed == spirula::dense::kSparseSeed ? std::string() : seed);
+            const auto poses_time = fs::last_write_time(poses, ec);
+            const auto stamp_time = fs::last_write_time(fs::path(_cfg.data) / lidar_layout::kCameras, ec);
+            if (poses != _scan_stamp_poses || poses_time != _scan_stamp_poses_time ||
+                stamp_time != _scan_stamp_time) {
+                _scan_stamp_poses = poses;
+                _scan_stamp_poses_time = poses_time;
+                _scan_stamp_time = stamp_time;
+                _scan_stamp_current = scan_stamp::matches(_cfg.data, poses);
+            }
+            _scan_probe_found = _scan_stamp_current;
+        }
     }
     return _dense_probe_found;
+}
+
+bool GuiApp::scan_cloud_present() {
+    dense_cloud_present();
+    return _scan_probe_found;
 }
 
 void GuiApp::refresh_dense_versions(const std::string& dataset, bool force) {
@@ -12153,6 +12180,9 @@ const std::vector<GuiApp::SeedFile>& GuiApp::dataset_seed_files() {
 void GuiApp::draw_seed_cloud(TrainRunner::Phase ph) {
     enum { Dense, Sparse, Other, File };   // File + i is dataset_seed_files()[i]
     const bool dense = dense_cloud_present();
+    // Next to a scan, the default is the model's points, the scan's among them,
+    // and the dense cloud must be named to be used.
+    const bool scan = scan_cloud_present();
     const std::vector<SeedFile>& files = dataset_seed_files();
     std::vector<int> ids;
     std::vector<std::string> labels;
@@ -12163,7 +12193,7 @@ void GuiApp::draw_seed_cloud(TrainRunner::Phase ph) {
     };
     if (dense) add(Dense, msg::seed_choice_dense.get());
     add_files(true);
-    add(Sparse, msg::seed_choice_sparse.get());
+    add(Sparse, scan ? msg::seed_choice_scan.get() : msg::seed_choice_sparse.get());
     add_files(false);
     add(Other, msg::seed_choice_other.get());
     const std::string& seed = _cfg.seed_pointcloud;
@@ -12172,7 +12202,7 @@ void GuiApp::draw_seed_cloud(TrainRunner::Phase ph) {
     for (size_t i = 0; i < files.size() && file < 0; i++)
         if (files[i].seed == listed) file = File + (int)i;
     const int choice = _seed_other && seed.empty() ? Other
-        : seed.empty() ? (dense ? Dense : Sparse)
+        : seed.empty() ? (dense && !scan ? Dense : Sparse)
         : seed == spirula::dense::kSparseSeed ? Sparse
         : file >= 0 ? file
         : spirula::dense::is_dense_seed(_cfg.data, seed) ? Dense : Other;
@@ -12185,6 +12215,8 @@ void GuiApp::draw_seed_cloud(TrainRunner::Phase ph) {
         _seed_other = ids[at] == Other;
         if (ids[at] == Sparse) _cfg.seed_pointcloud = spirula::dense::kSparseSeed;
         else if (ids[at] >= File) _cfg.seed_pointcloud = files[(size_t)(ids[at] - File)].seed;
+        else if (ids[at] == Dense && scan)
+            _cfg.seed_pointcloud = spirula::dense::artifact_files(_cfg.data).cloud.string();
         else if (ids[at] == Dense || choice != Other) _cfg.seed_pointcloud.clear();
         _cfg_ui.touched.insert("seed_pointcloud");
     }
@@ -12238,16 +12270,20 @@ void GuiApp::draw_dataset_aux(float width) {
     if (!s->ds.mask_filenames.empty() || !s->alpha_images.empty())
         draw_train_mask_mode(width);
     if (!s->ds.depth_filenames.empty()) {
-        bool on = _cfg.load_depths && _cfg.depth_supervision_weight > 0.0f;
-        if (ui::Checkbox(msg::opt_dataset_depths, &on)) {
+        // A scan's maps are metric and have their own term.
+        const bool scan = s->cfg.depth_dir == lidar_layout::kDepths;
+        float& weight = scan ? _cfg.lidar_depth_weight : _cfg.depth_supervision_weight;
+        const float preset = scan ? _defaults.lidar_depth_weight : _defaults.depth_supervision_weight;
+        bool on = _cfg.load_depths && weight > 0.0f;
+        if (ui::Checkbox(scan ? msg::opt_scan_depths : msg::opt_dataset_depths, &on)) {
             _cfg.load_depths = _cfg.load_depths || on;
-            _cfg.depth_supervision_weight = !on ? 0.0f
-                : _defaults.depth_supervision_weight > 0.0f ? _defaults.depth_supervision_weight
-                                                           : kDatasetDepthWeight;
+            weight = !on ? 0.0f
+                : preset > 0.0f ? preset
+                : scan ? TrainConfig{}.lidar_depth_weight : kDatasetDepthWeight;
             _cfg_ui.touched.insert("load_depths");
-            _cfg_ui.touched.insert("depth_supervision_weight");
+            _cfg_ui.touched.insert(scan ? "lidar_depth_weight" : "depth_supervision_weight");
         }
-        ui::help_on_hover(msg::opt_dataset_depths_help);
+        ui::help_on_hover(scan ? msg::opt_scan_depths_help : msg::opt_dataset_depths_help);
     }
     if (!s->ds.normal_filenames.empty()) {
         bool on = _cfg.load_normals && (_cfg.normal_supervision_weight > 0.0f ||
