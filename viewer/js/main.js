@@ -213,13 +213,12 @@ function setCenterMode(mode) {
   recenterAt(mat3.mulVec(upTransform(), [fs[0], fs[1], fs[2]]));
 }
 const CAMERA_CENTER_MODES = { 2: 1, 3: 4, 5: 4 };   // camera mode -> its point fallback
-// A file has no cameras, so the camera statistics are offered only over a
-// dataset; a selected one drops to the point statistic it would fall back to.
+// Camera modes fall back to point statistics when no camera poses exist.
 function syncCenterMenu() {
   const sel = $('center-mode');
-  const isDataset = !!(model && model.type === 'dataset');
-  for (const o of sel.options) o.disabled = !isDataset && (+o.value in CAMERA_CENTER_MODES);
-  if (!isDataset && opts.centerMode in CAMERA_CENTER_MODES) {
+  const hasCameras = !!(model?.type === 'dataset' && dataset?.cameras.length);
+  for (const o of sel.options) o.disabled = !hasCameras && (+o.value in CAMERA_CENTER_MODES);
+  if (!hasCameras && opts.centerMode in CAMERA_CENTER_MODES) {
     opts.centerMode = CAMERA_CENTER_MODES[opts.centerMode];
     sel.value = String(opts.centerMode);
   }

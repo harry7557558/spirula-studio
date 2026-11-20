@@ -113,10 +113,9 @@ plain C++17 with no CUDA dependency (see `csrc/CameraModel.h`).
   camera model.
 - The **Center** menu (Scene section, next to the up-axis toggle) picks what
   the view orbits about and fits to: the model's origin, the point cloud's
-  geometric median or mean, or over a dataset the camera positions' median or
-  mean or the point the cameras look at. Camera position median is the
-  default; over a splat or mesh file, which has no cameras, the camera entries
-  are disabled and the point statistics stand in. The same six modes are the
+  geometric median or mean, or the camera positions' median or mean or the
+  point the cameras look at. Camera entries are disabled without camera poses,
+  including point-only datasets; the point statistics stand in. The same six modes are the
   trainer's `--scene-center` and the native GUI viewport's menu
   (`src/data/SceneCenter.h` is the one implementation).
 - One model at a time — dropping another replaces it and frees the previous GPU

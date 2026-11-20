@@ -6,6 +6,7 @@ import { dirname, extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { checkImportControls } from './import_controls.mjs';
+import { checkCameraCenters } from './camera_centers.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const evidence = process.env.SS_VIEWER_EVIDENCE || await mkdtemp(resolve(tmpdir(), 'spirula-viewer-test-'));
@@ -33,7 +34,7 @@ try {
   browser = await chromium.launch(process.env.SS_VIEWER_CHROME === '1'
     ? {channel:'chrome', headless:true}
     : {args:['--use-angle=swiftshader', '--enable-unsafe-swiftshader']});
-  for (const name of ['shader_smoke', 'import_recovery', 'import_controls']) {
+  for (const name of ['shader_smoke', 'import_recovery', 'import_controls', 'camera_centers']) {
     const page = await browser.newPage({viewport:{width:1280,height:850}});
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -51,6 +52,7 @@ try {
     let text;
     try {
       if (name === 'import_controls') text = await checkImportControls(page, origin, evidence);
+      else if (name === 'camera_centers') text = await checkCameraCenters(page, origin, evidence);
       else {
         await page.goto(`${origin}/viewer/tests/${name}.html`);
         await page.waitForFunction(() => /^(PASS|FAIL|ERROR)/.test(document.getElementById('result').textContent));
