@@ -3964,9 +3964,7 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                         const auto family = scratch / std::to_string(k);
                         fs::create_directory(family);
                         auto save = [&](const sam::Mask& m, const Dst& dst, const char* name) {
-                            return !dst.write || (!m.data.empty() &&
-                                stbi_write_png((family / name).string().c_str(),
-                                    m.width, m.height, 1, m.data.data(), m.width));
+                            return !dst.write || sam::save_mask_png(m, (family / name).string());
                         };
                         if (!save(mask, todo_dst[k], "train-final.png") ||
                             !save(feature, todo_fdst[k], "feature-final.png")) {
