@@ -85,22 +85,29 @@ bool run_inference_workers(
     const std::vector<WorkerTask>& tasks, uint64_t max_host_bytes,
     const std::atomic<bool>& cancel,
     const std::function<bool(size_t, const std::string&, std::string&)>& accept,
-    const std::function<void(const std::string&)>& log, std::string& error) {
+    const std::function<void(const std::string&)>& log, std::string& error,
+    const std::function<bool(size_t, const std::string&, std::string&)>& prepare,
+    const std::function<void(size_t)>& published) {
+    if (published && !prepare) { error = "Inference publication callback requires preparation"; return false; }
     if (tasks.empty()) return true;
     if (commands.empty() || !max_host_bytes) { error = "No inference worker resources admitted"; return false; }
     for (const auto& task : tasks) {
-        if (!task.host_bytes || task.host_bytes > max_host_bytes || task.request.empty() || task.request.size() > kMaxFrame) {
+        if (!task.host_bytes || task.host_bytes > max_host_bytes || task.accept_bytes > task.host_bytes ||
+            task.request.empty() || task.request.size() > kMaxFrame) {
             error = "Inference task exceeds its host-byte or protocol budget";
             return false;
         }
     }
-    std::mutex mutex, log_mutex;
+    std::mutex mutex, accept_mutex, log_mutex;
     std::condition_variable space;
     std::atomic<bool> failed{false}, finished{false};
     std::vector<std::unique_ptr<gui::ProcessDuplex>> children;
+    auto fail_locked = [&](const std::string& why) {
+        if (!failed.exchange(true)) error = why;
+    };
     auto fail = [&](const std::string& why) {
         std::lock_guard<std::mutex> lock(mutex);
-        if (!failed.exchange(true)) error = why;
+        fail_locked(why);
         space.notify_all();
     };
     for (size_t i = 0; i < commands.size() && i < tasks.size(); ++i) {
@@ -129,42 +136,115 @@ bool run_inference_workers(
     for (auto& owned : children) {
         auto* child = owned.get();
         workers.emplace_back([&, child] {
+            uint64_t charged = 0;
             try {
+                size_t index = tasks.size();
                 for (;;) {
-                    size_t index;
-                    {
-                        std::unique_lock<std::mutex> lock(mutex);
-                        space.wait(lock, [&] { return cancel.load() || failed.load() || next == tasks.size() ||
-                            tasks[next].host_bytes <= max_host_bytes - resident; });
-                        if (cancel.load() || failed.load() || next == tasks.size()) break;
-                        index = next++;
-                        resident += tasks[index].host_bytes;
+                    if (cancel.load() || failed.load()) break;
+                    if (index == tasks.size()) {
+                        {
+                            std::unique_lock<std::mutex> lock(mutex);
+                            space.wait(lock, [&] {
+                                return cancel.load() || failed.load() || next == tasks.size() ||
+                                    tasks[next].host_bytes <= max_host_bytes - resident;
+                            });
+                            if (cancel.load() || failed.load() || next == tasks.size()) break;
+                            index = next++;
+                            charged = tasks[index].host_bytes;
+                            resident += charged;
+                        }
+                        if (!send([&](const void* p, size_t n) { return child->write(p, n); }, tasks[index].request)) {
+                            fail("Inference worker died or returned an invalid/incomplete frame");
+                            break;
+                        }
                     }
+                    if (cancel.load() || failed.load()) break;
                     std::string response;
-                    if (!send([&](const void* p, size_t n) { return child->write(p, n); }, tasks[index].request) ||
-                        !receive([&](void* p, size_t n) { return child->read(p, n); }, response)) {
+                    if (!receive([&](void* p, size_t n) { return child->read(p, n); }, response)) {
                         fail("Inference worker died or returned an invalid/incomplete frame");
                         break;
                     }
+                    if (!prepare) {
+                        {
+                            std::lock_guard<std::mutex> lock(mutex);
+                            if (!cancel.load() && !failed.load()) {
+                                try {
+                                    std::string why;
+                                    if (!accept(index, response, why))
+                                        fail_locked(why.empty() ? "Inference output family was rejected" : why);
+                                } catch (const std::exception& e) { fail_locked(e.what()); }
+                                  catch (...) { fail_locked("Inference worker callback threw an unknown exception"); }
+                            }
+                            resident -= charged;
+                            charged = 0;
+                        }
+                        space.notify_all();
+                        index = tasks.size();
+                        continue;
+                    }
+                    const uint64_t keep = tasks[index].accept_bytes ?
+                        tasks[index].accept_bytes : tasks[index].host_bytes;
+                    size_t following = tasks.size();
                     {
                         std::lock_guard<std::mutex> lock(mutex);
-                        if (!cancel.load() && !failed.load()) {
-                            std::string why;
-                            if (!accept(index, response, why)) {
-                                failed = true;
-                                error = why.empty() ? "Inference output family was rejected" : why;
-                            }
+                        const uint64_t released = tasks[index].host_bytes - keep;
+                        resident -= released;
+                        charged -= released;
+                        if (!cancel.load() && !failed.load() && next < tasks.size() &&
+                            tasks[next].host_bytes <= max_host_bytes - resident) {
+                            following = next++;
+                            resident += tasks[following].host_bytes;
+                            charged += tasks[following].host_bytes;
                         }
-                        resident -= tasks[index].host_bytes;
                     }
                     space.notify_all();
+                    if (following != tasks.size() &&
+                        !send([&](const void* p, size_t n) { return child->write(p, n); }, tasks[following].request)) {
+                        fail("Inference worker died or returned an invalid/incomplete frame");
+                        break;
+                    }
+                    if (cancel.load() || failed.load()) break;
+                    std::string why;
+                    if (!prepare(index, response, why)) {
+                        fail(why.empty() ? "Inference output preparation failed" : why);
+                        break;
+                    }
+                    bool accepted = false;
+                    {
+                        std::lock_guard<std::mutex> lock(accept_mutex);
+                        if (!cancel.load() && !failed.load()) {
+                            try {
+                                accepted = accept(index, response, why);
+                                if (!accepted)
+                                    fail(why.empty() ? "Inference output family was rejected" : why);
+                            } catch (const std::exception& e) { fail(e.what()); }
+                              catch (...) { fail("Inference worker callback threw an unknown exception"); }
+                        }
+                    }
+                    if (!accepted) break;
+                    if (published) published(index);
+                    {
+                        std::lock_guard<std::mutex> lock(mutex);
+                        resident -= keep;
+                        charged -= keep;
+                    }
+                    space.notify_all();
+                    index = following;
                 }
-                if (child->finish() != 0 && !cancel.load()) fail("Inference worker exited unsuccessfully");
             } catch (const std::exception& e) { fail(e.what()); }
+              catch (...) { fail("Inference worker callback threw an unknown exception"); }
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                resident -= charged;
+            }
+            space.notify_all();
+            if (child->finish() != 0 && !cancel.load()) fail("Inference worker exited unsuccessfully");
         });
     }
     } catch (const std::exception& e) {
         fail(e.what());
+    } catch (...) {
+        fail("Could not start inference worker thread");
     }
     for (auto& worker : workers) worker.join();
     finished = true;

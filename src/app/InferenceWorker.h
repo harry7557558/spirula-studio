@@ -13,6 +13,7 @@ namespace app {
 struct WorkerTask {
     std::string request;
     uint64_t host_bytes = 0;
+    uint64_t accept_bytes = 0;  // Zero retains host_bytes, including later caller adjustments.
 };
 
 // Call before model initialization: preserves a binary protocol stdout and sends
@@ -26,6 +27,8 @@ bool run_inference_workers(
     const std::vector<WorkerTask>& tasks, uint64_t max_host_bytes,
     const std::atomic<bool>& cancel,
     const std::function<bool(size_t, const std::string&, std::string&)>& accept,
-    const std::function<void(const std::string&)>& log, std::string& error);
+    const std::function<void(const std::string&)>& log, std::string& error,
+    const std::function<bool(size_t, const std::string&, std::string&)>& prepare = {},
+    const std::function<void(size_t)>& published = {});
 
 }  // namespace app

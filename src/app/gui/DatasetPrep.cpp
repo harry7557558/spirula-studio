@@ -19,6 +19,8 @@
 #include "app/gui/PickSheet.h"
 #include "app/gui/Subprocess.h"
 
+#include "core/AtomicFile.h"
+#include "core/BufferedFile.h"
 #include "core/HardwareThreads.h"
 #include "core/ImageFile.h"
 #include "core/ImageOrient.h"
@@ -448,17 +450,22 @@ public:
         if (it == _fm.end()) return true;
 
         Key key{it->first, mask.width, mask.height};
-        auto cached = _cache.find(key);
-        if (cached == _cache.end()) {
-            std::vector<uint8_t> px;
-            if (!app::rasterize_frame_mask(it->second, mask.width, mask.height,
-                                           px, error))
-                return false;
-            cached = _cache.emplace(key, std::move(px)).first;
+        const std::vector<uint8_t>* px = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(_cache_mutex);
+            const auto cached = _cache.find(key);
+            if (cached != _cache.end()) px = &cached->second;
         }
-        const std::vector<uint8_t>& px = cached->second;
-        for (size_t i = 0; i < mask.data.size() && i < px.size(); i++)
-            if (!px[i]) mask.data[i] = 0;
+        if (!px) {
+            std::vector<uint8_t> raster;
+            if (!app::rasterize_frame_mask(it->second, mask.width, mask.height,
+                                           raster, error))
+                return false;
+            std::lock_guard<std::mutex> lock(_cache_mutex);
+            px = &_cache.try_emplace(std::move(key), std::move(raster)).first->second;
+        }
+        for (size_t i = 0; i < mask.data.size() && i < px->size(); i++)
+            if (!(*px)[i]) mask.data[i] = 0;
         return true;
     }
 
@@ -474,6 +481,7 @@ private:
     };
     std::map<std::string, app::FrameMask> _fm;
     std::map<Key, std::vector<uint8_t>> _cache;
+    std::mutex _cache_mutex;
 };
 #endif
 
@@ -3741,18 +3749,29 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
     }
 
     if (isolated) {
-        fs::path scratch;
-        bool scratch_owned = false;
+        fs::path scratch, local_scratch;
+        bool scratch_owned = false, local_scratch_owned = false;
         try {
             const auto devices = app::expand_worker_devices(
                 app::parse_worker_devices(job.inference_devices), app::workers_per_gpu());
             const uint64_t budget = app::default_worker_memory_bytes();
             const fs::path base = fs::path(job.workspace) / ".spirula-mask-attempts";
             fs::create_directories(base);
-            const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+            const fs::path local_base = fs::temp_directory_path() / "spirula-mask-attempts";
+            fs::create_directories(local_base);
+            const auto nonce = (long long)std::chrono::steady_clock::now().time_since_epoch().count();
             for (unsigned attempt = 0;; ++attempt) {
-                scratch = base / (std::to_string(nonce) + "-" + std::to_string(attempt));
-                if (fs::create_directory(scratch)) { scratch_owned = true; break; }
+                const auto name = std::to_string(nonce) + "-" + std::to_string(attempt);
+                scratch = base / name;
+                if (!fs::create_directory(scratch)) continue;
+                scratch_owned = true;
+                local_scratch = local_base / name;
+                if (fs::create_directory(local_scratch)) {
+                    local_scratch_owned = true;
+                    break;
+                }
+                remove_tree(scratch);
+                scratch_owned = false;
             }
             const std::string recipe = app::mask_worker_recipe(mo, job.image_gamut,
                 job.image_is_linear, job.image_exposure);
@@ -3787,44 +3806,48 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                 groups.emplace_back();
                 for (size_t k = 0; k < todo.size(); ++k) groups.back().push_back(k);
             } else {
-                for (size_t k = 0; k < todo.size(); k += 2) {
-                    groups.push_back({k});
-                    if (k + 1 < todo.size()) groups.back().push_back(k + 1);
+                for (size_t k = 0; k < todo.size(); k += 8) {
+                    groups.emplace_back();
+                    for (size_t i = k; i < std::min(k + 8, todo.size()); ++i)
+                        groups.back().push_back(i);
                 }
             }
-            for (size_t group = 0; group < groups.size(); ++group) {
-                const auto manifest = scratch / ("task-" + std::to_string(group) + ".jsonl");
-                std::ofstream records(manifest, std::ios::binary | std::ios::trunc);
-                if (!records) throw std::runtime_error("Cannot create mask input manifest");
-                uint64_t bytes = 0;
-                for (size_t k : groups[group]) {
-                    if (_cancel.load()) throw std::runtime_error("Mask preparation canceled");
-                    int width = 0, height = 0;
-                    if (!probe_size(todo_files[k], width, height))
-                        throw std::runtime_error("Cannot size required mask input");
-                    // Two frames cover decode/inference overlap and pending mask writes.
-                    const uint64_t side = (uint64_t)std::max(1024, mo.max_size);
-                    const uint64_t pixels = std::max(uint64_t(width) * height, side * side);
-                    if (pixels > budget / 256)
-                        throw std::runtime_error("Mask image exceeds shared host-memory budget");
-                    bytes = std::max(bytes, pixels * 256);
-                    JsonWriter item(false);
-                    app::write_mask_manifest_record(records, item.object()
-                        .field("source", todo_files[k].string())
-                        .field("source_sha256", source_hashes[k])
-                        .field("stage", (scratch / std::to_string(k)).string())
-                        .field("frame", std::to_string(ids[todo[k]]))
-                        .field("train", todo_dst[k].write).field("feature", todo_fdst[k].write).end().str());
+            {
+                spirula::BufferedOutputFile records;
+                for (size_t group = 0; group < groups.size(); ++group) {
+                    const auto manifest = local_scratch / ("task-" + std::to_string(group) + ".jsonl");
+                    records.open(manifest, std::ios::binary | std::ios::trunc);
+                    if (!records) throw std::runtime_error("Cannot create mask input manifest");
+                    uint64_t bytes = 0;
+                    for (size_t k : groups[group]) {
+                        if (_cancel.load()) throw std::runtime_error("Mask preparation canceled");
+                        int width = 0, height = 0;
+                        if (!probe_size(todo_files[k], width, height))
+                            throw std::runtime_error("Cannot size required mask input");
+                        // Two frames cover decode/inference overlap and pending mask writes.
+                        const uint64_t side = (uint64_t)std::max(1024, mo.max_size);
+                        const uint64_t pixels = std::max(uint64_t(width) * height, side * side);
+                        if (pixels > budget / 256)
+                            throw std::runtime_error("Mask image exceeds shared host-memory budget");
+                        bytes = std::max(bytes, pixels * 256);
+                        JsonWriter item(false);
+                        app::write_mask_manifest_record(records, item.object()
+                            .field("source", todo_files[k].string())
+                            .field("source_sha256", source_hashes[k])
+                            .field("stage", (local_scratch / std::to_string(k)).string())
+                            .field("frame", std::to_string(ids[todo[k]]))
+                            .field("train", todo_dst[k].write).field("feature", todo_fdst[k].write).end().str());
+                    }
+                    records.close();
+                    if (!records) throw std::runtime_error("Could not close mask input manifest");
+                    JsonWriter request;
+                    tasks.push_back({request.object().field("id", std::to_string(group))
+                        .field("recipe", recipe).field("manifest", manifest.string())
+                        .field("count", std::to_string(groups[group].size()))
+                        .field("threads", (int)std::max(1u, spirula::hardware_threads() /
+                            (unsigned)std::max<size_t>(1, std::min(devices.size(), groups.size()))))
+                        .end().str(), bytes});
                 }
-                records.close();
-                if (!records) throw std::runtime_error("Could not close mask input manifest");
-                JsonWriter request;
-                tasks.push_back({request.object().field("id", std::to_string(group))
-                    .field("recipe", recipe).field("manifest", manifest.string())
-                    .field("count", std::to_string(groups[group].size()))
-                    .field("threads", (int)std::max(1u, spirula::hardware_threads() /
-                        (unsigned)std::max<size_t>(1, std::min(devices.size(), groups.size()))))
-                    .end().str(), bytes});
             }
             std::vector<std::vector<std::string>> commands;
             for (const auto& device : devices)
@@ -3836,7 +3859,39 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                 throw std::runtime_error("Mask model residency exceeds shared host-memory budget");
             const uint64_t task_budget = budget - resident_per_worker * admitted;
             RateLimitedProgress progress(_prog, Stage::Masks, lmsg::noun_images_masked, _masks_tally);
+            std::vector<std::vector<FilmFrame>> selected_frames(groups.size());
             const bool ok = app::run_inference_workers(commands, tasks, task_budget, _cancel,
+                [&](size_t group, const std::string&, std::string& why) {
+                    if (_cancel.load()) { why = "Mask publication canceled"; return false; }
+                    for (size_t k : groups[group]) {
+                        const auto family = scratch / std::to_string(k);
+                        auto publish = [&](const Dst& dst, const char* name) {
+                            if (!dst.write) return;
+                            if (_cancel.load()) throw std::runtime_error("Mask publication canceled");
+                            spirula::replace_file(family / name, dst.path);
+                        };
+                        publish(todo_dst[k], "train-final.png");
+                        publish(todo_fdst[k], "feature-final.png");
+                        remove_tree(local_scratch / std::to_string(k));
+                        remove_tree(family);
+                        ++done;
+                        progress.update(done, done == (int)files.size());
+                    }
+                    if (_films.masks) {
+                        for (size_t k : groups[group]) {
+                            FilmFrame frame;
+                            frame.name = under_root(todo_files[k], image_root).generic_string();
+                            frame.image_path = todo_files[k].string();
+                            frame.mask_path = todo_dst[k].path.string();
+                            frame.feature_mask_path = todo_fdst[k].path.string();
+                            if (_films.masks->wants(1.0))
+                                selected_frames[group].push_back(std::move(frame));
+                            else
+                                _films.masks->add(frame);
+                        }
+                    }
+                    return true;
+                }, [&](const std::string& line) { log(line); }, error,
                 [&](size_t group, const std::string& response, std::string& why) {
                     const auto reply = json_parse(response);
                     const auto* identity = reply.find("id");
@@ -3846,7 +3901,7 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                         why = "Mask worker returned the wrong output family";
                         return false;
                     }
-                    std::ifstream outputs(scratch / ("task-" + std::to_string(group) + ".jsonl.outputs"),
+                    spirula::BufferedInputFile outputs(local_scratch / ("task-" + std::to_string(group) + ".jsonl.outputs"),
                         std::ios::binary);
                     if (!outputs) { why = "Missing mask output manifest"; return false; }
                     std::string record;
@@ -3887,7 +3942,7 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                         auto load = [&](const char* name, bool required, sam::Mask& mask) {
                             if (!required) return true;
                             int w = 0, h = 0, channels = 0;
-                            unsigned char* data = stbi_load((scratch / std::to_string(k) / name).string().c_str(),
+                            unsigned char* data = stbi_load((local_scratch / std::to_string(k) / name).string().c_str(),
                                 &w, &h, &channels, 1);
                             if (!data || w != width || h != height) {
                                 stbi_image_free(data);
@@ -3907,6 +3962,7 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                         app::turn_pixels(back, 1, mask.data, mask.width, mask.height);
                         app::turn_pixels(back, 1, feature.data, feature.width, feature.height);
                         const auto family = scratch / std::to_string(k);
+                        fs::create_directory(family);
                         auto save = [&](const sam::Mask& m, const Dst& dst, const char* name) {
                             return !dst.write || (!m.data.empty() &&
                                 stbi_write_png((family / name).string().c_str(),
@@ -3917,28 +3973,6 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                             why = "Could not close complete postprocessed mask family";
                             return false;
                         }
-                        auto publish = [&](const Dst& dst, const char* name) {
-                            if (!dst.write) return;
-                            if (_cancel.load()) throw std::runtime_error("Mask publication canceled");
-                            std::error_code remove_error;
-                            fs::remove(dst.path, remove_error);
-                            if (remove_error) throw std::runtime_error("Could not replace generated mask: " + remove_error.message());
-                            fs::rename(family / name, dst.path);
-                        };
-                        publish(todo_dst[k], "train-final.png");
-                        publish(todo_fdst[k], "feature-final.png");
-                        if (_films.masks) {
-                            FilmFrame frame;
-                            frame.name = under_root(todo_files[k], image_root).generic_string();
-                            frame.image_path = todo_files[k].string();
-                            frame.mask_path = todo_dst[k].path.string();
-                            frame.feature_mask_path = todo_fdst[k].path.string();
-                            if (_films.masks->wants()) _films.masks->add_loaded(frame);
-                            else _films.masks->add(frame);
-                        }
-                        if (_cancel.load()) { why = "Mask publication canceled"; return false; }
-                        ++done;
-                        progress.update(done, done == (int)files.size());
                     }
                     if (_cancel.load()) { why = "Mask publication canceled"; return false; }
                     if (app::read_mask_manifest_record(outputs, record)) {
@@ -3946,11 +3980,16 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                         return false;
                     }
                     return true;
-                }, [&](const std::string& line) { log(line); }, error);
+                }, [&](size_t group) {
+                    for (const auto& frame : selected_frames[group])
+                        _films.masks->add_loaded(frame);
+                });
             remove_tree(scratch);
+            remove_tree(local_scratch);
             return ok && !_cancel.load();
         } catch (const std::exception& e) {
             if (scratch_owned) remove_tree(scratch);
+            if (local_scratch_owned) remove_tree(local_scratch);
             error = e.what();
             return false;
         }
