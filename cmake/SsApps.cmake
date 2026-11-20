@@ -744,6 +744,7 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/Pano360.cpp
         ${SS_FILM_REEL_SOURCES})
     ss_configure_app(dataset_prep_test)
+    target_compile_definitions(dataset_prep_test PRIVATE SS_SOURCE_HASH_TEST_HOOKS=1)
 
     if(SS_BUILD_SAM)
         get_target_property(SS_DATASET_PREP_TEST_SOURCES dataset_prep_test SOURCES)
