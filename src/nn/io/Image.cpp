@@ -15,6 +15,7 @@
 #include "external/stb_image_write.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -64,16 +65,45 @@ Image load_image(const std::string& path, const std::string& gamut,
     return img;
 }
 
+namespace {
+
+struct CheckedFile {
+    std::FILE* file;
+    bool ok;
+};
+
+void write_checked(void* context, void* data, int size) {
+    auto* out = static_cast<CheckedFile*>(context);
+    out->ok = out->ok && std::fwrite(data, 1, (size_t)size, out->file) == (size_t)size;
+}
+
+// stbi_write_png/jpg ignore the fwrite and fclose results and report success
+// over a truncated file, so the file side is done here.
+template <class Encode>
+bool save_checked(const std::string& path, Encode encode) {
+    CheckedFile out{std::fopen(path.c_str(), "wb"), true};
+    if (!out.file) return false;
+    const bool encoded = encode(&out) != 0;
+    if (std::fclose(out.file) == 0 && out.ok && encoded) return true;
+    std::remove(path.c_str());
+    return false;
+}
+
+}  // namespace
+
 bool save_image(const Image& image, const std::string& path, int quality) {
     if (image.empty() || image.width <= 0 || image.height <= 0) {
         NN_LOG_ERROR("save_image: empty image\n");
         return false;
     }
-    if (quality >= 0 && quality <= 100)
-        return stbi_write_jpg(path.c_str(), image.width, image.height, image.channels,
-                              image.data.data(), quality) != 0;
-    return stbi_write_png(path.c_str(), image.width, image.height, image.channels,
-                          image.data.data(), image.width * image.channels) != 0;
+    return save_checked(path, [&](CheckedFile* out) {
+        return quality >= 0 && quality <= 100
+            ? stbi_write_jpg_to_func(write_checked, out, image.width, image.height,
+                                     image.channels, image.data.data(), quality)
+            : stbi_write_png_to_func(write_checked, out, image.width, image.height,
+                                     image.channels, image.data.data(),
+                                     image.width * image.channels);
+    });
 }
 
 bool save_gray_png(const uint8_t* data, int width, int height,
@@ -82,7 +112,9 @@ bool save_gray_png(const uint8_t* data, int width, int height,
         NN_LOG_ERROR("save_gray_png: empty image\n");
         return false;
     }
-    return stbi_write_png(path.c_str(), width, height, 1, data, width) != 0;
+    return save_checked(path, [&](CheckedFile* out) {
+        return stbi_write_png_to_func(write_checked, out, width, height, 1, data, width);
+    });
 }
 
 }  // namespace nn
