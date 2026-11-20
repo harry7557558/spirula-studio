@@ -869,6 +869,9 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     float cull_bx0 = float(wg.z * TILE_SIZE_DX);
     float cull_by0 = float(wg.y * TILE_SIZE_DY);
+    // the box of its pixel centres
+    float2 cull_half = 0.5f * float2(float(TILE_SIZE_DX) - 1.0f, float(TILE_SIZE_DY) - 1.0f);
+    float2 cull_centre = float2(cull_bx0, cull_by0) + 0.5f + cull_half;
     uint wsize = WaveGetLaneCount();
     uint n_waves = RB_THREADS / wsize;
 
@@ -883,21 +886,13 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             if (gi >= range_start) {
                 int sid = p.flatten_ids[gi];
                 c_sid = sid;
+                // The forward's cull (rasterize_fwd.slang).
                 float* c_row = scrg_row(p.s_screen, sid);
-                float c_opac = scrg_opac(c_row);
-                // 3dgut keeps the projected 2D conic in the screen "scale"
-                // slot; ellipse center is the AABB center.
-                float3 c_conic = scrg_scale(c_row);
-                float2 c_ec = aabb16_center(p.aabb[sid], p.width, p.height);
-                float c_ex = c_ec.x, c_ey = c_ec.y;
-                if (c_opac > ALPHA_THRESHOLD) {
-                    float kk = 0.5f / log(c_opac / ALPHA_THRESHOLD);
-                    float3 inv_cov = c_conic * kk;
-                    ok = ellipse_box_overlap_test(
-                        inv_cov, cull_bx0 - c_ex,
-                        cull_bx0 + TILE_SIZE_DX - c_ex, cull_by0 - c_ey,
-                        cull_by0 + TILE_SIZE_DY - c_ey);
-                }
+                ok = scrg_opac(c_row) > ALPHA_THRESHOLD &&
+                    aabb_reaches_micro_tile(
+                        aabb16_decode(p.aabb[sid], p.width, p.height),
+                        cull_bx0, cull_by0, float(TILE_SIZE_DX)) &&
+                    !slab_misses_box(scrg_scale(c_row), cull_centre, cull_half);
             }
             uint prefix = WavePrefixCountBits(ok);
             uint wtotal = WaveActiveCountBits(ok);

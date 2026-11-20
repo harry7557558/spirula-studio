@@ -167,6 +167,9 @@ void rasterize_moments_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     float mt_bx0 = float(mt_x * TILE_SIZE_X);
     float mt_by0 = float(mt_y * TILE_SIZE_Y);
+    // the box of its pixel centres
+    float2 mt_half = 0.5f * float2(float(TILE_SIZE_X) - 1.0f, float(TILE_SIZE_Y) - 1.0f);
+    float2 mt_centre = float2(mt_bx0, mt_by0) + 0.5f + mt_half;
 
     if (tid == 0)
         _done_count_mom = 0;
@@ -186,18 +189,13 @@ void rasterize_moments_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             int g = p.flatten_ids[idx];
             uint wi = kRasterPacked != 0 ? uint(p.gaussian_ids[g])
                                          : uint(g) % p.N;
+            // As rasterize_fwd.slang's 3DGUT entry culls.
             float* r = scrg_row(p.s_screen, g);
             float opac = scrg_opac(r);
-            if (opac > ALPHA_THRESHOLD) {
-                float3 conic = scrg_scale(r);
-                float2 ec = aabb16_center(p.aabb[g], p.width, p.height);
-                float ecx = ec.x, ecy = ec.y;
-                float kk = 0.5f / log(opac / ALPHA_THRESHOLD);
-                float3 inv_cov = conic * kk;
-                hit = ellipse_box_overlap_test(
-                    inv_cov, mt_bx0 - ecx, mt_bx0 + float(TILE_SIZE_X) - ecx,
-                    mt_by0 - ecy, mt_by0 + float(TILE_SIZE_Y) - ecy);
-            }
+            hit = opac > ALPHA_THRESHOLD &&
+                aabb_reaches_micro_tile(aabb16_decode(p.aabb[g], p.width, p.height),
+                                        mt_bx0, mt_by0, float(TILE_SIZE_X)) &&
+                !slab_misses_box(scrg_scale(r), mt_centre, mt_half);
             if (hit) {
                 FragMoments f;
                 f.mean = float3(p.means[3 * wi], p.means[3 * wi + 1],

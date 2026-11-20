@@ -447,8 +447,12 @@ int main(int argc, char** argv) {
         DeviceTensorFloatND depths_nd(depths_2d);
         int macro_log2 = kMacroLog2Default;
         auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-            aabb_2d, depths_nd, ellipse_view(splats_s, true), 1,
-            ttv(d_intr + 4 * cam, {1, 4}), W, H, nullptr, /*tile_active=*/nullptr,
+            aabb_2d, depths_nd, ellipse_view(splats_s, true),
+            footprint_view(in_splats, nullptr, ttv(d_vm + 16 * cam, {1, 4, 4}),
+                           ttv(d_dist + dist_fixture::row_offset(2, NCAM, cam),
+                               {1, kCameraDistortionParams}),
+                           "PINHOLE", "THIN_PRISM", false),
+            1, ttv(d_intr + 4 * cam, {1, 4}), W, H, nullptr, /*tile_active=*/nullptr,
         macro_log2);
         backend::device_synchronize();
         if (check_error()) return 1;
@@ -506,8 +510,11 @@ int main(int argc, char** argv) {
         DeviceTensorFloatND depths_nd(depths_2d);
         int macro_log2 = kMacroLog2Default;
         auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-            aabb_2d, depths_nd, ellipse_view(splats_s, true), 1,
-            ttv(d_equi_intr, {1, 4}), equi_W, equi_H, nullptr, /*tile_active=*/nullptr,
+            aabb_2d, depths_nd, ellipse_view(splats_s, true),
+            footprint_view(in_splats, nullptr, ttv(d_equi_vm, {1, 4, 4}),
+                           ttv(d_dist, {1, kCameraDistortionParams}),
+                           "EQUIRECTANGULAR", "NONE", false),
+            1, ttv(d_equi_intr, {1, 4}), equi_W, equi_H, nullptr, /*tile_active=*/nullptr,
             macro_log2);
         backend::device_synchronize();
         if (check_error()) return 1;

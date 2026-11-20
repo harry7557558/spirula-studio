@@ -464,10 +464,17 @@ void forward_3dgs(
         image_ids_ptr = &engine().fwd.camera_ids;
 
     // Handing the projected conic to the intersector buys the tighter
-    // ellipse-vs-tile test instead of the conservative AABB one.
+    // ellipse-vs-tile test instead of the conservative AABB one. The eval3d
+    // rasterizers draw the splat itself, and are binned by its own footprint.
     ProjEllipseView ellipse = proj_ellipse_view(
         engine().fwd.splats_s[0].data_ptr(), engine_primitive_eval3d(primitive));
-    if (!engine_primitive_eval3d(primitive))  // eval3d rasterizers draw the full kernel
+    FootprintView footprint;
+    if (engine_primitive_eval3d(primitive))
+        footprint = footprint_view(
+            in_splats, packed ? engine().fwd.gaussian_ids.data_ptr() : nullptr,
+            _dt2d_tv(engine().camera.viewmats), _dt2d_tv(engine().camera.dist_coeffs),
+            engine().camera.model_str, engine().camera.distortion_str, primitive == "2dgs");
+    else
         ellipse.max_sigma = engine().fwd.kernel_cut;
 
     auto& bin = bin_choice();
@@ -477,7 +484,7 @@ void forward_3dgs(
     timing.emplace(StepPart::Render, StepScale::SplatsPixels);
 
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-        aabb_q, depths_nd, ellipse,
+        aabb_q, depths_nd, ellipse, footprint,
         (uint32_t)engine().camera.num,
         _dv_tv(engine().camera.intrins),
         (uint32_t)engine().camera.width,

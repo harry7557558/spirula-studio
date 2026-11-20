@@ -150,6 +150,9 @@ __global__ void moments_fwd_kernel(
 
     const float mt_bx0 = (float)(mt_x * TILE_SIZE_X);
     const float mt_by0 = (float)(mt_y * TILE_SIZE_Y);
+    // the box of its pixel centres
+    const float2 mt_half = {0.5f * (TILE_SIZE_X - 1), 0.5f * (TILE_SIZE_Y - 1)};
+    const float2 mt_centre = {mt_bx0 + 0.5f + mt_half.x, mt_by0 + 0.5f + mt_half.y};
 
     __shared__ Prim::FragmentFwd splat_batch[TILE_AREA_M];
     __shared__ bool splat_hit[TILE_AREA_M];
@@ -164,17 +167,13 @@ __global__ void moments_fwd_kernel(
         if (idx < (uint32_t)range_end) {
             int32_t g = flatten_ids[idx];
             uint32_t wi = gaussian_ids ? gaussian_ids[g] : g % N;
-            float opac = splat_sbuffer.opacities(g);
-            if (opac > ALPHA_THRESHOLD) {
-                float3 conic = splat_sbuffer.scales(g);
-                float2 ec = aabb16_center(aabb[g], image_width, image_height);
-                float ecx = ec.x, ecy = ec.y;
-                float kk = 0.5f / __logf(opac / ALPHA_THRESHOLD);
-                float3 inv_cov = { conic.x * kk, conic.y * kk, conic.z * kk };
-                hit = ellipse_box_overlap_test(inv_cov,
-                    mt_bx0 - ecx, mt_bx0 + TILE_SIZE_X - ecx,
-                    mt_by0 - ecy, mt_by0 + TILE_SIZE_Y - ecy);
-            }
+            // As rasterize_to_pixels_eval3d_fwd_kernel culls.
+            hit = splat_sbuffer.opacities(g) > ALPHA_THRESHOLD &&
+                SlangProjectionUtils::aabb_reaches_micro_tile(
+                    aabb16_decode(aabb[g], image_width, image_height),
+                    mt_bx0, mt_by0, (float)TILE_SIZE_X) &&
+                !SlangProjectionUtils::slab_misses_box(
+                    splat_sbuffer.scales(g), mt_centre, mt_half);
             if (hit)
                 splat_batch[tid].load(splat_wbuffer, splat_sbuffer, wi, g);
         }

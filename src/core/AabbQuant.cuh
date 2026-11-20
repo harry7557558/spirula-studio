@@ -39,12 +39,3 @@ __device__ __forceinline__ bool aabb16_is_empty(uint2 a) {
     return SS_AABB16_HI(a.x) <= SS_AABB16_LO(a.x) ||
            SS_AABB16_HI(a.y) <= SS_AABB16_LO(a.y);
 }
-
-// Ellipse center for 3DGUT, which stores no screen center of its own.
-__device__ __forceinline__ float2 aabb16_center(
-    uint2 a, uint32_t image_width, uint32_t image_height
-) {
-    return make_float2(
-        0.5f * (float)(SS_AABB16_LO(a.x) + SS_AABB16_HI(a.x)) * SS_AABB16_INV(image_width),
-        0.5f * (float)(SS_AABB16_LO(a.y) + SS_AABB16_HI(a.y)) * SS_AABB16_INV(image_height));
-}

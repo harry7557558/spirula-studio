@@ -269,14 +269,20 @@ int main(int argc, char** argv) {
         backend::device_synchronize();
         if (check_error()) return 1;
 
-        // --- tile intersection (ellipse mode) ---
+        // --- tile intersection (ellipse mode; exact footprints for eval3d) ---
         DeviceVector<int32_t>* image_ids_ptr =
             cfg.packed && cam_ids.data_ptr() ? &cam_ids : nullptr;
 
         int macro_log2 = kMacroLog2Default;
 
+        FootprintView footprint;
+        if (cfg.prim >= 2)
+            footprint = footprint_view(
+                in_splats, cfg.packed ? gauss_ids.data_ptr() : nullptr,
+                ttv(d_vm, {(int64_t)C, 16}), dist_tv(cfg.dist), cams[cfg.cam],
+                dist_fixture::kTierNames[cfg.dist], cfg.prim == 3);
         auto intersections = do_intersect_tile_generic(
-            aabb_2d, depths_nd, ellipse_view(splats_s, cfg.prim >= 2), C,
+            aabb_2d, depths_nd, ellipse_view(splats_s, cfg.prim >= 2), footprint, C,
             ttv(d_intr, {(int64_t)C, 4}), W, H, image_ids_ptr, /*tile_active=*/nullptr,
         macro_log2);
         auto& flatten_ids = std::get<1>(intersections);

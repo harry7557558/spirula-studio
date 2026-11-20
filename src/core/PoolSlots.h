@@ -196,6 +196,7 @@ enum class SaveClass : uint8_t {
   X(IsectFlatA                     , "isect.flat_a",                      SplatXImg, Never) \
   X(IsectFlatB                     , "isect.flat_b",                      SplatXImg, Never) \
   X(IsectTileActive                , "isect.tile_active",                 Image    , Never) \
+  X(IsectTileRays                  , "isect.tile_rays",                   Image    , Never) \
   /* ---- render outputs ---- */ \
   X(RenderTs                       , "render.Ts",                         Image    , Never) \
   X(RenderLastIds                  , "render.last_ids",                   Image    , Never) \

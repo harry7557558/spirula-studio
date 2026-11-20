@@ -17,7 +17,7 @@
 #define SCR2_DEPTH  6
 #define SCR2_RGB    7
 
-// ---- 3DGUT: conic (in the "scale" slot), opac, rgb ------------------------
+// ---- 3DGUT: the slab of its bounds (in the "scale" slot), opac, rgb -------
 #define SCRG_STRIDE 7
 #define SCRG_SCALE  0
 #define SCRG_OPAC   3

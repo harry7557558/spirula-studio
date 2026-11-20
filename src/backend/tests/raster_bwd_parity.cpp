@@ -279,9 +279,16 @@ int main(int argc, char** argv) {
         DeviceVector<int32_t>* image_ids_ptr =
             cfg.packed && cam_ids.data_ptr() ? &cam_ids : nullptr;
         int macro_log2 = kMacroLog2Default;
+        FootprintView footprint;
+        if (cfg.prim >= 2)
+            footprint = footprint_view(
+                in_splats, cfg.packed ? gauss_ids.data_ptr() : nullptr,
+                ttv(d_vm, {(int64_t)C, 16}), dist_tv(cfg.dist), cams[cfg.cam],
+                dist_fixture::kTierNames[cfg.dist], cfg.prim == 3);
         auto [isect_ids, flatten_ids, tile_offsets] =
             do_intersect_tile_generic(aabb_2d, depths_nd,
-                                      ellipse_view(splats_s, cfg.prim >= 2, cfg.cut), C,
+                                      ellipse_view(splats_s, cfg.prim >= 2, cfg.cut),
+                                      footprint, C,
                                       ttv(d_intr, {(int64_t)C, 4}), W, H,
                                       image_ids_ptr, /*tile_active=*/nullptr,
                                       macro_log2);

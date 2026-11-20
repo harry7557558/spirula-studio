@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <core/Common.cuh>
 #include <core/Env.h>
@@ -27,20 +28,66 @@ inline constexpr double kIsectBandSlack = 1.25;
 struct ProjEllipseView {
     const float* data = nullptr;
     int32_t stride = 0;
-    int32_t xy = -1;     // -1: ellipse center is the AABB center (3DGUT)
-    int32_t conic = 0;
+    int32_t xy = -1;     // -1: the row holds no centre (3DGUT)
+    int32_t conic = 0;   // 3DGUT: the slab of its bounds, slab_misses_box
     int32_t opac = 0;
     // > 0: the kernel is cut at sigma = max_sigma (Primitive3DGS::kernel_vis), so no tile past
     // it is visited even where alpha would still exceed 1/255
     float max_sigma = 0.0f;
 };
 
-// The two screen layouts as ellipse views. 3DGUT keeps its projected conic in
-// the row's "scale" slot and stores no center.
+// The two screen layouts as ellipse views. A 3DGUT row is no ellipse: it is
+// binned through a FootprintView, which reads the opacity and the slab here.
 inline ProjEllipseView proj_ellipse_view(const float* rows, bool eval3d) {
     if (eval3d)
         return {rows, SCRG_STRIDE, -1, SCRG_SCALE, SCRG_OPAC};
     return {rows, SCR2_STRIDE, SCR2_XY, SCR2_CONIC, SCR2_OPAC};
+}
+
+// Exact eval3d footprints: a splat is binned into the tiles its footprint reaches
+// (docs/notes/footprint.md). means == nullptr keeps the ellipse / AABB test; the
+// opacity and the slab are read through the ProjEllipseView.
+struct FootprintView {
+    const float* means = nullptr;           // [N, 3] world
+    const float* quats = nullptr;           // [N, 4]
+    const float* scales = nullptr;          // [N, 3] log
+    const int32_t* gaussian_ids = nullptr;  // [nnz] (packed projection) or null
+    const float* viewmats = nullptr;        // [I, 16] row-major
+    const float* dist_coeffs = nullptr;     // [I, kCameraDistortionParams] or null
+    std::string camera_model;
+    std::string distortion;
+    bool surfel = false;                    // 2DGS discs
+};
+
+// A side, in tiles, of the blocks the exact footprint test tries first: one test
+// settles a block the footprint misses or covers. Matches intersect_tile.slang.
+inline constexpr int kIsectBlock = 4;
+
+// Which views draw a footprint as an ellipse (footprint_planar_cov): 1 an
+// undistorted pinhole, 2 orthographic, 0 any other lens.
+inline int footprint_planar(CameraModelType model, CameraDistortionType distortion) {
+    if (model == CameraModelType::ORTHOGRAPHIC) return 2;
+    return model == CameraModelType::PINHOLE && distortion == CameraDistortionType::None;
+}
+
+// An eval3d forward's own inputs as a footprint view; splats_w in the
+// projection's layout (means, quats, scales, ...).
+inline FootprintView footprint_view(
+    const std::vector<DeviceTensorFloatND>& splats_w, const int32_t* gaussian_ids,
+    TorchTensorView viewmats, TorchTensorView dist_coeffs,
+    const std::string& camera_model, const std::string& distortion, bool surfel
+) {
+    FootprintView v;
+    v.means = splats_w[0].data_ptr();
+    v.quats = splats_w[1].data_ptr();
+    v.scales = splats_w[2].data_ptr();
+    v.gaussian_ids = gaussian_ids;
+    v.viewmats = (const float*)std::get<0>(viewmats);
+    v.dist_coeffs = (const float*)std::get<0>(dist_coeffs);
+    v.camera_model = camera_model;
+    v.distortion = distortion;
+    v.surfel = surfel;
+    return v;
 }
 
 // Pixel coordinates and every tile index derived from them ride in 16 bits.
@@ -161,6 +208,7 @@ std::tuple<
     DeviceTensor2D<uint2> aabb,   // [*N] packed, core/AabbQuant.cuh
     DeviceTensorFloatND depths,   // [*N] float32
     ProjEllipseView ellipse,      // .data null for AABB mode
+    FootprintView footprint,      // .means null for the ellipse / AABB test
     const uint32_t I,
     TorchTensorView intrins,      // [I, 4]
     const uint32_t image_width,

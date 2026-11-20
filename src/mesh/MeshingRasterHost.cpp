@@ -219,13 +219,14 @@ static void render_one(RenderContext* ctx, int cam_idx,
         std::nullopt, std::nullopt, /*num_sh_buffer=*/0, /*sh_value_bits=*/32,
         /*sh_bounds_stride=*/0);
 
-    // --- tile intersection (ellipse mode; center falls back to the AABB) ---
+    // --- tile intersection (exact footprints) ---
     DeviceTensorFloatND depths_nd(depths_2d);
     ProjEllipseView ellipse =
         proj_ellipse_view(splats_s[0].data_ptr(), /*eval3d=*/true);
     int macro_log2 = kMacroLog2Default;
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
         aabb_2d, depths_nd, ellipse,
+        footprint_view(in_splats, nullptr, viewmats, dist, model, distortion, false),
         /*I=*/1, intrins, W, H, nullptr, /*tile_active=*/nullptr,
         macro_log2);
 

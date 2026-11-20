@@ -94,10 +94,10 @@ __global__ void projection_fused_fwd_kernel(
     }
 
     // Save results
-    aabb.x = fminf(fmaxf(aabb.x, 0.0f), image_width-1.0f);
-    aabb.y = fminf(fmaxf(aabb.y, 0.0f), image_height-1.0f);
-    aabb.z = fminf(fmaxf(aabb.z, 0.0f), image_width-1.0f);
-    aabb.w = fminf(fmaxf(aabb.w, 0.0f), image_height-1.0f);
+    aabb.x = fminf(fmaxf(aabb.x, 0.0f), (float)image_width);
+    aabb.y = fminf(fmaxf(aabb.y, 0.0f), (float)image_height);
+    aabb.z = fminf(fmaxf(aabb.z, 0.0f), (float)image_width);
+    aabb.w = fminf(fmaxf(aabb.w, 0.0f), (float)image_height);
     if (aabb.z - aabb.x > 1e-3f && aabb.w - aabb.y > 1e-3f) {
         splat_screen.store(splats_screen, idx);
         aabbs[idx] = aabb16_encode(aabb, image_width, image_height);

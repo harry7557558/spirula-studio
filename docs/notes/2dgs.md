@@ -33,7 +33,8 @@ backends. `spirula train 2dgs` is the preset with the geometry losses on.
 
 Shared Slang, `src/shaders/projection_utils.slang` (`evaluate_2dgs` and its
 fused VJP); the screen bounds are `projection_3dgs<..., surfel>` in
-`primitive_3dgs.slang`.
+`primitive_3dgs.slang`, exact for a disc under any lens
+([footprint.md](footprint.md)).
 
 - tangent frame `tu, tv, n` = columns of `R(quat)`, plane through `mean`
 - `t = dot(mean - o, n) / dot(d, n)`, `p = o + t d`,

@@ -303,9 +303,9 @@ void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 }
 
 // ---------------------------------------------------------------------------
-// eval3D (Vanilla3DGUT, Vanilla2DGS when kSurfel): per-pixel rays; the
-// projected 2D conic lives in the screen "scale" slot and the ellipse center
-// is the AABB center. kDistType 3 / 4 (DN / RGB_DN) need kNormal.
+// eval3D (Vanilla3DGUT, Vanilla2DGS when kSurfel): per-pixel rays; the screen
+// "scale" slot holds the slab of the splat's bounds (docs/notes/footprint.md).
+// kDistType 3 / 4 (DN / RGB_DN) need kNormal.
 // ---------------------------------------------------------------------------
 
 // Vanilla3DGUT::FragmentFwd, and Vanilla2DGS's
@@ -324,7 +324,7 @@ struct RasterFwd3dgutParams {
     float* quats;   // [N, 4]
     float* scales;  // [N, 3]
     int* gaussian_ids;  // [nnz] packed mode or null (world idx = g % N)
-    float* s_screen;  // packed ScreenBuffer rows; "scale" slot = 2D conic
+    float* s_screen;  // packed ScreenBuffer rows
     // cameras
     float* viewmats;     // [I, 16] row-major
     float4* intrins;     // [I]
@@ -430,6 +430,9 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     float mt_bx0 = float(mt_x * TILE_SIZE_X);
     float mt_by0 = float(mt_y * TILE_SIZE_Y);
+    // the box of its pixel centres
+    float2 mt_half = 0.5f * float2(float(TILE_SIZE_X) - 1.0f, float(TILE_SIZE_Y) - 1.0f);
+    float2 mt_centre = float2(mt_bx0, mt_by0) + 0.5f + mt_half;
 
     if (tid == 0)
         _done_count = 0;
@@ -449,23 +452,14 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             int g = p.flatten_ids[idx];
             uint wi = kRasterPacked != 0 ? uint(p.gaussian_ids[g])
                                                 : uint(g) % p.N;
-            // 3dgut keeps the projected 2D conic in the screen "scale"
-            // channel and the ellipse center is the AABB center. Cull here,
-            // before the (expensive) 3D fragment load, matching the tile
-            // intersector.
+            // Cull on the bounds alone, before the fragment load: each pixel
+            // tests its own alpha, so a bound that keeps too much costs time only.
             float* r = scrg_row(p.s_screen, g);
             float opac = scrg_opac(r);
-            if (opac > ALPHA_THRESHOLD) {
-                float3 conic = scrg_scale(r);
-                float2 ec = aabb16_center(p.aabb[g], p.width, p.height);
-                float ecx = ec.x, ecy = ec.y;
-                float kk = 0.5f / log(opac / ALPHA_THRESHOLD);
-                float3 inv_cov = conic * kk;
-                hit = ellipse_box_overlap_test(
-                    inv_cov, mt_bx0 - ecx,
-                    mt_bx0 + float(TILE_SIZE_X) - ecx, mt_by0 - ecy,
-                    mt_by0 + float(TILE_SIZE_Y) - ecy);
-            }
+            hit = opac > ALPHA_THRESHOLD &&
+                aabb_reaches_micro_tile(aabb16_decode(p.aabb[g], p.width, p.height),
+                                        mt_bx0, mt_by0, float(TILE_SIZE_X)) &&
+                !slab_misses_box(scrg_scale(r), mt_centre, mt_half);
             if (hit) {
                 // FragmentFwd::load
                 Frag3dgut f;

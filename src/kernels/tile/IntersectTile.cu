@@ -7,6 +7,7 @@ namespace SlangProjectionUtils {
 }
 
 #include "core/AabbQuant.cuh"
+#include "core/CameraDistortion.cuh"
 #include "core/Common.cuh"
 #include "core/Env.h"
 #include "core/Interpolation.cuh"
@@ -71,9 +72,31 @@ inline __device__ float2 ellipse_range_bound(
     return {x0, x1};
 }
 
+// ellipse_range_bound from the covariance (xx, xy, yy) of x^T cov^-1 x = 1: its
+// inverse loses the tips of a thin ellipse to rounding, and whole tile rows with
+// them. Empty where the rows miss the ellipse.
+inline __device__ float2 ellipse_range_bound_cov(float3 cov, float y0, float y1) {
+    const float hy = sqrtf(cov.z);
+    if (y0 > hy || y1 < -hy)
+        return {1e9f, -1e9f};
+    // The rightmost point is at height ym, the leftmost at -ym.
+    const float ym = cov.y / sqrtf(cov.x);
+    const float v0 = clamp(clamp(-ym, y0, y1), -hy, hy);
+    const float v1 = clamp(clamp(ym, y0, y1), -hy, hy);
+    const float slope = cov.y / cov.z;
+    const float w2 = fmaxf(cov.x - cov.y * slope, 0.0f);
+    return {slope * v0 - sqrtf(fmaxf(w2 * (1.0f - v0 * v0 / cov.z), 0.0f)),
+            slope * v1 + sqrtf(fmaxf(w2 * (1.0f - v1 * v1 / cov.z), 0.0f))};
+}
+
+inline __device__ float2 ellipse_range(float3 m, float y0, float y1, bool by_cov) {
+    return by_cov ? ellipse_range_bound_cov(m, y0, y1) : ellipse_range_bound(m, y0, y1);
+}
+
+// inv_cov: the ellipse's inverse covariance, or its covariance (by_cov).
 inline __device__ int count_ellipse_grid_overlaps(
     float2 xy,
-    float3 inv_cov,
+    float3 inv_cov, bool by_cov,
     int grid_xmin, int grid_xmax,
     int grid_ymin, int grid_ymax,
     bool by_rows,                       // sweep rows, else columns
@@ -88,7 +111,7 @@ inline __device__ int count_ellipse_grid_overlaps(
         for (int y = grid_ymin; y < grid_ymax; y++) {
             float y0 = y * t.y - xy.y;
             float y1 = y0 + t.y;
-            float2 bound = ellipse_range_bound(inv_cov, y0, y1);
+            float2 bound = ellipse_range(inv_cov, y0, y1, by_cov);
             int x0 = int(floor((bound.x + xy.x) * t.inv_x));
             int x1 = int(ceil((bound.y + xy.x) * t.inv_x));
             x0 = clamp(x0, grid_xmin, grid_xmax);
@@ -104,7 +127,7 @@ inline __device__ int count_ellipse_grid_overlaps(
         for (int x = grid_xmin; x < grid_xmax; x++) {
             float x0 = x * t.x - xy.x;
             float x1 = x0 + t.x;
-            float2 bound = ellipse_range_bound(inv_cov, x0, x1);
+            float2 bound = ellipse_range(inv_cov, x0, x1, by_cov);
             int y0 = int(floor((bound.x + xy.y) * t.inv_y));
             int y1 = int(ceil((bound.y + xy.y) * t.inv_y));
             y0 = clamp(y0, grid_ymin, grid_ymax);
@@ -118,6 +141,175 @@ inline __device__ int count_ellipse_grid_overlaps(
     }
 
     return n_tiles;
+}
+
+
+// ================
+// Exact eval3d footprints
+// ================
+
+// FootprintView on the device, with the ray quads of the tile grid
+// (tile_quad_rays_kernel). means == nullptr: off.
+struct FootprintDevice {
+    const float* means = nullptr;    // [N, 3] world
+    const float* quats = nullptr;    // [N, 4]
+    const float* scales = nullptr;   // [N, 3] log
+    const int32_t* gaussian_ids = nullptr;  // [nnz] (packed) or null
+    const float* viewmats = nullptr; // [I, 16] row-major
+    const float4* intrins = nullptr; // [I]
+    const float* tile_quads = nullptr;   // [I, tile_h, tile_w, 4, 3]
+    const float* block_quads = nullptr;  // [I, block_h, block_w, 4, 3]
+    bool surfel = false;
+    int planar = 0;                  // footprint_planar
+};
+
+// The fragment the rasterizers cull with, and the camera it is seen from.
+struct FootprintSplat {
+    float3 mean;
+    float3x3 M;     // iscl_rot
+    float opacity;
+    float3 o;       // camera position
+    float3 slab;    // slab_misses_box, from the row's conic slot
+    float3x3 R;     // world to camera, and
+    float4 intrin;  // the intrinsics: an undistorted pinhole needs no ray quads
+};
+
+inline __device__ FootprintSplat footprint_load(
+    const FootprintDevice& fp, const ProjEllipseView& rows, uint32_t idx, uint32_t N, int64_t iid
+) {
+    const uint32_t wi = fp.gaussian_ids ? (uint32_t)fp.gaussian_ids[idx] : idx % N;
+    const float4 q = {fp.quats[4 * wi], fp.quats[4 * wi + 1], fp.quats[4 * wi + 2],
+                      fp.quats[4 * wi + 3]};
+    const float3 sc = {fp.scales[3 * wi], fp.scales[3 * wi + 1], fp.scales[3 * wi + 2]};
+    const float* vm = fp.viewmats + iid * 16;
+    const float3x3 R = {vm[0], vm[1], vm[2], vm[4], vm[5], vm[6], vm[8], vm[9], vm[10]};
+    const float* row = rows.data + (int64_t)rows.stride * idx;
+    FootprintSplat s;
+    s.mean = {fp.means[3 * wi], fp.means[3 * wi + 1], fp.means[3 * wi + 2]};
+    s.M = fp.surfel ? SlangProjectionUtils::compute_2dgs_iscl_rot(q, sc)
+                    : SlangProjectionUtils::compute_3dgut_iscl_rot(q, sc);
+    s.opacity = row[rows.opac];
+    s.slab = {row[rows.conic], row[rows.conic + 1], row[rows.conic + 2]};
+    s.o = SlangProjectionUtils::transform_ray_o(R, {vm[3], vm[7], vm[11]});
+    s.R = R;
+    s.intrin = fp.intrins[iid];
+    return s;
+}
+
+// A planar view's footprint as the ellipse the sweeps take, where it is one:
+// its centre and covariance (footprint_planar_cov).
+inline __device__ bool footprint_load_ellipse(
+    const FootprintDevice& fp, const ProjEllipseView& rows, uint32_t idx, uint32_t N,
+    int64_t iid, float2& xy, float3& cov
+) {
+    if (fp.planar == 0) return false;
+    const uint32_t wi = fp.gaussian_ids ? (uint32_t)fp.gaussian_ids[idx] : idx % N;
+    const float* vm = fp.viewmats + iid * 16;
+    return SlangProjectionUtils::footprint_planar_cov(
+        {fp.means[3 * wi], fp.means[3 * wi + 1], fp.means[3 * wi + 2]},
+        {fp.quats[4 * wi], fp.quats[4 * wi + 1], fp.quats[4 * wi + 2], fp.quats[4 * wi + 3]},
+        {fp.scales[3 * wi], fp.scales[3 * wi + 1], fp.scales[3 * wi + 2]},
+        rows.data[(int64_t)rows.stride * idx + rows.opac],
+        {vm[0], vm[1], vm[2], vm[4], vm[5], vm[6], vm[8], vm[9], vm[10]},
+        {vm[3], vm[7], vm[11]}, fp.intrins[iid], fp.surfel, fp.planar, &xy, &cov);
+}
+
+// footprint_rays_coverage of the pixel box [lo, hi], once the slab has had its
+// say on it. quad: its rays from tile_quad_rays_kernel; an undistorted pinhole
+// (planar) takes the rays of its corners instead, which bound it exactly.
+inline __device__ int footprint_box(
+    const FootprintSplat& s, const FootprintDevice& fp, const float* quad, float2 lo, float2 hi
+) {
+    if (SlangProjectionUtils::slab_misses_box(
+            s.slab, {0.5f * (lo.x + hi.x), 0.5f * (lo.y + hi.y)},
+            {0.5f * (hi.x - lo.x), 0.5f * (hi.y - lo.y)}))
+        return 0;
+    float3 q[4];
+    if (fp.planar != 0) {
+        const float2 a = {(lo.x - s.intrin.z) / s.intrin.x, (lo.y - s.intrin.w) / s.intrin.y};
+        const float2 b = {(hi.x - s.intrin.z) / s.intrin.x, (hi.y - s.intrin.w) / s.intrin.y};
+        q[0] = SlangProjectionUtils::transform_ray_d(s.R, {a.x, a.y, 1.0f});
+        q[1] = SlangProjectionUtils::transform_ray_d(s.R, {b.x, a.y, 1.0f});
+        q[2] = SlangProjectionUtils::transform_ray_d(s.R, {b.x, b.y, 1.0f});
+        q[3] = SlangProjectionUtils::transform_ray_d(s.R, {a.x, b.y, 1.0f});
+    } else {
+        for (int k = 0; k < 4; k++) q[k] = ((const float3*)quad)[k];
+    }
+    return SlangProjectionUtils::footprint_rays_coverage(
+        s.mean, s.M, s.opacity, fp.surfel, s.o, q[0], q[1], q[2], q[3]);
+}
+
+inline __device__ int footprint_tile(
+    const FootprintSplat& s, const FootprintDevice& fp, const float* tile_quads,
+    uint32_t tile_width, const BinTile& bt, int x, int y
+) {
+    const float2 lo = {(float)x * bt.x, (float)y * bt.y};
+    return footprint_box(s, fp, tile_quads + 12 * ((int64_t)y * tile_width + x), lo,
+                         {lo.x + bt.x, lo.y + bt.y});
+}
+
+// The tile range cut into blocks. Both passes walk it through these, so the
+// write pass emits exactly what the count pass counted.
+#define SS_FOOTPRINT_BLOCKS(tile_min, tile_max)                                     \
+    for (int by = (int)(tile_min).y & ~(kIsectBlock - 1); by < (int)(tile_max).y;   \
+         by += kIsectBlock)                                                         \
+        for (int bx = (int)(tile_min).x & ~(kIsectBlock - 1); bx < (int)(tile_max).x; \
+             bx += kIsectBlock)
+
+// How the footprint meets the part of block (bx, by) inside the range. single:
+// its box lies in one tile, which it then covers as far as binning goes. A block
+// of four tiles or fewer goes straight to its tiles.
+inline __device__ int footprint_block(
+    const FootprintSplat& s, const FootprintDevice& fp, const float* block_quads,
+    uint32_t tile_width, const BinTile& bt, uint2 tile_min, uint2 tile_max, bool single,
+    int bx, int by, int4& box
+) {
+    box = {max(bx, (int)tile_min.x), max(by, (int)tile_min.y),
+           min(bx + kIsectBlock, (int)tile_max.x), min(by + kIsectBlock, (int)tile_max.y)};
+    if (single) return 2;
+    if ((box.z - box.x) * (box.w - box.y) <= 4) return 1;
+    const int block_width = ((int)tile_width + kIsectBlock - 1) / kIsectBlock;
+    return footprint_box(
+        s, fp,
+        block_quads + 12 * ((int64_t)(by / kIsectBlock) * block_width + bx / kIsectBlock),
+        {(float)box.x * bt.x, (float)box.y * bt.y}, {(float)box.z * bt.x, (float)box.w * bt.y});
+}
+
+// World-space rays bounding every tile, then every block of kIsectBlock tiles a
+// side (pixel_rect_quad), cut to the image; zero where the lens model has none.
+template<CameraDistortionType distortion>
+__global__ void tile_quad_rays_kernel(
+    const uint32_t I,
+    const float* __restrict__ viewmats,
+    const float4* __restrict__ intrins,
+    const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
+    const int camera_model,
+    const uint32_t tile_width, const uint32_t tile_height, const BinTile bt,
+    const float image_width, const float image_height,
+    float3* __restrict__ out_quads
+) {
+    const uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const uint32_t n_tile = I * tile_width * tile_height;
+    const uint32_t block_w = _CEIL_DIV(tile_width, (uint32_t)kIsectBlock);
+    const uint32_t block_h = _CEIL_DIV(tile_height, (uint32_t)kIsectBlock);
+    if (idx >= n_tile + I * block_w * block_h) return;
+    const bool block = idx >= n_tile;
+    const uint32_t quads_w = block ? block_w : tile_width;
+    const uint32_t per_image = quads_w * (block ? block_h : tile_height);
+    uint32_t v = block ? idx - n_tile : idx;
+    const uint32_t iid = v / per_image;
+    v %= per_image;
+    const float* vm = viewmats + iid * 16;
+    const float3x3 R = {vm[0], vm[1], vm[2], vm[4], vm[5], vm[6], vm[8], vm[9], vm[10]};
+    const float quad_px = bt.x * (block ? (float)kIsectBlock : 1.0f);
+    const float2 lo = {(float)(v % quads_w) * quad_px, (float)(v / quads_w) * quad_px};
+    const float2 hi = {fminf(lo.x + quad_px, image_width), fminf(lo.y + quad_px, image_height)};
+    float3 q[4];
+    const bool ok = SlangDistortion<distortion>::pixel_rect_quad(
+        camera_model, intrins[iid], dist_coeffs_buffer.load<distortion>(iid), lo, hi, q);
+    for (int k = 0; k < 4; k++)
+        out_quads[4 * (int64_t)idx + k] =
+            ok ? SlangProjectionUtils::transform_ray_d(R, q[k]) : make_float3(0.0f);
 }
 
 
@@ -141,6 +333,7 @@ __global__ void intersect_tile_kernel(
     const uint32_t image_height,
     const float *__restrict__ depths_buffer,  // [..., N]
     const ProjEllipseView ellipse,  // packed screen rows; used iff is_ellipse
+    const FootprintDevice fp,  // .means non-null: exact footprints, !is_ellipse
     const int32_t *__restrict__ cum_tiles_per_splat, // [..., N], optional for counting pass
     const uint32_t tile_width,
     const uint32_t tile_height,
@@ -191,6 +384,10 @@ __global__ void intersect_tile_kernel(
 
     [[maybe_unused]] float2 xy{};
     [[maybe_unused]] float3 conic{};
+    const int64_t iid_c = (image_ids ? image_ids[idx] : idx / N);
+    // An exact footprint that is an ellipse is swept by its covariance.
+    const bool sweep_cov = !is_ellipse && fp.means != nullptr &&
+        footprint_load_ellipse(fp, ellipse, idx, N, iid_c, xy, conic);
     if constexpr (is_ellipse) {
         const float* row = ellipse.data + (int64_t)ellipse.stride * idx;
         xy = ellipse.xy >= 0
@@ -208,11 +405,11 @@ __global__ void intersect_tile_kernel(
     tile_min.y = (uint32_t)min(max(0, (int)floorf((ymin + 0.5f) * bt.inv_y)), (int)tile_height);
     tile_max.x = (uint32_t)min(max(0, (int)ceilf((xmax + 0.5f) * bt.inv_x)), (int)tile_width);
     tile_max.y = (uint32_t)min(max(0, (int)ceilf((ymax + 0.5f) * bt.inv_y)), (int)tile_height);
-    const int64_t iid_c = (image_ids ? image_ids[idx] : idx / N);
     // The sweep direction is chosen on the whole box and the rows cut to the
     // band after, so a banded splat keeps the tiles the whole image gives it.
     const bool by_rows =
         (tile_max.y-tile_min.y)*bt.ix <= (tile_max.x-tile_min.x)*bt.iy;
+    const bool single = tile_max.x - tile_min.x == 1 && tile_max.y - tile_min.y == 1;
     {
         const int image_row = (int)iid_c * (int)tile_height;
         const int y0 = clamp(band_row0 - image_row, (int)tile_min.y, (int)tile_max.y);
@@ -224,12 +421,33 @@ __global__ void intersect_tile_kernel(
         ? tile_active + iid_c * (int64_t)tile_width * tile_height : nullptr;
     if constexpr (is_counting_pass) {
         // counting pass only writes out tiles_per_splat
-        if constexpr (is_ellipse)
+        if (is_ellipse || sweep_cov)
             tiles_per_splat[idx] = count_ellipse_grid_overlaps(
-                xy, conic,
+                xy, conic, sweep_cov,
                 tile_min.x, tile_max.x, tile_min.y, tile_max.y,
                 by_rows, live, tile_width, bt
             );
+        else if (fp.means != nullptr) {
+            const FootprintSplat fs = footprint_load(fp, ellipse, idx, N, iid_c);
+            const int block_width = ((int)tile_width + kIsectBlock - 1) / kIsectBlock;
+            const int block_height = ((int)tile_height + kIsectBlock - 1) / kIsectBlock;
+            const float* tile_quads = fp.tile_quads + 12 * iid_c * (int64_t)(tile_width * tile_height);
+            const float* block_quads = fp.block_quads + 12 * iid_c * (int64_t)(block_width * block_height);
+            int n = 0;
+            SS_FOOTPRINT_BLOCKS(tile_min, tile_max) {
+                int4 box;
+                const int cover = footprint_block(fs, fp, block_quads, tile_width, bt, tile_min,
+                                                  tile_max, single, bx, by, box);
+                if (cover == 0) continue;
+                for (int y = box.y; y < box.w; ++y)
+                    for (int x = box.x; x < box.z; ++x) {
+                        if (live && !live[(int64_t)y * tile_width + x]) continue;
+                        n += (cover == 2 ||
+                              footprint_tile(fs, fp, tile_quads, tile_width, bt, x, y) != 0) ? 1 : 0;
+                    }
+            }
+            tiles_per_splat[idx] = n;
+        }
         else if (tile_active == nullptr)
             tiles_per_splat[idx] = max(static_cast<int32_t>(
                 (tile_max.y - tile_min.y) * (tile_max.x - tile_min.x)
@@ -258,13 +476,13 @@ __global__ void intersect_tile_kernel(
     // here would scatter raw stores across device memory.
     int32_t cur_idx = (idx == 0) ? 0 : max(cum_tiles_per_splat[idx - 1], 0);
     int32_t max_idx = min(cum_tiles_per_splat[idx], n_isects);
-    if constexpr (is_ellipse) {
+    if (is_ellipse || sweep_cov) {
         if (by_rows) {
             for (int y = tile_min.y; y < tile_max.y; y++) {
                 float y0 = y * bt.y - xy.y;
                 float y1 = y0 + bt.y;
 
-                float2 bound = ellipse_range_bound(conic, y0, y1);
+                float2 bound = ellipse_range(conic, y0, y1, sweep_cov);
                 int min_x = clamp(
                     (unsigned)floor((bound.x + xy.x) * bt.inv_x),
                     tile_min.x, tile_max.x
@@ -287,7 +505,7 @@ __global__ void intersect_tile_kernel(
                 float x0 = x * bt.x - xy.x;
                 float x1 = x0 + bt.x;
 
-                float2 bound = ellipse_range_bound(conic, x0, x1);
+                float2 bound = ellipse_range(conic, x0, x1, sweep_cov);
                 int min_y = clamp(
                     (unsigned)floor((bound.x + xy.y) * bt.inv_y),
                     tile_min.y, tile_max.y
@@ -298,6 +516,30 @@ __global__ void intersect_tile_kernel(
                 );
                 for (int y = min_y; y < max_y && cur_idx < max_idx; y++) {
                     if (live && !live[(int64_t)y * tile_width + x]) continue;
+                    int64_t tile_id = iid * tile_width * tile_height + int64_t(y) * tile_width + int64_t(x);
+                    isect_ids[cur_idx] = ((tile_id - key_tile_base) << 32) | (int64_t)depth_u32;
+                    flatten_ids[cur_idx] = static_cast<int32_t>(idx);
+                    ++cur_idx;
+                }
+            }
+        }
+    }
+    else if (fp.means != nullptr) {
+        const FootprintSplat fs = footprint_load(fp, ellipse, idx, N, iid);
+        const int block_width = ((int)tile_width + kIsectBlock - 1) / kIsectBlock;
+        const int block_height = ((int)tile_height + kIsectBlock - 1) / kIsectBlock;
+        const float* tile_quads = fp.tile_quads + 12 * iid * (int64_t)(tile_width * tile_height);
+        const float* block_quads = fp.block_quads + 12 * iid * (int64_t)(block_width * block_height);
+        SS_FOOTPRINT_BLOCKS(tile_min, tile_max) {
+            int4 box;
+            const int cover = footprint_block(fs, fp, block_quads, tile_width, bt, tile_min,
+                                              tile_max, single, bx, by, box);
+            if (cover == 0) continue;
+            for (int y = box.y; y < box.w; ++y) {
+                for (int x = box.x; x < box.z && cur_idx < max_idx; ++x) {
+                    if (live && !live[(int64_t)y * tile_width + x]) continue;
+                    if (cover != 2 && footprint_tile(fs, fp, tile_quads, tile_width, bt, x, y) == 0)
+                        continue;
                     int64_t tile_id = iid * tile_width * tile_height + int64_t(y) * tile_width + int64_t(x);
                     isect_ids[cur_idx] = ((tile_id - key_tile_base) << 32) | (int64_t)depth_u32;
                     flatten_ids[cur_idx] = static_cast<int32_t>(idx);
@@ -450,6 +692,7 @@ std::tuple<
     DeviceTensor2D<uint2> aabb,   // [*N] packed, core/AabbQuant.cuh
     DeviceTensorFloatND depths,   // [*N] float32
     ProjEllipseView ellipse,      // .data null for AABB mode
+    FootprintView footprint,      // .means null for the ellipse / AABB test
     const uint32_t I,
     TorchTensorView intrins,      // [I, 4]
     const uint32_t image_width,
@@ -474,6 +717,48 @@ std::tuple<
 
     intersect_check_image_size(image_width, image_height);
 
+    const bool exact = footprint.means != nullptr;
+    if (exact && ellipse.data == nullptr)
+        throw std::runtime_error("tile intersect: exact footprints read the opacity from the screen rows");
+    FootprintDevice fp;
+    DeviceVector<float> tile_quads;
+    if (exact) {
+        fp.means = footprint.means;
+        fp.quats = footprint.quats;
+        fp.scales = footprint.scales;
+        fp.gaussian_ids = footprint.gaussian_ids;
+        fp.viewmats = footprint.viewmats;
+        fp.intrins = (const float4*)std::get<0>(intrins);
+        fp.surfel = footprint.surfel;
+        fp.planar = footprint_planar(cmt(footprint.camera_model), cdt(footprint.distortion));
+    }
+    // Ray quads of the tile grid as it stands, then of its blocks. A planar view
+    // needs none: its footprints are ellipses, or tested on rays it derives.
+    auto build_tile_quads = [&](uint32_t tile_width, uint32_t tile_height) {
+        if (fp.planar != 0) return;
+        const int64_t n_tile = (int64_t)I * tile_width * tile_height;
+        const int64_t n_block = (int64_t)I * _CEIL_DIV(tile_width, (uint32_t)kIsectBlock) *
+                                _CEIL_DIV(tile_height, (uint32_t)kIsectBlock);
+        tile_quads.resize(PoolSlot::IsectTileRays, 12 * (n_tile + n_block));
+        const CameraDistortionCoeffsBuffer dist_buf((float*)footprint.dist_coeffs);
+        const CameraDistortionType cd = cdt(footprint.distortion);
+        #define _QUADS(D) tile_quad_rays_kernel<CameraDistortionType::D> \
+            <<<_LAUNCH_ARGS_1D(n_tile + n_block, 256)>>>( \
+                I, footprint.viewmats, (const float4*)std::get<0>(intrins), dist_buf, \
+                (int)cmt(footprint.camera_model), tile_width, tile_height, bt, \
+                (float)image_width, (float)image_height, (float3*)tile_quads.data_ptr())
+        if (cd == CameraDistortionType::None) _QUADS(None);
+        else if (cd == CameraDistortionType::OpenCV) _QUADS(OpenCV);
+        else if (cd == CameraDistortionType::ThinPrism) _QUADS(ThinPrism);
+        else throw std::runtime_error("tile intersect: unsupported distortion tier");
+        #undef _QUADS
+        CHECK_DEVICE_ERROR(cudaGetLastError());
+        fp.tile_quads = tile_quads.data_ptr();
+        fp.block_quads = tile_quads.data_ptr() + 12 * n_tile;
+    };
+    // The ellipse rows only carry the opacity then.
+    const bool by_ellipse = ellipse.data != nullptr && !exact;
+
     uint32_t tile_width = 0, tile_height = 0, n_tiles = 0;
     const int32_t* active = tile_active;
     DeviceVector<int32_t> tiles_per_splat, cum_tiles_per_splat;
@@ -483,7 +768,7 @@ std::tuple<
     // Tiles each splat touches in rows [row0, row1), and their exact total.
     auto count_rows = [&](int32_t row0, int32_t row1) -> int64_t {
         tiles_per_splat.resize(PoolSlot::IsectTilesPerSplat, total_count);
-        (ellipse.data != nullptr ?
+        (by_ellipse ?
             intersect_tile_kernel<true, true> :
             intersect_tile_kernel<true, false>
         )<<<_LAUNCH_ARGS_1D(I*N, 256)>>>(
@@ -496,6 +781,7 @@ std::tuple<
             image_width, image_height,
             depths.data_ptr(),
             ellipse,
+            fp,
             nullptr,  // cum_tiles_per_splat
             tile_width, tile_height,
             active,
@@ -542,6 +828,7 @@ std::tuple<
         n_tiles = intersect_check_tile_count(tile_width, tile_height, I);
         rows = (int32_t)(I * tile_height);
 
+        if (exact) build_tile_quads(tile_width, tile_height);
         n_isects64 = count_rows(0, rows);
         if (intersect_should_coarsen(n_isects64, macro_log2)) {
             // tile_active was built for the old tile grid; dropping it only
@@ -614,7 +901,7 @@ std::tuple<
         cub::DoubleBuffer<int32_t> d_values(odd ? flatten_alt.data_ptr() : out,
                                             odd ? out : flatten_alt.data_ptr());
 
-        (ellipse.data != nullptr ?
+        (by_ellipse ?
             intersect_tile_kernel<false, true> :
             intersect_tile_kernel<false, false>
         )<<<_LAUNCH_ARGS_1D(I*N, 256)>>>(
@@ -625,6 +912,7 @@ std::tuple<
             image_width, image_height,
             depths.data_ptr(),
             ellipse,
+            fp,
             cum_tiles_per_splat.data_ptr(),
             tile_width, tile_height,
             active,

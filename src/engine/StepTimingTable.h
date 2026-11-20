@@ -99,6 +99,7 @@
   X("intersect_tile.intersect_tile_count",           Render,      SplatsPixels) \
   X("intersect_tile.intersect_tile_write",           Render,      SplatsPixels) \
   X("intersect_tile.tile_active_map",                Masks,       Pixels) \
+  X("intersect_tile.tile_quad_rays",                 Render,      Pixels) \
   X("meshing.mesh_activate",                         Other,       Fixed) \
   X("meshing.mesh_bisect",                           Other,       Fixed) \
   X("meshing.mesh_bvh_prep",                         Other,       Fixed) \
