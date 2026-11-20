@@ -9,12 +9,25 @@
 
 #include "app/gui/DatasetPreset.h"
 #include "app/gui/MeshPreset.h"
+#include "app/gui/PresetFile.h"
 #include "core/SourcePath.h"
 #include "dense/ConfigFields.h"
 
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <cerrno>
+#include <csignal>
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -499,13 +512,113 @@ static void test_dense_draft_restore() {
     }
 }
 
+static std::string file_bytes(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+static bool preset_write_failed(const fs::path& path, const std::string& text) {
+    try {
+        gui::write_preset_file(path.string(), text);
+        return false;
+    } catch (const std::exception&) {
+        return true;
+    }
+}
+
+static void test_preset_symlinks() {
+    const auto dir = scratch() / "links";
+    fs::remove_all(dir);
+    fs::create_directory(dir);
+    const auto target = dir / "target.json";
+    const auto link = dir / "preset.json";
+    std::ofstream(target) << R"({"old":true})";
+    std::error_code ec;
+    fs::create_symlink(target.filename(), link, ec);
+#ifdef _WIN32
+    if (ec == std::errc::permission_denied || ec.value() == ERROR_PRIVILEGE_NOT_HELD) {
+        std::printf("SKIP preset symlinks: %s\n", ec.message().c_str());
+        fs::remove_all(dir);
+        return;
+    }
+#endif
+    CHECK(!ec);
+    if (!ec) {
+        const std::string updated = R"({"new":true})";
+        gui::write_preset_file(link.string(), updated);
+        CHECK(fs::is_symlink(link) && file_bytes(target) == updated);
+        fs::remove(target);
+        CHECK(preset_write_failed(link, updated));
+        CHECK(fs::is_symlink(link) && !fs::exists(target));
+        fs::remove(link);
+        fs::create_symlink(link.filename(), link);
+        CHECK(preset_write_failed(link, updated));
+        CHECK(fs::read_symlink(link) == link.filename());
+    }
+    fs::remove_all(dir);
+}
+
+static void test_torn_overwrite() {
+    const auto path = scratch() / "torn_overwrite.json";
+    const std::string old_json = R"({"spirula_preset":1,"kind":"dataset","name":"previous preset"})";
+    for (const size_t size : {64u, 65536u}) {
+        const std::string new_json = R"({"spirula_preset":1,"kind":"dataset","name":")" +
+                                     std::string(size, 'x') + "\"}";
+        bool reported_failure = false;
+#ifdef _WIN32
+        const HANDLE locked = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, CREATE_ALWAYS, 0, nullptr);
+        DWORD seeded = 0;
+        OVERLAPPED all{};
+        const bool injected = locked != INVALID_HANDLE_VALUE &&
+            WriteFile(locked, old_json.data(), static_cast<DWORD>(old_json.size()), &seeded, nullptr) &&
+            seeded == old_json.size() &&
+            LockFileEx(locked, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+                       0, MAXDWORD, MAXDWORD, &all);
+        // Also deny rename; the byte lock alone would let an atomic save succeed.
+        const HANDLE hold = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr, OPEN_EXISTING, 0, nullptr);
+        CHECK(injected && hold != INVALID_HANDLE_VALUE);
+        if (injected && hold != INVALID_HANDLE_VALUE)
+            reported_failure = preset_write_failed(path, new_json);
+        if (hold != INVALID_HANDLE_VALUE) CloseHandle(hold);
+        if (locked != INVALID_HANDLE_VALUE) CloseHandle(locked);
+#else
+        std::ofstream(path, std::ios::binary) << old_json;
+        const pid_t child = fork();
+        CHECK(child >= 0);
+        if (child == 0) {
+            alarm(5);
+            rlimit limit{};
+            if (std::signal(SIGXFSZ, SIG_IGN) == SIG_ERR ||
+                getrlimit(RLIMIT_FSIZE, &limit) != 0) _exit(2);
+            limit.rlim_cur = 16;
+            if (setrlimit(RLIMIT_FSIZE, &limit) != 0) _exit(2);
+            _exit(preset_write_failed(path, new_json) ? 0 : 1);
+        }
+        if (child > 0) {
+            int status = 0;
+            pid_t done;
+            do { done = waitpid(child, &status, 0); } while (done == -1 && errno == EINTR);
+            reported_failure = done == child && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+        }
+#endif
+        CHECK(file_bytes(path) == old_json);
+        CHECK(reported_failure);
+        fs::remove(path);
+    }
+    std::printf("preset torn overwrite: %s\n", failures ? "failed" : "OK");
+}
+
 int main() {
+    test_torn_overwrite();
     test_dataset_preset();
     test_mesh_preset();
     test_sanitize();
     test_unknown_key_ignored();
     test_dense_draft_restore();
     test_kinds_do_not_cross();
+    test_preset_symlinks();
     if (failures) {
         std::printf("preset_roundtrip_test: %d failure(s)\n", failures);
         return 1;

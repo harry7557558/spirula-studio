@@ -51,12 +51,6 @@ void composite(const uint8_t* base, const uint8_t* drop, const uint8_t* keep,
                size_t n, uint8_t* out);
 
 bool encode_gray_png(const uint8_t* px, int w, int h, std::vector<uint8_t>& png);
-// A sibling of `dst` no other call, in this process or another, is using:
-// <dst>.<pid>.<counter>.tmp.
-std::string temp_write_path(const std::string& dst);
-// Through a sibling temp file and a rename, so an existing file's inode is
-// never written into: masks gathered beside photos can be hard links.
-bool write_file_atomic(const std::string& path, const uint8_t* data, size_t n);
 bool fingerprint_file(const std::string& path, uint64_t& out);
 std::string utc_now_iso();
 
