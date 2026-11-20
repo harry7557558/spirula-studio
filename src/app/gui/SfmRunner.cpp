@@ -15,6 +15,7 @@
 
 #include "app/AppPaths.h"
 #include "app/gui/Subprocess.h"
+#include "core/RelativePath.h"
 #ifdef SS_TOOL_SFM
 // The stage tags the child prints and the manifest it reads; a build without the
 // module has no child to run (see availability()).
@@ -458,12 +459,13 @@ void SfmRunner::apply_status(const RunStatus& st) {
 // sub-folder each input's frames went into. The focal is a fraction of the
 // width up to here: the width is not known until the frames exist.
 sfm::Manifest SfmRunner::build_manifest(const SfmJob& job, const PrepResult& prep) {
+    const std::string& ws = job.prep.workspace;
     sfm::Manifest man;
-    man.image_dir = prep.image_dir;
+    man.image_dir = spirula::relative_to_dir(prep.image_dir, ws);
     // Named here only when the reconstruction is to read them: the manifest is
     // the other way masks reach it, so leaving it in would undo --no-masks.
     if (!prep.mask_dir.empty() && job.mask_features) {
-        man.mask_dir = prep.mask_dir;
+        man.mask_dir = spirula::relative_to_dir(prep.mask_dir, ws);
         man.has_mask_flipped = true;
         man.mask_flipped = prep.mask_dir_flipped;
     }
@@ -502,7 +504,7 @@ sfm::Manifest SfmRunner::build_manifest(const SfmJob& job, const PrepResult& pre
     for (const PrepCapture& pc : prep.captures) {
         sfm::ManifestCapture c;
         c.prefix = pc.subdir;
-        c.telemetry = pc.path;
+        c.telemetry = spirula::relative_to_dir(pc.path, ws);
         c.fps = pc.fps;
         c.time_offset = pc.time_offset;
         for (const PrepInput& in : job.prep.inputs)

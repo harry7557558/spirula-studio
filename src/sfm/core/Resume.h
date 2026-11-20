@@ -34,7 +34,7 @@ inline constexpr const char* kDir = ".resume";
 inline constexpr const char* kExtractSig = "extract.sig";
 inline constexpr const char* kMatchSig = "match.sig";
 inline constexpr const char* kMatchJournal = "matches.part";
-// The extraction signature's line naming the image folder, as given.
+// The extraction signature's line naming the image folder, relative to the workspace.
 inline constexpr const char* kSignedImages = "images=";
 
 std::filesystem::path dir(const std::string& workspace);

@@ -1114,8 +1114,14 @@ WorkspaceState probe_workspace(const std::string& workspace,
     if (st.extracted) {
         const std::string key = sfm::resume::kSignedImages;
         std::ifstream sig(resume / sfm::resume::kExtractSig);
-        for (std::string line; std::getline(sig, line);)
-            if (line.rfind(key, 0) == 0) st.extracted_images = line.substr(key.size());
+        for (std::string line; std::getline(sig, line);) {
+            if (line.rfind(key, 0) != 0) continue;
+            std::string val = line.substr(key.size());
+            while (!val.empty() && (val.back() == '\r' || val.back() == '\n')) val.pop_back();
+            const fs::path p(val);
+            st.extracted_images =
+                p.empty() || p.is_absolute() ? val : (ws / p).lexically_normal().string();
+        }
     }
     st.matched = fs::exists(ws / "matches.bin", ec) &&
                  fs::exists(resume / sfm::resume::kMatchSig, ec);

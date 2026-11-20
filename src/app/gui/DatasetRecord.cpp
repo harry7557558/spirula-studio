@@ -1,5 +1,6 @@
 #include "app/gui/DatasetRecord.h"
 
+#include "core/RelativePath.h"
 #include "data/JsonWrite.h"
 
 #include <chrono>
@@ -259,13 +260,14 @@ void write_step_record(const std::string& workspace, Step step,
     write_root(workspace, root);
 }
 
-std::string encode_record_inputs(const RecordInputs& in) {
+std::string encode_record_inputs(const RecordInputs& in,
+                                 const std::string& workspace) {
     JsonWriter w;
     w.object();
     w.key("rows").array();
     for (const PrepInput& s : in.rows) {
         w.object();
-        w.field("path", s.path);
+        w.field("path", spirula::relative_to_dir(s.path, workspace));
         w.field("is_video", s.is_video);
         w.field("subdir", s.subdir);
         w.field("fps", s.fps);
@@ -305,7 +307,7 @@ std::string encode_record_inputs(const RecordInputs& in) {
         w.field("object", c.object);
         w.field("frame", (long long)c.frame);
         w.field("position", c.position);
-        w.field("source", c.source);
+        w.field("source", spirula::relative_to_dir(c.source, workspace));
         w.field("camera", c.camera);
         w.end();
     }
@@ -314,12 +316,14 @@ std::string encode_record_inputs(const RecordInputs& in) {
     return w.str();
 }
 
-RecordInputs decode_record_inputs(const JsonValue& v) {
+RecordInputs decode_record_inputs(const JsonValue& v,
+                                  const std::string& workspace) {
     RecordInputs out;
     if (const JsonValue* rows = v.find("rows"); rows && rows->is_array())
         for (const JsonValue& r : rows->arr) {
             PrepInput s;
-            s.path = text(r, "path");
+            s.path = spirula::resolve_from_dir(text(r, "path"), workspace,
+                                              /*fallback_sibling_filename=*/true);
             s.is_video = r.find("is_video") && r.find("is_video")->as_bool();
             s.subdir = text(r, "subdir");
             s.fps = (float)r.get_double("fps", 0.0);
@@ -357,7 +361,8 @@ RecordInputs decode_record_inputs(const JsonValue& v) {
             k.object = (int)c.get_double("object", 0.0);
             k.frame = (long long)c.get_double("frame", 0.0);
             k.position = (float)c.get_double("position", 0.0);
-            k.source = text(c, "source");
+            k.source = spirula::resolve_from_dir(text(c, "source"), workspace,
+                                                 /*fallback_sibling_filename=*/true);
             k.camera = text(c, "camera");
             out.clicks.push_back(std::move(k));
         }

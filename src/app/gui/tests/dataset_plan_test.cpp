@@ -557,6 +557,14 @@ int main() {
             << "features=sift\n" << sfm::resume::kSignedImages << (ws / "images").string() << "\n";
         expect(plan(made, redo)[ModelPart::Features].act == Act::Reuse,
                "... and ones from these images are not");
+        std::ofstream(ws / sfm::resume::kDir / sfm::resume::kExtractSig)
+            << "features=sift\n" << sfm::resume::kSignedImages << "images\n";
+        expect(plan(made, redo)[ModelPart::Features].act == Act::Reuse,
+               "... and workspace-relative images=images is also reused");
+        std::ofstream(ws / sfm::resume::kDir / sfm::resume::kExtractSig)
+            << "features=sift\n" << sfm::resume::kSignedImages << "../other/images\n";
+        expect(plan(made, redo)[ModelPart::Features].why == Why::Moved,
+               "... while a different workspace-relative images folder is treated as moved");
 
         SfmJob j = made;
         j.features = (int)std::size(kSfmFeatures) - 1;
@@ -1097,6 +1105,63 @@ int main() {
         expect(p[Step::Frames].act == Act::Redo && p[Step::Frames].can_keep,
                "both lenses again is a setting changed, not a source that went stale");
         fs::remove_all(w);
+    }
+
+    // ---- moved dataset input rows and missing-absolute fallback --------------
+    {
+        const fs::path old_parent = ws.string() + "_move_old";
+        const fs::path old_ws = old_parent / "dataset";
+        const fs::path new_parent = ws.string() + "_move_new";
+        const fs::path new_ws = new_parent / "dataset";
+        fs::remove_all(old_parent);
+        fs::remove_all(new_parent);
+        fs::create_directories(old_ws);
+        const fs::path old_video = old_parent / "clip.OSV";
+        touch(old_video);
+
+        PrepInput row = insv();
+        row.path = old_video.string();
+        row.focal_factor = 0.75f;
+        MaskClick clk;
+        clk.x = 12.0f;
+        clk.y = 34.0f;
+        clk.source = old_video.string();
+        const std::string encoded = encode_record_inputs({{row}, {clk}}, old_ws.string());
+        const JsonValue parsed = json_parse(encoded);
+        expect(parsed.find("rows")->arr[0].find("path")->as_string() == "../clip.OSV" &&
+                   parsed.find("clicks")->arr[0].find("source")->as_string() == "../clip.OSV",
+               "record inputs encode sibling video relative to workspace");
+
+        const bool all[kNumSteps] = {true, true, true, true};
+        write_record_settings(old_ws.string(), "{}", encoded, all);
+        fs::rename(old_parent, new_parent);
+        const fs::path moved_video = new_parent / "clip.OSV";
+
+        const RecordInputs dec =
+            decode_record_inputs(read_dataset_record(new_ws.string()).inputs, new_ws.string());
+        expect(dec.rows.size() == 1 &&
+                   fs::equivalent(fs::u8path(dec.rows[0].path), moved_video) &&
+                   dec.clicks.size() == 1 &&
+                   fs::equivalent(fs::u8path(dec.clicks[0].source), moved_video),
+               "moved record inputs resolve relative path to moved video");
+
+        // Legacy absolute path missing after move falls back to sibling filename.
+        PrepInput legacy_row = row;
+        legacy_row.path = "/missing/dir/clip.OSV";
+        MaskClick legacy_clk = clk;
+        legacy_clk.source = "/missing/dir/clip.OSV";
+        write_record_settings(new_ws.string(), "{}",
+                              encode_record_inputs({{legacy_row}, {legacy_clk}}), all);
+        SfmJob restore_job = video_job(new_ws);
+        restore_job.prep.inputs[0].path = moved_video.string();
+        restore_job.prep.inputs[0].focal_factor = 0.0f;
+        restore_record_inputs(read_dataset_record(new_ws.string()), restore_job.prep,
+                              restore_job.camera_model);
+        expect(restore_job.prep.inputs[0].focal_factor == 0.75f &&
+                   restore_job.prep.mask_clicks.size() == 1 &&
+                   restore_job.prep.mask_clicks[0].source == moved_video.string(),
+               "missing absolute record path falls back to sibling filename and restores row + clicks");
+        fs::remove_all(new_parent);
     }
 
     fs::remove_all(ws);
