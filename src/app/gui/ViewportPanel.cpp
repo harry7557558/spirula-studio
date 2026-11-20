@@ -1878,8 +1878,8 @@ unsigned ViewportPanel::pump_hardware(int W, int H) {
     view_matrix(view); compute_intrinsics(W, H, fx, fy);
     if (_ortho) { fx *= _m2s_scale; fy *= _m2s_scale; }
     auto gamut = spirula::gamut_to_rec709(kViewerGamuts[_gamut_idx]);
-    // The GL shaders know 3dgs / mip / 3dgut; a 2dgs disc draws as a flat 3dgs splat.
-    const int primitive = std::string(kViewerPrimitives[_primitive_idx]) == "2dgs" ? 0 : _primitive_idx;
+    // The GL shaders know 3dgs / mip / 3dgut; a 2dgs disc draws as a flat 3dgut splat.
+    const int primitive = std::string(kViewerPrimitives[_primitive_idx]) == "2dgs" ? 2 : _primitive_idx;
     _hardware_tex = _hardware.render(W, H, view, _cam_model, fx, fy,
         primitive, _sh_degree, gamut.data(), _transfer_idx, _linear_color);
     return _hardware_tex;

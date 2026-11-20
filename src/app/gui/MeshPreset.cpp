@@ -25,7 +25,6 @@ namespace {
     X("quality_iters",     quality_iters)                                     \
     X("floater_min_faces", floater_min_faces)                                 \
     X("cull_unseen",       cull_unseen)                                       \
-    X("carve_k",           carve_k)                                           \
     X("extra_args",        extra_args)                                        \
     /* end */
 
@@ -58,7 +57,6 @@ void sanitize_mesh_job(MeshJob& job) {
     job.bisection_iters = std::clamp(job.bisection_iters, 0, 32);
     job.quality_iters = std::clamp(job.quality_iters, 0, 32);
     job.floater_min_faces = std::clamp(job.floater_min_faces, 0, 10000000);
-    job.carve_k = std::clamp(job.carve_k, 0, 64);
     job.merge_factor = std::clamp(job.merge_factor, 0.05f, 16.0f);
 
     bool any_color = false, any_format = false;

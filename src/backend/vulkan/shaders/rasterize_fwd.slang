@@ -3,7 +3,8 @@
 // are separate entries here because their groupshared fragments differ. One
 // 64-thread workgroup per micro-tile, binned per macro tile; the CUDA template
 // axes are the specialization constants below. 3DGS / Mip / 3DGUT render
-// rgb + depth; 2DGS (kSurfel, the eval3d entry) adds the normal.
+// rgb + depth; kNormal (the eval3d entry) adds the normal: 2DGS's (kSurfel),
+// or 3DGUT's shortest axis.
 //
 // CUDA's __syncthreads_count(done) early-out is a monotonic groupshared
 // counter each thread bumps once on turning done; the loop-top barrier, which
@@ -304,7 +305,7 @@ void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 // ---------------------------------------------------------------------------
 // eval3D (Vanilla3DGUT, Vanilla2DGS when kSurfel): per-pixel rays; the
 // projected 2D conic lives in the screen "scale" slot and the ellipse center
-// is the AABB center. kDistType 3 / 4 (DN / RGB_DN) are 2DGS only.
+// is the AABB center. kDistType 3 / 4 (DN / RGB_DN) need kNormal.
 // ---------------------------------------------------------------------------
 
 // Vanilla3DGUT::FragmentFwd, and Vanilla2DGS's
@@ -333,7 +334,7 @@ struct RasterFwd3dgutParams {
     int* flatten_ids;    // [n_isects]
     float* out_rgb;
     float* out_depth;
-    float* out_normal;   // kSurfel only
+    float* out_normal;   // kNormal only
     float* out_T;
     int* out_last_ids;
     float* dist_rgb;
@@ -398,7 +399,6 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (kCameraModel == 4)
         ray_o += transform_ray_d(R, float3((px-intrin.z)/intrin.x, (py-intrin.w)/intrin.y, 0));
     float3 ray_d = transform_ray_d(R, raydir);
-    float2 pix_size = surfel_pix_size(kCameraModel, intrin.x, intrin.y);
 
     bool done = !inside;
 
@@ -498,7 +498,7 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
             float alpha = kSurfel != 0
                 ? evaluate_alpha_2dgs(f.mean, f.iscl_rot, f.opacity, ray_o,
-                                      ray_d, pix_size)
+                                      ray_d)
                 : evaluate_alpha_3dgs(f.mean, f.iscl_rot, f.opacity, ray_o,
                                       ray_d);
             if (alpha <= ALPHA_THRESHOLD)
@@ -509,8 +509,12 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             float3 color_normal = float3(0.0f);
             if (kSurfel != 0)
                 evaluate_color_2dgs(f.mean, f.iscl_rot, f.opacity, f.rgb,
-                                    ray_o, ray_d, pix_size, color_rgb,
+                                    ray_o, ray_d, color_rgb,
                                     color_depth, color_normal);
+            else if (kNormal != 0)
+                evaluate_color_3dgs_normal(f.mean, f.iscl_rot, f.opacity,
+                                           f.rgb, ray_o, ray_d, color_rgb,
+                                           color_depth, color_normal);
             else
                 evaluate_color_3dgs(f.mean, f.iscl_rot, f.opacity, f.rgb,
                                     ray_o, ray_d, color_rgb, color_depth);
@@ -546,7 +550,7 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 }
                 pix_rgb += color_rgb * vis;
                 pix_depth += acc_depth * vis;
-                if (kSurfel != 0) pix_normal += color_normal * vis;
+                if (kNormal != 0) pix_normal += color_normal * vis;
                 if (kOutputScore != 0) pix_score += vis * _score[t];
                 cur_idx = uint(batch_start) + t;
                 T = next_T;
@@ -587,7 +591,7 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         p.out_rgb[3 * pix_id_global + 1] = pix_rgb.y;
         p.out_rgb[3 * pix_id_global + 2] = pix_rgb.z;
         if (p.out_depth_on != 0) p.out_depth[pix_id_global] = out_depth;
-        if (kSurfel != 0) {
+        if (kNormal != 0) {
             // composited in world space, stored in camera space
             pix_normal = undo_transform_ray_d(R, pix_normal);
             p.out_normal[3 * pix_id_global + 0] = pix_normal.x;
@@ -603,6 +607,9 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 // 2DGS surfels in the eval3d entry.
 [SpecializationConstant]
 const int kSurfel = 0;
+// The eval3d entry renders a normal; set with kSurfel too.
+[SpecializationConstant]
+const int kNormal = 0;
 
 // Declared last: spec IDs follow declaration order (see dist_spec.slang).
 [SpecializationConstant]

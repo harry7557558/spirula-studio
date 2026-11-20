@@ -3,10 +3,20 @@
 `spirula mesh --method tsdf` (in the GUI: Surface method, Depth fusion) meshes
 the way 2D Gaussian Splatting (Huang et al. 2024) reports its DTU Chamfer:
 render a depth map per training camera, fuse them into a truncated signed
-distance volume, extract its zero level. The opacity-field extractor
-(`src/mesh/Meshing.h`) stays the default. Comparing a 2dgs model with the
-paper's numbers needs the paper's extraction, or a gap could be the
-extractor's rather than the model's.
+distance, extract its zero level. The opacity-field extractor
+(`src/mesh/Meshing.h`) stays the default.
+
+There are two fusions:
+
+- **Adaptive** (the default). The signed distance is sampled where the opacity
+  field is: at the Delaunay vertices of the splat samples, so the mesh is
+  dense where the Gaussians are and a large or unbounded scene costs what its
+  Gaussians cost. It shares the extraction and the fusion pass of
+  [mesh-field.md](mesh-field.md); see "Adaptive fusion" below.
+- **A uniform grid**, with `--tsdf-voxel <size>`: the paper's extraction, kept
+  for comparing a 2dgs model with the paper's numbers, where a gap could
+  otherwise be the extractor's rather than the model's. The rest of this note
+  up to "Adaptive fusion" describes it.
 
 ## How it works
 
@@ -33,10 +43,9 @@ extractor's rather than the model's.
    mesh comes out welded; a tetrahedron counts only when all four of its
    voxels were observed. The mesh then takes the opacity field's finishing
    chain unchanged (merge, culling, cleanup, orientation, colour, export).
-4. **Defaults.** Voxel = diagonal of the 5-95 percentile box of the splat
-   centres / 1024 (the paper's large-scene setting is 1024 cells over the
-   depth range), truncation 4 voxels (its DTU setting: 0.016 at 0.004), no
-   depth cap. `--tsdf-voxel`, `--tsdf-trunc`, `--tsdf-max-depth` override.
+4. **Parameters.** `--tsdf-voxel` in scene units (the paper's large-scene
+   setting is 1024 cells over the depth range), truncation `--tsdf-trunc` 4
+   voxels (its DTU setting: 0.016 at 0.004), `--tsdf-max-depth` no cap.
 
 Finding the blocks a camera touches dominated the first version, 0.32 s a
 camera against 0.03 s for the voxel updates, from sorting every pixel's keys;
@@ -69,10 +78,33 @@ camera sees survive. Hence the GUI's advice, depth fusion for 2dgs models
 only. The volume was 2.06 GB of that 6.0 GB peak; `mesh/MeshProgress.cpp`
 sizes the fusion stages from this run.
 
+## Adaptive fusion
+
+`launch_sample_occ` with `OccFusion::tsdf` folds, per camera and query point,
+the distance from the camera's surface (the nearest pixel's, where its profile
+crosses the level) to the point, in units of a band of `--tsdf-trunc` pixel
+footprints (4), clamped at +1 and dropped beyond -1, weighted by how sharply
+the camera sees the point. The mean maps to the level at zero distance, so
+marching tetrahedra and the cut-edge bisection run unchanged. A point in no
+camera's band is inside if some camera saw it deeper than its surface, free
+otherwise, which closes the surface where the uniform volume leaves it open;
+the visibility cull removes what that adds.
+
+The band is in pixels, not world units, because a camera resolves depth about
+as well as it resolves position: a voxel grid's world-unit band is too wide
+near the cameras and too narrow far away, which is the other half of handling
+an unbounded scene.
+
+Dessert 2dgs model: F 0.805 with 81k vertices in 29 s and 2.4 GB of RAM. The
+grid at its former automatic size (the 5-95% box of the splat centres over
+1024) gave 0.658 with 1.13M vertices in 48 s and 3.3 GB; at `--tsdf-voxel
+0.004` with the pixel profile of [mesh-field.md](mesh-field.md) it gives 0.808
+with 390k vertices in 75 s and 5.6 GB. So most of the gain is the profile,
+and the adaptive fusion gets it at a fifth of the vertices and under half the
+memory.
+
 ## Open
 
 - DTU Chamfer against the paper's table. If the moments depth of a 2dgs
   model falls short there, render the depth with the model's own primitive
   through the engine (`forward_3dgs` with `output_median`) instead.
-- The opacity-field sampler takes two of its seven points per splat along the
-  third axis, which for a 2dgs splat (`e^-20`) both land on the centre.

@@ -244,10 +244,23 @@ bool batch_build_mesh_job(const BatchRow& row, const std::string& model,
 // sources exactly as the New Dataset screen derives it.
 std::string batch_dataset_workspace(const BatchRow& row);
 
-// The list, kept across sessions in <config_dir>/batch.json: losing a queue to
-// a crash three hours in is the one failure a user cannot recover from by
-// trying again. Neither call throws; an unreadable list comes back empty.
+// The list lives in <config_dir>/batch.json. An unreadable list comes back
+// empty; a failed save throws without replacing the previous list.
 std::vector<BatchRow> load_batch_list();
 void save_batch_list(const std::vector<BatchRow>& rows);
+
+class BatchSaveState {
+    enum class State { Clean, Dirty, Failed };
+    State state_ = State::Clean;
+    std::string error_;
+
+public:
+    void edited() { state_ = State::Dirty; }
+    bool dirty() const { return state_ != State::Clean; }
+    bool needs_autosave() const { return state_ == State::Dirty; }
+    bool failed() const { return state_ == State::Failed; }
+    const char* error() const { return error_.empty() ? "batch.json" : error_.c_str(); }
+    bool save(const std::vector<BatchRow>& rows) noexcept;
+};
 
 }  // namespace gui

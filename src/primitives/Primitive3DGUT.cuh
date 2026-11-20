@@ -16,10 +16,11 @@ namespace SlangHarmonics {
 #include "primitives/PrimitiveProjection.cuh"
 
 // surfel: project with 2DGS's flattened bounds (Primitive2DGS.cuh); the world
-// and screen rows are 3DGUT's either way.
-template<int sh_degree, bool surfel = false>
+// and screen rows are 3DGUT's either way. normal: also render the shortest axis.
+template<int sh_degree, bool surfel = false, bool normal = false>
 struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
-    static constexpr RenderOutputType pixelType = RenderOutputType::RGB_D;
+    static constexpr RenderOutputType pixelType =
+        normal ? RenderOutputType::RGB_DN : RenderOutputType::RGB_D;
 
     using WorldBuffer = typename _BasePrimitive3DGUT<sh_degree>::WorldBuffer;
     using ScreenBuffer = typename _BasePrimitive3DGUT<sh_degree>::ScreenBuffer;
@@ -233,7 +234,7 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ float evaluate_alpha(
-            float3 ray_o, float3 ray_d, float2 /*pix_size*/
+            float3 ray_o, float3 ray_d
         ) const {
             return SlangProjectionUtils::evaluate_alpha_3dgs(
                 mean, iscl_rot, opacity,
@@ -242,14 +243,20 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ RenderOutput evaluate_color(
-            float3 ray_o, float3 ray_d, float2 /*pix_size*/
+            float3 ray_o, float3 ray_d
         ) const {
-            float3 out_rgb; float out_depth;
-            SlangProjectionUtils::evaluate_color_3dgs(
-                mean, iscl_rot, opacity, rgb,
-                ray_o, ray_d, &out_rgb, &out_depth
-            );
-            return { out_rgb, out_depth, make_float3(0.0f) };
+            float3 out_rgb, out_normal = make_float3(0.0f); float out_depth;
+            if constexpr (normal)
+                SlangProjectionUtils::evaluate_color_3dgs_normal(
+                    mean, iscl_rot, opacity, rgb,
+                    ray_o, ray_d, &out_rgb, &out_depth, &out_normal
+                );
+            else
+                SlangProjectionUtils::evaluate_color_3dgs(
+                    mean, iscl_rot, opacity, rgb,
+                    ray_o, ray_d, &out_rgb, &out_depth
+                );
+            return { out_rgb, out_depth, out_normal };
         }
 
     };
@@ -305,7 +312,7 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ float evaluate_alpha(
-            float3 ray_o, float3 ray_d, float2 /*pix_size*/
+            float3 ray_o, float3 ray_d
         ) const {
             return SlangProjectionUtils::evaluate_alpha_3dgs(
                 this->mean, this->iscl_rot, this->opacity,
@@ -314,7 +321,7 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ void evaluate_alpha_vjp(
-            float3 ray_o, float3 ray_d, float2 /*pix_size*/, float v_alpha,
+            float3 ray_o, float3 ray_d, float v_alpha,
             FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
         ) const {
             float3 v_mean; float3x3 v_iscl_rot; float v_opacity;
@@ -333,29 +340,44 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ RenderOutput evaluate_color(
-            float3 ray_o, float3 ray_d, float2 /*pix_size*/
+            float3 ray_o, float3 ray_d
         ) const {
-            float3 out_rgb; float out_depth;
-            SlangProjectionUtils::evaluate_color_3dgs(
-                this->mean, this->iscl_rot, this->opacity, this->rgb,
-                ray_o, ray_d, &out_rgb, &out_depth
-            );
-            return { out_rgb, out_depth, make_float3(0.0f) };
+            float3 out_rgb, out_normal = make_float3(0.0f); float out_depth;
+            if constexpr (normal)
+                SlangProjectionUtils::evaluate_color_3dgs_normal(
+                    this->mean, this->iscl_rot, this->opacity, this->rgb,
+                    ray_o, ray_d, &out_rgb, &out_depth, &out_normal
+                );
+            else
+                SlangProjectionUtils::evaluate_color_3dgs(
+                    this->mean, this->iscl_rot, this->opacity, this->rgb,
+                    ray_o, ray_d, &out_rgb, &out_depth
+                );
+            return { out_rgb, out_depth, out_normal };
         }
 
         __device__ __forceinline__ void evaluate_color_vjp(
-            float3 ray_o, float3 ray_d, float2 /*pix_size*/, RenderOutput v_render,
+            float3 ray_o, float3 ray_d, RenderOutput v_render,
             FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
         ) const {
             float3 v_mean; float3x3 v_iscl_rot; float v_opacity; float3 v_rgb;
             float3 v_ray_o_t, v_ray_d_t;
-            SlangProjectionUtils::evaluate_color_3dgs_vjp(
-                this->mean, this->iscl_rot, this->opacity, this->rgb,
-                ray_o, ray_d,
-                v_render.rgb, v_render.depth,
-                &v_mean, &v_iscl_rot, &v_opacity, &v_rgb,
-                &v_ray_o_t, &v_ray_d_t
-            );
+            if constexpr (normal)
+                SlangProjectionUtils::evaluate_color_3dgs_normal_vjp(
+                    this->mean, this->iscl_rot, this->opacity, this->rgb,
+                    ray_o, ray_d,
+                    v_render.rgb, v_render.depth, v_render.normal,
+                    &v_mean, &v_iscl_rot, &v_opacity, &v_rgb,
+                    &v_ray_o_t, &v_ray_d_t
+                );
+            else
+                SlangProjectionUtils::evaluate_color_3dgs_vjp(
+                    this->mean, this->iscl_rot, this->opacity, this->rgb,
+                    ray_o, ray_d,
+                    v_render.rgb, v_render.depth,
+                    &v_mean, &v_iscl_rot, &v_opacity, &v_rgb,
+                    &v_ray_o_t, &v_ray_d_t
+                );
             v_frag.mean += v_mean;
             v_frag.iscl_rot = v_frag.iscl_rot + v_iscl_rot;
             v_frag.opacity += v_opacity;
@@ -365,12 +387,12 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
         }
 
         __device__ __forceinline__ void evaluate_vjp(
-            float3 ray_o, float3 ray_d, float2 pix_size,
+            float3 ray_o, float3 ray_d,
             float v_alpha, RenderOutput v_render,
             FragmentBwd &v_frag, float3 &v_ray_o, float3 &v_ray_d
         ) const {
-            evaluate_alpha_vjp(ray_o, ray_d, pix_size, v_alpha, v_frag, v_ray_o, v_ray_d);
-            evaluate_color_vjp(ray_o, ray_d, pix_size, v_render, v_frag, v_ray_o, v_ray_d);
+            evaluate_alpha_vjp(ray_o, ray_d, v_alpha, v_frag, v_ray_o, v_ray_d);
+            evaluate_color_vjp(ray_o, ray_d, v_render, v_frag, v_ray_o, v_ray_d);
         }
 
     };
@@ -381,4 +403,7 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
 
 template<int sh_degree>
 using Vanilla3DGUT = Eval3DPrimitive<sh_degree, false>;
+
+template<int sh_degree>
+using Vanilla3DGUTNormal = Eval3DPrimitive<sh_degree, false, true>;
 

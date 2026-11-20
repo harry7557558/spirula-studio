@@ -103,7 +103,7 @@ std::string path_for_size(const std::string& image, int width, int height,
     if (rel.empty()) { root = src.parent_path(); rel = src.filename().string(); }
     const std::string shape = std::to_string(width) + "x" + std::to_string(height);
     const std::string key = src.filename().string() + "." +
-        std::to_string(stamp.time_since_epoch().count()) + "-" + std::to_string(size) + ".png";
+        std::to_string((long long)stamp.time_since_epoch().count()) + "-" + std::to_string(size) + ".png";
     // Keeping PNGs outside the image tree prevents SfM from discovering them as photos.
     return (root.parent_path() / image_discovery::kProgressiveCache / root.filename() / shape /
             fs::path(rel).parent_path() / key).string();
