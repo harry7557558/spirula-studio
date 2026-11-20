@@ -1592,10 +1592,9 @@ void TrainerSession::setup_engine() {
 
     // ---- DataManager ---------------------------------------------------
     const int64_t N = ds.num_cameras;
-    int64_t num_val = (int64_t)ds.val_indices.size();
-    int64_t num_train = N - num_val;
+    const int64_t num_train = N - (int64_t)ds.val_indices.size();
     // Batch-size policy.
-    double n_batch = std::max((double)num_train / std::max(cfg.max_batch_per_epoch, 1), 1.0);
+    const double n_batch = std::max((double)num_train / std::max(cfg.max_batch_per_epoch, 1), 1.0);
     int train_bs = std::max(1, (int)(n_batch + 0.5));
     if (cfg.min_renders_per_refine > 0.0f && num_train > 0) {
         // A splat seen by V cameras is rendered B * refine_every * V / N_train
@@ -1607,14 +1606,10 @@ void TrainerSession::setup_engine() {
         const int bs_old = train_bs;
         if (cfg.max_train_batch_size > 0)
             train_bs = std::max(1, std::min(std::max(train_bs, bs_need), cfg.max_train_batch_size));
-        n_batch = (double)train_bs;
         log(lfmt(lmsg::batch_from_renders,
                  {(double)v_q, (long long)bs_old, (long long)train_bs}));
     }
     _batches_per_epoch = (int)std::max<int64_t>(1, (num_train + train_bs - 1) / train_bs);
-    int val_bs = 1;
-    if (num_val > 0)
-        val_bs = std::max(1, (int)std::ceil(n_batch * (double)num_val / (double)num_train));
 
     DataManagerConfig dm;
     dm.cache_mode  = (cfg.cache_images == "disk") ? CacheMode::DISK : CacheMode::CPU;
@@ -1626,7 +1621,6 @@ void TrainerSession::setup_engine() {
     dm.load_depths      = has_depth;
     dm.load_normals     = has_normal;
     dm.train_batch_size = train_bs;
-    dm.val_batch_size   = val_bs;
     dm.flip_mask = cfg.flip_mask;
     set_alpha_config(dm, alpha_images);
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
@@ -2451,7 +2445,6 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
     dm.load_depths = false;
     dm.load_normals = false;
     dm.train_batch_size = 1;
-    dm.val_batch_size   = 1;
     dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
     dm.exif_quarter_turns = eds.exif_quarter_turns;

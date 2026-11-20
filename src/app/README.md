@@ -322,10 +322,8 @@ agree. Only the C++ exists now, so the table said nothing the code does not.
 
 ## TODOs (rough priority)
 
-1. **Eval pass + metrics** — iterate `next_val_batch` / render train views,
-   PSNR/SSIM from engine buffers; then `validation_fraction` early-stop (the
-   `overfit_score_*` / `early_stop_*` fields were parsed but unused and have
-   been removed; re-add them when the pass lands).
+1. **Validation during training** — decode held-out views on demand with
+   `fetch_one` and compute PSNR/SSIM for early stopping.
 2. **Resume** — `engine_load_checkpoint` after skeleton setup; config.json
    round-trip.
 3. ~~ImGui native viewport (Phase 2)~~ DONE 2026-07-12 (the GUI, see
