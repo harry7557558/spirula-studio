@@ -92,12 +92,12 @@ runtime RAM cap or a VRAM limit. Model residency, tasks and geometry warp plans
 are charged against it; insufficient admission memory is an error, not a
 silent reduction in workers. A worker decodes its next image while the current
 one runs, and encodes finished outputs on a `WriterPool` before the parent
-accepts them, in the original order. Independent images go to workers in
+accepts them in completion order. Independent images go to workers in
 pairs; a tracked sequence stays one task, in frame order. Each worker's CPU
 loops and writers use `max(1, hardware_threads / workers)` threads. A mask
 task reserves two frames of the budget, a tracked sequence's included, and the
-step fails when that does not fit; a geometry pair that does not fit is sent
-as two single images.
+step fails when that does not fit; a geometry pair that exceeds one worker's
+share of the task budget is sent as two single images.
 
 The geometry CLI can explicitly select worker UUIDs and override the shared
 budget: `spirula geometry <dataset> --worker-devices <uuid,...> --worker-memory-mb 8192`.
