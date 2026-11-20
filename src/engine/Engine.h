@@ -550,9 +550,13 @@ void engine_copy_gt_depth_to_host(TorchTensorView out);  // float [B, H, W, 1]
 void engine_copy_gt_normal_to_host(TorchTensorView out); // float [B, H, W, 3]
 
 // The normal the loss derives from the rendered depth, with the same kernel
-// and the camera the last forward installed. No primitive renders normals
-// (engine_primitive_pixel_type), so this IS the render's normal.
+// and the camera the last forward installed.
 void engine_copy_render_depth_normal_to_host(TorchTensorView out); // [B,H,W,3]
+
+// The normal the rasterizer composited: camera frame, alpha-weighted, not
+// unit length. `out` is left untouched when the last forward rendered none.
+void engine_copy_render_normal_to_host(TorchTensorView out); // [B,H,W,3]
+bool engine_primitive_renders_normal(const std::string& primitive);
 
 
 void engine_copy_render_to_host(

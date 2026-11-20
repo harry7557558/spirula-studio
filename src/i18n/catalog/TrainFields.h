@@ -4640,39 +4640,6 @@ SS_MSG(normal_reg_weight_help,
        "değerler daha temiz geometri ve daha iyi ağ verir; aşırısı ince ayrıntıyı "
        "düzleştirir."));
 
-SS_MSG(normal_reg_warmup,
-    EN("Surface alignment warm-up"), JA("面沿わせの立ち上がり"),
-    ZH_HANS("表面对齐预热"), ZH_HANT("表面對齊預熱"), KO("표면 정렬 워밍업"),
-    DE("Anlauf der Oberflächenausrichtung"),
-    FR("Montée de l'alignement aux surfaces"),
-    ES("Arranque de la alineación con las superficies"),
-    PT("Aquecimento do alinhamento às superfícies"),
-    IT("Avvio dell'allineamento alle superfici"),
-    NL("Opbouw van de oppervlakte-uitlijning"),
-    RU("Разгон выравнивания по поверхности"),
-    TR("Yüzeye hizalamanın ısınması"));
-SS_MSG(normal_reg_warmup_help,
-    EN("How many steps the surface-alignment penalty takes to reach full strength."),
-    JA("面沿わせのペナルティが最大になるまでのステップ数です。"),
-    ZH_HANS("表面对齐惩罚达到最大强度所需的步数。"),
-    ZH_HANT("表面對齊懲罰達到最大強度所需的步數。"),
-    KO("표면 정렬 페널티가 최대 강도에 이르기까지의 스텝 수입니다."),
-    DE("Wie viele Schritte die Oberflächenausrichtungsstrafe braucht, um volle "
-       "Stärke zu erreichen."),
-    FR("Combien d'étapes la pénalité d'alignement aux surfaces met à atteindre "
-       "sa pleine force."),
-    ES("Cuántos pasos tarda la penalización de alineación con las superficies "
-       "en alcanzar toda su fuerza."),
-    PT("Quantos passos a penalidade de alinhamento às superfícies leva para atingir "
-       "força total."),
-    IT("Quanti passi impiega la penalità di allineamento alle superfici a raggiungere "
-       "la piena forza."),
-    NL("Hoeveel stappen de straf voor oppervlakte-uitlijning nodig heeft om op "
-       "volle sterkte te komen."),
-    RU("За сколько шагов штраф за выравнивание по поверхности набирает полную "
-       "силу."),
-    TR("Yüzeye hizalama cezasının tam güce ulaşması için gereken adım sayısı."));
-
 SS_MSG(alpha_reg_weight,
     EN("Solid-or-empty coverage"), JA("被覆を不透明か空かに寄せる"),
     ZH_HANS("让覆盖趋向全实或全空"), ZH_HANT("讓覆蓋趨向全實或全空"),

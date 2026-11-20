@@ -273,7 +273,6 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(float, rgb_distortion_reg, 0.0f, "geometry", "basic", "")              \
     X(int, distortion_reg_warmup, 6000, "geometry", "basic", "")             \
     X(float, normal_reg_weight, 0.04f, "geometry", "basic", "")              \
-    X(int, normal_reg_warmup, 6000, "geometry", "advanced", "")              \
     X(float, alpha_reg_weight, 0.0f, "geometry", "basic", "")                \
     X(int, alpha_reg_warmup, 12000, "geometry", "advanced", "")              \
     X(int, reg_warmup_length, 0, "geometry", "advanced", "")                 \
@@ -554,7 +553,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.normal_distortion_reg = 0.01f;
         c.mean_median_depth_weight = 0.01f;
         c.median_depth_normal_reg_weight = 0.01f;
-        c.normal_supervision_weight = 0.01f;
+        // c.normal_supervision_weight = 0.01f;
         c.median_normal_supervision_weight = 0.01f;
         c.median_render_normal_reg_weight = 0.01f;
         c.erank_reg = 0.01f;
@@ -563,8 +562,18 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
     }
     if (name == "2dgs") {
         c.primitive = "2dgs";
+        c.sh_degree = 0;
+        c.dc_reg = 10.0f;
+        c.overexposure_reg = 10.0f;
+        c.background_mode = "noise";
         c.depth_distortion_reg = 0.1f;
-        c.normal_reg_weight = 0.04f;
+        c.normal_distortion_reg = 0.01f;
+        c.mean_median_depth_weight = 0.01f;
+        c.median_depth_normal_reg_weight = 0.01f;
+        // c.normal_supervision_weight = 0.01f;
+        c.median_normal_supervision_weight = 0.01f;
+        c.median_render_normal_reg_weight = 0.01f;
+        c.erank_reg = 0.01f;
         return true;
     }
     if (name == "academic-baseline") {

@@ -1708,7 +1708,6 @@ void TrainerSession::setup_engine() {
         st.bilagrid_rgb_init = true;
     }
     if (cfg.use_bilateral_grid_for_geometry && has_depth &&
-        cfg.depth_supervision_weight > 0.0f &&
         (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_depth_lr
                                         : cfg.bilagrid_depth_lr) > 0.0f) {
         engine_init_bilagrid_depth(n_grids,
@@ -1720,7 +1719,6 @@ void TrainerSession::setup_engine() {
         st.bilagrid_depth_init = true;
     }
     if (cfg.use_bilateral_grid_for_geometry && has_normal &&
-        cfg.normal_supervision_weight > 0.0f &&
         (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_normal_lr
                                         : cfg.bilagrid_normal_lr) > 0.0f) {
         engine_init_bilagrid_normal(n_grids,

@@ -505,6 +505,13 @@ struct RenderWorker::Impl {
             else if (q.key == "depth")        { buf = &depth; C = 1; }
             else if (q.key == "alpha")        { buf = &alpha3; }
             else if (q.key == "depth_normal") { local = depth_normal_display(depth); buf = &local; }
+            else if (q.key == "render_normal") {
+                // Zero, so mid-grey, when a viewer primitive override renders no normal.
+                local.assign((size_t)npx * 3, 0.0f);
+                engine_copy_render_normal_to_host(tvp(local.data(), 4, {1, H, W, 3}));
+                for (auto& v : local) v = 0.5f + 0.5f * v;
+                buf = &local;
+            }
             else if (q.key == "depth_median" && want_median)
                 { buf = &median; C = 1; }
             else if (q.key == "normal_median" && want_median)
@@ -684,6 +691,7 @@ std::vector<std::string> RenderWorker::buffer_keys() const {
     std::vector<std::string> keys = {"rgb"};
     if (_impl->cfg.color_space_on) keys.push_back("rgb_raw");
     for (const char* k : {"depth", "alpha", "depth_normal"}) keys.push_back(k);
+    if (engine_primitive_renders_normal(_impl->cfg.primitive)) keys.push_back("render_normal");
     if (_impl->cfg.output_median) {
         keys.push_back("depth_median");
         keys.push_back("normal_median");

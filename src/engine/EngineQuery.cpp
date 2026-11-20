@@ -288,6 +288,18 @@ void engine_copy_render_depth_normal_to_host(TorchTensorView out) {
                          backend::MemcpyKind::DeviceToHost);
 }
 
+void engine_copy_render_normal_to_host(TorchTensorView out) {
+    auto& normal = std::get<2>(engine().fwd.renders);
+    if (normal.data_ptr() == nullptr || std::get<0>(out) == 0) return;
+    backend::memcpy_sync((void*)std::get<0>(out), normal.data_ptr(),
+                         normal.numel() * sizeof(float3),
+                         backend::MemcpyKind::DeviceToHost);
+}
+
+bool engine_primitive_renders_normal(const std::string& primitive) {
+    return RenderOutput::has_normal(engine_primitive_pixel_type(primitive));
+}
+
 
 bool engine_blit_render(int view_camera_model, std::string distortion,
                         TorchTensorView view_intrins, TorchTensorView view_viewmat,
