@@ -1,0 +1,102 @@
+#pragma once
+
+// An XGRIDS capture (.xbin): its LiDAR sweeps, the device's own trajectory,
+// the factory calibration and the photographs of its cameras. The container
+// has no published specification; what is read here was measured on PortalCam
+// firmware V3.2.5 (docs/notes/lidar-alignment.md). The device message after
+// the file header names the device, and a table before the first chunk names
+// each topic. A device that was not measured is refused, and so is a topic
+// that was not measured when the index holds chunks of it.
+
+#include "data/E57Reader.h"
+
+#include <array>
+#include <atomic>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace spirula::xbin {
+
+struct Camera {
+    std::string name;          // its key in the capture's camera.yaml
+    bool fisheye = false;      // kb4, which is COLMAP OPENCV_FISHEYE; else OPENCV
+    int width = 0, height = 0;
+    double params[8] = {};     // fx fy cx cy, then k1..k4 (fisheye) or k1 k2 p1 p2
+    int64_t frames = 0;
+    double seconds = 0;        // first frame to last, from the index; 0 when it has none
+    bool spare = false;        // XGRIDS' own LCC Studio uses none of its frames
+};
+
+struct Frame {
+    int64_t counter = 0;        // the same on every camera's frame of one instant
+    int64_t time_us = 0;
+    std::vector<uint8_t> h264;  // one intra-coded access unit, Annex B
+};
+
+// A rigid move of the device's world at each key time: x' = Exp(r) x + t, with
+// r (rad) and t (metres) in `move` as r0 r1 r2 t0 t1 t2. Between two keys the
+// move is blended linearly, past the ends the nearest key holds.
+struct Correction {
+    std::vector<int64_t> time_us;            // ascending
+    std::vector<std::array<double, 6>> move;
+
+    std::array<double, 6> at(int64_t t) const;   // needs one key or more
+};
+
+// `outer` applied after `inner`, keyed at the times of both. Either may be empty.
+Correction compose(const Correction& outer, const Correction& inner);
+
+struct Sweep {
+    int64_t time_us = 0;      // the middle of its points' times
+    std::vector<float> xyz;   // in the IMU frame at `time_us`, metres
+};
+
+class Reader {
+public:
+    explicit Reader(const std::string& path);   // throws std::runtime_error
+    ~Reader();
+
+    const std::vector<Camera>& cameras() const { return _cameras; }
+    int64_t sweeps() const;
+    int64_t points_estimate() const;
+
+    // Every LiDAR point 0.5 m or more from the sensor and inside the trajectory,
+    // in the device's world frame (metres, +Z up), each placed at its own time,
+    // in batches; false when `cancel` stopped it.
+    bool read_points(const std::function<void(const e57::Point*, size_t)>& sink,
+                     const std::atomic<bool>* cancel = nullptr);
+
+    // Each sweep with points and inside the trajectory, in recorded order: points
+    // max(`min_range`, 0.5 m) to `max_range` from the sensor, each placed at its
+    // own time, in the IMU frame at the sweep's middle. `sink` returns false to stop.
+    bool read_sweeps(double min_range, double max_range, const std::function<bool(const Sweep&)>& sink);
+
+    // Camera-to-world rotation (row-major, OpenCV axes) and centre of camera
+    // `cam` at `time_us`; false outside the trajectory.
+    bool camera_pose(size_t cam, int64_t time_us, double R[9], double centre[3]) const;
+    // The same for the IMU, whose frame the trajectory is in.
+    bool imu_pose(int64_t time_us, double R[9], double centre[3]) const;
+
+    // Moves every point and camera pose after this call: photographs placed
+    // better than the device's own trajectory carry the scan with them.
+    // An empty correction is the device's trajectory again.
+    void set_correction(Correction c);
+
+    // One camera's frames in recorded order; `sink` returns false to stop.
+    void read_frames(size_t cam, const std::function<bool(const Frame&)>& sink);
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> _impl;
+    std::vector<Camera> _cameras;
+};
+
+bool is_xbin_path(const std::string& path);
+
+// The .xbin of an XGRIDS capture folder -- the one such file in `dir` -- or "".
+std::string capture_in_folder(const std::string& dir);
+
+}  // namespace spirula::xbin

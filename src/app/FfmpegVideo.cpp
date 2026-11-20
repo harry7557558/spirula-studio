@@ -15,6 +15,18 @@ namespace app {
 using gui::command_exists;
 using gui::run_process;
 
+// A version this cannot read is taken to be a recent build.
+bool ffmpeg_has_fps_mode(const std::string& ffmpeg_exe) {
+    int major = -1, minor = 0;
+    std::atomic<bool> never{false};
+    run_process({ffmpeg_exe, "-hide_banner", "-version"}, "",
+                [&](const std::string& line) {
+                    if (major < 0) std::sscanf(line.c_str(), "ffmpeg version %d.%d", &major, &minor);
+                },
+                never);
+    return major < 0 || major > 5 || (major == 5 && minor >= 1);
+}
+
 bool ffmpeg_probe_video(const std::string& ffmpeg_exe, const std::string& path,
                         VideoFacts& out, const std::atomic<bool>& cancel) {
     out = VideoFacts{};

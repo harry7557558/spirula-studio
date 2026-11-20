@@ -15,6 +15,8 @@
 
 #include "app/AppPaths.h"
 #include "app/gui/Subprocess.h"
+#include "data/SparseEdit.h"
+#include "data/XbinReader.h"
 #ifdef SS_TOOL_SFM
 // The stage tags the child prints and the manifest it reads; a build without the
 // module has no child to run (see availability()).
@@ -207,6 +209,7 @@ void SfmRunner::start(const SfmJob& job, RunFilms films) {
     std::string sweep;
     {
         std::lock_guard<std::mutex> lk(_mu);
+        _aligned.reset();
         _error.clear();
         _dataset_dir.clear();
         _image_dir.clear();
@@ -338,6 +341,14 @@ std::string SfmRunner::mask_dir() {
     std::lock_guard<std::mutex> lk(_mu);
     return _mask_dir;
 }
+bool SfmRunner::take_aligned_model(LiveModel& out) {
+    std::lock_guard<std::mutex> lk(_mu);
+    if (!_aligned) return false;
+    out = std::move(*_aligned);
+    _aligned.reset();
+    return true;
+}
+
 std::string SfmRunner::progress_dir() {
     std::lock_guard<std::mutex> lk(_mu);
     return _progress_dir;
@@ -481,6 +492,24 @@ sfm::Manifest SfmRunner::build_manifest(const SfmJob& job, const PrepResult& pre
         // For the whole capture the panel's own "Camera / lens" is the single
         // source of truth and is already in the argv; only a named group adds one.
         if (!g.rel.empty() && !models[i].empty()) c.model = models[i];
+        const PrepInput& in = job.prep.inputs[g.input];
+        // A capture's own lens, principal point included: the mapper holds that
+        // point at the image centre, 241 px from a PortalCam pinhole's (7 deg).
+        if (g.sub < 0 && !c.model.empty() && in.lens_params.size() == 8 && in.lens_width > 0) {
+            const std::string dir = (fs::path(prep.image_dir) / g.rel).string();
+            int W = 0, H = 0;
+            if (DatasetPrep::first_image_dims(dir, W, H)) {
+                c.params = in.lens_params;
+                for (int k = 0; k < 4; k++) c.params[k] *= (double)W / in.lens_width;
+                char buf[32];
+                std::snprintf(buf, sizeof buf, "%g", c.params[0]);
+                log(fmt(lmsg::sfm_initial_focal,
+                        {g.rel.c_str(), buf, (float)(c.params[0] / W), (long long)W}));
+                man.cameras.push_back(std::move(c));
+                continue;
+            }
+            log(fmt(lmsg::sfm_focal_unreadable, {dir}));
+        }
         if (focal > 0 && !(g.rel.empty() && job.init_focal_px > 0)) {
             const std::string dir =
                 (g.rel.empty() ? fs::path(prep.image_dir)
@@ -874,8 +903,8 @@ void SfmRunner::run(SfmJob job) {
         {
             std::string err;
             if (!add_scan_photo_inputs(job.lidar, ws.string(), job.prep.scan_stencils,
-                                       job.prep.inputs, lidar, err))
-                return fail(err);
+                                       job.prep.inputs, lidar, _prog, _cancel, err))
+                return fail(_cancel.load() ? lmsg::err_cancelled.get() : err);
         }
         // Their files are this run's own, just extracted from the scans, so
         // their identity is taken now; the check after the frames covers them.
@@ -1111,10 +1140,34 @@ void SfmRunner::run(SfmJob job) {
             // read where they lie keep their own convention.
             job.lidar.flip_masks = prep.mask_dir_flipped;
             job.lidar.mask_dir = prep.mask_dir;
+            // A capture alone keeps its own poses, refined on this run's matches:
+            // a free model of it tilts the pinholes and splits where they do not.
+            bool capture_alone = !scanner_only && lidar.photos > 0;
+            for (const PrepInput& in : job.prep.inputs)
+                capture_alone = capture_alone && spirula::xbin::is_xbin_path(in.scan);
+            std::error_code mec;
+            job.lidar.refine_capture = capture_alone && fs::exists(ws / "matches.bin", mec);
             std::string err;
             if (!run_lidar_step(job.lidar, ws.string(), prep.image_dir, _prog,
                                 _films.geometry, _cancel, err))
                 return fail(err);
+        }
+        // No live model shows the result: a run on the scanner's poses had no
+        // reconstruction, and one that had has just been moved into the scan.
+        if (job.lidar.enabled()) {
+            try {
+                DatasetParserConfig cfg;
+                cfg.require_image_files = false;
+                LiveModel m;
+                m.ds = parse_dataset(spirula::resolve_sparse_dir(ws.string()), cfg, "");
+                m.post = bake_post_split(m.ds, false, false);
+                m.n_images = m.n_registered = (uint32_t)m.ds.num_cameras;
+                m.n_points = (uint64_t)m.ds.points.num();
+                std::lock_guard<std::mutex> lk(_mu);
+                _aligned = std::move(m);
+            } catch (const std::exception& e) {
+                log(e.what());
+            }
         }
 
         take_dense(job);

@@ -1,18 +1,19 @@
 # Aligning a reconstruction with a laser scan
 
-A laser scan (E57, LAS or PLY) is an input of the dataset screen, next to
-photos and videos, and there may be several. The reconstruction runs as
-usual; then `spirula lidar` moves it into the scans' frame with a similarity
--- rotation, translation and scale, any extrinsics -- and writes it back as
+A laser scan (E57, LAS, PLY, or an XGRIDS capture's `.xbin`) is an input of
+the dataset screen, next to photos and videos, and there may be several. The
+reconstruction runs as usual; then `spirula lidar` moves it into the scans'
+frame with a similarity -- rotation, translation and scale, any extrinsics --
+and writes it back as
 one COLMAP model whose seed points are the scans', each with a track of the
 images that see it. Depth and normal maps are rendered from the scans in
 place of the monocular geometry step. When the scans' own photographs are
 the only images, no reconstruction runs at all (below).
 
-Code: `data/PointCloudFile.h` (the reader), `app/LidarAlign.h` (the fit and
-the scans' frames), `app/LidarDataset.h` (the dataset),
-`app/cli/lidar_main.cpp` (`spirula lidar`), `app/gui/LidarStep.h` and
-`app/gui/LidarSources.cpp` (the GUI).
+Code: `data/PointCloudFile.h` (the reader; `data/XbinReader.h` for a
+capture), `app/LidarAlign.h` (the fit and the scans' frames),
+`app/LidarDataset.h` (the dataset), `app/cli/lidar_main.cpp` (`spirula
+lidar`), `app/gui/LidarStep.h` and `app/gui/LidarSources.cpp` (the GUI).
 
 ## The pipeline
 
@@ -38,8 +39,9 @@ photos / videos ─────────────────────�
 2. **SfM** runs over everything, except when the scans' photographs are the
    only images and the scans share a frame by their files (below): then they
    keep the scanner's poses and the step is `--scanner-poses` directly ("Use
-   the scanner's camera poses as they are", on by default; untick it for a
-   scanner whose camera poses are worse than a reconstruction would be). A
+   the scanner's camera poses as they are", on by default but unticked when an
+   XGRIDS capture is added; untick it for a scanner whose camera poses are
+   worse than a reconstruction would be). A
    reconstruction that fails is not the end of a run whose scan has
    photographs either: those keep the scanner's poses.
 3. **The fit, per model** (`sparse/0`, `sparse/1`, ...): each model with an
@@ -144,9 +146,135 @@ taken for it. Every case above was exercised on the FJD workspace
   LAS's frame. `nCore_data/` holds the same two under `colmap/`, with the LAS
   under `lidar/`. Both are found by layout, so a renamed copy works too.
   "Add dataset..." or a drop of the export, either of the two, or a folder
-  inside one takes `raw/` in place, adds the LAS, ticks "already in the
-  scan's frame" (`--mode keep`) and reads its masks flipped: they are white
+  inside one takes `raw/` in place, adds the LAS, ticks "All cameras are
+  scan-native (placed by the scanner)" (`--mode keep`) and reads its masks flipped: they are white
   where the operator is.
+
+- **XGRIDS capture** (`.xbin`, PortalCam, the file the scanner writes before
+  LCC Studio sees it): the device's points, its trajectory, its factory
+  calibration and the H.264 frames of its four cameras, in one container
+  (`data/XbinReader.h`). The points read as a scan, each placed by the
+  trajectory at its own time: the 10 Hz poses for position, and for attitude the
+  poses with the 200 Hz gyro (`/imu`, 1e-4 rad/s per count) turning between
+  them, its gap to the next pose spread over the interval. The spread also
+  takes out the gyro's bias: subtracting `Bg` of `imu.yaml` changed nothing.
+  Against LCC Studio's 200 Hz trajectory of a 975 s capture, the rotation
+  inside an interval was off by 0.14 deg (median) interpolated and by 0.012 deg
+  gyro-filled. On a 300 s capture the deskewed map has 2 % fewer occupied 5 cm
+  voxels than with interpolation, and the camera poses at the frames' times
+  differ from the interpolated ones by 0.17 deg (median), 0.42 deg at the 90th
+  percentile. An interval the gyro does not cover, or whose gap exceeds 2 deg,
+  keeps the interpolation, as does a capture without a readable `/imu`. The
+  photographs are extracted like an E57's (`app/XbinAnchors.h`: each camera's
+  frames, which are all intra-coded, are decoded as a video's frames are -- in a
+  build with the in-process decoder they go into an MP4 that the GPU decodes,
+  or ffmpeg when the device cannot or "Extract frames with ffmpeg" is on; a
+  build without it gives the stream to ffmpeg), with poses from the same trajectory and
+  their own lenses -- two `OPENCV_FISHEYE`, two `OPENCV` -- so "Use the
+  scanner's camera poses as they are" needs no reconstruction. "Add LiDAR scan..." takes
+  the `.xbin`, and a capture folder dropped or added as a dataset is taken as
+  its `.xbin`. Each camera has a line under the scan's row: a checkbox takes
+  it (`camera_3` starts unticked, because LCC Studio takes no frame of it
+  either), and a rate box in the video rows' rate column thins its frames
+  (`FrameRate`: the first frame of each 1/rate s, so cameras at one rate keep
+  the same instants). The camera's own rate comes from the index (fields 4
+  and 5, its first and last frame time). Measured on one 110 s indoor capture: the device's poses,
+  deskewed, gave a sharper map (occupied 5 cm voxels 137k) than KISS-ICP on the
+  raw sweeps (266k, 29 cm from the device's path), and the photographs'
+  colours agree across frames under `inverse(extrinsic_camera_lidar)`, not under
+  the file as written. The field layout is measured, not documented. The
+  device message after the file header names the device (model, a device
+  code -- `AA` on the PortalCam -- and firmware). A table at byte 4096 names
+  each topic (`/imu`, `/lidar`, `/camera_left_main/h264` ...), and the index
+  and each chunk header name their topic by its id, so the reader takes each
+  stream by name. No key in the file joins a camera topic to its
+  `camera.yaml` section, so the reader keeps a measured table for each device
+  code and model, the PortalCam's alone so far. Its firmware is not checked:
+  another firmware of the same device is read with the same table. Every
+  block ends in the CRC-32 of its stored bytes, which the reader checks.
+  When the file opens, the reader refuses a device message that names no
+  device or a device that was not measured, a topic the device does not
+  have, and a `camera.yaml` section the device does not have. A damaged block
+  is refused when it is read, except in `/imu`, which then leaves the poses
+  interpolated. When the photographs are extracted, it refuses a frame whose
+  size is not its calibration's. These refusals name the device as far as the
+  message does.
+
+  The frames are named by their frame counter (`000123.jpg`), which all four
+  cameras share: one instant has one name in each camera folder, at most
+  51 µs apart, which is what a rig groups on. The reconstruction gets each
+  camera's complete factory lens (manifest `params`), because the mapper holds
+  the principal point at the image centre otherwise, and the pinholes' is
+  241 px from it (7 deg of tilt).
+
+  A capture alone is not placed by its reconstruction but by its own poses,
+  refined (`--refine`, `app/AnchorRefine.h`): the run's verified matches are
+  triangulated with the capture's poses (`sfm/map/KnownPoses.h`), then a
+  bundle adjustment holds each instant as one rig pose, near the capture's
+  (2 cm and 0.5 deg priors on its centre and attitude), turns the factory rig
+  only, and refines each camera's whole lens, principal point included when
+  the camera has 20 placed photos or more (`pp_min_images`). Triangulation
+  and adjustment run twice. Every photograph keeps a pose and no fit to the
+  scan is needed. Measured on one
+  300 s capture (888 photos) against 12,000 tracks of a free reconstruction
+  from the same matches (854 photos in one model, factory lenses in its
+  manifest): the device's poses as they are reproject at 1.9 px median but
+  22 px at the 90th percentile; refined, 1.19 / 3.7 px. With the principal
+  point held it was 1.57 / 5.0 px, and with 24 photos for each camera
+  0.97 / 2.6 px held against 0.53 / 1.6 freed. The free model gives
+  1.07 / 2.5 px on the same tracks, which are its own, so it is favoured. All
+  these reprojection errors come from one sample of 12,000 tracks.
+  `BundleOptions` holds the principal point for several lenses because its
+  shift is almost a turn of the lens, which makes each lens drift its own way
+  in a model's relative orientation. Here every pose leaves with its own lens,
+  so a principal point's drift turns the pose with it and the rays stay where
+  the photos put them. Each camera's mean turn against the device changed by
+  close to its principal point's shift over its focal: `camera_0` 0.36 deg
+  (predicted 0.46), `camera_1` 0.82 (0.83), `camera_2` 0.39 (0.40),
+  `camera_3` 0.43 (0.42). So a refined pose is right only with its own
+  refined lens. An instant that sees no point stays on its priors, at the
+  device's frame, so its photographs keep the device's poses and, to match
+  them, their factory lens. The refinement moved the photos 6.6 cm and
+  turned them 0.97 deg (median), the lens trade included; with the principal
+  point held it was 5.7 cm and 0.66 deg. Next to other photographs the
+  capture keeps the joint reconstruction and its fit.
+
+  The device's `poses.csv` is a real-time trajectory, and on a long walk it
+  drifts: 47 cm (median, after one rigid fit) from LCC Studio's own on a
+  975 s capture. So a capture's trajectory is made again from its LiDAR
+  (`app/CaptureTrajectory.h`) and kept in the dataset as
+  `lidar/<capture>.trajectory.csv`, moves of the device's world keyed once a
+  second (`xbin::Correction`). Extract, the dataset screen's scan-photo stage
+  and the align step each make it once; `spirula lidar --trajectory` makes
+  it again. Each sweep, deskewed by the device's own motion
+  (`Reader::read_sweeps`), goes to a node of one second; each node's submap is
+  registered to the next three and to the places walked again (GICP on
+  `data/Knn.h`, Levenberg-Marquardt as small_gicp's, covariances from the 27
+  voxels around a point, the source thinned to 3000 points), and one pose
+  graph (Cauchy weights, conjugate gradients on the 6x6 blocks) takes the
+  device's motion, the registrations and the loops, with each node's roll and
+  pitch held near the device's. One turn about the vertical and one shift
+  bring the result back onto the device's frame, and it is kept only when
+  its map is sharper (occupied 5 cm voxels of every tenth sweep). Measured
+  offline on every fifth sweep, each point placed at its own time, and the
+  distance of two walls where the walk passed twice:
+
+  | Capture | device | LCC Studio | this |
+  |---|---|---|---|
+  | 260 s outdoor | 2,541,792, 7.1 cm | 2,211,189, 1.9 cm | 2,191,390, 1.7 cm |
+  | 975 s indoor | 8,209,836, 5.4 cm | 6,908,902, 1.5 cm | 7,083,392, 1.5 cm |
+
+  The align step poses every capture anchor from that trajectory before
+  `--refine`, so an `anchors.json` older than the file is still right. The
+  refinement's priors have Huber tails, so its photographs could drift as a
+  block: on the 260 s capture by a scale of 0.956 and 1.06 deg about the
+  vertical (0.07 deg of tilt), which its scan read as depth maps 5 % short.
+  One similarity about the vertical (heading, scale, shift) now puts the
+  block back on the trajectory: the photographs then sit 1.9 cm from it and
+  the scan agrees with them to 2.9 cm (median, at places walked twice). What
+  the refinement still moved each instant then moves the scan too, smoothed
+  over 6 s (`app/ScanCorrection.h`), on top of the LiDAR trajectory
+  (`xbin::compose`): 2,182,175 voxels on the 260 s capture.
 
 ## Measurements (2026-10-04, RTX 5070)
 
