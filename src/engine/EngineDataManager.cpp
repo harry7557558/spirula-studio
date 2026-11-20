@@ -600,15 +600,6 @@ int engine_preview_forward(int index, std::string primitive, int sh_degree,
     if (out_passes) *out_passes = passes;
     pass = std::min(std::max(pass, 0), passes - 1);
     const int k0 = b.face_passes.empty() ? 0 : b.face_passes[(size_t)pass].k0;
-    // With the geometry GT and the training step's distortion channels: this
-    // renders what the loss compares, so a loss map read off this forward
-    // carries the same terms the trainer's does.
-    const LossConfig& loss = cfg.loss;
-    const DistortionType dist_type = engine_distortion_type(
-        engine_primitive_pixel_type(primitive),
-        loss.weights[(int)LossWeightIndex::RgbDistReg],
-        loss.weights[(int)LossWeightIndex::DepthDistReg],
-        loss.weights[(int)LossWeightIndex::NormalDistReg]);
     // POST-split camera ids for this pass's faces, the same ones the training
     // step hands the per-image tables; the forward's fused stages read them.
     const int views = _batch_views(b, pass);
@@ -619,10 +610,14 @@ int engine_preview_forward(int index, std::string primitive, int sh_degree,
                              {(int64_t)views, 1LL});
     _set_cur_cam_indices(cam_view);
 
-    _install_batch(b, /*with_geometry=*/true, loss.input_depth_is_ray_depth, pass);
-    _engine_arm_step_forward(cfg, primitive, dist_type, apply_color_correction);
+    // With the geometry GT and the training step's normal and distortion
+    // channels: this renders what the loss compares, so a loss map read off
+    // this forward carries the same terms the trainer's does.
+    _install_batch(b, /*with_geometry=*/true, cfg.loss.input_depth_is_ray_depth, pass);
+    const StepRender render =
+        _engine_arm_step_forward(cfg, primitive, apply_color_correction);
     forward_3dgs(std::move(primitive), sh_degree, packed,
-                 /*output_median=*/false, (int)dist_type);
+                 /*output_median=*/false, (int)render.dist_type, render.normal);
     if (apply_color_correction) _engine_step_image_stages(cam_view);
     if (apply_calib_warp) _engine_calib_warp_preview();
     return views;

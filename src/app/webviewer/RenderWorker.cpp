@@ -610,7 +610,8 @@ struct RenderWorker::Impl {
                               tvp(intr, 4, {1, 4}),
                               tvp(dist0, 4, {1, 8}));
             forward_3dgs(primitive, sh_deg, cfg.packed,
-                         want_median, want_dist ? 2 : 0);
+                         want_median, want_dist ? 2 : 0,
+                         q.key == "render_normal");
             if (!draw_on_device()) draw_on_host();
         }
         if (q.show_cams && !cfg.held_out_cameras.empty()) {

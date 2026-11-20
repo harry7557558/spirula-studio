@@ -297,7 +297,7 @@ void engine_copy_render_normal_to_host(TorchTensorView out) {
 }
 
 bool engine_primitive_renders_normal(const std::string& primitive) {
-    return RenderOutput::has_normal(engine_primitive_pixel_type(primitive));
+    return RenderOutput::has_normal(engine_primitive_pixel_type(primitive, true));
 }
 
 

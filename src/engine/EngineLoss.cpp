@@ -255,7 +255,9 @@ static void _engine_raster_proj_backward(
             engine().fwd.accum_mode = DensifyAccumMode::None;
         }
     } else if (engine_primitive_eval3d(engine().primitive)) {
+        const bool rendered_normal = std::get<2>(engine().fwd.renders).data_ptr() != nullptr;
         auto bwd = engine().primitive == "2dgs" ? rasterize_to_pixels_2dgs_bwd
+                   : rendered_normal            ? rasterize_to_pixels_3dgut_normal_bwd
                                                 : rasterize_to_pixels_3dgut_bwd;
         auto [vw, vs, vviewmats, accum_weight] = bwd(
             engine().cur_num_splats,
@@ -537,7 +539,8 @@ static std::map<std::string, float> _engine_loss(
     TorchTensorView render_Ts = TorchTensorView(
         (uint64_t)engine().fwd.render_Ts.data_ptr(), 4, {C, H, W, 1});
 
-    // Camera-space render normal (2DGS only); depth_normal is derived below.
+    // Camera-space render normal (2DGS, or 3DGUT when asked); depth_normal is
+    // derived below.
     TorchTensorView render_normal =
         std::get<2>(engine().fwd.renders).data_ptr() == nullptr ? _tv_null()
         : TorchTensorView((uint64_t)std::get<2>(engine().fwd.renders).data_ptr(),

@@ -244,9 +244,11 @@ void forward_3dgs(
     int sh_degree,
     bool packed,
     bool output_median,      // also emit per-pixel median depth
-    int dist_type_int        // distortion channel set (DistortionType); emits D = W*S - C^2
+    int dist_type_int,       // distortion channel set (DistortionType); emits D = W*S - C^2
+    bool output_normal
 ) {
     const DistortionType dist_type = (DistortionType)dist_type_int;
+    output_normal = output_normal || dist_has_normal(dist_type);
     engine().primitive = primitive;
     engine().sh_degree = sh_degree;
     engine().packed = packed;
@@ -551,6 +553,7 @@ void forward_3dgs(
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
     } else if (engine_primitive_eval3d(primitive)) {
         auto fn = primitive == "2dgs" ? rasterize_to_pixels_2dgs_fwd
+                  : output_normal     ? rasterize_to_pixels_3dgut_normal_fwd
                                       : rasterize_to_pixels_3dgut_fwd;
         auto [r, rTs, lids, dist, med] = fn(
             engine().cur_num_splats,

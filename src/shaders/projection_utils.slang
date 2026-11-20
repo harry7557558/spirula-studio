@@ -993,6 +993,64 @@ void evaluate_color_3dgs_vjp(
     v_ray_d = dp_ray_d.d;
 }
 
+// The shortest axis, facing the ray: iscl_rot's longest row is axis / scale.
+[Differentiable]
+[ForceInline]
+float3 shortest_axis_normal(float3x3 iscl_rot, float3 ray_d) {
+    float3 r0 = float3(iscl_rot[0][0], iscl_rot[0][1], iscl_rot[0][2]);
+    float3 r1 = float3(iscl_rot[1][0], iscl_rot[1][1], iscl_rot[1][2]);
+    float3 r2 = float3(iscl_rot[2][0], iscl_rot[2][1], iscl_rot[2][2]);
+    float l0 = dot(r0, r0), l1 = dot(r1, r1), l2 = dot(r2, r2);
+    float3 n;
+#if 0
+    if (l0 >= l1 && l0 >= l2) n = r0;
+    else if (l1 >= l2) n = r1;
+    else n = r2;
+#else
+    if (l0 >= l1 && l0 >= l2) n = cross(r1, r2);
+    else if (l1 >= l2) n = cross(r2, r0);
+    else n = cross(r0, r1);
+#endif
+    n = n * rsqrt(dot(n, n));
+    return dot(n, ray_d) > 0.f ? -n : n;
+}
+
+[CudaDeviceExport]
+[Differentiable]
+void evaluate_color_3dgs_normal(
+    float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
+    float3 ray_o, float3 ray_d,
+    out float3 out_rgb, out float depth, out float3 normal
+) {
+    evaluate_color_3dgs(mean, iscl_rot, opacity, rgb, ray_o, ray_d, out_rgb, depth);
+    normal = shortest_axis_normal(iscl_rot, ray_d);
+}
+
+[CudaDeviceExport]
+void evaluate_color_3dgs_normal_vjp(
+    float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
+    float3 ray_o, float3 ray_d, float3 v_out_rgb, float v_depth, float3 v_normal,
+    out float3 v_mean, out float3x3 v_iscl_rot, out float v_opacity, out float3 v_rgb,
+    out float3 v_ray_o, out float3 v_ray_d
+) {
+    DifferentialPair<float3> dp_mean = diffPair(mean);
+    DifferentialPair<float3x3> dp_iscl_rot = diffPair(iscl_rot);
+    DifferentialPair<float> dp_opacity = diffPair(opacity);
+    DifferentialPair<float3> dp_rgb = diffPair(rgb);
+    DifferentialPair<float3> dp_ray_o = diffPair(ray_o);
+    DifferentialPair<float3> dp_ray_d = diffPair(ray_d);
+    bwd_diff(evaluate_color_3dgs_normal)(
+        dp_mean, dp_iscl_rot, dp_opacity, dp_rgb,
+        dp_ray_o, dp_ray_d, v_out_rgb, v_depth, v_normal
+    );
+    v_mean = dp_mean.d;
+    v_iscl_rot = dp_iscl_rot.d;
+    v_opacity = dp_opacity.d;
+    v_rgb = dp_rgb.d;
+    v_ray_o = dp_ray_o.d;
+    v_ray_d = dp_ray_d.d;
+}
+
 
 // ================
 // 2DGS surfel

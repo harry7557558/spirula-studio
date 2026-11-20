@@ -22,13 +22,27 @@
 #include "primitives/Primitive.cuh"
 
 // Explicit primitive -> rendered channel set. The only place the engine encodes
-// what each primitive renders; update here when adding a primitive.
-inline RenderOutputType engine_primitive_pixel_type(const std::string& primitive) {
-    if (primitive == "3dgs" || primitive == "mip" || primitive == "3dgut")
+// what each primitive renders; update here when adding a primitive. 3DGUT
+// renders its shortest axis as the normal only when asked; 2DGS always does.
+inline RenderOutputType engine_primitive_pixel_type(const std::string& primitive,
+                                                    bool want_normal = false) {
+    if (primitive == "3dgs" || primitive == "mip")
         return RenderOutputType::RGB_D;
+    if (primitive == "3dgut")
+        return want_normal ? RenderOutputType::RGB_DN : RenderOutputType::RGB_D;
     if (primitive == "2dgs")
         return RenderOutputType::RGB_DN;
     throw std::runtime_error("engine_primitive_pixel_type: unknown primitive: " + primitive);
+}
+
+// The loss terms that read the rendered normal (the per-pixel loss in
+// shaders/per_pixel_losses.slang).
+inline bool engine_loss_reads_render_normal(
+    const std::array<float, (int)LossWeightIndex::length>& w, bool has_gt_normal) {
+    return w[(int)LossWeightIndex::NormalReg] != 0.0f ||
+           w[(int)LossWeightIndex::NormalDistReg] != 0.0f ||
+           w[(int)LossWeightIndex::MedianRenderNormalReg] != 0.0f ||
+           (has_gt_normal && w[(int)LossWeightIndex::NormalSup] != 0.0f);
 }
 
 // 3DGUT and 2DGS rasterize per-pixel rays, write world-geometry gradients from

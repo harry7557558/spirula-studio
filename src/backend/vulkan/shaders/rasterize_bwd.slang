@@ -36,7 +36,9 @@ const int kPacked = 0;        // gaussian_ids present
 [SpecializationConstant]
 const int kMaxWeight = 0;     // o_max_weight bound
 [SpecializationConstant]
-const int kSurfel = 0;        // 2DGS in the 3dgut entry: surfel fragment, normals
+const int kSurfel = 0;        // 2DGS in the 3dgut entry: surfel fragment
+[SpecializationConstant]
+const int kNormal = 0;        // 3dgut entry renders a normal; set with kSurfel too
 
 static const uint TILE_SIZE_DX = 8;
 static const uint TILE_SIZE_DY = 8;
@@ -63,7 +65,7 @@ static const int RB_DIST_N = kDistType != 0 ? (int)RB_BLOCK : 1;
 static const int RB_MED_N = kOutputMedian != 0 ? (int)RB_BLOCK : 1;
 static const int RB_AW_N = kAccumWeight != 0 ? (int)RB_BLOCK : 1;
 static const int RB_VMG_N = kViewmatGrad != 0 ? (int)RB_BLOCK : 1;
-static const int RB_NRM_N = kSurfel != 0 ? (int)RB_BLOCK : 1;
+static const int RB_NRM_N = kNormal != 0 ? (int)RB_BLOCK : 1;
 static const int RB_DN_N = kDistType >= 3 ? (int)RB_BLOCK : 1;
 
 // ---- shared pixel state (indexed by local pixel id 0..63) ----------------
@@ -175,14 +177,14 @@ void _rb_load_pixel_state(
     }
 }
 
-// The normal channel's share of _rb_load_pixel_state (kSurfel only); call
+// The normal channel's share of _rb_load_pixel_state (kNormal only); call
 // after it, which sets _rb_W.
 [ForceInline]
 void _rb_load_normal_state(uint pix, bool inside, uint image_pix,
                            float* out_normal, float* dist_normal,
                            float* v_out_normal, float* v_dist_normal,
                            uint state_flags, float3x3 R) {
-    if (kSurfel == 0) return;
+    if (kNormal == 0) return;
     // The stored normal is camera space (see the forward); the splats' are world.
     float3 v_n = inside && (state_flags & kRbNormalBound) != 0
         ? float3(v_out_normal[3 * image_pix], v_out_normal[3 * image_pix + 1],
@@ -210,7 +212,7 @@ void _rb_load_normal_state(uint pix, bool inside, uint image_pix,
     }
 }
 
-// Shared compositing adjoint for both primitive families; normal is 2DGS's.
+// Shared compositing adjoint for both primitive families; normal with kNormal.
 [ForceInline]
 bool _rb_pixel_grad(int pix_id, float alpha, float4 color, float3 normal,
                     out float v_alpha, out float4 v_color,
@@ -271,7 +273,7 @@ bool _rb_pixel_grad(int pix_id, float alpha, float4 color, float3 normal,
     }
 
     v_normal = float3(0.0f);
-    if (kSurfel != 0) {
+    if (kNormal != 0) {
         float3 v_n = _rb_vnrm[pix_id];
         float dn = dot(normal, v_n);
         v_alpha += T0 * dn;
@@ -635,9 +637,9 @@ struct Raster3dgutBwdParams {  // via params ring
     float* v_median;
     float* v_dist_rgb;
     float* v_dist_depth;
-    float* out_normal;     // kSurfel
+    float* out_normal;     // kNormal
     float* dist_normal;    // kDistType >= 3
-    float* v_out_normal;   // kSurfel
+    float* v_out_normal;   // kNormal
     float* v_dist_normal;  // kDistType >= 3
     float* v_means;
     float* v_quats;
@@ -700,8 +702,13 @@ void _rb3_step(Raster3dgutBwdParams p, int pix_id, int splat_idx,
         alpha = evaluate_alpha_3dgs(splat.mean, splat.iscl_rot, splat.opacity,
                                     ray_o, ray_d);
         if (alpha <= ALPHA_THRESHOLD || dot(ray_d, ray_d) == 0.0f) return;
-        evaluate_color_3dgs(splat.mean, splat.iscl_rot, splat.opacity,
-                            splat.rgb, ray_o, ray_d, c_rgb, c_depth);
+        if (kNormal != 0)
+            evaluate_color_3dgs_normal(splat.mean, splat.iscl_rot,
+                                       splat.opacity, splat.rgb, ray_o, ray_d,
+                                       c_rgb, c_depth, c_normal);
+        else
+            evaluate_color_3dgs(splat.mean, splat.iscl_rot, splat.opacity,
+                                splat.rgb, ray_o, ray_d, c_rgb, c_depth);
     }
     if (c_depth <= 0.0f) return;
     float4 color = float4(c_rgb, c_depth);
@@ -736,10 +743,17 @@ void _rb3_step(Raster3dgutBwdParams p, int pix_id, int splat_idx,
         v_splat.mean += v_mean;
         v_splat.iscl_rot += v_ir;
         v_splat.opacity += v_op;
-        evaluate_color_3dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity,
-                                splat.rgb, ray_o, ray_d, v_color.xyz,
-                                v_color.w, v_mean, v_ir, v_op, v_rgb,
-                                v_ray_o_c, v_ray_d_c);
+        if (kNormal != 0)
+            evaluate_color_3dgs_normal_vjp(splat.mean, splat.iscl_rot,
+                                           splat.opacity, splat.rgb, ray_o,
+                                           ray_d, v_color.xyz, v_color.w,
+                                           v_normal, v_mean, v_ir, v_op,
+                                           v_rgb, v_ray_o_c, v_ray_d_c);
+        else
+            evaluate_color_3dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity,
+                                    splat.rgb, ray_o, ray_d, v_color.xyz,
+                                    v_color.w, v_mean, v_ir, v_op, v_rgb,
+                                    v_ray_o_c, v_ray_d_c);
 #endif
     }
     v_splat.mean += v_mean;

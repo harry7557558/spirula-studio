@@ -241,8 +241,94 @@ std::tuple<
 
 
 // ================
-// Vanilla2DGS
+// Vanilla3DGUTNormal, Vanilla2DGS
 // ================
+
+// The primitives that render a normal, so every distortion channel set.
+template <typename SplatPrimitive>
+std::tuple<
+    RenderOutput::TensorTuple,
+    DeviceTensor3D<float>,
+    DeviceTensor3D<int32_t>,
+    RenderOutput::TensorTuple,
+    DeviceTensor3D<float>
+> rasterize_to_pixels_eval3d_normal_fwd(
+    int64_t num_splats,
+    std::vector<DeviceTensorFloatND> splats_w,
+    std::vector<DeviceTensorFloatND> splats_s,
+    DeviceVector<int32_t> gaussian_ids,
+    TorchTensorView viewmats,
+    TorchTensorView intrins,
+    const std::string& camera_model,
+    const std::string& distortion,
+    const TorchTensorView dist_coeffs,
+    DeviceTensor2D<uint2> aabb,
+    const uint32_t image_width,
+    const uint32_t image_height,
+    const DeviceTensor3D<int32_t> tile_offsets,
+    const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,
+    DistortionType dist_type,
+    bool output_median,
+    bool output_depth,
+    const SplatScoreRender& score
+) {
+#define _F(DT, M, S) rasterize_to_pixels_eval3d_fwd_tensor<SplatPrimitive, DT, M, S>
+#define _DISPATCH_FWD(DT) (output_median \
+        ? (score.enabled() ? _F(DT, true, true) : _F(DT, true, false)) \
+        : (score.enabled() ? _F(DT, false, true) : _F(DT, false, false)))
+    auto dispatch =
+        dist_type == DistortionType::None   ? _DISPATCH_FWD(DistortionType::None) :
+        dist_type == DistortionType::D      ? _DISPATCH_FWD(DistortionType::D) :
+        dist_type == DistortionType::RGB_D  ? _DISPATCH_FWD(DistortionType::RGB_D) :
+        dist_type == DistortionType::DN     ? _DISPATCH_FWD(DistortionType::DN) :
+                                              _DISPATCH_FWD(DistortionType::RGB_DN);
+#undef _DISPATCH_FWD
+#undef _F
+    return dispatch(
+        num_splats,
+        splats_w, splats_s, gaussian_ids,
+        viewmats, intrins, cmt(camera_model), cdt(distortion), dist_coeffs, aabb,
+        image_width, image_height,
+        tile_offsets, flatten_ids, macro_log2, output_depth, score
+    );
+}
+
+// 3DGUT with its shortest axis rendered as the normal.
+/*[AutoHeaderGeneratorExport]*/
+std::tuple<
+    RenderOutput::TensorTuple,  // renders (rgb, depth, normal)
+    DeviceTensor3D<float>,  // transmittances
+    DeviceTensor3D<int32_t>,  // last_ids
+    RenderOutput::TensorTuple,  // distortions, optional
+    DeviceTensor3D<float>  // median depth, optional
+> rasterize_to_pixels_3dgut_normal_fwd(
+    int64_t num_splats,
+    std::vector<DeviceTensorFloatND> splats_w,
+    std::vector<DeviceTensorFloatND> splats_s,
+    DeviceVector<int32_t> gaussian_ids,
+    TorchTensorView viewmats,  // [..., C, 4, 4]
+    TorchTensorView intrins,  // [..., C, 4], fx, fy, cx, cy
+    const std::string camera_model,
+    const std::string distortion,
+    const TorchTensorView dist_coeffs,
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    const uint32_t image_width,
+    const uint32_t image_height,
+    const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
+    const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,
+    DistortionType dist_type,
+    bool output_median,
+    bool output_depth,
+    SplatScoreRender score
+) {
+    return rasterize_to_pixels_eval3d_normal_fwd<Vanilla3DGUTNormal<0>>(
+        num_splats, splats_w, splats_s, gaussian_ids, viewmats, intrins,
+        camera_model, distortion, dist_coeffs, aabb, image_width, image_height,
+        tile_offsets, flatten_ids, macro_log2, dist_type, output_median,
+        output_depth, score);
+}
 
 /*[AutoHeaderGeneratorExport]*/
 std::tuple<
@@ -272,23 +358,9 @@ std::tuple<
     bool output_depth,
     SplatScoreRender score
 ) {
-#define _F(DT, M, S) rasterize_to_pixels_eval3d_fwd_tensor<Vanilla2DGS<0>, DT, M, S>
-#define _DISPATCH_FWD(DT) (output_median \
-        ? (score.enabled() ? _F(DT, true, true) : _F(DT, true, false)) \
-        : (score.enabled() ? _F(DT, false, true) : _F(DT, false, false)))
-    auto dispatch =
-        dist_type == DistortionType::None   ? _DISPATCH_FWD(DistortionType::None) :
-        dist_type == DistortionType::D      ? _DISPATCH_FWD(DistortionType::D) :
-        dist_type == DistortionType::RGB_D  ? _DISPATCH_FWD(DistortionType::RGB_D) :
-        dist_type == DistortionType::DN     ? _DISPATCH_FWD(DistortionType::DN) :
-                                              _DISPATCH_FWD(DistortionType::RGB_DN);
-#undef _DISPATCH_FWD
-#undef _F
-    return dispatch(
-        num_splats,
-        splats_w, splats_s, gaussian_ids,
-        viewmats, intrins, cmt(camera_model), cdt(distortion), dist_coeffs, aabb,
-        image_width, image_height,
-        tile_offsets, flatten_ids, macro_log2, output_depth, score
-    );
+    return rasterize_to_pixels_eval3d_normal_fwd<Vanilla2DGS<0>>(
+        num_splats, splats_w, splats_s, gaussian_ids, viewmats, intrins,
+        camera_model, distortion, dist_coeffs, aabb, image_width, image_height,
+        tile_offsets, flatten_ids, macro_log2, dist_type, output_median,
+        output_depth, score);
 }
