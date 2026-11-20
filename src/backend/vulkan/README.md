@@ -61,6 +61,7 @@ for A/B testing):
   the 148 ".int8" ones (ppl_fwd, ppl_bwd, fused_adam_qq, ...) crash its
   compiler in amdvlk64.dll, and the gindex_t loads index before they cast,
   the shape the float CAS was miscompiled in.
+  On an RDNA4 R9700 (driver 26.10.44) the plain CAS blobs run correctly.
 - `shaderInt64` — 64-bit sort keys, morton codes, large-buffer indexing.
   Entries in an int64_compat-including source get a `.noint64` variant
   compiled with `-DSS_EMULATE_INT64` (`backend/vulkan/shaders/int64_compat.slang`),

@@ -96,10 +96,24 @@ uint32_t subgroup_width(const std::string& entry) {
     return std::min(std::max(want, caps.subgroup_min), caps.subgroup_max);
 }
 
+// Entries that load their CAS-loop blob where native float add is slow
+// (Capabilities::slow_float_atomic_add).
+constexpr const char* kCasFloatAddEntries[] = {
+    "rasterize_bwd.rasterize_bwd_2d",
+    "appearance_chain.appearance_bwd",
+};
+
+bool prefers_cas_float_add(const std::string& entry) {
+    if (!Context::get().caps().slow_float_atomic_add) return false;
+    for (const char* e : kCasFloatAddEntries)
+        if (entry == e) return true;
+    return false;
+}
+
 const SpirvBlob* find_variant_blob(const std::string& name) {
     const Capabilities& caps = Context::get().caps();
     const bool desired[kNumFeatures] = {
-        caps.float32_atomic_add,  // .atomicadd
+        caps.float32_atomic_add && !prefers_cas_float_add(name),  // .atomicadd
         caps.shader_int8,         // .int8
         !caps.shader_int64,       // .noint64
     };

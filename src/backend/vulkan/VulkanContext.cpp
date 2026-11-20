@@ -176,6 +176,17 @@ bool amd_windows_emulated_fadd(const DeviceProbe& p) {
 #endif
 }
 
+// RDNA4 by PCI id (RADV and AMD's Windows driver name these devices
+// differently; both report the ids): Navi 48 0x7550/0x7551, Navi 44 0x7590,
+// as in ROCm's rocm_agent_enumerator.
+bool amd_rdna4(const DeviceProbe& p) {
+    const bool driver = p.driver_id == VK_DRIVER_ID_MESA_RADV ||
+                        p.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY;
+    return p.props.vendorID == 0x1002 && driver &&
+           (p.props.deviceID == 0x7550 || p.props.deviceID == 0x7551 ||
+            p.props.deviceID == 0x7590);
+}
+
 // What is left once Context::init has applied its workarounds.
 backend::DeviceIssue device_issue(const DeviceProbe& p) {
     if (amd_windows_emulated_fadd(p) && !p.atomic_float_xchg)
@@ -509,11 +520,9 @@ void Context::init() {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT};
     fatomic.shaderBufferFloat32AtomicAdd = VK_TRUE;
 
-    // SS_VK_NATIVE_ATOMICS=0 forces the CAS-loop shader variants on a
-    // native-capable device (A/B timing, exercising the fallback blobs).
-    // SS_VK_NATIVE_INT64=0 / SS_VK_NATIVE_INT8=0 likewise force the
-    // ".noint64" emulation / word-packed byte-access blobs; the device
-    // features stay enabled, only blob selection changes.
+    // SS_VK_NATIVE_ATOMICS=0/1 force CAS / native float add in every kernel,
+    // SS_VK_NATIVE_INT64=0 and SS_VK_NATIVE_INT8=0 the emulation blobs: A/B
+    // timing and fallback coverage. Device features stay enabled.
     if (const char* env = spirula::env("VK_NATIVE_ATOMICS");
         env && env[0] == '0')
         _caps.float32_atomic_add = false;
@@ -555,6 +564,11 @@ void Context::init() {
         extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
         f12.pNext = &fatomic;
         _caps.xchg_float_add = false;
+        // Measured on a Radeon AI PRO R9700 with RADV and AMD's Windows driver;
+        // other GPUs and drivers are untested.
+        const char* env = spirula::env("VK_NATIVE_ATOMICS");
+        _caps.slow_float_atomic_add =
+            amd_rdna4(probe) && !(env && env[0] == '1');
     } else {
         _caps.float32_atomic_add = false;
 #ifdef _WIN32
@@ -662,7 +676,9 @@ void Context::init() {
             "float-atomic-add %s, int64 %s, int8 %s, timestamps %s\n",
             _device_name.c_str(), deviceTypeName(probe.props.deviceType),
             subgroup, _caps.max_push_constants,
-            _caps.float32_atomic_add ? "native"
+            _caps.float32_atomic_add ? (_caps.slow_float_atomic_add
+                                            ? "native (CAS where listed)"
+                                            : "native")
             : _caps.xchg_float_add   ? "EMULATED (exchange)"
                                      : "EMULATED",
             _caps.shader_int64 ? "native" : "EMULATED",

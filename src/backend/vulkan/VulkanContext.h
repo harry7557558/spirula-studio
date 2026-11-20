@@ -21,6 +21,9 @@ namespace vk {
 // kernel behaves identically on either path.
 struct Capabilities {
     bool float32_atomic_add = false;  // VK_EXT_shader_atomic_float
+    // Native add slower than the CAS loop for the kCasFloatAddEntries kernels
+    // (VulkanPipelines.cpp), which then load their CAS blob. RDNA4.
+    bool slow_float_atomic_add = false;
     // The CAS-loop blobs' exchange-based add (shaders/atomic_float.slang), for
     // AMD's Windows driver, which miscompiles their CAS.
     bool xchg_float_add = false;
