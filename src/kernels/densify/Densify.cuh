@@ -95,6 +95,7 @@ void densify_clip_scale_tensor(
     DeviceVector<float> radii,
     DeviceVector<float3> log_scales,
     float* logit_opacs_ptr,
+    DeviceVector<uint32_t> visit_counters,
     float max_scale2d,
     float clip_hardness,
     float max_scale3d

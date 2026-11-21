@@ -420,6 +420,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
             cur_num_splats,
             dv_radii, dv_scales,
             nullptr,  // don't clip opacities
+            dv_visit,
             cfg.max_screen_size,
             cfg.max_screen_size_clip_hardness,
             cfg.max_world_size

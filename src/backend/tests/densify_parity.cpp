@@ -105,7 +105,8 @@ int main(int argc, char** argv) {
             float* d_opacs = upload(opacs);
             densify_clip_scale_tensor(N, dv<float>(d_radii, N),
                                       dv<float3>(d_scales, N),
-                                      c[3] != 0.f ? d_opacs : nullptr, c[0],
+                                      c[3] != 0.f ? d_opacs : nullptr,
+                                      DeviceVector<uint32_t>(), c[0],
                                       c[1], c[2]);
             backend::device_synchronize();
             readback_f(acc, d_scales, 3 * N);

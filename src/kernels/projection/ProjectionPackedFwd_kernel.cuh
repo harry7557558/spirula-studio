@@ -203,7 +203,8 @@ __global__ void projection_packed_fwd_kernel(
     aabbs[out_idx] = aabb16_encode(aabb, image_width, image_height);
     sorting_depths[out_idx] = sorting_depth;
     splat_screen.store(splats_screen, out_idx);
-    atomicMax(&radii[gid], radius);
+    if (radii != nullptr)
+        atomicMax(&radii[gid], radius);
 }
 
 

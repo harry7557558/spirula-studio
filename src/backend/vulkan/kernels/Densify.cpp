@@ -45,12 +45,12 @@ static_assert(sizeof(DensifyLearnedScoreParams) == 5 * 8 + 10 * 4,
 
 // Mirrors DensifyClipScaleParams.
 struct DensifyClipScaleParams {
-    uint64_t radii, log_scales, logit_opacs;
+    uint64_t radii, log_scales, logit_opacs, visit_counters;
     float max_scale2d, clip_hardness, max_scale3d;
-    uint32_t has_opacs, num_splats, wgs_per_row;
+    uint32_t has_opacs, has_visit, num_splats, wgs_per_row;
     uint32_t _pad0;
 };
-static_assert(sizeof(DensifyClipScaleParams) == 3 * 8 + 8 * 4,
+static_assert(sizeof(DensifyClipScaleParams) == 4 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 // Mirrors DensifyNoiseParams.
@@ -639,6 +639,7 @@ void densify_clip_scale_tensor(
     DeviceVector<float> radii,
     DeviceVector<float3> log_scales,
     float* logit_opacs_ptr,
+    DeviceVector<uint32_t> visit_counters,
     float max_scale2d,
     float clip_hardness,
     float max_scale3d
@@ -648,10 +649,12 @@ void densify_clip_scale_tensor(
     p.radii = (uint64_t)radii.data_ptr();
     p.log_scales = (uint64_t)log_scales.data_ptr();
     p.logit_opacs = vkk::or_fallback(logit_opacs_ptr);
+    p.visit_counters = vkk::or_fallback(visit_counters.data_ptr());
     p.max_scale2d = max_scale2d;
     p.clip_hardness = clip_hardness;
     p.max_scale3d = max_scale3d;
     p.has_opacs = logit_opacs_ptr ? 1u : 0u;
+    p.has_visit = visit_counters.data_ptr() ? 1u : 0u;
     p.num_splats = (uint32_t)num_splats;
     vkk::dispatch_flat("densify.densify_clip_scale", {}, num_splats, 256, &p,
                        sizeof(p), &p.wgs_per_row);

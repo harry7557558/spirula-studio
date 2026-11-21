@@ -200,6 +200,24 @@ void compute_tile_active(
 );
 
 
+void accumulate_active_radii(
+    const int64_t num_splats,
+    const uint32_t I,
+    DeviceVector<float3> means,
+    DeviceVector<float3> scales,
+    DeviceVector<float> opacities,
+    TorchTensorView viewmats,
+    DeviceTensor2D<uint2> aabb,
+    const uint32_t image_width,
+    const uint32_t image_height,
+    DeviceVector<int32_t>* image_ids,
+    DeviceVector<int32_t>* gaussian_ids,
+    const int32_t* tile_active,
+    int macro_log2,
+    DeviceVector<float> radii
+);
+
+
 std::tuple<
     DeviceVector<int64_t>,    // isect_ids [n_isects]
     DeviceVector<int32_t>,    // flatten_ids [n_isects]
