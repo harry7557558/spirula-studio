@@ -39,6 +39,7 @@ struct MeshJob {
 
     int max_cameras = 0;               // 0 = every camera
     bool tsdf = false;                 // --method tsdf; needs use_data
+    float tsdf_voxel = 0.0f;           // >0: uniform grid (--tsdf-voxel); 0: adaptive
     int texture_size = 0;              // 0 = auto (texture mode only)
 
     // Canonical UUID for native children; empty uses shared precedence and prevents

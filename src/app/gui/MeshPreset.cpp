@@ -5,6 +5,7 @@
 #include "data/JsonField.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <stdexcept>
 
@@ -18,6 +19,7 @@ namespace {
     X("use_data",          use_data)                                          \
     X("max_cameras",       max_cameras)                                       \
     X("tsdf",              tsdf)                                              \
+    X("tsdf_voxel",        tsdf_voxel)                                        \
     X("texture_size",      texture_size)                                      \
     X("iso",               iso)                                               \
     X("bisection_iters",   bisection_iters)                                   \
@@ -53,6 +55,7 @@ bool read_tokens(const JsonValue* v, bool* on, const char* const* names, int n) 
 
 void sanitize_mesh_job(MeshJob& job) {
     job.max_cameras = std::clamp(job.max_cameras, 0, 1000000);
+    job.tsdf_voxel = std::isfinite(job.tsdf_voxel) ? std::max(0.0f, job.tsdf_voxel) : 0.0f;
     job.texture_size = std::clamp(job.texture_size, 0, 16384);
     job.bisection_iters = std::clamp(job.bisection_iters, 0, 32);
     job.quality_iters = std::clamp(job.quality_iters, 0, 32);
