@@ -3,8 +3,9 @@
 Spherical beta (SB) is the view-dependent colour of Deformable Beta Splatting
 (Liu et al., SIGGRAPH 2025): a few explicit specular lobes per splat in place
 of, or on top of, the SH bands. The Gaussian kernel and the 3dgs / mip / 3dgut
-primitives are unchanged; only the colour a splat shows the camera is. Vulkan
-builds only -- the CUDA launchers refuse a model with lobes.
+primitives are unchanged; only the colour a splat shows the camera is. CUDA
+builds render lobes (`kernels/projection/ProjectionLobes.cu` adds them after
+the projection) but train only on Vulkan: the CUDA backward refuses them.
 
 ## The model
 

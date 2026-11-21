@@ -18,6 +18,7 @@ void set_data_3dgs(
     TorchTensorView features_sh,
     int sb_lobes
 ) {
+    ++engine().stochastic.revision;
     int64_t max_num_splats = std::get<2>(means)[0];
     if (std::get<2>(quats)[0] != max_num_splats ||
         std::get<2>(scales)[0] != max_num_splats ||

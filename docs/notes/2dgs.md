@@ -25,8 +25,8 @@ backends. `spirula train 2dgs` is the preset with the geometry losses on.
   depth-normal consistency (`normal_reg_weight`) and normal supervision were
   in the per-pixel loss with a `pred_normal` slot no primitive filled. 2dgs
   renders normals (`RenderOutputType::RGB_DN`) and fills it. 3dgut fills it
-  too, with `-normalize(Sigma^-1 d)` (its short axis once flat),
-  on a step one of those terms reads it
+  too, with the normal of the surface its depth draws (the short axis once
+  flat; `evaluate_color_3dgs_normal`), on a step one of those terms reads it
   (`engine_loss_reads_render_normal`, `Vanilla3DGUTNormal`);
   3dgs and mip render none, since their screen rows carry no orientation.
 

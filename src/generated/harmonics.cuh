@@ -25626,3 +25626,210 @@ inline __device__ void sh4_to_color_q16_vjp_atomic(float3  mean_59, Matrix<float
     return;
 }
 
+inline __device__ float length_0(float3  x_65)
+{
+    return (F32_sqrt((dot_0(x_65, x_65))));
+}
+
+inline __device__ float3  normalize_0(float3  x_66)
+{
+    return x_66 / make_float3 (length_0(x_66));
+}
+
+inline __device__ float3  sb_lobes_to_color(int lobes_0, int sb_base_0, float3  mean_60, Matrix<float, 3, 3>  R_60, float3  t_60, float3  * coeffs_50)
+{
+    float3  _S11996 = normalize_0(mean_60 + mul_0(transpose_0(R_60), t_60));
+    float3  _S11997 = make_float3 (0.0f);
+    int l_0 = int(0);
+    float3  c_1 = _S11997;
+    for(;;)
+    {
+        if(l_0 < lobes_0)
+        {
+        }
+        else
+        {
+            break;
+        }
+        float3  _S11998;
+        int _S11999 = sb_base_0 + int(2) * l_0;
+        float3  _S12000 = *(coeffs_50 + _S11999);
+        float3  _S12001 = *(coeffs_50 + (_S11999 + int(1)));
+        for(;;)
+        {
+            float _S12002 = _S12001.x;
+            float _S12003 = _S12001.y;
+            float st_0 = (F32_sin((_S12002)));
+            float d_0 = dot_0(_S11996, make_float3 (st_0 * (F32_cos((_S12003))), st_0 * (F32_sin((_S12003))), (F32_cos((_S12002)))));
+            if(!(d_0 > 0.0f))
+            {
+                _S11998 = _S11997;
+                break;
+            }
+            float bx_0 = 6.93147182464599609f * _S12000.x;
+            float bx_1 = 6.93147182464599609f * _S12000.y;
+            float bx_2 = 6.93147182464599609f * _S12000.z;
+            _S11998 = make_float3 ((F32_pow((d_0), (4.0f * (F32_exp((_S12001.z))))))) * make_float3 (((F32_max((bx_0), (0.0f))) + (F32_log((1.0f + (F32_exp((- (F32_abs((bx_0)))))))))) / 6.93147182464599609f, ((F32_max((bx_1), (0.0f))) + (F32_log((1.0f + (F32_exp((- (F32_abs((bx_1)))))))))) / 6.93147182464599609f, ((F32_max((bx_2), (0.0f))) + (F32_log((1.0f + (F32_exp((- (F32_abs((bx_2)))))))))) / 6.93147182464599609f);
+            break;
+        }
+        float3  c_2 = c_1 + _S11998;
+        l_0 = l_0 + int(1);
+        c_1 = c_2;
+    }
+    return c_1;
+}
+
+inline __device__ float3  sb_lobes_to_color_q8(int lobes_1, int sb_base_1, float3  mean_61, Matrix<float, 3, 3>  R_61, float3  t_61, uchar * packed_30, float2  * bounds_30, longlong base_30, longlong bounds_stride_30, longlong pair_pitch_30)
+{
+    float3  _S12004 = normalize_0(mean_61 + mul_0(transpose_0(R_61), t_61));
+    float3  _S12005 = make_float3 (0.0f);
+    int l_1 = int(0);
+    float3  c_3 = _S12005;
+    for(;;)
+    {
+        if(l_1 < lobes_1)
+        {
+        }
+        else
+        {
+            break;
+        }
+        float3  _S12006;
+        int _S12007 = sb_base_1 + int(2) * l_1;
+        int _S12008 = int(3) * _S12007;
+        int pair_24 = int((I64_min((pair_pitch_30), (1LL))));
+        longlong pitch_24 = pair_pitch_30 + longlong(int(1) - pair_24);
+        longlong _S12009 = base_30 + longlong(_S12008 >> pair_24) * pitch_24 + longlong(_S12008 & pair_24);
+        int _S12010 = _S12008 + int(1);
+        longlong _S12011 = base_30 + longlong(_S12010 >> pair_24) * pitch_24 + longlong(_S12010 & pair_24);
+        int _S12012 = _S12008 + int(2);
+        longlong _S12013 = base_30 + longlong(_S12012 >> pair_24) * pitch_24 + longlong(_S12012 & pair_24);
+        longlong _S12014 = _S12009 / bounds_stride_30;
+        float2  mm0_660 = *(bounds_30 + int(_S12014));
+        longlong _S12015 = _S12011 / bounds_stride_30;
+        float2  mm1_660 = *(bounds_30 + int(_S12015));
+        longlong _S12016 = _S12013 / bounds_stride_30;
+        float2  * _S12017 = bounds_30 + int(_S12016);
+        float _S12018 = mm0_660.x;
+        float _S12019 = _S12018 + (mm0_660.y - _S12018) * (float(*(packed_30 + _S12009)) * 0.00392156885936856f);
+        float _S12020 = mm1_660.x;
+        float _S12021 = _S12020 + (mm1_660.y - _S12020) * (float(*(packed_30 + _S12011)) * 0.00392156885936856f);
+        float _S12022 = (*_S12017).x;
+        float _S12023 = _S12022 + ((*_S12017).y - _S12022) * (float(*(packed_30 + _S12013)) * 0.00392156885936856f);
+        int _S12024 = int(3) * (_S12007 + int(1));
+        longlong _S12025 = base_30 + longlong(_S12024 >> pair_24) * pitch_24 + longlong(_S12024 & pair_24);
+        int _S12026 = _S12024 + int(1);
+        longlong _S12027 = base_30 + longlong(_S12026 >> pair_24) * pitch_24 + longlong(_S12026 & pair_24);
+        int _S12028 = _S12024 + int(2);
+        longlong _S12029 = base_30 + longlong(_S12028 >> pair_24) * pitch_24 + longlong(_S12028 & pair_24);
+        longlong _S12030 = _S12025 / bounds_stride_30;
+        float2  mm0_661 = *(bounds_30 + int(_S12030));
+        longlong _S12031 = _S12027 / bounds_stride_30;
+        float2  mm1_661 = *(bounds_30 + int(_S12031));
+        longlong _S12032 = _S12029 / bounds_stride_30;
+        float2  * _S12033 = bounds_30 + int(_S12032);
+        float _S12034 = mm0_661.x;
+        float _S12035 = _S12034 + (mm0_661.y - _S12034) * (float(*(packed_30 + _S12025)) * 0.00392156885936856f);
+        float _S12036 = mm1_661.x;
+        float _S12037 = _S12036 + (mm1_661.y - _S12036) * (float(*(packed_30 + _S12027)) * 0.00392156885936856f);
+        float _S12038 = (*_S12033).x;
+        float _S12039 = _S12038 + ((*_S12033).y - _S12038) * (float(*(packed_30 + _S12029)) * 0.00392156885936856f);
+        for(;;)
+        {
+            float st_1 = (F32_sin((_S12035)));
+            float d_1 = dot_0(_S12004, make_float3 (st_1 * (F32_cos((_S12037))), st_1 * (F32_sin((_S12037))), (F32_cos((_S12035)))));
+            if(!(d_1 > 0.0f))
+            {
+                _S12006 = _S12005;
+                break;
+            }
+            float bx_3 = 6.93147182464599609f * _S12019;
+            float bx_4 = 6.93147182464599609f * _S12021;
+            float bx_5 = 6.93147182464599609f * _S12023;
+            _S12006 = make_float3 ((F32_pow((d_1), (4.0f * (F32_exp((_S12039))))))) * make_float3 (((F32_max((bx_3), (0.0f))) + (F32_log((1.0f + (F32_exp((- (F32_abs((bx_3)))))))))) / 6.93147182464599609f, ((F32_max((bx_4), (0.0f))) + (F32_log((1.0f + (F32_exp((- (F32_abs((bx_4)))))))))) / 6.93147182464599609f, ((F32_max((bx_5), (0.0f))) + (F32_log((1.0f + (F32_exp((- (F32_abs((bx_5)))))))))) / 6.93147182464599609f);
+            break;
+        }
+        float3  c_4 = c_3 + _S12006;
+        l_1 = l_1 + int(1);
+        c_3 = c_4;
+    }
+    return c_3;
+}
+
+inline __device__ float3  sb_lobes_to_color_q16(int lobes_2, int sb_base_2, float3  mean_62, Matrix<float, 3, 3>  R_62, float3  t_62, ushort * packed_31, float2  * bounds_31, longlong base_31, longlong bounds_stride_31, longlong pair_pitch_31)
+{
+    float3  _S12040 = normalize_0(mean_62 + mul_0(transpose_0(R_62), t_62));
+    float3  _S12041 = make_float3 (0.0f);
+    int l_2 = int(0);
+    float3  c_5 = _S12041;
+    for(;;)
+    {
+        if(l_2 < lobes_2)
+        {
+        }
+        else
+        {
+            break;
+        }
+        float3  _S12042;
+        int _S12043 = sb_base_2 + int(2) * l_2;
+        int _S12044 = int(3) * _S12043;
+        int pair_25 = int((I64_min((pair_pitch_31), (1LL))));
+        longlong pitch_25 = pair_pitch_31 + longlong(int(1) - pair_25);
+        longlong _S12045 = base_31 + longlong(_S12044 >> pair_25) * pitch_25 + longlong(_S12044 & pair_25);
+        int _S12046 = _S12044 + int(1);
+        longlong _S12047 = base_31 + longlong(_S12046 >> pair_25) * pitch_25 + longlong(_S12046 & pair_25);
+        int _S12048 = _S12044 + int(2);
+        longlong _S12049 = base_31 + longlong(_S12048 >> pair_25) * pitch_25 + longlong(_S12048 & pair_25);
+        longlong _S12050 = _S12045 / bounds_stride_31;
+        float2  mm0_662 = *(bounds_31 + int(_S12050));
+        longlong _S12051 = _S12047 / bounds_stride_31;
+        float2  mm1_662 = *(bounds_31 + int(_S12051));
+        longlong _S12052 = _S12049 / bounds_stride_31;
+        float2  * _S12053 = bounds_31 + int(_S12052);
+        float _S12054 = mm0_662.x;
+        float _S12055 = _S12054 + (mm0_662.y - _S12054) * (float(*(packed_31 + _S12045)) * 0.00001525902189314f);
+        float _S12056 = mm1_662.x;
+        float _S12057 = _S12056 + (mm1_662.y - _S12056) * (float(*(packed_31 + _S12047)) * 0.00001525902189314f);
+        float _S12058 = (*_S12053).x;
+        float _S12059 = _S12058 + ((*_S12053).y - _S12058) * (float(*(packed_31 + _S12049)) * 0.00001525902189314f);
+        int _S12060 = int(3) * (_S12043 + int(1));
+        longlong _S12061 = base_31 + longlong(_S12060 >> pair_25) * pitch_25 + longlong(_S12060 & pair_25);
+        int _S12062 = _S12060 + int(1);
+        longlong _S12063 = base_31 + longlong(_S12062 >> pair_25) * pitch_25 + longlong(_S12062 & pair_25);
+        int _S12064 = _S12060 + int(2);
+        longlong _S12065 = base_31 + longlong(_S12064 >> pair_25) * pitch_25 + longlong(_S12064 & pair_25);
+        longlong _S12066 = _S12061 / bounds_stride_31;
+        float2  mm0_663 = *(bounds_31 + int(_S12066));
+        longlong _S12067 = _S12063 / bounds_stride_31;
+        float2  mm1_663 = *(bounds_31 + int(_S12067));
+        longlong _S12068 = _S12065 / bounds_stride_31;
+        float2  * _S12069 = bounds_31 + int(_S12068);
+        float _S12070 = mm0_663.x;
+        float _S12071 = _S12070 + (mm0_663.y - _S12070) * (float(*(packed_31 + _S12061)) * 0.00001525902189314f);
+        float _S12072 = mm1_663.x;
+        float _S12073 = _S12072 + (mm1_663.y - _S12072) * (float(*(packed_31 + _S12063)) * 0.00001525902189314f);
+        float _S12074 = (*_S12069).x;
+        float _S12075 = _S12074 + ((*_S12069).y - _S12074) * (float(*(packed_31 + _S12065)) * 0.00001525902189314f);
+        for(;;)
+        {
+            float st_2 = (F32_sin((_S12071)));
+            float d_2 = dot_0(_S12040, make_float3 (st_2 * (F32_cos((_S12073))), st_2 * (F32_sin((_S12073))), (F32_cos((_S12071)))));
+            if(!(d_2 > 0.0f))
+            {
+                _S12042 = _S12041;
+                break;
+            }
+            float bx_6 = 6.93147182464599609f * _S12055;
+            float bx_7 = 6.93147182464599609f * _S12057;
+            float bx_8 = 6.93147182464599609f * _S12059;
+            _S12042 = make_float3 ((F32_pow((d_2), (4.0f * (F32_exp((_S12075))))))) * make_float3 (((F32_max((bx_6), (0.0f))) + (F32_log((1.0f + (F32_exp((- (F32_abs((bx_6)))))))))) / 6.93147182464599609f, ((F32_max((bx_7), (0.0f))) + (F32_log((1.0f + (F32_exp((- (F32_abs((bx_7)))))))))) / 6.93147182464599609f, ((F32_max((bx_8), (0.0f))) + (F32_log((1.0f + (F32_exp((- (F32_abs((bx_8)))))))))) / 6.93147182464599609f);
+            break;
+        }
+        float3  c_6 = c_5 + _S12042;
+        l_2 = l_2 + int(1);
+        c_5 = c_6;
+    }
+    return c_5;
+}
+

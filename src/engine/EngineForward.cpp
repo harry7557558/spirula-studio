@@ -247,6 +247,15 @@ void forward_3dgs(
     int dist_type_int,       // distortion channel set (DistortionType); emits D = W*S - C^2
     bool output_normal
 ) {
+    // Read-and-clear, like the pending flags below. A stochastic frame renders
+    // no median, distortion or score.
+    const bool stochastic = engine().stochastic.armed && engine().camera.num == 1;
+    engine().stochastic.armed = false;
+    engine().stochastic.last_frames = 0;
+    if (stochastic) {
+        output_median = false;
+        dist_type_int = 0;
+    }
     const DistortionType dist_type = (DistortionType)dist_type_int;
     output_normal = output_normal || dist_has_normal(dist_type);
     engine().primitive = primitive;
@@ -257,7 +266,7 @@ void forward_3dgs(
     const bool output_depth = !engine().fwd.skip_depth_pending;
     engine().fwd.skip_depth_pending = false;
     // The scores exist from the first optimizer step on.
-    const bool output_score = engine().fwd.score_pending &&
+    const bool output_score = !stochastic && engine().fwd.score_pending &&
                               engine().optim.accum_buffer.data_ptr() != nullptr;
     engine().fwd.score_pending = false;
     engine().fwd.image_fmt = engine().fwd.image_fmt_pending;
@@ -476,6 +485,7 @@ void forward_3dgs(
             engine().camera.model_str, engine().camera.distortion_str, primitive == "2dgs");
     else
         ellipse.max_sigma = engine().fwd.kernel_cut;
+    ellipse.by_tile_only = stochastic && !_engine_stochastic_depth_sorted();
 
     auto& bin = bin_choice();
     engine().fwd.macro_log2 = engine_bin_macro_log2();
@@ -542,7 +552,20 @@ void forward_3dgs(
     DeviceTensor3D<int32_t> last_ids;
     DeviceTensor3D<float> render_median;
 
-    if (primitive == "3dgs") {
+    if (stochastic) {
+        const int kind = !engine_primitive_eval3d(primitive) ? 0 : primitive == "2dgs" ? 2 : 1;
+        auto [r, rTs] = rasterize_stochastic_fwd(
+            kind, output_normal, output_depth, engine().cur_num_splats,
+            in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids, depths_nd,
+            _dt2d_tv(engine().camera.viewmats), _dv_tv(engine().camera.intrins),
+            engine().camera.model_str, engine().camera.distortion_str,
+            _dt2d_tv(engine().camera.dist_coeffs), aabb_q,
+            (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
+            tile_offsets, flatten_ids, engine().fwd.macro_log2,
+            _engine_stochastic_frame(primitive, sh_degree, output_normal, !ellipse.by_tile_only),
+            engine().fwd.kernel_cut);
+        renders = r; render_Ts = rTs;
+    } else if (primitive == "3dgs") {
         auto [r, rTs, lids, dist, med] = rasterize_to_pixels_3dgs_fwd(
             engine().cur_num_splats,
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
@@ -625,6 +648,11 @@ void engine_debug_forward(
         engine().sh_degree = override_sh_degree;
     engine().background.enabled = false;
 
+    // A stochastic render's debug view averages in a channel of its own.
+    if (engine().stochastic.last_frames > 0) {
+        const auto& st = engine().stochastic;
+        engine_arm_stochastic(st.arm_channel | (1 << 16), st.arm_key);
+    }
     // Restore even when the forward throws: leaving the debug features_dc
     // swapped in would fail every subsequent training step (tensor size
     // mismatch) and kill the session over a bad debug render.

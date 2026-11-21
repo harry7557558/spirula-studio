@@ -2323,6 +2323,9 @@ ViewerRenderConfig TrainerSession::make_viewer_config() const {
     vc.primitive = cfg.primitive;
     vc.packed = cfg.packed;
     vc.sh_degree_warmup_every = cfg.sh_degree_warmup_every;
+    vc.sh_degree = cfg.sh_degree;
+    vc.sb_lobes = cfg.sb_lobes;
+    vc.refinement_score = true;
     vc.relative_scale = cfg.relative_scale;
     vc.output_median = cfg.mean_median_depth_weight > 0.0f ||
                        cfg.median_depth_normal_reg_weight > 0.0f ||

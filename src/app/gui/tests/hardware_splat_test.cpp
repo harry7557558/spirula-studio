@@ -20,8 +20,93 @@
 #include <random>
 #include <stdexcept>
 
+#ifdef _WIN32
+#define SS_SETENV(k, v) _putenv_s(k, v)
+#else
+#define SS_SETENV(k, v) setenv(k, v, 1)
+#endif
+
 static TorchTensorView tv(const std::vector<float>& v, std::vector<int64_t> shape) {
     return {(uint64_t)(uintptr_t)v.data(), 4u, std::move(shape)};
+}
+
+using Buffer = gui::HardwareSplatRenderer::Buffer;
+// Every buffer but colour; render_normal only for the eval3d primitives.
+static const std::pair<Buffer, const char*> kBuffers[] = {
+    {Buffer::Depth, "depth"}, {Buffer::Alpha, "alpha"}, {Buffer::DepthNormal, "depth_normal"},
+    {Buffer::RenderNormal, "render_normal"}, {Buffer::Sh, "sh"}};
+
+// The compute view's display of `buffer`, by RenderWorker's transforms, in its
+// rows; the last forward_3dgs rendered the normal where there is one.
+static std::vector<float> compute_display(Buffer buffer, int W, int H, const char* camera,
+                                          const std::vector<float>& intr, int sh_degree) {
+    const size_t n = size_t(W)*H;
+    std::vector<float> rgb(n*3), depth(n), Ts(n), out(n*3);
+    TorchTensorView nil{0,4,{0}};
+    engine_copy_render_to_host(tv(rgb,{1,H,W,3}),tv(depth,{1,H,W,1}),tv(Ts,{1,H,W,1}),nil,nil);
+    if (buffer == Buffer::Depth) {
+        static const float k[3][8] = {
+            {0.14637796f, 2.94711014f, -10.15061040f, -90.46877071f, 550.44382083f, -1061.31232675f, 874.85901369f, -266.03287948f},
+            {0.08594198f, 2.06520532f, 9.64581379f, -55.09180383f, 149.40813531f, -245.26823636f, 202.98596195f, -63.82163439f},
+            {0.23431523f, 6.33792818f, 9.26380342f, -203.76964931f, 604.07329733f, -766.82678386f, 447.99287080f, -97.24397473f}};
+        float lo = INFINITY, hi = -INFINITY;
+        for (float d : depth) if (std::isfinite(d)) { lo = std::min(lo,d); hi = std::max(hi,d); }
+        for (size_t i = 0; i < n; ++i) for (int c = 0; c < 3; ++c) {
+            const float t = hi > lo ? (depth[i]-lo)/(hi-lo) : 0;
+            float v = 0;
+            for (int j = 7; j >= 0; --j) v = v*t + k[c][j];
+            out[i*3+c] = v;
+        }
+    } else if (buffer == Buffer::Alpha) {
+        for (size_t i = 0; i < n*3; ++i) out[i] = 1-Ts[i/3];
+    } else if (buffer == Buffer::RenderNormal) {
+        engine_copy_render_normal_to_host(tv(out,{1,H,W,3}));
+        for (auto& v : out) v = .5f+.5f*v;
+    } else if (buffer == Buffer::DepthNormal) {
+        std::vector<float> dist(kCameraDistortionParams,0);
+        float* d_depth = (float*)backend::device_malloc(n*4);
+        float* d_normal = (float*)backend::device_malloc(n*12);
+        float* d_intr = (float*)backend::device_malloc(16);
+        float* d_dist = (float*)backend::device_malloc(dist.size()*4);
+        backend::memcpy_sync(d_depth,depth.data(),n*4,backend::MemcpyKind::HostToDevice);
+        backend::memcpy_sync(d_intr,intr.data(),16,backend::MemcpyKind::HostToDevice);
+        backend::memcpy_sync(d_dist,dist.data(),dist.size()*4,backend::MemcpyKind::HostToDevice);
+        auto dv = [](float* p, std::vector<int64_t> shape) { return TorchTensorView{(uint64_t)(uintptr_t)p,4u,std::move(shape)}; };
+        depth_to_normal_forward_tv(camera,"NONE",dv(d_intr,{1,4}),dv(d_dist,{1,kCameraDistortionParams}),true,
+                                   dv(d_depth,{1,H,W,1}),dv(d_normal,{1,H,W,3}));
+        backend::memcpy_sync(out.data(),d_normal,n*12,backend::MemcpyKind::DeviceToHost);
+        for (float* p : {d_depth,d_normal,d_intr,d_dist}) backend::device_free(p);
+        for (auto& v : out) v = .5f+.5f*v;
+    } else if (buffer == Buffer::Sh) {
+        std::vector<float> dc(size_t(engine_get_max_num_splats())*3,0);
+        engine_debug_forward(tv(dc,{engine_get_max_num_splats(),3}),sh_degree,tv(out,{1,H,W,3}));
+    }
+    for (auto& v : out) v = std::clamp(v,0.f,1.f);
+    return out;
+}
+
+// A GL display texture in compute's rows, and its mean / max distance from
+// `ref`; over `limit`, both go to <temp>/gl-parity-<name>-{compute,gl}.png.
+static std::pair<double,double> gl_difference(unsigned texture, int W, int H, const std::vector<float>& ref,
+                                              double limit, const std::string& name) {
+    std::vector<float> pixels(size_t(W)*H*4);
+    glBindTexture(GL_TEXTURE_2D,texture); glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_FLOAT,pixels.data());
+    double sum = 0, worst = 0;
+    std::vector<uint8_t> a(size_t(W)*H*3), b(a.size());
+    for (int y = 0; y < H; ++y) for (int x = 0; x < W; ++x) for (int j = 0; j < 3; ++j) {
+        // The blit's quantization (Visualizer.cu), which GL's RGBA8 shares.
+        const float gl = pixels[((H-1-y)*W+x)*4+j], r = std::floor(ref[(y*W+x)*3+j]*255+.5f)/255;
+        const double d = std::abs(r-gl);
+        sum += d; worst = std::max(worst,d);
+        a[(y*W+x)*3+j] = uint8_t(std::round(ref[(y*W+x)*3+j]*255)); b[(y*W+x)*3+j] = uint8_t(std::round(gl*255));
+    }
+    const double mean = sum/(double(W)*H*3);
+    if (mean > limit) {
+        const auto prefix = (std::filesystem::temp_directory_path()/("gl-parity-"+name)).string();
+        stbi_write_png((prefix+"-compute.png").c_str(),W,H,3,a.data(),W*3);
+        stbi_write_png((prefix+"-gl.png").c_str(),W,H,3,b.data(),W*3);
+    }
+    return {mean, worst};
 }
 
 static void check_depth_sort() {
@@ -42,13 +127,13 @@ static void check_depth_sort() {
                 return gui::splat_depth_key(positions.data()+size_t(a)*3,view,camera) <
                        gui::splat_depth_key(positions.data()+size_t(b)*3,view,camera);
             });
-            for (int workers : {1,2,3,4}) {
+            for (int workers : {1,2,3,4,5,8}) {
                 gui::sort_splat_depths(positions.data(),count,view,camera,keys.data(),order.data(),scratch.data(),workers);
                 if (order != reference) throw std::runtime_error("Parallel splat sort differs from stable serial order");
             }
         }
     }
-    std::printf("depth sort: serial/stable oracle passed for 1-4 threads, ties, uneven chunks and all cameras\n");
+    std::printf("depth sort: serial/stable oracle passed for 1-8 threads, ties, uneven chunks and all cameras\n");
 }
 
 static void benchmark_depth_sort(uint32_t count, int repeats) {
@@ -191,8 +276,100 @@ static void coherent_frames() {
     std::printf("coherent frames: immediate planar pan, held pending views, polled completion, drained requested capture\n");
 }
 
+// SS_VIEWER_STOCHASTIC=1 (set before anything reads it): the GL view averages
+// unsorted frames, and once converged must show what sorted compute does.
+static bool stochastic_frames() {
+    SS_SETENV("SS_VIEWER_STOCHASTIC", "1");
+    SS_SETENV("SS_VIEWER_STOCHASTIC_SPP", "8");
+    SS_SETENV("SS_VIEWER_STOCHASTIC_FRAMES", "128");
+    if (!glfwInit()) throw std::runtime_error("GLFW initialization failed");
+    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    auto* window = glfwCreateWindow(64, 64, "stochastic", nullptr, nullptr);
+    if (!window) throw std::runtime_error("GL context creation failed");
+    glfwMakeContextCurrent(window);
+    constexpr int W = 160, H = 120;
+    spirula::SplatCloud c; c.num = 600; c.sh_degree = 1;
+    c.means.resize(c.num*3); c.quats.resize(c.num*4); c.scales.resize(c.num*3);
+    c.opacities.resize(c.num); c.features_dc.resize(c.num*3); c.features_sh.resize(c.num*9);
+    std::mt19937 rng(20261121);
+    auto rand = [&] { return float(rng() & 65535)/65535; };
+    for (int i = 0; i < c.num; ++i) {
+        c.means[3*i] = (rand()-.5f)*3; c.means[3*i+1] = (rand()-.5f)*2; c.means[3*i+2] = -2-rand()*3;
+        for (int j = 0; j < 4; ++j) c.quats[4*i+j] = j ? 0.f : 1.f;
+        for (int j = 0; j < 3; ++j) { c.scales[3*i+j] = -3-rand()*1.5f; c.features_dc[3*i+j] = (rand()-.5f)*2; }
+        c.opacities[i] = rand()*6-2;
+    }
+    for (auto& v : c.features_sh) v = (rand()-.5f)*.1f;
+    // Exactly representable in the GL textures, so only the sampling differs.
+    auto half = [](float x) { return nn::half_to_float(nn::float_to_half(x)); };
+    for (auto& x : c.scales) x = half(x);
+    for (auto& x : c.features_dc) x = half(x);
+    for (auto& x : c.features_sh) x = 0;
+    const auto path = std::filesystem::temp_directory_path()/"spirula-hardware-stochastic.ply";
+    spirula::write_splat_ply(c, path.string());
+    gui::HardwareSplatRenderer renderer;
+    float center[3]{};
+    renderer.load(path.string(), center, 1);
+    engine_reset();
+    set_data_3dgs(c.num, tv(c.means,{c.num,3}),tv(c.quats,{c.num,4}),tv(c.scales,{c.num,3}),
+                  tv(c.opacities,{c.num,1}),tv(c.features_dc,{c.num,3}),tv(c.features_sh,{c.num,3,3}),0);
+    const char* cameras[] = {"PINHOLE","FISHEYE","EQUISOLID","EQUIRECTANGULAR","ORTHOGRAPHIC"};
+    const char* primitives[] = {"3dgs","mip","3dgut","2dgs"};
+    const float identity[9] = {1,0,0,0,1,0,0,0,1};
+    float view[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    std::vector<float> cv = {1,0,0,0, 0,-1,0,0, 0,0,-1,0, 0,0,0,1};
+    std::vector<float> intr = {100,100,W*.5f,H*.5f}, dist(kCameraDistortionParams,0);
+    std::vector<float> compute(W*H*3), pixels(W*H*4);
+    TorchTensorView nil{0,4,{0}};
+    bool failed = false;
+    for (int camera = 0; camera < 5; ++camera) for (int primitive = 0; primitive < 4; ++primitive) {
+        float fx = 100, fy = 100;
+        if (camera == 1 || camera == 3) { fx = W/(2*3.14159265f); fy = H/3.14159265f; }
+        if (camera == 2) fx = fy = W*.25f;
+        intr[0] = fx; intr[1] = fy;
+        set_camera_params(W,H,cameras[camera],"NONE",tv(cv,{1,4,4}),tv(intr,{1,4}),tv(dist,{1,kCameraDistortionParams}));
+        forward_3dgs(primitives[primitive],1,false,false,0);
+        backend::device_synchronize();
+        engine_copy_render_to_host(tv(compute,{1,H,W,3}),nil,nil,nil,nil);
+        unsigned texture = 0;
+        int frames = 0;
+        do { texture = renderer.render(W,H,view,camera,fx,fy,primitive,1,identity,0,false); ++frames; }
+        while (renderer.refining() && frames < 1000);
+        glBindTexture(GL_TEXTURE_2D,texture); glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_FLOAT,pixels.data());
+        double sum = 0, signal = 0;
+        for (int y = 0; y < H; ++y) for (int x = 0; x < W; ++x) for (int j = 0; j < 3; ++j) {
+            const double a = std::clamp(compute[(y*W+x)*3+j],0.f,1.f), b = pixels[((H-1-y)*W+x)*4+j];
+            sum += std::abs(a-b); signal += a;
+        }
+        const double mean = sum/(W*H*3);
+        std::printf("stochastic %s %s frames %d mean %.5f signal %.4f\n",cameras[camera],primitives[primitive],frames,mean,signal/(W*H*3));
+        failed |= frames != 128 || mean > .006 || signal < 1;
+        forward_3dgs(primitives[primitive],1,false,false,0,primitive >= 2);
+        backend::device_synchronize();
+        for (const auto& [buffer, name] : kBuffers) {
+            if (buffer == Buffer::DepthNormal || (buffer == Buffer::RenderNormal && primitive < 2)) continue;
+            const auto ref = compute_display(buffer,W,H,cameras[camera],intr,1);
+            frames = 0;
+            do { texture = renderer.render(W,H,view,camera,fx,fy,primitive,1,identity,0,false,buffer); ++frames; }
+            while (renderer.refining() && frames < 1000);
+            const auto [error, worst] = gl_difference(texture,W,H,ref,.006,std::string("stochastic-")+
+                                                      cameras[camera]+"-"+primitives[primitive]+"-"+name);
+            std::printf("stochastic %s %s %s mean %.5f max %.4f\n",cameras[camera],primitives[primitive],name,error,worst);
+            failed |= error > .006;
+        }
+    }
+    renderer.destroy(); engine_reset();
+    std::filesystem::remove(path);
+    glfwDestroyWindow(window); glfwTerminate();
+    return !failed;
+}
+
 int main(int argc, char** argv) {
     try {
+        if (argc == 2 && std::string(argv[1]) == "--stochastic")
+            return stochastic_frames() ? 0 : 1;
         if (argc >= 2 && std::string(argv[1]) == "--sort-benchmark") {
             if (argc < 3 || argc > 4) throw std::runtime_error("Usage: --sort-benchmark COUNT [REPEATS]");
             const auto count = std::stoull(argv[2]);
@@ -283,7 +460,7 @@ int main(int argc, char** argv) {
             const auto loaded = std::chrono::steady_clock::now();
             std::printf("load seconds: %.3f\n", std::chrono::duration<double>(loaded-begin).count());
             std::fflush(stdout);
-            for (int p = 0; p < 3; ++p) {
+            for (int p = 0; p < 4; ++p) {
                 const auto start = std::chrono::steady_clock::now();
                 const auto texture = renderer.render(W,H,view,camera_model,fx,fy,p,3,identity,0,false);
                 glFinish();
@@ -305,7 +482,7 @@ int main(int argc, char** argv) {
                 if (!std::isfinite(signal) || signal < 1) throw std::runtime_error("Large model render is blank or non-finite");
             }
             std::printf("attribute bytes: %zu, last sort seconds: %.3f\n", renderer.attribute_bytes(),renderer.sort_seconds());
-            for (int p = 0; p < 3; ++p) {
+            for (int p = 0; p < 4; ++p) {
                 const auto start = std::chrono::steady_clock::now();
                 for (int frame = 0; frame < 5; ++frame) {
                     view[3] += .01f;
@@ -343,8 +520,8 @@ int main(int argc, char** argv) {
                 std::copy(original_view,original_view+16,view);
                 std::vector<float> intr = {fx,fy,W*.5f,H*.5f}, dist(kCameraDistortionParams,0);
                 set_camera_params(W,H,camera_model == 1 ? "FISHEYE" : "PINHOLE","NONE",tv(cv,{1,4,4}),tv(intr,{1,4}),tv(dist,{1,kCameraDistortionParams}));
-                const char* names[] = {"3dgs","mip","3dgut"};
-                for (int p = 0; p < 3; ++p) {
+                const char* names[] = {"3dgs","mip","3dgut","2dgs"};
+                for (int p = 0; p < 4; ++p) {
                     const auto start = std::chrono::steady_clock::now();
                     forward_3dgs(names[p],3,false,false,0); backend::device_synchronize();
                     const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
@@ -391,14 +568,31 @@ int main(int argc, char** argv) {
                     }
                     std::sort(compute_ms.begin(),compute_ms.end()); std::sort(hardware_ms.begin(),hardware_ms.end());
                     std::printf("real %s warmed median milliseconds compute %.3f hardware %.3f\n",names[p],compute_ms[2],hardware_ms[2]);
+                    forward_3dgs(names[p],3,false,false,0,p >= 2); backend::device_synchronize();
+                    for (const auto& [buffer, name] : kBuffers) {
+                        if (buffer == Buffer::RenderNormal && p < 2) continue;
+                        const auto ref = compute_display(buffer,W,H,camera_model == 1 ? "FISHEYE" : "PINHOLE",intr,3);
+                        const auto shown = renderer.render(W,H,view,camera_model,fx,fy,p,3,identity,0,false,buffer);
+                        const auto [error, worst] = gl_difference(shown,W,H,ref,1,"");
+                        std::vector<double> ms;
+                        for (int frame = 0; frame < 5; ++frame) {
+                            const auto begin = std::chrono::steady_clock::now();
+                            renderer.render(W,H,view,camera_model,fx,fy,p,frame%2 ? c.sh_degree : -1,identity,0,false,buffer);
+                            glFinish();
+                            ms.push_back(1000*std::chrono::duration<double>(std::chrono::steady_clock::now()-begin).count());
+                        }
+                        std::sort(ms.begin(),ms.end());
+                        std::printf("real %s %s mean %.6f max %.4f hardware milliseconds %.3f\n",names[p],name,error,worst,ms[2]);
+                    }
                 }
                 engine_reset();
             }
             renderer.destroy(); glfwDestroyWindow(window); glfwTerminate(); return 0;
         }
-        spirula::SplatCloud c; c.num = 400; c.sh_degree = 3;
+        spirula::SplatCloud c; c.num = 400; c.sh_degree = 3; c.sb_lobes = 2;
+        const int row = int(c.coeffs());
         c.means.resize(c.num*3); c.quats.resize(c.num*4); c.scales.resize(c.num*3);
-        c.opacities.resize(c.num); c.features_dc.resize(c.num*3); c.features_sh.resize(c.num*45);
+        c.opacities.resize(c.num); c.features_dc.resize(c.num*3); c.features_sh.resize(c.num*row*3);
         std::mt19937 rng(20261117);
         auto rand = [&] { return float(rng() & 65535)/65535; };
         for (int i = 0; i < c.num; ++i) {
@@ -420,10 +614,15 @@ int main(int argc, char** argv) {
         c.scales[66] = c.scales[67] = c.scales[68] = -10.f;
         c.features_dc[75] = c.features_dc[76] = c.features_dc[77] = 5;
         for (auto& v : c.features_sh) v = (rand()-.5f)*.15f;
+        for (int i = 0; i < c.num; ++i) for (int l = 0; l < c.sb_lobes; ++l) {
+            float* lobe = c.features_sh.data() + (size_t(i)*row + 15 + 2*l)*3;
+            lobe[0] = rand()-.8f; lobe[1] = rand()-.8f; lobe[2] = rand()-.8f;
+            lobe[3] = rand()*3.14159265f; lobe[4] = (rand()-.5f)*6.2831853f; lobe[5] = rand()*2-1;
+        }
         const auto path = std::filesystem::temp_directory_path()/"spirula-hardware-parity.ply";
         spirula::write_splat_ply(c, path.string());
         const auto metadata = spirula::splat_ply_shape(path.string());
-        if (metadata.sh_degree != 3 || metadata.num != c.num || !metadata.means.empty())
+        if (metadata.sh_degree != 3 || metadata.sb_lobes != 2 || metadata.num != c.num || !metadata.means.empty())
             throw std::runtime_error("PLY metadata-only read lost the color basis");
         renderer.load(path.string(), center, 1);
         // Compare arithmetic after attribute quantization, including depth-sign boundaries.
@@ -437,17 +636,18 @@ int main(int argc, char** argv) {
             norm = 0;
             for (int j = 0; j < 4; ++j) norm += c.quats[4*i+j]*c.quats[4*i+j];
             for (int j = 0; j < 4; ++j) c.quats[4*i+j] /= std::sqrt(norm);
+            float* sh = c.features_sh.data() + size_t(i)*row*3;
             float scale = 0;
-            for (int j = 0; j < 45; ++j) scale = std::max(scale,std::abs(c.features_sh[45*i+j]));
+            for (int j = 0; j < 45; ++j) scale = std::max(scale,std::abs(sh[j]));
             scale = std::exp2(std::ceil(std::log2(scale)));
-            for (int j = 0; j < 45; ++j) c.features_sh[45*i+j] = std::round(127*c.features_sh[45*i+j]/scale)*scale/127;
+            for (int j = 0; j < 45; ++j) sh[j] = std::round(127*sh[j]/scale)*scale/127;
         }
         std::printf("Reference uses dequantized hardware attributes\n");
         engine_reset();
         set_data_3dgs(c.num, tv(c.means,{c.num,3}),tv(c.quats,{c.num,4}),tv(c.scales,{c.num,3}),
-                     tv(c.opacities,{c.num,1}),tv(c.features_dc,{c.num,3}),tv(c.features_sh,{c.num,15,3}),0);
+                     tv(c.opacities,{c.num,1}),tv(c.features_dc,{c.num,3}),tv(c.features_sh,{c.num,row,3}),c.sb_lobes);
         const char* cameras[] = {"PINHOLE","FISHEYE","EQUISOLID","EQUIRECTANGULAR","ORTHOGRAPHIC"};
-        const char* primitives[] = {"3dgs","mip","3dgut"};
+        const char* primitives[] = {"3dgs","mip","3dgut","2dgs"};
         std::vector<float> cv = {1,0,0,0, 0,-1,0,0, 0,0,-1,0, 0,0,0,1};
         std::vector<float> intr = {100,100,W*.5f,H*.5f}, dist(kCameraDistortionParams,0);
         std::vector<float> compute(W*H*3), pixels(W*H*4);
@@ -467,7 +667,7 @@ int main(int argc, char** argv) {
         }
         for (int r = 0; r < 3; ++r) for (int j = 0; j < 4; ++j)
             cv[r*4+j] = (r ? -1 : 1)*view[r*4+j];
-        for (int camera = 0; camera < 5; ++camera) for (int primitive = 0; primitive < 3; ++primitive) {
+        for (int camera = 0; camera < 5; ++camera) for (int primitive = 0; primitive < 4; ++primitive) {
             float fx = 100, fy = 100;
             if (camera == 1 || camera == 3) { fx = W/(2*3.14159265f); fy = H/3.14159265f; }
             if (camera == 2) fx = fy = W*.25f;
@@ -500,6 +700,20 @@ int main(int argc, char** argv) {
                 stbi_write_png((prefix+"-gl.png").c_str(),W,H,3,b.data(),W*3);
             }
             failed |= mean > .002 || worst > .06 || signal < 1;
+            if (color) continue;
+            forward_3dgs(primitives[primitive],3,false,false,0,primitive >= 2);
+            backend::device_synchronize();
+            for (const auto& [buffer, name] : kBuffers) {
+                if (buffer == Buffer::RenderNormal && primitive < 2) continue;
+                const auto ref = compute_display(buffer,W,H,cameras[camera],intr,3);
+                const auto tex = renderer.render(W,H,view,camera,fx,fy,primitive,3,gamut,transfer,linear,buffer);
+                // A depth stencil on an equisolid rim, where 180 degrees packs into pixels.
+                const double limit = buffer == Buffer::DepthNormal ? .004 : .002;
+                const auto [error, worst] = gl_difference(tex,W,H,ref,limit,std::to_string(pose)+"-"+
+                                                          cameras[camera]+"-"+primitives[primitive]+"-"+name);
+                std::printf("pose%d %s %s %s mean %.7f max %.7f\n",pose,cameras[camera],primitives[primitive],name,error,worst);
+                failed |= error > limit;
+            }
         }
         }
         }
@@ -520,21 +734,24 @@ int main(int argc, char** argv) {
         intr = {100,100,W*.5f,H*.5f};
         set_camera_params(W,H,"PINHOLE","NONE",tv(cv,{1,4,4}),tv(intr,{1,4}),tv(dist,{1,kCameraDistortionParams}));
         std::fill(view,view+16,0); view[0] = view[5] = view[10] = view[15] = 1;
-        for (int p = 0; p < 3; ++p) {
+        // Compute drops the green splat, which would take T under 1e-4; blending
+        // cannot test the target's T first, so the GL view draws it.
+        std::vector<float> Ts(W*H);
+        for (int p = 0; p < 4; ++p) {
             forward_3dgs(primitives[p],0,false,false,0); backend::device_synchronize();
-            engine_copy_render_to_host(tv(compute,{1,H,W,3}),nil,nil,nil,nil);
+            engine_copy_render_to_host(tv(compute,{1,H,W,3}),nil,tv(Ts,{1,H,W,1}),nil,nil);
             const auto tex = renderer.render(W,H,view,0,100,100,p,0,identity,0,false);
             glBindTexture(GL_TEXTURE_2D,tex); glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_FLOAT,pixels.data());
             const int x = W/2, y = H/2-1;
             double error = 0;
             for (int j = 0; j < 3; ++j) {
-                const float a = compute[(y*W+x)*3+j], b = pixels[((H-1-y)*W+x)*4+j];
+                const float a = compute[(y*W+x)*3+j] + (j == 1 ? Ts[y*W+x] : 0.f), b = pixels[((H-1-y)*W+x)*4+j];
                 if (!std::isfinite(a) || !std::isfinite(b))
                     throw std::runtime_error("Non-finite opaque-overlap comparison pixel");
                 error = std::max(error,double(std::abs(a-b)));
             }
-            std::printf("opaque %s center error %.7f\n",primitives[p],error);
-            failed |= error > .003;
+            std::printf("opaque %s center error %.7f, compute T %.4f\n",primitives[p],error,Ts[y*W+x]);
+            failed |= error > .003 || Ts[y*W+x] < .05;
         }
         renderer.destroy(); engine_reset(); std::filesystem::remove(opaque_path);
         spirula::SplatCloud near_plane;
@@ -554,7 +771,7 @@ int main(int argc, char** argv) {
                     tv(near_plane.scales,{1,3}),tv(near_plane.opacities,{1,1}),
                     tv(near_plane.features_dc,{1,3}),tv(near_plane.features_sh,{1,0,3}),0);
                 set_camera_params(W,H,cameras[camera],"NONE",tv(cv,{1,4,4}),tv(intr,{1,4}),tv(dist,{1,kCameraDistortionParams}));
-                for (int p = 0; p < 3; ++p) {
+                for (int p = 0; p < 4; ++p) {
                     forward_3dgs(primitives[p],0,false,false,0); backend::device_synchronize();
                     engine_copy_render_to_host(tv(compute,{1,H,W,3}),nil,nil,nil,nil);
                     const auto tex = renderer.render(W,H,view,camera,100,100,p,0,identity,0,false);
