@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 #include <istream>
+#include <limits>
 #include <ostream>
 #include <stdexcept>
 #include <string>
@@ -81,16 +82,14 @@ inline void tar_write_bytes(std::ostream& out, const std::string& name,
 
 // --- Two zero blocks terminate the archive. ---
 inline void tar_finish(std::ostream& out) {
-    char z[512] = {0};
-    out.write(z, 512);
-    out.write(z, 512);
+    const char zero[1024]{};
+    if (!out.write(zero, sizeof(zero)))
+        throw std::runtime_error("failed to write checkpoint TAR terminator");
 }
 
-// --- Stream a device buffer as a flat typed .npy member. Chunked D->H copy
-//     through `host` (reused across calls); no device allocation. ---
-inline void tar_write_npy_device(std::ostream& out, const std::string& name,
-                                 const void* dptr, size_t nbytes, uint8_t dtype_tag,
-                                 std::vector<char>& host) {
+inline void tar_write_npy(std::ostream& out, const std::string& name,
+                          const void* ptr, size_t nbytes, uint8_t dtype_tag,
+                          std::vector<char>* device_stage) {
     auto descr_size = npy_scalar_descr((NpyScalar)dtype_tag);
     const char* descr = descr_size.first;
     size_t esize      = descr_size.second;
@@ -101,23 +100,28 @@ inline void tar_write_npy_device(std::ostream& out, const std::string& name,
     tar_header(out, name, member);
     out.write(hdr.data(), (std::streamsize)hdr.size());
 
-    const size_t chunk = std::min(nbytes, spirula::kFileBufferBytes);
-    if (host.size() < 2*chunk) host.resize(2*chunk);
-    const char* src = (const char*)dptr;
-    std::future<void> pending;
-    size_t slot = 0;
-    for (size_t off = 0; off < nbytes; off += chunk) {
-        const size_t n = std::min(chunk, nbytes-off);
-        char* data = host.data()+slot*chunk;
-        backend::memcpy_sync(data, src+off, n, backend::MemcpyKind::DeviceToHost);
+    const char* src = static_cast<const char*>(ptr);
+    if (!device_stage) {
+        out.write(src, (std::streamsize)nbytes);
+    } else {
+        const size_t chunk = std::min(nbytes, spirula::kFileBufferBytes);
+        auto& host = *device_stage;
+        if (host.size() < 2*chunk) host.resize(2*chunk);
+        std::future<void> pending;
+        size_t slot = 0;
+        for (size_t off = 0; off < nbytes; off += chunk) {
+            const size_t n = std::min(chunk, nbytes-off);
+            char* data = host.data()+slot*chunk;
+            backend::memcpy_sync(data, src+off, n, backend::MemcpyKind::DeviceToHost);
+            if (pending.valid()) pending.get();
+            pending = std::async(std::launch::async, [&, data, n] {
+                out.write(data, (std::streamsize)n);
+                if (!out) throw std::runtime_error("failed to write checkpoint buffer " + name);
+            });
+            slot = 1-slot;
+        }
         if (pending.valid()) pending.get();
-        pending = std::async(std::launch::async, [&, data, n] {
-            out.write(data, (std::streamsize)n);
-            if (!out) throw std::runtime_error("failed to write checkpoint buffer " + name);
-        });
-        slot = 1-slot;
     }
-    if (pending.valid()) pending.get();
     tar_pad(out, member);
 }
 
@@ -139,32 +143,51 @@ struct TarMember {
 inline std::vector<TarMember> tar_index(std::istream& in) {
     std::vector<TarMember> members;
     in.clear();
-    in.seekg(0, std::ios::beg);
+    if (!in.seekg(0, std::ios::beg))
+        throw std::runtime_error("failed to seek to checkpoint TAR start");
     char h[512];
-    while (in.read(h, 512)) {
-        if (h[0] == '\0') break;                       // zero block -> end
+    for (;;) {
+        if (!in.read(h, sizeof(h)))
+            throw std::runtime_error("truncated checkpoint TAR header or missing terminator");
+        if (h[0] == '\0') {
+            auto zero_block = [&] {
+                return std::all_of(h, h + sizeof(h), [](char c) { return c == '\0'; });
+            };
+            if (!zero_block() || !in.read(h, sizeof(h)) || !zero_block())
+                throw std::runtime_error("invalid checkpoint TAR terminator");
+            return members;
+        }
         std::string name(h, ::strnlen(h, 100));
         uint64_t size = 0;
         if ((unsigned char)h[124] & 0x80) {            // base-256
-            for (int i = 125; i < 136; ++i) size = (size << 8) | (unsigned char)h[i];
+            if ((unsigned char)h[124] != 0x80 || h[125] != 0 || h[126] != 0 || h[127] != 0)
+                throw std::runtime_error("invalid checkpoint TAR member size");
+            for (int i = 128; i < 136; ++i) size = (size << 8) | (unsigned char)h[i];
         } else {                                       // octal
             for (int i = 124; i < 136 && h[i] >= '0' && h[i] <= '7'; ++i)
                 size = size * 8 + (uint64_t)(h[i] - '0');
         }
-        uint64_t data_off = (uint64_t)in.tellg();
-        members.push_back({ name, data_off, size });
-        uint64_t skip = (size + 511u) & ~((uint64_t)511u);   // pad to 512
-        in.seekg((std::streamoff)skip, std::ios::cur);
+        const std::streamoff data_off = in.tellg();
+        const uint64_t pad = (512 - size % 512) % 512;
+        if (data_off < 0 || size > uint64_t(std::numeric_limits<std::streamoff>::max() - data_off) ||
+            pad > uint64_t(std::numeric_limits<std::streamoff>::max() - data_off) - size ||
+            !in.seekg((std::streamoff)(size + pad), std::ios::cur))
+            throw std::runtime_error("failed to seek past checkpoint TAR member " + name);
+        members.push_back({std::move(name), (uint64_t)data_off, size});
     }
-    return members;
 }
 
 // Read a whole small member (e.g. state.json) into a string.
 inline std::string tar_read_member(std::istream& in, const TarMember& m) {
-    std::string s(m.size, '\0');
     in.clear();
-    in.seekg((std::streamoff)m.data_offset, std::ios::beg);
-    in.read(&s[0], (std::streamsize)m.size);
+    if (m.data_offset > uint64_t(std::numeric_limits<std::streamoff>::max()) ||
+        !in.seekg((std::streamoff)m.data_offset, std::ios::beg))
+        throw std::runtime_error("failed to seek to checkpoint TAR member " + m.name);
+    if (m.size > uint64_t(std::numeric_limits<std::streamsize>::max()))
+        throw std::runtime_error("invalid checkpoint TAR member size for " + m.name);
+    std::string s(m.size, '\0');
+    if (!in.read(s.data(), (std::streamsize)m.size))
+        throw std::runtime_error("truncated checkpoint TAR member " + m.name);
     return s;
 }
 

@@ -212,6 +212,9 @@ struct TrainerCallbacks {
     // needs. true retries the decode, false stops the run (still saving a
     // checkpoint). Unset fails the run outright, which is what a script wants.
     std::function<bool(const std::string&)> on_data_error;
+
+    // Test gate invoked by the async writer before touching checkpoint files.
+    std::function<void()> checkpoint_writer_gate;
 };
 
 class TrainerSession {
@@ -307,6 +310,7 @@ public:
     // caller must hold engine_mutex.
     std::map<std::string, float> train_step(int step);
 
+    // Synchronous save for callers outside train(); acquires engine_mutex.
     void save_checkpoint(int step, bool full);
 
     // Scores the held-out views into metrics.json: l1/psnr/ssim, LPIPS when its
@@ -367,6 +371,10 @@ private:
     mutable std::mutex _progress_mutex;    // guards the latency window
     std::deque<double> _step_latencies;    // last 100, seconds
     bool _diverged_loss_reported = false;
+
+    std::future<void> write_checkpoint(int step, bool full, bool periodic,
+                                       const std::function<void()>& writer_gate = {});
+    void prune_checkpoints();
 
     void observe_memory(int step, int64_t splats_ran);
     TrainForecast _forecast;

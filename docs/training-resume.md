@@ -35,14 +35,16 @@ fresh.
 With `save_only_latest_checkpoint=false`, both names gain `_step-000012000`
 for that step. There is one PLY per checkpoint, without links or copies.
 
-The PLY writer stages bounded chunks from the GPU, filters and packs rows on
-the CPU, and overlaps disk writes with the next chunk. Y-up conversion is
-part of packing; Spirula reverses it during PLY decoding. TAR saving and
-loading use two reusable 16 MiB staging buffers to overlap device transfers
-with disk I/O. Neither save path stages the whole model in system RAM.
-Files keep a `.tmp` suffix until all checkpoint streams close successfully,
-then replace their final names. These are buffered writes; timings depend on
-the OS cache and competing disk activity.
+Periodic saves capture the state before the next training step. When host
+memory headroom permits, they write that snapshot in the background while
+training continues; otherwise they stream bounded chunks synchronously.
+The PLY writer filters and packs on the CPU and applies Y-up conversion as
+configured; Spirula reverses that conversion when decoding the PLY.
+
+All output streams close successfully under `.tmp` names before any output
+is published. The PLY goes first, then `background.webp` if present, then the
+TAR. Each replacement is atomic, but readers opening files during the
+replacement burst can see a mix of generations.
 
 A checkpoint written **when a run is stopped before its last step** always
 holds everything needed to continue: the world parameters, optimizer state and
@@ -61,8 +63,8 @@ checkpoints kept when only the newest is not, follow `save_full_checkpoint`.
 With it off they are smaller, without optimizer state: they hold the finished
 splats for viewing, export and meshing, but cannot continue training.
 
-**Stop without saving** writes nothing, and `steps_per_save = 0` disables
-checkpoints entirely, including the one on stop.
+**Stop without saving** waits for any periodic save already in progress but
+does not start a final save. `steps_per_save = 0` disables all checkpoints.
 
 ## On the command line
 
