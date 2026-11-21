@@ -184,6 +184,10 @@ public:
     // active, i.e. camera-based visibility culling is possible.
     bool has_render_cameras() const;
 
+    // Camera indices selected for rendering (all cameras, or the k-means
+    // medoids when cfg.max_cameras caps them). Empty without camera centers.
+    const std::vector<int>& selected_cameras() const;
+
     // Mark which mesh vertices are seen by >= 1 camera: a vertex is seen when it
     // projects in-frame AND the segment to that camera is not blocked by a mesh
     // triangle that does not contain the vertex (occlusion via an LBVH over the
