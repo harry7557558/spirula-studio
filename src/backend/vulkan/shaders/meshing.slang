@@ -472,6 +472,7 @@ struct MeshPointCloudParams {
     float min_axis_ratio;
     uint32_t num_kept;
     uint32_t wgs_per_row;
+    uint32_t samples_per_gaussian;
 };
 
 [shader("compute")]
@@ -483,8 +484,15 @@ void mesh_pointcloud(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (gid >= p.num_kept) return;
     int i = int(gid);
     int g = p.kept[i];
-    float k = sqrt(p.k2[g]) * 2.5f;  // 2.5x the cutoff, for overlapping splats
     float3 m = ld3(p.mean, g);
+    if (p.samples_per_gaussian <= 1u) {
+        int base = i * 3;
+        p.out_xyz[base + 0] = m.x;
+        p.out_xyz[base + 1] = m.y;
+        p.out_xyz[base + 2] = m.z;
+        return;
+    }
+    float k = sqrt(p.k2[g]) * 2.5f;  // 2.5x the cutoff, for overlapping splats
     float3 s = rsqrt(ld3(p.invs2, g));
     float lo = p.min_axis_ratio * max(s.x, max(s.y, s.z));
     float3 o0 = ld3(p.ax0, g) * (k * max(s.x, lo));

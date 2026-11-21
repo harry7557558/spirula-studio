@@ -239,6 +239,8 @@ void print_help(const char* argv0) {
     help_row("--merge-color <v>", mmsg::help_merge_color, {(double)d.m.merge_color});
     help_row("--bisection-iters <n>", mmsg::help_bisection_iters,
              {d.m.bisection_iters});
+    help_row("--samples-per-gaussian <1|7>", mmsg::help_samples_per_gaussian,
+             {d.m.samples_per_gaussian});
     help_row("--max-cameras <n>", mmsg::help_max_cameras, {d.m.max_cameras});
     help_row("--max-grid-res <n>", mmsg::help_max_grid_res, {d.m.max_grid_res});
     help_row("--grid-cell-factor <v>", mmsg::help_grid_cell_factor,
@@ -320,6 +322,11 @@ Options parse_args(int argc, char** argv) {
         else if (key == "merge_max_edge_px") o.m.merge_max_edge_px = parse_f(key, next());
         else if (key == "merge_color")     o.m.merge_color = parse_f(key, next());
         else if (key == "bisection_iters") o.m.bisection_iters = parse_i(key, next());
+        else if (key == "samples_per_gaussian") {
+            o.m.samples_per_gaussian = parse_i(key, next());
+            if (o.m.samples_per_gaussian != 1 && o.m.samples_per_gaussian != 7)
+                throw std::runtime_error("--samples-per-gaussian: expected 1 or 7");
+        }
         else if (key == "max_cameras")     o.m.max_cameras = parse_i(key, next());
         else if (key == "max_grid_res")    o.m.max_grid_res = parse_i(key, next());
         else if (key == "grid_cell_factor") o.m.grid_cell_factor = parse_f(key, next());
