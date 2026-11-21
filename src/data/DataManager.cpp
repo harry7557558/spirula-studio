@@ -601,11 +601,55 @@ void cpu_area_resize_alpha(const T* src, int sh, int sw, T* dst, int dh, int dw)
     }
 }
 
+// Area resize weighting only unmasked pixels (mask != 0); falls back to plain average if all masked.
+template<typename T, int C>
+void cpu_area_resize_masked(const T* src, const uint8_t* mask, int sh, int sw,
+                            T* dst, int dh, int dw)
+{
+    const double top = (double)std::numeric_limits<T>::max();
+    const double sy = (double)sh / dh, sx = (double)sw / dw;
+    for (int y = 0; y < dh; ++y) {
+        const double v0 = y * sy, v1 = (y + 1) * sy;
+        const int y0 = (int)v0, y1 = std::min(sh, std::max((int)std::ceil(v1), y0 + 1));
+        for (int x = 0; x < dw; ++x) {
+            const double u0 = x * sx, u1 = (x + 1) * sx;
+            const int x0 = (int)u0, x1 = std::min(sw, std::max((int)std::ceil(u1), x0 + 1));
+            double acc_v[C] = {}, wsum_v = 0.0;
+            double acc_a[C] = {}, wsum_a = 0.0;
+            for (int yy = y0; yy < y1; ++yy) {
+                const double wy = std::min((double)yy + 1, v1) - std::max((double)yy, v0);
+                for (int xx = x0; xx < x1; ++xx) {
+                    const double w = wy * (std::min((double)xx + 1, u1) - std::max((double)xx, u0));
+                    const size_t idx = (size_t)yy * sw + xx;
+                    const T* p = src + idx * C;
+                    for (int c = 0; c < C; ++c) acc_a[c] += w * (double)p[c];
+                    wsum_a += w;
+                    if (mask[idx] != 0) {
+                        for (int c = 0; c < C; ++c) acc_v[c] += w * (double)p[c];
+                        wsum_v += w;
+                    }
+                }
+            }
+            T* q = dst + ((size_t)y * dw + x) * C;
+            const double* acc = wsum_v > 0.0 ? acc_v : acc_a;
+            const double wsum = wsum_v > 0.0 ? wsum_v : wsum_a;
+            for (int c = 0; c < C; ++c)
+                q[c] = (T)std::min(top, std::round(wsum > 0.0 ? acc[c] / wsum : 0.0));
+        }
+    }
+}
+
 // An image of 1-4 channels area-filtered to dh x dw.
 template<typename T>
-std::vector<T> shrink_native(const T* src, int sh, int sw, int n, int dh, int dw)
+std::vector<T> shrink_native(const T* src, int sh, int sw, int n, int dh, int dw,
+                             const uint8_t* mask = nullptr)
 {
     std::vector<T> out((size_t)dh * dw * n);
+    if (mask != nullptr && (n == 1 || n == 3)) {
+        if (n == 1) cpu_area_resize_masked<T, 1>(src, mask, sh, sw, out.data(), dh, dw);
+        else        cpu_area_resize_masked<T, 3>(src, mask, sh, sw, out.data(), dh, dw);
+        return out;
+    }
     switch (n) {
         case 1: cpu_area_resize<T, 1>(src, sh, sw, out.data(), dh, dw); break;
         case 2: cpu_area_resize_alpha<T, 2>(src, sh, sw, out.data(), dh, dw); break;
@@ -634,7 +678,8 @@ void note_cache_dir_once(const std::string& cached, bool written) {
 bool decode_rgb_via_new_cache(const std::string& src, const std::string& cached, int d,
                               const std::string& rounding, int expected_h, int expected_w,
                               PixelDType dtype, uint8_t* dst, int turns_cw,
-                              const float* over, int cache_w = 0, int cache_h = 0)
+                              const float* over, int cache_w = 0, int cache_h = 0,
+                              const std::string& mask_path = "", bool flip_mask = false)
 {
     const dscache::Format source_fmt = dscache::format_of(src);
     const dscache::Format fmt = cache_w > 0 ? dscache::Format::Png : source_fmt;
@@ -644,15 +689,35 @@ bool decode_rgb_via_new_cache(const std::string& src, const std::string& cached,
         sixteen ? (void*)stbi_load_16(src.c_str(), &w, &h, &n, 0)
                 : (void*)stbi_load(src.c_str(), &w, &h, &n, 0), stbi_image_free);
     if (!px) return false;
+    std::vector<uint8_t> mask_buf;
+    if (!mask_path.empty() && (n == 1 || n == 3)) {
+        int mw = 0, mh = 0, mch = 0;
+        std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> mpx(
+            stbi_load(mask_path.c_str(), &mw, &mh, &mch, 1), stbi_image_free);
+        if (mpx && mw > 0 && mh > 0) {
+            mask_buf.resize((size_t)h * w);
+            for (int y = 0; y < h; ++y) {
+                const int sy = (mh == h) ? y : std::min(mh - 1, (int)((int64_t)y * mh / h));
+                const stbi_uc* mrow = mpx.get() + (size_t)sy * mw;
+                uint8_t* drow = mask_buf.data() + (size_t)y * w;
+                for (int x = 0; x < w; ++x) {
+                    const int sx = (mw == w) ? x : std::min(mw - 1, (int)((int64_t)x * mw / w));
+                    const bool valid = mrow[sx] >= 128;
+                    drow[x] = (uint8_t)(flip_mask ? !valid : valid);
+                }
+            }
+        }
+    }
+    const uint8_t* mask_ptr = mask_buf.empty() ? nullptr : mask_buf.data();
     const int tw = cache_w > 0 ? cache_w : dscache::scaled_side(w, d, rounding);
     const int th = cache_h > 0 ? cache_h : dscache::scaled_side(h, d, rounding);
     std::vector<uint8_t> bytes;
     if (sixteen) {
-        const std::vector<uint16_t> shrunk = shrink_native((const uint16_t*)px.get(), h, w, n, th, tw);
+        const std::vector<uint16_t> shrunk = shrink_native((const uint16_t*)px.get(), h, w, n, th, tw, mask_ptr);
         px.reset();
         bytes = dscache::encode(fmt, shrunk.data(), tw, th, n, 16);
     } else {
-        const std::vector<uint8_t> shrunk = shrink_native((const uint8_t*)px.get(), h, w, n, th, tw);
+        const std::vector<uint8_t> shrunk = shrink_native((const uint8_t*)px.get(), h, w, n, th, tw, mask_ptr);
         px.reset();
         bytes = dscache::encode(fmt, shrunk.data(), tw, th, n, 8);
     }
@@ -1440,6 +1505,9 @@ void DataManagerImpl::warn_mask_aspect() const {
 void DataManagerImpl::decode_rgb_of(int64_t i, int dst_h, int dst_w, PixelDType dt,
                                     uint8_t* dst, int decode_threads) const {
     const std::string& src = _image_filenames[(size_t)i];
+    static const std::string kEmptyMask;
+    const std::string& mask_path =
+        (_cfg.load_masks && !_mask_filenames.empty()) ? _mask_filenames[(size_t)i] : kEmptyMask;
     const int d = _cfg.downscale_cache_divisor;
     const std::string cached =
         d > 1 && dt != PixelDType::FLOAT32 ? dscache::path_for(src, _cfg.image_dir, d) : "";
@@ -1464,7 +1532,8 @@ void DataManagerImpl::decode_rgb_of(int64_t i, int dst_h, int dst_w, PixelDType 
                 std::error_code ec;
                 std::filesystem::remove(level, ec);
                 if (decode_rgb_via_new_cache(source, level, 1, "floor", dst_h, dst_w, dt,
-                                            dst, turns_of(i), composite_of(i), w, h)) return;
+                                            dst, turns_of(i), composite_of(i), w, h,
+                                            mask_path, _cfg.flip_mask)) return;
             } catch (const std::exception&) {} // Cache failure must not prevent training.
         }
     }
@@ -1479,7 +1548,8 @@ void DataManagerImpl::decode_rgb_of(int64_t i, int dst_h, int dst_w, PixelDType 
         } else if (!std::filesystem::exists(cached, ec) &&
                    decode_rgb_via_new_cache(src, cached, d, _cfg.downscale_rounding_mode,
                                             dst_h, dst_w, dt, dst, turns_of(i),
-                                            composite_of(i))) {
+                                            composite_of(i), 0, 0,
+                                            mask_path, _cfg.flip_mask)) {
             return;
         }
     }
