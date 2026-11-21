@@ -4341,7 +4341,8 @@ void GuiApp::open_reconstruction(const std::string& workspace) {
     }
     std::error_code ec;
     std::vector<std::string> inputs;
-    for (const PrepInput& in : decode_record_inputs(read_dataset_record(workspace).inputs).rows)
+    for (const PrepInput& in :
+         decode_record_inputs(read_dataset_record(workspace).inputs, workspace).rows)
         if (!in.path.empty() && fs::exists(fs::u8path(in.path), ec)) inputs.push_back(in.path);
     forget_redo_requests();
     clear_lidar_sources();
@@ -4830,7 +4831,7 @@ bool GuiApp::launch_dataset_job() {
         // now: the rule's settings come back with the dataset.
         made[(int)Step::Frames] = made[(int)Step::Frames] || plan[Step::Frames].sort;
         write_record_settings(_workspace, dataset_settings_json(capture_dataset_settings()),
-                              encode_record_inputs({_sources, _mask.clicks}), made);
+                              encode_record_inputs({_sources, _mask.clicks}, _workspace), made);
     }
     if (!_workspace.empty()) {
         std::error_code ec;
@@ -7183,7 +7184,7 @@ void GuiApp::continue_frame_review() {
     bool made[kNumSteps] = {};
     made[(int)Step::Frames] = true;
     write_record_settings(_workspace, dataset_settings_json(capture_dataset_settings()),
-                          encode_record_inputs({_sources, _mask.clicks}), made);
+                          encode_record_inputs({_sources, _mask.clicks}, _workspace), made);
     _sfm.continue_review();
 }
 

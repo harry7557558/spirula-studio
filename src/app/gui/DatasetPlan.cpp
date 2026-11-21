@@ -343,7 +343,8 @@ void plan_parts(DatasetPlan& p, const PlanJob& job, const WorkspaceState& ws,
                 p[field_part(c.key)].changes.push_back(c);
 
         const std::string dir = image_dir_field(job.prep);
-        const fs::path images = dir == "images" ? fs::path(job.prep.workspace) / dir : fs::path(dir);
+        const fs::path images =
+            fs::path(dir).is_absolute() ? fs::path(dir) : fs::path(job.prep.workspace) / dir;
         const bool moved = !ws.extracted_images.empty() && !same_dir(ws.extracted_images, images);
 
         // The runner deletes features/ and matches.bin under new frames.
@@ -971,7 +972,14 @@ std::vector<PrepCapture> captures_behind(const PrepJob& job) {
         const fs::path images = dir.has_filename() ? dir : dir.parent_path();
         if (images.filename() != "images") continue;
         for (PrepCapture c : recorded_captures(images.parent_path().string(), job)) {
-            if (!fs::is_regular_file(c.path, ec)) continue;
+            if (!fs::is_regular_file(c.path, ec)) {
+                const fs::path ws_parent = images.parent_path().parent_path();
+                const fs::path name = fs::path(c.path).filename();
+                const fs::path sibling = ws_parent / name;
+                if (name.empty() || ws_parent.empty() || !fs::is_regular_file(sibling, ec))
+                    continue;
+                c.path = sibling.string();
+            }
             c.subdir = in.subdir.empty() ? c.subdir
                        : c.subdir.empty() ? in.subdir
                                           : in.subdir + "/" + c.subdir;
@@ -1216,14 +1224,15 @@ void restore_record_inputs(const DatasetRecord& rec, PrepJob& job,
     // Each half of a row as the run that made its step left it.
     auto made_by = [&](Step s) {
         const JsonValue& v = rec.step_inputs[(int)s];
-        return decode_record_inputs(v.is_object() ? v : rec.inputs);
+        return decode_record_inputs(v.is_object() ? v : rec.inputs, job.workspace);
     };
     const RecordInputs lenses = made_by(Step::Model), rates = made_by(Step::Frames);
     const RecordInputs clicks = made_by(Step::Masks);
     std::vector<PrepInput>& rows = job.inputs;
     auto same_rows = [&](const RecordInputs& was) {
         bool same = !was.rows.empty() && was.rows.size() == rows.size();
-        for (size_t i = 0; same && i < rows.size(); i++) same = was.rows[i].path == rows[i].path;
+        for (size_t i = 0; same && i < rows.size(); i++)
+            same = norm_path(was.rows[i].path) == norm_path(rows[i].path);
         return same;
     };
     auto split = [](const std::string& list) {
@@ -1272,7 +1281,17 @@ void restore_record_inputs(const DatasetRecord& rec, PrepJob& job,
                 rows[i].clip_end = rates.rows[i].clip_end;
                 rows[i].active_lens = rates.rows[i].active_lens;
             }
-        if (same_rows(clicks)) job.mask_clicks = clicks.clicks;
+        if (same_rows(clicks)) {
+            job.mask_clicks = clicks.clicks;
+            for (MaskClick& c : job.mask_clicks) {
+                if (c.source.empty()) continue;
+                for (size_t i = 0; i < clicks.rows.size(); i++)
+                    if (norm_path(c.source) == norm_path(clicks.rows[i].path)) {
+                        c.source = rows[i].path;
+                        break;
+                    }
+            }
+        }
         if (!rows.empty()) camera_model = rows[0].camera_model;
         return;
     }

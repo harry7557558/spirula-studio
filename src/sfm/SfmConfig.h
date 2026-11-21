@@ -714,6 +714,7 @@ void printOptionLine(FILE* out, const std::string& flag, const std::string& valu
 // Everything a stage's output depends on, as text: the table's rows for `cmd`
 // minus the ones that cannot change a byte of it, plus the camera overrides.
 // An interrupted run's leftovers are reusable exactly when this still matches.
-std::string stageSignature(const SfmConfig& cfg, uint32_t cmd);
+std::string stageSignature(const SfmConfig& cfg, uint32_t cmd,
+                           const std::string& workspace = {});
 
 }  // namespace sfm

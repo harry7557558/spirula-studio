@@ -78,8 +78,10 @@ struct RecordInputs {
     std::vector<PrepInput> rows;
     std::vector<MaskClick> clicks;
 };
-std::string encode_record_inputs(const RecordInputs& in);
-RecordInputs decode_record_inputs(const JsonValue& v);
+std::string encode_record_inputs(const RecordInputs& in,
+                                 const std::string& workspace = {});
+RecordInputs decode_record_inputs(const JsonValue& v,
+                                  const std::string& workspace = {});
 
 // A stamp a workspace written before the record carries -- `.spirula-frames`,
 // `.spirula-recon` -- as its tokens: the engine or decoder, then the flags and

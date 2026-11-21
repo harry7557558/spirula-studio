@@ -35,6 +35,7 @@
 #include "core/Env.h"
 #include "core/HardwareThreads.h"
 #include "core/ImageFile.h"
+#include "core/RelativePath.h"
 #include "sfm/core/Cancel.h"
 #include "sfm/core/Events.h"
 #include "sfm/core/Exif.h"
@@ -1596,7 +1597,7 @@ std::string featureDirDigest(const fs::path& featdir) {
          !walk && it != fs::recursive_directory_iterator(); it.increment(walk))
         if (it->is_regular_file(ec))
             rows.push_back(
-                it->path().generic_string() + ":" +
+                relativeTo(it->path(), featdir).generic_string() + ":" +
                 std::to_string((uint64_t)fs::file_size(it->path(), ec)) + ":" +
                 std::to_string((int64_t)fs::last_write_time(it->path(), ec)
                                    .time_since_epoch()
@@ -2648,7 +2649,8 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // run interrupted half way through leaves files the next one may reuse.
     const fs::path rdir = resume::dir(_workspace);
     std::string extract_sig =
-        stageSignature(cfg, CMD_EXTRACT) + resume::kSignedImages + _imagedir + "\n";
+        stageSignature(cfg, CMD_EXTRACT, _workspace) + resume::kSignedImages +
+        spirula::relative_to_dir(_imagedir, _workspace) + "\n";
     if (int grid = experimentInt("SFM_SIFT_GRID", 0, 16))
         extract_sig += "sift-grid=" + std::to_string(grid) + "\n";
     if (experimentInt("SFM_PIXEL_CENTER", 0, 1)) extract_sig += "pixel-corners=1\n";
@@ -2725,7 +2727,7 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // What this stage's output depends on: its own settings, the extraction
     // that produced its input, and the feature files themselves -- the pair
     // lists and the journal are indices into a particular set of those.
-    std::string match_settings = stageSignature(cfg, CMD_MATCH) + "pairs-resolved=" +
+    std::string match_settings = stageSignature(cfg, CMD_MATCH, _workspace) + "pairs-resolved=" +
                                        std::to_string((int)mode) + "\n";
     if (int expansion = experimentInt("SFM_PAIR_EXPAND", 0, 32))
         match_settings += "pair-expansion=" + std::to_string(expansion) + "\n";
