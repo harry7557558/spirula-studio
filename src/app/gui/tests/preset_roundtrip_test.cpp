@@ -347,6 +347,7 @@ static void test_mesh_preset() {
     p.job.floater_min_faces = 50;
     p.job.cull_unseen = false;
     p.job.tsdf = true;
+    p.job.tsdf_voxel = 0.05f;
     p.job.extra_args = "--verbose";
     // What the preset must NOT carry.
     p.job.checkpoint = "C:/runs/one";
@@ -373,6 +374,7 @@ static void test_mesh_preset() {
     CHECK_EQ(back.job.floater_min_faces, p.job.floater_min_faces);
     CHECK_EQ(back.job.cull_unseen, p.job.cull_unseen);
     CHECK_EQ(back.job.tsdf, p.job.tsdf);
+    CHECK_EQ(back.job.tsdf_voxel, p.job.tsdf_voxel);
     CHECK_EQ(back.job.extra_args, p.job.extra_args);
     CHECK(back.job.checkpoint.empty());
     CHECK(back.job.data_dir.empty());
@@ -411,8 +413,10 @@ static void test_sanitize() {
     job.colors[2] = true;
     for (int i = 0; i < gui::kNumMeshFormats; i++) job.formats[i] = false;
     job.formats[0] = true;      // PLY cannot carry a texture
+    job.tsdf_voxel = -0.5f;
     gui::sanitize_mesh_job(job);
     CHECK(!gui::mesh_job_writes_nothing(job));
+    CHECK_EQ(job.tsdf_voxel, 0.0f);
 
     // A run asking for two colours writes each at its own base path, and one
     // asking for a single colour writes where it always has.

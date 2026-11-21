@@ -229,6 +229,12 @@ void MeshRunner::run(MeshJob job) {
     if (job.use_data && job.tsdf) {
         argv.push_back("--method");
         argv.push_back("tsdf");
+        if (job.tsdf_voxel > 0.0f) {
+            char buf[32];
+            std::snprintf(buf, sizeof buf, "%g", job.tsdf_voxel);
+            argv.push_back("--tsdf-voxel");
+            argv.push_back(buf);
+        }
     }
     if (job.max_cameras > 0) {
         argv.push_back("--max-cameras");
