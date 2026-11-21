@@ -484,6 +484,33 @@ static void test_dji() {
     check(no_declared_up(tm), "dji: no attitude vertical declared on the Osmo");
 }
 
+static void test_osmo_360_ii() {
+    const Bytes hdr = pb_str(1, "dvtm_OQ102.proto");
+    const Bytes clip = cat({pb_bytes(1, hdr), pb_bytes(8, pb_v(1, 1000)),
+                            pb_bytes(9, pb_f32(1, 59.94f))});
+    const Bytes q = pb_bytes(3, cat({pb_f32(1, 1), pb_f32(2, 0), pb_f32(3, 0), pb_f32(4, 0)}));
+    const Bytes att = pb_bytes(2, pb_bytes(1, cat({q, q})));
+    const Bytes row = pb_bytes(2, cat({pb_f32(1, 0.25f), pb_f32(6, -1)}));
+    const Bytes batch = pb_bytes(5, cat({pb_v(1, 999300), row, row}));
+    const Bytes cam = pb_bytes(10, cat({pb_f32(2, 1), pb_f32(3, 2), pb_f32(4, 3)}));
+    const Bytes frame = pb_bytes(3, cat({pb_bytes(1, pb_v(2, 1000000)),
+                                       pb_bytes(2, cam), pb_bytes(3, cat({att, batch}))}));
+    TrackSpec t{"djmd", "meta", "CAM meta", 60000, 1001, {cat({pb_bytes(1, clip), frame})}};
+    const Bytes file = build_mp4({t}, 60000, 1001, 0);
+    Telemetry tm;
+    std::string err;
+    check(telemetry_read(file.data(), file.size(), tm, err), "osmo II: read (" + err + ")");
+    const bool paired = tm.gyro.size() == 2 && tm.accel.size() == 2 && tm.orientation.size() == 2;
+    check(paired, "osmo II: batched IMU and attitude, no camera-field acceleration");
+    if (paired) {
+        check(close_to(tm.gyro[0].x, 0.25, 1e-7) && close_to(tm.accel[0].z, -9.80665, 1e-6),
+              "osmo II: gyro and acceleration units");
+        check(close_to(tm.gyro[0].t, -0.0007, 1e-9) && close_to(tm.gyro[1].t, 0.0003, 1e-9) &&
+                  tm.gyro[1].t == tm.accel[1].t && tm.gyro[1].t == tm.orientation[1].t,
+              "osmo II: first sample precedes the frame; all three streams share the batch clock");
+    }
+}
+
 // An Avata 360 frame, numbered as the real ones read. 3.2.10 is Osmo-shaped
 // on purpose: the real 4-byte payload does not parse, so it cannot catch an
 // Avata reader that takes it as accel.
@@ -1145,6 +1172,7 @@ static int cmdTelemetryTest(int argc, char** argv) {
     test_insta360_proxy();
     test_kandao();
     test_dji();
+    test_osmo_360_ii();
     test_dji_avata();
     test_dji_osmo_ignores_avata_fields();
     test_dji_unknown_proto();

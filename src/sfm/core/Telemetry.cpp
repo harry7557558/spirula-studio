@@ -930,6 +930,7 @@ struct DjiClip {
 struct DjiLayout {
     uint32_t clip_focal = 8, clip_rate = 10, clip_fps = 11;
     uint32_t cam_accel = 10;
+    uint32_t imu_batch = 0;
     uint32_t cam_iso = 0, cam_shutter = 0, cam_ct = 0;
     uint32_t gps = 2, gps_status = 3;
     bool coord_has_unit = true;   // false: degrees, no unit field
@@ -946,6 +947,11 @@ struct DjiLayout {
 DjiLayout dji_layout(const std::string& proto) {
     DjiLayout l;
     if (proto == "dvtm_oq101.proto") {
+        l.verified = true;
+    } else if (proto == "dvtm_OQ102.proto") {
+        l.clip_focal = 0; l.clip_rate = 8; l.clip_fps = 9;
+        l.cam_accel = 0; l.imu_batch = 5;
+        l.gps = 0;
         l.verified = true;
     } else if (proto == "dvtm_AVATA360.proto") {
         l.clip_focal = 0; l.clip_rate = 8; l.clip_fps = 9;
@@ -1038,6 +1044,29 @@ bool read_dji(const Source& src, const Track& tk, Telemetry& out, std::string& e
         // message; wm169 stores it bare. The bare form has field 1 as a
         // varint timestamp, the wrapper has field 1 as a message.
         const auto imu = pb_sub(pb_find(frame, 3));
+        const auto batch = pb_sub(pb_find(imu, layout.imu_batch));
+        const PbField* batch_start = pb_find(batch, 1);
+        const bool batch_timed = batch_start && batch_start->wire == 0 && clip.imu_rate > 0;
+        const double batch_t = batch_timed ? double(batch_start->varint) * 1e-6 - t0 : t;
+        size_t batch_count = 0;
+        if (batch_timed) {
+            for (const PbField& f : batch) {
+                if (f.number != 2 || f.wire != 2) continue;
+                const double sample_t = batch_t + double(batch_count++) / clip.imu_rate;
+                double v[6] = {};
+                bool valid = true;
+                for (const PbField& axis : pb_sub(&f)) {
+                    if (axis.number > 6) continue;
+                    if (axis.wire != 5) { valid = false; break; }
+                    v[axis.number - 1] = axis.f32();
+                    valid &= std::isfinite(v[axis.number - 1]);
+                }
+                if (!valid || (!out.gyro.empty() && sample_t <= out.gyro.back().t)) continue;
+                out.gyro.push_back({sample_t, v[0], v[1], v[2]});
+                out.accel.push_back({sample_t, v[3] * kG, v[4] * kG, v[5] * kG});
+                any = true;
+            }
+        }
         const PbField* att = pb_find(imu, 2);
         auto attitude = pb_sub(att);
         if (!attitude.empty() && attitude[0].number == 1 && attitude[0].wire == 2)
@@ -1054,9 +1083,12 @@ bool read_dji(const Source& src, const Track& tk, Telemetry& out, std::string& e
                     offset = f.f32();
                 }
             }
+            const bool paired = batch_timed && batch_count == qs.size();
             const double frame_dt = clip.sensor_fps > 0 ? 1.0 / clip.sensor_fps : 0.0;
             for (size_t i = 0; i < qs.size(); i++) {
-                qs[i].t = t + frame_dt * ((double)i - offset) / (double)qs.size();
+                qs[i].t = paired ? batch_t + double(i) / clip.imu_rate
+                                 : t + frame_dt * ((double)i - offset) / (double)qs.size();
+                if (layout.imu_batch && !out.orientation.empty() && qs[i].t <= out.orientation.back().t) continue;
                 out.orientation.push_back(qs[i]);
             }
             if (!qs.empty()) { attitude_frames++; any = true; }
@@ -1105,7 +1137,8 @@ bool read_dji(const Source& src, const Track& tk, Telemetry& out, std::string& e
         }
         out.notes.push_back(note);
     }
-    if (layout.cam_accel) out.notes.push_back("accel is one reading per frame in g, converted; no raw gyro is written");
+    if (layout.imu_batch) out.notes.push_back("batched angular velocity in rad/s and acceleration in g, converted");
+    else if (layout.cam_accel) out.notes.push_back("accel is one reading per frame in g, converted; no raw gyro is written");
     else out.notes.push_back("no accelerometer and no raw gyro are written");
     if (attitude_frames) out.notes.push_back("orientation is IMU_attitude_after_fusion: sense not documented, see the check");
     return true;
