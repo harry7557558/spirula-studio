@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Model import recovery regression</title>
+<pre id="result">Running…</pre>
+<iframe id="viewer" title="Viewer under test" style="width:1024px;height:720px;border:0"></iframe>
+<script type="module">
+const result = document.getElementById('result');
+const frame = document.getElementById('viewer');
+function check(value, message) { if (!value) throw Error(message); }
+import { fixture } from './fixtures.js';
+
+try {
+  const loaded = new Promise(resolve=>frame.addEventListener('load',resolve,{once:true}));
+  frame.src='../index.html';
+  await loaded;
+  const win=frame.contentWindow, doc=frame.contentDocument;
+  const status=doc.getElementById('status-text');
+  if (status.textContent!=='Ready — drop a model') {
+    await new Promise((resolve,reject)=>{
+      const observer=new MutationObserver(()=>{
+        if (status.textContent==='Ready — drop a model') { observer.disconnect(); resolve(); }
+        else if (/failed/i.test(status.textContent)) { observer.disconnect(); reject(Error(status.textContent)); }
+      });
+      observer.observe(status,{childList:true,characterData:true,subtree:true});
+    });
+  }
+  const v=win.__viewer, input=doc.getElementById('file-input');
+  v.setOpt('showGrid',false);v.setOpt('background',[0,0,0]);
+  async function importFile(file) {
+    await new Promise(resolve=>{
+      const observer=new MutationObserver(()=>{
+        if (!/Loading/.test(status.textContent)) { observer.disconnect(); resolve(); }
+      });
+      observer.observe(status,{childList:true,characterData:true,subtree:true});
+      const files=new win.DataTransfer();files.items.add(file);input.files=files.files;
+      input.dispatchEvent(new win.Event('change',{bubbles:true}));
+    });
+  }
+  const mip=fixture('mip.ply',true), classic=fixture('classic.ply',false);
+  await importFile(mip);
+  check(v.model?.count===512 && v.model.shDegree===3 && v.opts.primitive===1,'Initial SH3 Mip import');
+  check(v.snapshot().nonBlack>0,'Initial import must draw model pixels');
+  const before=JSON.stringify({pos:v.camera.pos,rot:v.camera.rot,target:v.camera.target});
+  await importFile(classic);
+  check(v.model?.count===512 && v.opts.primitive===0,'Replacement must update Auto mode');
+  check(JSON.stringify({pos:v.camera.pos,rot:v.camera.rot,target:v.camera.target})===before,'Replacement must retain camera');
+  v.setOpt('primitive',0);
+  await importFile(mip);
+  check(v.opts.primitive===0,'Explicit primitive must survive replacement');
+  const bad=new File([await mip.slice(0,2300).arrayBuffer()],'truncated.ply');
+  await importFile(bad);
+  check(status.textContent.startsWith('Load error:'),'Damaged input must report refusal');
+  check(v.model===null && v.dataset===null,'Rejected PLY must clear the prior GPU identity and partial native state together');
+  check(doc.getElementById('st-file').textContent==='—','Rejected input must clear the old filename');
+  check(doc.getElementById('drop-hint').style.display==='flex','Rejected input must restore the import control');
+  check(v.snapshot().nonBlack===0,'Rejected input must clear stale model pixels');
+  v.setOpt('primitive','auto');
+  await importFile(mip);
+  check(v.model?.count===512 && v.model.shDegree===3 && v.opts.primitive===1,'Valid PLY must recover after refusal');
+  check(v.snapshot().nonBlack>0,'Recovered PLY must draw');
+  check(doc.getElementById('toast').style.display==='none','Recovery must dismiss the previous error');
+  await importFile(new File(['unsupported synthetic input'],'unsupported.spz'));
+  check(status.textContent.startsWith('Load error:') && v.model===null,'Unsupported import must leave a coherent empty viewer');
+  await importFile(classic);
+  check(v.model?.count===512 && v.model.shDegree===3 && v.opts.primitive===0,'Recovery must reselect Auto from the new PLY');
+  check(doc.getElementById('toast').style.display==='none','Recovered viewer must not show the rejected file error');
+  const gl=doc.getElementById('glcanvas').getContext('webgl2');
+  check(gl.getError()===gl.NO_ERROR,'Recovery must leave valid WebGL buffers');
+  result.textContent='PASS: original, replacement, explicit primitive, damaged refusal, stale-frame cleanup, unsupported refusal and valid recovery';
+} catch (e) {
+  result.textContent='FAIL: '+e.message;
+  throw e;
+}
+</script>

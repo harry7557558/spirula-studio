@@ -122,6 +122,10 @@ plain C++17 with no CUDA dependency (see `csrc/CameraModel.h`).
 - One model at a time — dropping another replaces it and frees the previous GPU
   buffers. Replacing keeps the current viewpoint (the camera is only fitted for
   the first model; refresh the page to start over).
+  A rejected import clears model buffers and file statistics and restores the
+  import control. A valid retry dismisses the previous error and fits the new model.
+  Use **Browse files** with the pointer or keyboard. Selecting the same file again
+  starts a fresh import, including after a failed drop.
 
 ## Telemetry viewer — `telemetry.html`
 
@@ -192,6 +196,21 @@ The two modules are separate CMake targets, so editing one page's sources
 rebuilds only that page. This produces `js/ssv_wasm.{js,wasm}` and
 `js/ssv_telemetry.{js,wasm}` (committed so the site is directly hostable
 without a build step).
+
+## Browser checks
+
+From the repository root:
+
+```bash
+npm ci --prefix viewer/tests
+npm exec --prefix viewer/tests -- playwright install chromium --only-shell
+npm test --prefix viewer/tests
+```
+
+The tests use the committed WASM, synthetic SH3 splats and a loopback server.
+They check shaders, depth picking, import replacement, failure recovery, pointer
+and keyboard browsing, same-file retries and restored model controls.
+Set `SS_VIEWER_EVIDENCE` to save the results and screenshots to a chosen folder.
 
 ## Run
 
