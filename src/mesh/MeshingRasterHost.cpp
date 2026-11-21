@@ -397,8 +397,8 @@ void render_evaluate_merge(
 // Gaussian LBVH uses (launch_lbvh_*), over triangle leaves.
 // ---------------------------------------------------------------------------
 void render_cull_unseen_vertices(
-    RenderContext* ctx, const float* verts, int nv,
-    const int* faces, int nf, unsigned char* visible
+    RenderContext* ctx, const int* cam_indices, int num_cams,
+    const float* verts, int nv, const int* faces, int nf, unsigned char* visible
 ) {
     if (nv <= 0) return;
 
@@ -455,8 +455,17 @@ void render_cull_unseen_vertices(
 
     // The kernel is specialized on (model, tier), so cameras go in groups.
     std::map<std::pair<int, int>, std::vector<int>> groups;
-    for (int c = 0; c < ctx->C; ++c)
-        groups[{ctx->models[c], ctx->dists[c]}].push_back(c);
+    if (cam_indices && num_cams > 0) {
+        for (int ci = 0; ci < num_cams; ++ci) {
+            const int c = cam_indices[ci];
+            if (c < 0 || c >= ctx->C)
+                throw std::runtime_error("render_cull_unseen_vertices: cam_idx out of range");
+            groups[{ctx->models[c], ctx->dists[c]}].push_back(c);
+        }
+    } else {
+        for (int c = 0; c < ctx->C; ++c)
+            groups[{ctx->models[c], ctx->dists[c]}].push_back(c);
+    }
     constexpr int kD = kCameraDistortionParams;
     spirula::SubmitBudget budget;
     for (const auto& [key, cams] : groups) {

@@ -294,13 +294,16 @@ bool extract_tsdf(OccupancyEvaluator& ev, const CameraParams& cams, int num_came
     const float voxel = cfg.tsdf_voxel;
     const float trunc = std::max(cfg.tsdf_trunc, 1.0f) * voxel;
     TsdfVolume vol(voxel, trunc);
+    const std::vector<int>& sel = ev.selected_cameras();
+    const int n_cams = sel.empty() ? num_cameras : (int)sel.size();
     auto t = Clock::now();
     prog.enter(MeshPhase::Fuse);
     if (cfg.verbose)
         mlog::out(mlog::Stage::Tsdf, mmsg::tsdf_start,
-                  {num_cameras, mlog::num(voxel, 4), mlog::num(trunc, 4)});
+                  {n_cams, mlog::num(voxel, 4), mlog::num(trunc, 4)});
     std::vector<float> moments, depth;
-    for (int c = 0; c < num_cameras; ++c) {
+    for (int ci = 0; ci < n_cams; ++ci) {
+        const int c = sel.empty() ? ci : sel[ci];
         int W = 0, H = 0;
         if (!ev.render_moments(c, moments, W, H)) {
             mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_needs_cameras);
