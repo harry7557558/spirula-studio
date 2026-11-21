@@ -14,11 +14,14 @@
  */
 
 #include "mesh/Meshing.h"
+#include "mesh/Delaunay3D.h"
 #include "mesh/MeshLog.h"
 #include "mesh/MeshingDevice.h"
 #include "mesh/MeshingRaster.h"
 
 #include "core/CameraModel.h"     // kCameraDistortionParams (portable spelling)
+#include "core/Env.h"
+#include "core/HostMemory.h"
 #include "core/SubmitBudget.h"
 
 #include "backend/api/BackendRuntime.h"
@@ -351,9 +354,23 @@ OccupancyEvaluator::OccupancyEvaluator(
     }
     impl_->num_kept = (int)kept.size();
     num_kept_ = impl_->num_kept;
-    num_points_ = impl_->num_kept * 7;
+    num_points_ = (int64_t)impl_->num_kept * 7;
     if (impl_->num_kept == 0)
         throw std::runtime_error("meshing: no Gaussians above the opacity threshold");
+
+    // ~287 B/point peak in Delaunay3D; budget 85% of free commit/RAM up to the
+    // 32-bit tet-ID cap so large servers scale while smaller hosts avoid OOM.
+    {
+        constexpr size_t kBytesPerPoint = 300;
+        size_t budget = spirula::availableCommitBytes();
+        if (budget == 0) budget = spirula::physicalRamBytes();
+        if (budget == 0) {
+            max_points_ = 150000000;
+        } else {
+            const int64_t by_ram = (int64_t)((budget / 100) * 85 / kBytesPerPoint);
+            max_points_ = std::clamp<int64_t>(by_ram, 4, delaunay3d::kMaxPoints);
+        }
+    }
 
     // rel_scale ~ RMS spread of centroids (core scene scale for the remap)
     double cmean[3] = {csum[0]/impl_->num_kept, csum[1]/impl_->num_kept, csum[2]/impl_->num_kept};
@@ -364,11 +381,19 @@ OccupancyEvaluator::OccupancyEvaluator(
     }
     float rel_scale = (float)std::max(1e-6, std::sqrt(var / (3.0 * impl_->num_kept)));
 
-    impl_->kept.alloc(impl_->num_kept);
-    upload(impl_->kept.get(), kept.data(), (size_t)impl_->num_kept);
     if (cfg.verbose)
         mlog::out(mlog::Stage::Loading, mmsg::gaussians_kept,
-                  {impl_->num_kept, N, num_points_, (double)rel_scale});
+                  {impl_->num_kept, N, (long long)num_points_, (double)rel_scale});
+
+    const bool grid = cfg.method == MeshMethod::Tsdf && cfg.tsdf_voxel > 0.0f;
+    const int cloud_cams = cam_pos ? num_cameras : 0;
+    if (!grid && !spirula::env("MESH_DEBUG_RENDER") &&
+        num_points_ + cloud_cams > max_points_) {
+        return;
+    }
+
+    impl_->kept.alloc(impl_->num_kept);
+    upload(impl_->kept.get(), kept.data(), (size_t)impl_->num_kept);
 
     // ---- LBVH build ----
     const int n = impl_->num_kept;

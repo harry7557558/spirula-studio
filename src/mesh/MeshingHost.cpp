@@ -540,23 +540,31 @@ bool generate_mesh(
     }
 
     const bool tsdf = cfg.method == MeshMethod::Tsdf;
-    if (tsdf && !ev.has_render_cameras()) {
-        mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_needs_cameras);
+    const bool grid = tsdf && cfg.tsdf_voxel > 0.0f;   // else the field over the splat samples
+    const int cloud_cams = cam_pos ? num_cameras : 0;
+    const int64_t max_pts = ev.max_delaunay_points();
+    // Refused here rather than inside the solver, which can only report an
+    // empty result as "no tetrahedra"; OccupancyEvaluator already skipped LBVH
+    // and RenderContext when over limit.
+    if (!grid && ev.num_points() + cloud_cams > max_pts) {
+        if (tsdf && (!cams.valid() || num_cameras <= 0)) {
+            mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_needs_cameras);
+            return false;
+        }
+        const long long max_gaussians =
+            std::max(0LL, (long long)(max_pts - cloud_cams) / 7);
+        mlog::fail(mlog::Stage::PointCloud, mmsg::too_many_gaussians,
+                   {(long long)ev.num_kept(), (long long)max_pts, max_gaussians});
         return false;
     }
-    // Refused here rather than inside the solver, which can only report the
-    // empty result as "no tetrahedra".
-    const bool grid = tsdf && cfg.tsdf_voxel > 0.0f;   // else the field over the splat samples
-    if (!grid && (long long)ev.num_kept() * 7 > delaunay3d::kMaxPoints) {
-        mlog::fail(mlog::Stage::PointCloud, mmsg::too_many_gaussians,
-                   {(long long)ev.num_kept(), (long long)delaunay3d::kMaxPoints,
-                    (long long)(delaunay3d::kMaxPoints / 7)});
+    if (tsdf && !ev.has_render_cameras()) {
+        mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_needs_cameras);
         return false;
     }
 
     // Each long phase announces itself BEFORE it runs: one that prints only on
     // completion looks like a hang and leaves a progress display nothing to show.
-    MeshProgress prog(cfg, cfg.on_progress, ev.num_points(), want_vertex, want_texture);
+    MeshProgress prog(cfg, cfg.on_progress, (double)ev.num_points(), want_vertex, want_texture);
     Mesh mesh;
     if (grid) {
         long long pixels = 0;

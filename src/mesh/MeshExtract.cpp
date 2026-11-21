@@ -25,7 +25,7 @@ namespace {
 // Free space is what a chain of all-free tetrahedra joins to an observer: the
 // vertices from `first_obs` on, or without any the cloud's extreme vertices.
 // Every other free vertex is made solid (docs/notes/mesh-field.md); how many.
-long seal_pockets(const uint32_t* cv, long M, const float* pts, int P, int first_obs,
+long seal_pockets(const uint32_t* cv, int64_t M, const float* pts, int P, int first_obs,
                   float iso, std::vector<float>& occ, std::vector<uint8_t>& sealed) {
     // Lock-free union-find: a root only ever hooks under a smaller index, so
     // the roots do not depend on the thread count.
@@ -51,7 +51,7 @@ long seal_pockets(const uint32_t* cv, long M, const float* pts, int P, int first
         }
     };
     #pragma omp parallel for schedule(static)
-    for (long t = 0; t < M; ++t) {
+    for (int64_t t = 0; t < M; ++t) {
         const uint32_t* c = cv + 4 * t;
         if (occ[c[0]] < iso && occ[c[1]] < iso && occ[c[2]] < iso && occ[c[3]] < iso) {
             unite((int)c[0], (int)c[1]); unite((int)c[0], (int)c[2]); unite((int)c[0], (int)c[3]);
@@ -101,7 +101,7 @@ bool extract_opacity_field(OccupancyEvaluator& ev, const MeshingConfig& cfg,
     std::vector<float> pts;
     ev.generate_point_cloud(pts);
     // The cameras join the triangulation as free vertices, for seal_pockets.
-    const int P0 = ev.num_points();
+    const int P0 = (int)ev.num_points();
     const int P = P0 + (cam_pos ? num_cameras : 0);
     if (P > P0) pts.insert(pts.end(), cam_pos, cam_pos + 3 * (size_t)num_cameras);
     if (cfg.verbose)
@@ -122,10 +122,10 @@ bool extract_opacity_field(OccupancyEvaluator& ev, const MeshingConfig& cfg,
     std::transform(pts_d.begin(), pts_d.end(), pts.begin(),
                    [](double v) { return static_cast<float>(v); });
     pts_d.clear(); pts_d.shrink_to_fit();
-    const int M = tri.nb_cells;
+    const int64_t M = tri.nb_cells;
     if (cfg.verbose)
         mlog::out(mlog::Stage::Delaunay, mmsg::delaunay_done,
-                  {M, tri.num_threads, mlog::num(secs_since(t1), 2)});
+                  {(long long)M, tri.num_threads, mlog::num(secs_since(t1), 2)});
     if (M == 0) {
         mlog::fail(mlog::Stage::Delaunay, mmsg::no_tetrahedra);
         return false;
@@ -155,14 +155,14 @@ bool extract_opacity_field(OccupancyEvaluator& ev, const MeshingConfig& cfg,
     auto t3 = Clock::now();
     prog.enter(MeshPhase::CutEdges);
     if (cfg.verbose)
-        mlog::out(mlog::Stage::CutEdges, mmsg::cut_edges_start, {M});
+        mlog::out(mlog::Stage::CutEdges, mmsg::cut_edges_start, {(long long)M});
     const int* cv = (const int*)tri.cell_vertices.data();
     // One marching-tetrahedra case index per tet, so the two serial passes below
     // read a byte instead of gathering four occupancies each.
     std::vector<uint8_t> code((size_t)M);
     int64_t n_mt_tri = 0;
     #pragma omp parallel for schedule(static) reduction(+:n_mt_tri)
-    for (long t = 0; t < (long)M; ++t) {
+    for (int64_t t = 0; t < M; ++t) {
         const int* c = cv + 4 * t;
         int k = (occ[c[0]] < iso ? 1 : 0) | (occ[c[1]] < iso ? 2 : 0) |
                 (occ[c[2]] < iso ? 4 : 0) | (occ[c[3]] < iso ? 8 : 0);
@@ -183,7 +183,7 @@ bool extract_opacity_field(OccupancyEvaluator& ev, const MeshingConfig& cfg,
         ea.push_back(va); eb.push_back(vb);
         oa.push_back(occ[va]); ob.push_back(occ[vb]);
     };
-    for (long t = 0; t < (long)M; ++t) {
+    for (int64_t t = 0; t < M; ++t) {
         const int k = code[t];
         if (k == 0 || k == 15) continue;
         const int* c = cv + 4 * t;
@@ -236,7 +236,7 @@ bool extract_opacity_field(OccupancyEvaluator& ev, const MeshingConfig& cfg,
     auto t5 = Clock::now();
     prog.enter(MeshPhase::Marching);
     mesh.F.reserve((size_t)n_mt_tri);
-    for (long t = 0; t < (long)M; ++t) {
+    for (int64_t t = 0; t < M; ++t) {
         const MTCase& mc = kMT[code[t]];
         if (mc.ntri == 0) continue;
         const int* c = cv + 4 * t;
