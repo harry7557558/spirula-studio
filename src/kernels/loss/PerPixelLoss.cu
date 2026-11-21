@@ -743,11 +743,23 @@ __global__ void avg_pool_downsample_masked_float_kernel(
         return;
     float acc[channels] = {}, box[channels] = {};
     int n = 0;
+    const bool same = (mask_hs.shape[1] == image_hs.H && mask_hs.shape[2] == image_hs.W);
     for (int dy = 0; dy < 2; ++dy)
         for (int dx = 0; dx < 2; ++dx) {
-            const bool valid = mask_hs.at(bid, 2*yid+dy, 2*xid+dx, 0) != 0;
+            const int yy = min((int)(2 * yid + dy), (int)image_hs.H - 1);
+            const int xx = min((int)(2 * xid + dx), (int)image_hs.W - 1);
+            bool valid;
+            if (same) {
+                valid = mask_hs.at(bid, yy, xx, 0) != 0;
+            } else {
+                const float u = ((float)xx + 0.5f) * (float)mask_hs.shape[2] / (float)image_hs.W - 0.5f;
+                const float v = ((float)yy + 0.5f) * (float)mask_hs.shape[1] / (float)image_hs.H - 0.5f;
+                const int mx = max(0, min((int)mask_hs.shape[2] - 1, (int)floorf(u + 0.5f)));
+                const int my = max(0, min((int)mask_hs.shape[1] - 1, (int)floorf(v + 0.5f)));
+                valid = mask_hs.at(bid, my, mx, 0) != 0;
+            }
             for (int c = 0; c < channels; ++c) {
-                float v = image_hs.at(bid, 2*yid+dy, 2*xid+dx, c);
+                float v = image_hs.at(bid, yy, xx, c);
                 box[c] += 0.25f * v;
                 if (valid) acc[c] += v;
             }
@@ -831,7 +843,17 @@ __global__ void zero_masked_grad_kernel(
     uint32_t bid = blockIdx.z * blockDim.z + threadIdx.z;
     if (yid >= grad.shape[1] || xid >= grad.shape[2])
         return;
-    if (mask.at(bid, yid, xid, 0) != 0)
+    bool valid;
+    if (mask.shape[1] == grad.shape[1] && mask.shape[2] == grad.shape[2]) {
+        valid = mask.at(bid, yid, xid, 0) != 0;
+    } else {
+        const float u = ((float)xid + 0.5f) * (float)mask.shape[2] / (float)grad.shape[2] - 0.5f;
+        const float v = ((float)yid + 0.5f) * (float)mask.shape[1] / (float)grad.shape[1] - 0.5f;
+        const int mx = max(0, min((int)mask.shape[2] - 1, (int)floorf(u + 0.5f)));
+        const int my = max(0, min((int)mask.shape[1] - 1, (int)floorf(v + 0.5f)));
+        valid = mask.at(bid, my, mx, 0) != 0;
+    }
+    if (valid)
         return;
     for (int c = 0; c < grad.shape[3]; ++c)
         grad.at(bid, yid, xid, c) = 0.0f;
@@ -1156,10 +1178,9 @@ LossValues compute_multi_scale_per_pixel_losses(
             const TorchTensorView& mk = ref_alpha_s[sc-1];
             const auto& pps = std::get<2>(prev);
             const auto& mks = std::get<2>(mk);
-            // A mask at its own resolution cannot index this image's children.
-            const bool same = _has(mk) && mks[0] == pps[0] &&
-                              mks[1] == pps[1] && mks[2] == pps[2];
-            if (!has_mask || !same) {
+            const bool usable = _has(mk) && mks.size() >= 3 && mks[0] == pps[0] &&
+                                mks[1] > 0 && mks[2] > 0;
+            if (!has_mask || !usable) {
                 ds_f(prev, curr, name, C, f);
                 return;
             }
@@ -1460,14 +1481,16 @@ LossValues compute_multi_scale_per_pixel_losses(
         upsample_grad(scale_grads.v_median_normal, grads_out.v_median_normal, 3);
     }
 
-    // Scale 0 already leaves masked pixels at zero gradient; only the
-    // upsampled coarse scales put anything there.
-    if (num_loss_scales > 1 && has_mask && _has(grads_out.v_render_rgb) &&
-            _has(ref_alpha)) {
-        const auto& gs = std::get<2>(grads_out.v_render_rgb);
+    // Scale 0 leaves masked pixels zero; upsampled coarse scales need masking.
+    if (num_loss_scales > 1 && has_mask && _has(ref_alpha)) {
         const auto& ms = std::get<2>(ref_alpha);
-        if (gs[0] == ms[0] && gs[1] == ms[1] && gs[2] == ms[2])
-            _zero_masked_grad(grads_out.v_render_rgb, ref_alpha);
+        if (ms.size() >= 3 && ms[1] > 0 && ms[2] > 0) {
+            if (_has(grads_out.v_render_rgb) &&
+                std::get<2>(grads_out.v_render_rgb)[0] == ms[0])
+                _zero_masked_grad(grads_out.v_render_rgb, ref_alpha);
+            if (_has(loss_map_out) && std::get<2>(loss_map_out)[0] == ms[0])
+                _zero_masked_grad(loss_map_out, ref_alpha);
+        }
     }
 
     // Scale total losses by 1/num_scales (device-side)

@@ -98,14 +98,15 @@ struct MsPoolMaskedParams {
     int32_t B, C;
     int32_t hsH, hsW;
     int32_t lsH, lsW;
+    int32_t mH, mW;
     uint32_t hs_fmt, ls_fmt, wgs_per_row, _pad0;
 };
-static_assert(sizeof(MsPoolMaskedParams) == 3 * 8 + 10 * 4, "layout");
+static_assert(sizeof(MsPoolMaskedParams) == 3 * 8 + 12 * 4, "layout");
 
 struct MsZeroMaskedParams {
     uint64_t grad, mask;
     int32_t B, C, H, W;
-    int32_t _pad0;
+    int32_t mH, mW;
 };
 static_assert(sizeof(MsZeroMaskedParams) == 2 * 8 + 6 * 4, "layout");
 
@@ -821,6 +822,7 @@ void avg_pool_downsample_masked_float_vk(const TorchTensorView& src,
                                          const TorchTensorView& dst) {
     const auto& ss = std::get<2>(src);
     const auto& ds = std::get<2>(dst);
+    const auto& ms = std::get<2>(mask);
     MsPoolMaskedParams p{};
     p.hs = std::get<0>(src);
     p.ls = std::get<0>(dst);
@@ -831,6 +833,8 @@ void avg_pool_downsample_masked_float_vk(const TorchTensorView& src,
     p.hsW = (int32_t)ss[2];
     p.lsH = (int32_t)ds[1];
     p.lsW = (int32_t)ds[2];
+    p.mH = (int32_t)ms[1];
+    p.mW = (int32_t)ms[2];
     p.hs_fmt = (uint32_t)pixel_format(src);
     p.ls_fmt = (uint32_t)pixel_format(dst);
     vkk::dispatch_flat("multi_scale_loss.ms_downsample_masked_f", {},
@@ -841,6 +845,7 @@ void avg_pool_downsample_masked_float_vk(const TorchTensorView& src,
 void zero_masked_grad_vk(const TorchTensorView& grad,
                          const TorchTensorView& mask) {
     const auto& gs = std::get<2>(grad);
+    const auto& ms = std::get<2>(mask);
     MsZeroMaskedParams p{};
     p.grad = std::get<0>(grad);
     p.mask = std::get<0>(mask);
@@ -848,6 +853,8 @@ void zero_masked_grad_vk(const TorchTensorView& grad,
     p.C = (int32_t)gs[3];
     p.H = (int32_t)gs[1];
     p.W = (int32_t)gs[2];
+    p.mH = (int32_t)ms[1];
+    p.mW = (int32_t)ms[2];
     dispatch_tiles("multi_scale_loss.ms_zero_masked_grad", p.W, p.H, p.B, &p,
                    sizeof(p));
 }
@@ -1092,10 +1099,9 @@ LossValues compute_multi_scale_per_pixel_losses(
             const TorchTensorView& mk = ref_alpha_s[sc - 1];
             const auto& pps = std::get<2>(prev);
             const auto& mks = std::get<2>(mk);
-            // A mask at its own resolution cannot index this image's children.
-            const bool same = _has(mk) && mks[0] == pps[0] &&
-                              mks[1] == pps[1] && mks[2] == pps[2];
-            if (!has_mask || !same) {
+            const bool usable = _has(mk) && mks.size() >= 3 && mks[0] == pps[0] &&
+                                mks[1] > 0 && mks[2] > 0;
+            if (!has_mask || !usable) {
                 ds_f(prev, curr, name, C, f);
                 return;
             }
@@ -1388,14 +1394,16 @@ LossValues compute_multi_scale_per_pixel_losses(
         upsample_grad(scale_grads.v_median_normal, grads_out.v_median_normal, 3);
     }
 
-    // Scale 0 already leaves masked pixels at zero gradient; only the
-    // upsampled coarse scales put anything there.
-    if (num_loss_scales > 1 && has_mask && _has(grads_out.v_render_rgb) &&
-            _has(ref_alpha)) {
-        const auto& gs = std::get<2>(grads_out.v_render_rgb);
+    // Scale 0 leaves masked pixels zero; upsampled coarse scales need masking.
+    if (num_loss_scales > 1 && has_mask && _has(ref_alpha)) {
         const auto& ms = std::get<2>(ref_alpha);
-        if (gs[0] == ms[0] && gs[1] == ms[1] && gs[2] == ms[2])
-            zero_masked_grad_vk(grads_out.v_render_rgb, ref_alpha);
+        if (ms.size() >= 3 && ms[1] > 0 && ms[2] > 0) {
+            if (_has(grads_out.v_render_rgb) &&
+                std::get<2>(grads_out.v_render_rgb)[0] == ms[0])
+                zero_masked_grad_vk(grads_out.v_render_rgb, ref_alpha);
+            if (_has(loss_map_out) && std::get<2>(loss_map_out)[0] == ms[0])
+                zero_masked_grad_vk(loss_map_out, ref_alpha);
+        }
     }
 
     // Scale total losses by 1/num_scales (device-side).
