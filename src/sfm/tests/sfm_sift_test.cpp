@@ -3,6 +3,7 @@
 //
 // Prints PASS/FAIL and returns 0/1. See docs/testing.md.
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -885,10 +886,7 @@ int cmdSelftest(int argc, char** argv) {
         if (!vok) fails++;
     }
 
-    // 8b) GPU pair selection (pair_selection.hpp): two disjoint groups of
-    // duplicate images must select exactly the within-group pairs -- identical
-    // random descriptors score ~K, unrelated random descriptors die on the
-    // ratio test + cross-check -- and the selection must be deterministic.
+    // 8b) Pair selection keeps only within-group pairs, independent of descriptor storage and gather width.
     {
         std::mt19937 rng(1234);
         auto randomSet = [&](uint32_t count) {
@@ -910,14 +908,41 @@ int cmdSelftest(int argc, char** argv) {
         po.device = opt.device;
         po.num_features = 256;  // exercises the top-scale gather (512 -> 256)
         po.num_neighbors = 4;
-        auto sel = prefilterPairs(pf, po);
-        auto sel2 = prefilterPairs(pf, po);
-        std::vector<std::pair<uint32_t, uint32_t>> want = {{0, 1}, {0, 4}, {1, 4}, {2, 3}};
-        bool pok = sel == want && sel2 == sel;
-        printf("  pair selection: kept %zu/10 pairs (want the 4 within-group), "
-               "deterministic -> %s\n",
-               sel.size(), pok ? "ok" : "BAD");
-        if (!pok) fails++;
+        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+        const auto dir = fs::temp_directory_path() / ("sfm-pair-selection-" + std::to_string(nonce));
+        if (!fs::create_directory(dir)) throw std::runtime_error("cannot create pair selection fixture");
+        {
+            const auto p1 = (dir / "group1").string(), p2 = (dir / "group2").string();
+            writeFeatures(p1, r1);
+            writeFeatures(p2, r2);
+            const FeatureSet m1 = readFeatures(p1, true, true), m2 = readFeatures(p2, true, true);
+            const std::vector<FeatureSet> mapped = {m1, m1, m2, m2, m1};
+            const std::vector<std::pair<uint32_t, uint32_t>> want = {{0, 1}, {0, 4}, {1, 4}, {2, 3}};
+            auto select = [&](const std::vector<FeatureSet>& input, int threads) {
+                po.num_threads = threads;
+                std::vector<uint32_t> scores;
+                auto pairs = prefilterPairs(input, po, nullptr, &scores);
+                return std::make_pair(std::move(pairs), std::move(scores));
+            };
+            po.coarse_min_images = 2;
+            for (bool coarse : {false, true}) {
+                po.coarse_features = coarse ? 128 : 0;
+                po.train_features = coarse ? 384 : 0;
+                const auto serial = select(pf, 1);
+                const auto parallel = select(pf, 4);
+                const auto mapped_serial = select(mapped, 1);
+                const auto mapped_parallel = select(mapped, 4);
+                const bool pok = m1.desc_map && m2.desc_map && m1.descriptors.empty() &&
+                                 m2.descriptors.empty() && serial.first == want &&
+                                 serial.second.size() == want.size() && serial == parallel &&
+                                 serial == mapped_serial && serial == mapped_parallel;
+                printf("  %s pair selection: kept %zu/10, owned and mapped 1 vs 4 -> %s\n",
+                       coarse ? "coarse and capped-train" : "uncapped-train",
+                       serial.first.size(), pok ? "ok" : "BAD");
+                if (!pok) fails++;
+            }
+        }
+        fs::remove_all(dir);
     }
 
     // 9) parallel image decode: in-order delivery, right content, bounded window.

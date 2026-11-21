@@ -9,12 +9,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "core/BufferedFile.h"
 #include "core/MappedFile.h"
 
 #if defined(__GLIBC__)
@@ -50,10 +50,12 @@ public:
         std::shared_ptr<SpillFile> s(new SpillFile);
         s->path_ = path;
         {
-            std::ofstream f(path, std::ios::binary | std::ios::trunc);
+            spirula::BufferedOutputFile f(path, std::ios::binary | std::ios::trunc);
             if (!f) return nullptr;
             for (const auto& c : chunks)
-                f.write(static_cast<const char*>(c.first), (std::streamsize)c.second);
+                if (!f.write(static_cast<const char*>(c.first), (std::streamsize)c.second))
+                    return nullptr;
+            f.close();
             if (!f) return nullptr;
         }
         s->map_ = std::make_unique<spirula::MappedFile>();

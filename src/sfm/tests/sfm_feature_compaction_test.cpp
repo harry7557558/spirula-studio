@@ -1,5 +1,9 @@
 // Lossless feature compaction invariants and failure paths.
+#include <atomic>
+#include <chrono>
 #include <cstdio>
+#include <cstring>
+#include <filesystem>
 #include <functional>
 #include <stdexcept>
 #include <string>
@@ -7,6 +11,7 @@
 #include <vector>
 
 #include "sfm/core/FeatureCompaction.h"
+#include "sfm/feature/PairSelection.h"
 #include "sfm/tests/TestMain.h"
 
 using namespace sfm;
@@ -101,6 +106,81 @@ static void check(bool condition, const char* message, int& fails) {
     fails++;
 }
 
+static void testDescriptorSubsets(int& fails) {
+    namespace fs = std::filesystem;
+    auto owned = featureSets();
+    owned.push_back(features(0, 40));
+    const float ranks[] = {2, 9, 9, 1, 8};
+    for (size_t i = 0; i < owned.size(); i++) {
+        for (uint32_t k = 0; k < owned[i].count(); k++) {
+            owned[i].keypoints[k].scale = i == 1 ? 0 : ranks[k];
+            owned[i].keypoints[k].response = i == 1 ? ranks[k] : 0;
+        }
+    }
+    FeatureSet& floats = owned[1];
+    floats.dtype = DType::F32;
+    floats.descriptors.resize(floats.count() * floats.dim * sizeof(float));
+    for (size_t i = 0; i < floats.descriptors.size() / sizeof(float); i++) {
+        const float value = float(i) / 16;
+        std::memcpy(floats.descriptors.data() + i * sizeof(value), &value, sizeof(value));
+    }
+
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto dir = fs::temp_directory_path() / ("sfm-subsets-" + std::to_string(nonce));
+    if (!fs::create_directory(dir)) throw std::runtime_error("cannot create subset fixture");
+    {
+        std::vector<FeatureSet> mapped;
+        for (size_t i = 0; i < owned.size(); i++) {
+            const auto path = (dir / std::to_string(i)).string();
+            writeFeatures(path, owned[i]);
+            mapped.push_back(readFeatures(path, true, true));
+            check(mapped.back().descriptors.empty() &&
+                      (!owned[i].count() || mapped.back().desc_map),
+                  "subset fixture uses mapped descriptors", fails);
+        }
+        const uint32_t order[][3] = {{1, 2, 4}, {1, 2, 0}, {1, 2, 0}};
+        for (const auto* input : {&owned, &mapped}) {
+            for (int threads : {1, 4}) {
+                const size_t n = input->size();
+                std::vector<FeatureSet> result(2 * n);
+                detail::gatherTopScaleSubsets(*input, 1, 3, threads, result);
+                for (size_t slot = 0; slot < result.size(); slot++) {
+                    const size_t i = slot % n;
+                    const FeatureSet& src = owned[i];
+                    const FeatureSet& dst = result[slot];
+                    const uint32_t count = src.count() ? (slot < n ? 1 : 3) : 0;
+                    const size_t stride = src.dim * dtypeSize(src.dtype);
+                    const bool shape = dst.count() == count && dst.width == src.width &&
+                                       dst.height == src.height && dst.dim == src.dim &&
+                                       dst.dtype == src.dtype && dst.descriptors.size() == count * stride;
+                    check(shape, "subset slot dimensions and descriptor size", fails);
+                    for (uint32_t k = 0; shape && k < count; k++) {
+                        const auto row = order[i][k];
+                        check(sameKeypoint(dst.keypoints[k], src.keypoints[row]) &&
+                                  std::memcmp(dst.descData() + k * stride,
+                                              src.descData() + row * stride, stride) == 0,
+                              "subset rank, tie order and descriptor bytes", fails);
+                    }
+                }
+            }
+        }
+    }
+    fs::remove_all(dir);
+
+    PairSelectionOptions opt;
+    opt.num_threads = 4;
+    std::atomic<bool> stop{true};
+    bool cancelled = false;
+    cancel::set_token(&stop);
+    try {
+        prefilterPairs(owned, opt);
+    } catch (const Cancelled&) {
+        cancelled = true;
+    }
+    cancel::set_token(nullptr);
+    check(cancelled, "pair selection propagates typed cancellation before GPU work", fails);
+}
+
 static std::vector<FeatureSet> compactAll(const std::vector<FeatureSet>& input,
                                           const FeatureCompactionPlan& plan) {
     std::vector<FeatureSet> compact(input.size());
@@ -111,6 +191,7 @@ static std::vector<FeatureSet> compactAll(const std::vector<FeatureSet>& input,
 
 static int cmdFeatureCompactionTest(int, char**) {
     int fails = 0;
+    testDescriptorSubsets(fails);
 
     MatchesDatabase db = database();
     const MatchesDatabase original_db = db;
