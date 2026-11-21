@@ -938,6 +938,7 @@ struct DjiLayout {
     // 2090-image model of an Avata 360 flight.
     bool attitude_z_down = false;
     bool verified = false;
+    bool imu_raw = false;         // raw six axes at imu.5 (DeviceRawAttitude)
 };
 
 // Avata 360: checked frame by frame against the SRT of a 139 s flight. Its
@@ -956,6 +957,12 @@ DjiLayout dji_layout(const std::string& proto) {
         l.rel_alt = 5;
         l.attitude_z_down = true;
         l.verified = true;
+    } else if (proto == "dvtm_OQ102.proto") {
+        // The Osmo 360 II writes the Avata 360's eagle4_wa530 format under a new
+        // declared name -- the wire format follows the product, as Schema::detect does.
+        l = dji_layout("dvtm_AVATA360.proto");
+        l.imu_raw = true;
+        l.cam_shutter = 0;   // 3.2.4.1 is not the two-varint fraction here
     }
     return l;
 }
@@ -1062,6 +1069,29 @@ bool read_dji(const Source& src, const Track& tk, Telemetry& out, std::string& e
             if (!qs.empty()) { attitude_frames++; any = true; }
         }
 
+        // DeviceRawAttitude: accel g per IMU sample; the gyro stays unread -- a raw
+        // gyro flips the timeline onto the IMU-to-lens fit, which fails here, while
+        // attitude and accelerometer share a frame. Its clock differs: spread evenly.
+        if (layout.imu_raw) {
+            if (const PbField* f = pb_find(imu, 5)) {
+                const auto raw = pb_sub(f);
+                size_t n = 0;
+                for (const PbField& s : raw) n += s.number == 2 && s.wire == 2;
+                const double frame_dt = clip.sensor_fps > 0 ? 1.0 / clip.sensor_fps : 0.0;
+                size_t i = 0;
+                for (const PbField& s : raw) {
+                    if (s.number != 2 || s.wire != 2) continue;
+                    i++;
+                    const auto r = pb_sub(&s);
+                    const PbField *ax = pb_find(r, 4), *ay = pb_find(r, 5), *az = pb_find(r, 6);
+                    if (!ax || !ay || !az) continue;
+                    out.accel.push_back({t + frame_dt * ((double)i - 0.5) / (double)n,
+                                         ax->f32() * kG, ay->f32() * kG, az->f32() * kG});
+                    any = true;
+                }
+            }
+        }
+
         const auto gimbal = pb_sub(pb_find(frame, 4));
         if (const PbField* gb = pb_find(gimbal, layout.gps)) {
             const auto g = pb_sub(gb);
@@ -1106,7 +1136,7 @@ bool read_dji(const Source& src, const Track& tk, Telemetry& out, std::string& e
         out.notes.push_back(note);
     }
     if (layout.cam_accel) out.notes.push_back("accel is one reading per frame in g, converted; no raw gyro is written");
-    else out.notes.push_back("no accelerometer and no raw gyro are written");
+    else if (!layout.imu_raw) out.notes.push_back("no accelerometer and no raw gyro are written");
     if (attitude_frames) out.notes.push_back("orientation is IMU_attitude_after_fusion: sense not documented, see the check");
     return true;
 }
@@ -1778,7 +1808,9 @@ std::vector<LensCalibration> djmd_lenses(const uint8_t* sample, size_t n) {
     std::vector<LensCalibration> out;
     const auto top = pb_fields(sample, n);
     const auto hdr = pb_sub(pb_find(pb_sub(pb_find(top, 1)), 1));
-    if (pb_string(pb_find(hdr, 1)) != "dvtm_AVATA360.proto") return out;
+    const std::string proto = pb_string(pb_find(hdr, 1));
+    // The Osmo 360 II writes this format under dvtm_OQ102.proto.
+    if (proto != "dvtm_AVATA360.proto" && proto != "dvtm_OQ102.proto") return out;
     const auto pano = pb_sub(pb_find(pb_sub(pb_find(top, 2)), 5));
     for (const auto& [entry, track, name] : {std::tuple{4u, 0, "master"}, std::tuple{3u, 1, "slave"}}) {
         const auto d = pb_sub(pb_find(pano, entry));
