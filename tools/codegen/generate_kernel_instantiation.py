@@ -50,7 +50,7 @@ k2DGS = [f"Vanilla2DGS<{n}>" for n in range(5)]
 k2DGSInclude = "primitives/Primitive2DGS.cuh"
 
 # Distortion channel sets: an RGB_D primitive's, then an RGB_DN one's (2DGS,
-# and 3DGUT rendering its shortest axis as the normal).
+# and 3DGUT rendering a normal).
 kDistTypesRgbD = ("DistortionType::None", "DistortionType::D", "DistortionType::RGB_D")
 kDistTypes2DGS = kDistTypesRgbD + ("DistortionType::DN", "DistortionType::RGB_DN")
 

@@ -136,7 +136,7 @@ void engine_bin_tile_observe(double step_seconds);
 // map -- has to ask, or it builds a grid the intersect then indexes wrongly.
 int engine_bin_macro_log2();
 
-// output_normal: 3DGUT also renders its shortest axis as the normal (implied
+// output_normal: 3DGUT also renders a normal (implied
 // by a DN / RGB_DN dist_type); 2DGS always renders its normal.
 void forward_3dgs(
     std::string primitive,

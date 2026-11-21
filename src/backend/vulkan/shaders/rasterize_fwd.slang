@@ -4,7 +4,7 @@
 // 64-thread workgroup per micro-tile, binned per macro tile; the CUDA template
 // axes are the specialization constants below. 3DGS / Mip / 3DGUT render
 // rgb + depth; kNormal (the eval3d entry) adds the normal: 2DGS's (kSurfel),
-// or 3DGUT's shortest axis.
+// or 3DGUT's (evaluate_color_3dgs_normal).
 //
 // CUDA's __syncthreads_count(done) early-out is a monotonic groupshared
 // counter each thread bumps once on turning done; the loop-top barrier, which

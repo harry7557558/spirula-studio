@@ -23,7 +23,7 @@
 
 // Explicit primitive -> rendered channel set. The only place the engine encodes
 // what each primitive renders; update here when adding a primitive. 3DGUT
-// renders its shortest axis as the normal only when asked; 2DGS always does.
+// renders a normal only when asked; 2DGS always does.
 inline RenderOutputType engine_primitive_pixel_type(const std::string& primitive,
                                                     bool want_normal = false) {
     if (primitive == "3dgs" || primitive == "mip")

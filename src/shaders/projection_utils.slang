@@ -1039,28 +1039,9 @@ void evaluate_color_3dgs_vjp(
     v_ray_d = dp_ray_d.d;
 }
 
-// The shortest axis, facing the ray: iscl_rot's longest row is axis / scale.
-[Differentiable]
-[ForceInline]
-float3 shortest_axis_normal(float3x3 iscl_rot, float3 ray_d) {
-    float3 r0 = float3(iscl_rot[0][0], iscl_rot[0][1], iscl_rot[0][2]);
-    float3 r1 = float3(iscl_rot[1][0], iscl_rot[1][1], iscl_rot[1][2]);
-    float3 r2 = float3(iscl_rot[2][0], iscl_rot[2][1], iscl_rot[2][2]);
-    float l0 = dot(r0, r0), l1 = dot(r1, r1), l2 = dot(r2, r2);
-    float3 n;
-#if 0
-    if (l0 >= l1 && l0 >= l2) n = r0;
-    else if (l1 >= l2) n = r1;
-    else n = r2;
-#else
-    if (l0 >= l1 && l0 >= l2) n = cross(r1, r2);
-    else if (l1 >= l2) n = cross(r2, r0);
-    else n = cross(r0, r1);
-#endif
-    n = n * rsqrt(dot(n, n));
-    return dot(n, ray_d) > 0.f ? -n : n;
-}
-
+// normal = -normalize(Sigma^-1 ray_d): the plane holding the depth of every ray
+// parallel to this one. It faces the ray with no test, and tends to the short
+// axis as the splat flattens (angle error ~ (thickness / width)^2).
 [CudaDeviceExport]
 [Differentiable]
 void evaluate_color_3dgs_normal(
@@ -1068,8 +1049,13 @@ void evaluate_color_3dgs_normal(
     float3 ray_o, float3 ray_d,
     out float3 out_rgb, out float depth, out float3 normal
 ) {
-    evaluate_color_3dgs(mean, iscl_rot, opacity, rgb, ray_o, ray_d, out_rgb, depth);
-    normal = shortest_axis_normal(iscl_rot, ray_d);
+    out_rgb = rgb;
+    float3 gro = mul(iscl_rot, (ray_o - mean));
+    float3 grd = mul(iscl_rot, ray_d);
+    float grd2 = dot(grd, grd);
+    depth = -dot(gro, grd) / grd2;
+    float3 n = mul(grd, iscl_rot);
+    normal = -n * rsqrt(dot(n, n));
 }
 
 [CudaDeviceExport]

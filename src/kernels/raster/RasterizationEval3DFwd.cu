@@ -294,7 +294,7 @@ std::tuple<
     );
 }
 
-// 3DGUT with its shortest axis rendered as the normal.
+// 3DGUT rendering its normal too.
 /*[AutoHeaderGeneratorExport]*/
 std::tuple<
     RenderOutput::TensorTuple,  // renders (rgb, depth, normal)

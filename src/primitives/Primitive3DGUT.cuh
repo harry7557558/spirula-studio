@@ -16,7 +16,7 @@ namespace SlangHarmonics {
 #include "primitives/PrimitiveProjection.cuh"
 
 // surfel: project with 2DGS's flattened bounds (Primitive2DGS.cuh); the world
-// and screen rows are 3DGUT's either way. normal: also render the shortest axis.
+// and screen rows are 3DGUT's either way. normal: also render one.
 template<int sh_degree, bool surfel = false, bool normal = false>
 struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
     static constexpr RenderOutputType pixelType =
