@@ -202,7 +202,7 @@ static bool _swap_in_warped_gt(bool tiles_skipped) {
     void* out = _warped_gt_buffer();
     const TorchTensorView out_tv((uint64_t)out, 2, {C, H, W, 3});
     calib_warp_gt_forward(gt, render_tv(), depth_tv(), ts_tv(), table_tv(cw.params), intrins_tv(),
-                          cam_tv(), cw.grid_n, cw.D, out_tv);
+                          cam_tv(), cw.grid_n, cw.D, out_tv, mask_tv());
     cw.src_gt = gt;
     engine().gt.rgb = out_tv;
     cw.src_depth = engine().gt.depth;
@@ -323,6 +323,6 @@ void engine_calib_warp_align_to_gt(const float* est, const float* src, float* ou
     }
     const TorchTensorView out_tv = level_image("eng.calib_align.out", C, H, W);
     calib_warp_gt_forward(src_tv, gt, _tv_null(), _tv_null(), table_tv(params), intr, _tv_null(), n,
-                          2, out_tv);
+                          2, out_tv, mask);
     backend::memcpy_sync(out, (void*)std::get<0>(out_tv), bytes, backend::MemcpyKind::DeviceToHost);
 }

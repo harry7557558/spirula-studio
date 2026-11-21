@@ -79,7 +79,8 @@ backend::vk::SpecList spec(int D, uint32_t aux_kind = 0) {
 void calib_warp_gt_forward(
     TorchTensorView gt_rgb, TorchTensorView render_rgb, TorchTensorView render_depth,
     TorchTensorView render_Ts, TorchTensorView params, TorchTensorView intrins,
-    TorchTensorView cam_indices, int grid_n, int D, TorchTensorView out_rgb
+    TorchTensorView cam_indices, int grid_n, int D, TorchTensorView out_rgb,
+    TorchTensorView mask
 ) {
     check(grid_n, D);
     CalibWarpParams p = base_params(gt_rgb, render_rgb, render_depth, render_Ts, params,
@@ -87,6 +88,13 @@ void calib_warp_gt_forward(
     if (p.B <= 0 || p.H <= 0 || p.W <= 0) return;
     p.out = ptr(out_rgb);
     p.out_fmt = (uint32_t)pixel_format(out_rgb);
+    const auto& ms = std::get<2>(mask);
+    if (ptr(mask) != 0 && ms.size() >= 3) {
+        p.mask = ptr(mask);
+        p.has_mask = 1;
+        p.Hm = (int32_t)ms[1];
+        p.Wm = (int32_t)ms[2];
+    }
     vkk::Fold f = vkk::fold_1d((int64_t)p.B * p.H * p.W, 256);
     p.wgs_per_row = f.per_row;
     if (f.rows > 65535)

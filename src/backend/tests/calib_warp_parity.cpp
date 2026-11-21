@@ -104,7 +104,7 @@ int bench(int W, int H) {
         std::printf("calib_warp_parity: %-28s %8.3f ms at %dx%d\n", what, ms, W, H);
     };
     time("forward (f16 out)", [&] {
-        calib_warp_gt_forward(g, r, ttv_null(), ttv_null(), t, it, ttv_null(), n, D, o);
+        calib_warp_gt_forward(g, r, ttv_null(), ttv_null(), t, it, ttv_null(), n, D, o, ttv_null());
     });
     time("accumulate (registration)", [&] {
         calib_warp_accumulate(g, r, ttv_null(), ttv_null(), ttv_null(), 0.0f, t, it, ttv_null(),
@@ -193,12 +193,12 @@ int main(int argc, char** argv) {
 
         // render := gt warped by the truth, so the fit should land on the truth.
         calib_warp_gt_forward(img(gt), img(gt), t_depth, t_ts, tab(d_truth, P), ttv(d_intr, {k.B, 4}),
-                              ttv(d_cams, {k.B}), k.n, k.D, img(render));
+                              ttv(d_cams, {k.B}), k.n, k.D, img(render), ttv_null());
         auto fwd = download(render, (size_t)px * 3);
         tight.insert(tight.end(), fwd.begin(), fwd.end());
         // The uint8 path reads the same values to within the quantization.
         calib_warp_gt_forward(img(gt8, 1), img(gt), t_depth, t_ts, tab(d_truth, P), ttv(d_intr, {k.B, 4}),
-                              ttv(d_cams, {k.B}), k.n, k.D, img(out));
+                              ttv(d_cams, {k.B}), k.n, k.D, img(out), ttv_null());
         auto fwd8 = download(out, (size_t)px * 3);
         double worst8 = 0.0;
         for (size_t i = 0; i < fwd8.size(); ++i) worst8 = std::max(worst8, (double)std::fabs(fwd8[i] - fwd[i]));
@@ -208,7 +208,7 @@ int main(int argc, char** argv) {
         }
         // A zero table lands on the pixel centres, where Catmull-Rom is exact.
         calib_warp_gt_forward(img(gt), img(gt), t_depth, t_ts, tab(params, P), ttv(d_intr, {k.B, 4}),
-                              ttv(d_cams, {k.B}), k.n, k.D, img(out));
+                              ttv(d_cams, {k.B}), k.n, k.D, img(out), ttv_null());
         auto ident = download(out, (size_t)px * 3);
         double worst_id = 0.0;
         for (size_t i = 0; i < ident.size(); ++i)
@@ -245,7 +245,7 @@ int main(int argc, char** argv) {
         }
         // A float16 output, read back through the engine's own codec.
         calib_warp_gt_forward(img(gt), img(gt), t_depth, t_ts, tab(d_truth, P), ttv(d_intr, {k.B, 4}),
-                              ttv(d_cams, {k.B}), k.n, k.D, img(out16, 2));
+                              ttv(d_cams, {k.B}), k.n, k.D, img(out16, 2), ttv_null());
         auto h16 = download(out16, (size_t)px * 3);
         double worst16 = 0.0;
         for (size_t i = 0; i < h16.size(); ++i) {
