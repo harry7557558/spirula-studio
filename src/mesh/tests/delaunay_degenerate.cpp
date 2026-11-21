@@ -135,19 +135,19 @@ int check(const std::vector<double>& pts, int threads, const char* what,
         std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 
     std::vector<char> used((size_t)n, 0);
-    for (int t = 0; t < tri.nb_cells; t++) {
+    for (int64_t t = 0; t < tri.nb_cells; t++) {
         const int* c = (const int*)&tri.cell_vertices[(size_t)t * 4];
         for (int i = 0; i < 4; i++) {
             if (c[i] < 0 || c[i] >= n) {
-                std::printf("BAD  %s t%d: tet %d vertex %d out of range (%d)\n", what,
-                            threads, t, i, c[i]);
+                std::printf("BAD  %s t%d: tet %lld vertex %d out of range (%d)\n", what,
+                            threads, (long long)t, i, c[i]);
                 return 1;
             }
             used[(size_t)c[i]] = 1;
             for (int j = i + 1; j < 4; j++)
                 if (c[i] == c[j]) {
-                    std::printf("BAD  %s t%d: tet %d repeats vertex %d\n", what, threads,
-                                t, c[i]);
+                    std::printf("BAD  %s t%d: tet %lld repeats vertex %d\n", what, threads,
+                                (long long)t, c[i]);
                     return 1;
                 }
         }
@@ -155,7 +155,8 @@ int check(const std::vector<double>& pts, int threads, const char* what,
         // cell means a cavity was stellated that the point could not see.
         if (orient_3d(&pts[3 * (size_t)c[0]], &pts[3 * (size_t)c[1]],
                       &pts[3 * (size_t)c[2]], &pts[3 * (size_t)c[3]]) <= 0.0L) {
-            std::printf("BAD  %s t%d: tet %d is flat or inverted\n", what, threads, t);
+            std::printf("BAD  %s t%d: tet %lld is flat or inverted\n", what, threads,
+                        (long long)t);
             return 1;
         }
     }
@@ -168,8 +169,8 @@ int check(const std::vector<double>& pts, int threads, const char* what,
                     what, threads, 100.0 * fraction, 100.0 * min_point_fraction);
         return 1;
     }
-    std::printf("ok   %s t%d: %d points, %d tetrahedra, %.2f%% of points, %.2f s\n", what,
-                threads, n, tri.nb_cells, 100.0 * fraction, secs);
+    std::printf("ok   %s t%d: %d points, %lld tetrahedra, %.2f%% of points, %.2f s\n", what,
+                threads, n, (long long)tri.nb_cells, 100.0 * fraction, secs);
     return 0;
 }
 

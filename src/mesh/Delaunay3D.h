@@ -23,12 +23,9 @@
 
 namespace delaunay3d {
 
-    /**
-     * \brief Largest point count compute_delaunay_3d() accepts. 7 tetrahedra
-     *  per point are preallocated and addressed as 4*t+lv in 32 bits, so beyond
-     *  this the cell arrays silently wrap.
-     */
-    constexpr int kMaxPoints = 150000000;
+    // Largest point count compute_delaunay_3d() accepts: 7*N tets must fit in
+    // 32-bit tet IDs with headroom for cavity overflow (arrays index in size_t).
+    constexpr int kMaxPoints = 500000000;
 
     /**
      * \brief Result of a 3D Delaunay triangulation.
@@ -37,7 +34,7 @@ namespace delaunay3d {
         /** number of input vertices */
         int nb_vertices = 0;
         /** number of (finite) tetrahedra */
-        int nb_cells = 0;
+        int64_t nb_cells = 0;
         /** 4*nb_cells vertex indices (into the input point array). Unsigned so
          *  the solver's own store can be moved out instead of copied. */
         std::vector<uint32_t> cell_vertices;
