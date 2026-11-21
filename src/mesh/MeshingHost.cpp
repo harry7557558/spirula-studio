@@ -547,10 +547,11 @@ bool generate_mesh(
     // Refused here rather than inside the solver, which can only report the
     // empty result as "no tetrahedra".
     const bool grid = tsdf && cfg.tsdf_voxel > 0.0f;   // else the field over the splat samples
-    if (!grid && (long long)ev.num_kept() * 7 > delaunay3d::kMaxPoints) {
+    const int spg = cfg.samples_per_gaussian <= 1 ? 1 : 7;
+    if (!grid && (long long)ev.num_kept() * spg > delaunay3d::kMaxPoints) {
         mlog::fail(mlog::Stage::PointCloud, mmsg::too_many_gaussians,
                    {(long long)ev.num_kept(), (long long)delaunay3d::kMaxPoints,
-                    (long long)(delaunay3d::kMaxPoints / 7)});
+                    (long long)(delaunay3d::kMaxPoints / spg), (long long)spg});
         return false;
     }
 

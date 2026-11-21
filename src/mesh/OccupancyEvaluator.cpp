@@ -349,9 +349,10 @@ OccupancyEvaluator::OccupancyEvaluator(
             csum[a] += m;
         }
     }
+    const int spg = cfg.samples_per_gaussian <= 1 ? 1 : 7;
     impl_->num_kept = (int)kept.size();
     num_kept_ = impl_->num_kept;
-    num_points_ = impl_->num_kept * 7;
+    num_points_ = (int)std::min<long long>((long long)impl_->num_kept * spg, INT32_MAX);
     if (impl_->num_kept == 0)
         throw std::runtime_error("meshing: no Gaussians above the opacity threshold");
 
@@ -502,13 +503,14 @@ bool OccupancyEvaluator::render_moments(
 }
 
 void OccupancyEvaluator::generate_point_cloud(std::vector<float>& xyz_out) {
-    size_t n = (size_t)impl_->num_kept * 7;
+    const int spg = impl_->cfg.samples_per_gaussian <= 1 ? 1 : 7;
+    size_t n = (size_t)impl_->num_kept * spg;
     xyz_out.resize(n * 3);
     DBuf<float> d_out(n * 3);
     launch_pointcloud(
         impl_->num_kept, impl_->kept,
         impl_->mean, impl_->ax0, impl_->ax1, impl_->ax2, impl_->invs2,
-        impl_->k2, kSampleMinAxisRatio, d_out);
+        impl_->k2, kSampleMinAxisRatio, spg, d_out);
     sync_checked("point cloud");
     download(xyz_out.data(), d_out.get(), n * 3);
 }
