@@ -477,11 +477,11 @@ check inactive while retaining its saved preference. In a one-direction
 rectified run, target observations are also assigned to target reference pixels so
 that images appearing on either side of a pair can gain multi-view support.
 
-Training masks, image alpha, and feature masks are applied by default.
-Individual switches, mask polarity, threshold, and Euclidean boundary
-offset are adjustable. Invalid lens rays and coordinates near invalid mask
-samples are excluded. Feature masks normally live in `feature_masks/`.
-`--use-masks false` bypasses all three optional mask sources; invalid lens
+Training masks and image alpha are applied by default; a training mask's
+128 band (the sky, `docs/datasets.md`) is excluded too. Individual switches,
+mask polarity, threshold, and Euclidean boundary offset are adjustable.
+Invalid lens rays and coordinates near invalid mask samples are excluded.
+`--use-masks false` bypasses both optional mask sources; invalid lens
 rays are still excluded. The GUI exposes this independently of training.
 
 The dense panel also exposes the trainer's **Mask mode**: **Cut out

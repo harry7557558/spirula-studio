@@ -96,8 +96,8 @@ GrayImage loadGrayImage(const std::string& path, int max_image_size = 3200,
                         // Turns the pixels and the mask, leaving exif.orientation
                         // at 1; a tag's MIRROR half is dropped (docs/datasets.md).
                         bool apply_exif_orientation = false,
-                        // Intersected into `mask_path`'s (intersectMask), unflipped.
-                        const std::string& feature_mask_path = "",
+                        // loadMask's: only the segment band is dropped.
+                        bool mask_segment_only = false,
                         const colorspace::Exposure& exposure = {});
 
 // Read just the pixel dimensions from an image header (no full decode).

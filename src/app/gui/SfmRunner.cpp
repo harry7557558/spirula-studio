@@ -788,21 +788,19 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         argv.push_back("--point-color");
         argv.push_back("image");
     }
-    if (!prep.mask_dir.empty() && job.mask_features) {
+    // The sky's 128 band is dropped whatever the checkbox says: it is there
+    // only to be kept from the features.
+    if (!prep.mask_dir.empty() && (job.mask_features || prep.masks_segment)) {
         argv.push_back("--masks");
         argv.push_back(prep.mask_dir);
         // Only masks the run handed on untouched are still the other way
         // round; anything it wrote is in the usual convention.
         if (prep.mask_dir_flipped) argv.push_back("--flip-mask");
+        if (!job.mask_features) argv.push_back("--mask-segment-only");
     } else {
         // Otherwise `auto` picks up a stale masks/ sitting beside the images
         // from an earlier run with masking on.
         argv.push_back("--no-masks");
-    }
-    // Whatever the checkbox says: these exist only to be kept from the features.
-    if (!prep.feature_mask_dir.empty()) {
-        argv.push_back("--feature-masks");
-        argv.push_back(prep.feature_mask_dir);
     }
     for (const std::string& a : split_args(job.extra_args))
         argv.push_back(a);

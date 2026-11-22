@@ -1626,14 +1626,13 @@ void sweepStaleFeatures(const fs::path& outdir, const std::set<fs::path>& live) 
 // mtime: regenerated frames or masks leave the settings identical. Given
 // `older`, a whole file with a newer image or mask passes and sets it.
 bool featuresAreCurrent(const fs::path& feat, const fs::path& img,
-                        const std::string& mask, const std::string& feature_mask,
-                        uint32_t& count, bool* older = nullptr) {
+                        const std::string& mask, uint32_t& count,
+                        bool* older = nullptr) {
     std::error_code fe, ie, me;
     const auto t = fs::last_write_time(feat, fe);
     if (fe) return false;
     bool stale = t < fs::last_write_time(img, ie) || ie;
-    for (const std::string* m : {&mask, &feature_mask})
-        stale = stale || (!m->empty() && t < fs::last_write_time(*m, me) && !me);
+    stale = stale || (!mask.empty() && t < fs::last_write_time(mask, me) && !me);
     if (stale && !older) return false;
     if (older) *older = stale;
     return peekFeatures(feat.string(), count);
@@ -1646,15 +1645,13 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
                      std::vector<fs::path>* trusted) {
     const SiftOptions& opt = cfg.sift;
     const std::string& maskdir = cfg.mask_dir;
-    const std::string& fmaskdir = cfg.feature_mask_dir;
     // Recursive: per-folder intrinsics (ppisp) keep images in images/<camera>/
     // and the folder is the grouping key (D17). A mask directory nested inside
     // is skipped -- masks are PNGs too, and would double the image count with
     // garbage views.
     std::error_code skip_ec;
     std::vector<std::string> skip;
-    for (const std::string* d : {&maskdir, &fmaskdir})
-        if (!d->empty() && fs::is_directory(*d, skip_ec)) skip.push_back(*d);
+    if (!maskdir.empty() && fs::is_directory(maskdir, skip_ec)) skip.push_back(maskdir);
     std::vector<fs::path> found;
     for (auto it = fs::recursive_directory_iterator(imagedir, fs::directory_options::follow_directory_symlink);
          it != fs::recursive_directory_iterator(); ++it) {
@@ -1719,6 +1716,7 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
     lopt.is_linear = cfg.image_is_linear;
     lopt.exposure = cfg.exposure;
     lopt.flip_mask = cfg.flip_mask;
+    lopt.mask_segment_only = cfg.mask_segment_only;
     lopt.apply_exif_orientation = cfg.exif_orientation == "apply";
     if (cfg.decode_budget_mb > 0)
         lopt.memory_budget_bytes = (size_t)cfg.decode_budget_mb << 20;
@@ -1752,25 +1750,6 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
             L::warn(Tag::Extract, M::extract_some_unmasked,
                     {(long long)stats.unmasked_images, stats.first_unmasked});
     }
-    // An image without one keeps all its features, as under --masks; a tree
-    // matching nothing is not fatal here, since the sky is often absent.
-    MaskIndex fmasks(fmaskdir);
-    if (!fmaskdir.empty() && !fmasks.valid())
-        L::warn(Tag::Extract, M::extract_mask_dir_missing, {fmaskdir});
-    if (fmasks.valid()) {
-        lopt.feature_mask_paths.assign(paths.size(), std::string());
-        size_t matched = 0;
-        for (size_t k = 0; k < paths.size(); k++) {
-            std::string& fp = lopt.feature_mask_paths[k];
-            fp = fmasks.find(relativeTo(paths[k], imagedir).generic_string());
-            if (fp.empty()) continue;
-            matched++;
-            if (lopt.mask_paths.empty() || lopt.mask_paths[k].empty()) stats.masked_images++;
-        }
-        L::out(Tag::Extract, M::extract_masks_matched,
-               {(long long)matched, (long long)paths.size(), fmaskdir});
-    }
-
     // Where each image's features belong, and what a previous run already put
     // there. The total the bar counts is the capture, not the work left.
     const size_t n_all = paths.size();
@@ -1790,11 +1769,8 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
             uint32_t count = 0;
             const std::string mask =
                 k < lopt.mask_paths.size() ? lopt.mask_paths[k] : std::string();
-            const std::string fmask = k < lopt.feature_mask_paths.size()
-                                          ? lopt.feature_mask_paths[k]
-                                          : std::string();
             bool older = false;
-            if (!featuresAreCurrent(outs[k], paths[k], mask, fmask, count,
+            if (!featuresAreCurrent(outs[k], paths[k], mask, count,
                                     trusted ? &older : nullptr)) {
                 todo.push_back(k);
                 continue;
@@ -1824,14 +1800,11 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
                 sorted_dims[i] = sorted_dims[k];
                 outs[i] = std::move(outs[k]);
                 if (!lopt.mask_paths.empty()) lopt.mask_paths[i] = std::move(lopt.mask_paths[k]);
-                if (!lopt.feature_mask_paths.empty())
-                    lopt.feature_mask_paths[i] = std::move(lopt.feature_mask_paths[k]);
             }
             paths.resize(todo.size());
             sorted_dims.resize(todo.size());
             outs.resize(todo.size());
             if (!lopt.mask_paths.empty()) lopt.mask_paths.resize(todo.size());
-            if (!lopt.feature_mask_paths.empty()) lopt.feature_mask_paths.resize(todo.size());
         }
     }
     if (paths.empty()) {
@@ -1864,9 +1837,7 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
         sampleFeatureColors(f, img);
         uint32_t dropped = 0;
         const std::string& mpath =
-            k < lopt.mask_paths.size() && !lopt.mask_paths[k].empty() ? lopt.mask_paths[k]
-            : k < lopt.feature_mask_paths.size() ? lopt.feature_mask_paths[k]
-                                                 : kNoPath;
+            k < lopt.mask_paths.size() ? lopt.mask_paths[k] : kNoPath;
         if (!mpath.empty()) {
             if (img.mask.empty()) {
                 stats.mask_unreadable++;
@@ -2637,7 +2608,6 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     applyLensPlans(cfg.camera, lens_plans);
     for (const LensPlan& p : lens_plans) logLensPlan(p);
     if (!cfg.mask_dir.empty()) L::out(Tag::Run, M::run_masks, {cfg.mask_dir});
-    if (!cfg.feature_mask_dir.empty()) L::out(Tag::Run, M::run_masks, {cfg.feature_mask_dir});
     // What the two knobs moved, so a surprising run is explainable from its own
     // output rather than from reading the preset table.
     for (const PresetChange& p : in.preset_changes)

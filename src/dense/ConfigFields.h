@@ -16,8 +16,8 @@
     X(max_relative_depth_error, geometry.max_relative_depth_error) \
     X(min_source_images, geometry.min_source_images) \
     X(image_dir, image_dir) X(recon_dir, recon_dir) \
-    X(mask_dir, mask_dir) X(feature_mask_dir, feature_mask_dir) \
-    X(use_masks, use_masks) X(training_masks, training_masks) X(alpha_masks, alpha_masks) X(feature_masks, feature_masks) \
+    X(mask_dir, mask_dir) \
+    X(use_masks, use_masks) X(training_masks, training_masks) X(alpha_masks, alpha_masks) \
     X(invert_masks, invert_masks) X(mask_threshold, mask_threshold) X(mask_boundary, mask_boundary) \
     X(exif_orientation, exif_orientation) X(metashape_xml, metashape_xml) \
     X(metashape_psx, metashape_psx) X(metashape_component, metashape_component) \

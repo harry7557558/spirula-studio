@@ -51,7 +51,6 @@ struct FilmFrame {
     std::string name;          // the caption; the image's name in the dataset
     std::string image_path;
     std::string mask_path;     // "" when there is none
-    std::string feature_mask_path;   // for feature extraction alone; "" for none
     std::string points_path;   // feature file to overlay; "" for none
     // Set instead of the three above when the frame is a ROW -- the geometry
     // step's photograph, normal map and depth map of one frame, which are
@@ -80,12 +79,11 @@ public:
     // keeps the copy off a decode running at hundreds of frames a second. The
     // frame is registered either way, so the slider still reaches it.
     bool wants(double min_interval_s = 0.12) const;
-    // Appends `f`. `rgb` (w*h*3), `mask` and `feature_mask` (w*h, 255 = keep)
-    // are the pixels the producer already holds; without them the picture is
+    // Appends `f`. `rgb` (w*h*3) and `mask` (w*h, Picture.h's classes) are
+    // the pixels the producer already holds; without them the picture is
     // read from `f.image_path` when it is asked for.
     void add(const FilmFrame& f, const uint8_t* rgb = nullptr, int w = 0,
-             int h = 0, const uint8_t* mask = nullptr, FramePoints points = {},
-             const uint8_t* feature_mask = nullptr);
+             int h = 0, const uint8_t* mask = nullptr, FramePoints points = {});
     // Appends `f` AND reads its files now, on the calling thread. The reel
     // follows the newest picture it HOLDS (see draw), so a producer that only
     // registers paths never advances the slider.

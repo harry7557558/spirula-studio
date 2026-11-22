@@ -1177,8 +1177,7 @@ WorkspaceState probe_workspace(const std::string& workspace,
     };
 
     st.frames = has_content(ws / "images") && !is_input(ws / "images", false);
-    st.masks = (has_content(ws / "masks") && !is_input(ws / "masks", true)) ||
-               has_content(ws / kFeatureMaskDirName);
+    st.masks = has_content(ws / "masks") && !is_input(ws / "masks", true);
     for (const PrepInput& in : inputs)
         st.input_masks = st.input_masks || (!in.mask_dir.empty() && has_content(in.mask_dir));
     st.features = has_content(ws / "features") || fs::exists(ws / "matches.bin", ec) ||
@@ -1225,7 +1224,7 @@ std::vector<std::string> workspace_artifacts(const std::string& workspace,
     };
     if (!is_input_folder(ws / "images", inputs, false)) add("images");
     if (!is_input_folder(ws / "masks", inputs, true)) add("masks");
-    for (const char* name : {kFeatureMaskDirName, "features", "sparse", "colmap",
+    for (const char* name : {kLegacyFeatureMaskDirName, "features", "sparse", "colmap",
                              "normals", "depths",
                              ".progress", sfm::resume::kDir, "matches.bin",
                              "matches.bin.bak", "database.db", kDatasetRecordFile,
@@ -1243,7 +1242,7 @@ bool is_mask_edits_folder(const std::string& path) {
 }
 
 bool is_feature_mask_folder(const std::string& path) {
-    return named(fs::path(path), kFeatureMaskDirName);
+    return named(fs::path(path), kLegacyFeatureMaskDirName);
 }
 
 void resolve_photo_folder(const std::string& picked, std::string& images,
@@ -1689,14 +1688,13 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
     // can run per input (see generate_masks) instead of over one flat tree.
     struct Prepared {
         std::string images, masks;      // absolute
-        std::string feature_masks;      // absolute; "" without a feature prompt
         // This input's masks already exist: brought along by the input, taken
         // from its alpha channel, or kept by a resumed run.
         bool have_masks = false;
         // Segmentation already intersected this input's stencil into them.
         bool stencil_folded = false;
-        // The tree the stencil pass folds in, when it is not `masks` itself:
-        // the masks the photos arrived with, which stay as they are.
+        // The tree the stencil or sky pass folds in, when it is not `masks`
+        // itself: the masks the photos arrived with, which stay as they are.
         std::string merge_from;
     };
     std::vector<Prepared> per(job.inputs.size());
@@ -1708,6 +1706,16 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
     // stale masks/ from a previous run with masking on must not be picked up by
     // a run that turned it off -- that is what --no-masks exists to say.
     bool want_masks = job.mask_enable;
+    // A subject model (BiRefNet) finds what to mask by itself, and reads no
+    // words to find the sky with.
+    bool subject = false;
+#ifdef SS_BUILD_SAM
+    subject = job.mask_enable && sam::is_subject_model(job.mask_model_path);
+#endif
+    // The sky goes into masks/ as the segment class, so masks an input
+    // brought are folded into a copy like a stencil.
+    const bool want_features =
+        job.mask_enable && !subject && !job.mask_feature_prompt.empty();
 
     if (reads_photos_in_place(job.inputs, job.photo_import)) {
         // Photos are referenced where they are, not copied: a 40 GB folder of
@@ -1732,7 +1740,7 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
             const std::string bundled = fs::absolute(in.mask_dir, ec).string();
             per[0].have_masks = true;
             log(fmt(lmsg::using_bundled_masks, {bundled}), /*detail=*/false);
-            if (in.stencil.empty()) {
+            if (in.stencil.empty() && !want_features) {
                 // Nothing to fold in, so they are read where they lie and keep
                 // whichever convention they arrived in.
                 per[0].masks = out.mask_dir_cfg = bundled;
@@ -1765,7 +1773,7 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
             // Folded in from where they lie, not from the copies gathered next
             // to the images: a second run would otherwise fold the fold.
             if (!in.mask_dir.empty() &&
-                (!in.stencil.empty() || job.flip_found_masks))
+                (!in.stencil.empty() || job.flip_found_masks || want_features))
                 p.merge_from = fs::absolute(in.mask_dir, ec).string();
             // Several inputs share one image tree only by living in their own
             // folders, and a folder is what makes them separate cameras.
@@ -2021,18 +2029,6 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
     // answer the user gave while watching them go by.
     if (refresh_masks) refresh_masks(job);
 
-    // A subject model (BiRefNet) finds what to mask by itself, and reads no
-    // words to find the sky with.
-    bool subject = false;
-#ifdef SS_BUILD_SAM
-    subject = job.mask_enable && sam::is_subject_model(job.mask_model_path);
-#endif
-    const bool want_features =
-        job.mask_enable && !subject && !job.mask_feature_prompt.empty();
-    if (want_features)
-        for (size_t i = 0; i < job.inputs.size(); i++)
-            per[i].feature_masks =
-                under((ws / kFeatureMaskDirName).string(), job.inputs[i].subdir).string();
 
     // Masks kept whole skip both passes below and only name their folders.
     const bool segment = job.mask_enable && !job.keep_masks;
@@ -2090,13 +2086,12 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
             // masks an input brought with it are safe.
             if (job.redo_masks && job.inputs[i].mask_dir.empty())
                 clear_generated(per[i].masks, ws);
-            if (job.redo_masks && want_features) clear_generated(per[i].feature_masks, ws);
             // Masks the input arrived with, or its alpha, are an answer the user
             // already has and are not segmented over; the feature prompt asks
             // another question, so it still runs.
             if (per[i].have_masks && !want_features) continue;
             if (!generate_masks(job, job.inputs[i], per[i].images, per[i].masks,
-                                per[i].feature_masks, !per[i].have_masks,
+                                per[i].merge_from, want_features, !per[i].have_masks,
                                 per[i].stencil_folded, error))
                 return false;
             _masks_tally.settle(mask_planned[i], mask_planned[i]);
@@ -2127,10 +2122,7 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
         out.mask_dir = (ws / "masks").string();
         out.mask_dir_cfg = "masks";
     }
-    const fs::path feature_root = ws / kFeatureMaskDirName;
-    if (want_features && fs::is_directory(feature_root, mec) &&
-        !fs::is_empty(feature_root, mec))
-        out.feature_mask_dir = feature_root.string();
+    out.masks_segment = want_features && !out.mask_dir.empty();
     // Hand corrections outlive a re-run: whatever wrote masks/ this time, the
     // editor's layers are re-applied over every mask whose bytes changed.
     const fs::path layer_root = ws / gui::mask::kLayerDirName;
@@ -2146,20 +2138,17 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
             return false;
         }
     }
-    if (_films.masks && (!out.mask_dir.empty() || !out.feature_mask_dir.empty())) {
+    if (_films.masks && !out.mask_dir.empty()) {
         std::vector<FilmFrame> listed;
         for (const fs::path& f : walk_images(out.image_dir, out.mask_dir)) {
-            if (!out.feature_mask_dir.empty() && inside(f, out.feature_mask_dir)) continue;
             const fs::path rel = under_root(f, out.image_dir);
             const fs::path mask_rel = rel.parent_path() / (rel.stem().string() + ".png");
             FilmFrame ff;
             ff.name = rel.generic_string();
             ff.image_path = f.string();
-            if (!out.mask_dir.empty() && fs::is_regular_file(fs::path(out.mask_dir) / mask_rel, mec))
+            if (fs::is_regular_file(fs::path(out.mask_dir) / mask_rel, mec))
                 ff.mask_path = (fs::path(out.mask_dir) / mask_rel).string();
-            if (!out.feature_mask_dir.empty() && fs::is_regular_file(fs::path(out.feature_mask_dir) / mask_rel, mec))
-                ff.feature_mask_path = (fs::path(out.feature_mask_dir) / mask_rel).string();
-            if (ff.mask_path.empty() && ff.feature_mask_path.empty()) continue;
+            if (ff.mask_path.empty()) continue;
             listed.push_back(std::move(ff));
         }
         _films.masks->relist(std::move(listed));
@@ -3759,11 +3748,15 @@ bool DatasetPrep::split_packed_frames(const PrepInput& in,
 // Masks
 // ---------------------------------------------------------------------------
 
+// Written into the destination when the fold flipped what it read, so a second
+// run over the same folder does not flip an already-flipped mask.
+static const char* kFlippedMarker = ".spirula-mask-convention";
+
 bool DatasetPrep::generate_masks(const PrepJob& job, const PrepInput& in,
                                  const std::string& images,
                                  const std::string& masks,
-                                 const std::string& feature_masks, bool train,
-                                 bool& folded, std::string& error) {
+                                 const std::string& merge_from, bool features,
+                                 bool train, bool& folded, std::string& error) {
     if (!backends().builtin_masking) {
         error = lmsg::err_no_builtin_segmentation.get();
         return false;
@@ -3772,18 +3765,18 @@ bool DatasetPrep::generate_masks(const PrepJob& job, const PrepInput& in,
         error = lmsg::err_mask_model_not_downloaded.get();
         return false;
     }
-    return generate_masks_builtin(job, in, images, masks, feature_masks, train, folded,
-                                  error);
+    return generate_masks_builtin(job, in, images, masks, merge_from, features, train,
+                                  folded, error);
 }
 
 bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in,
                                          const std::string& images,
                                          const std::string& masks,
-                                         const std::string& feature_masks, bool train,
-                                         bool& folded, std::string& error) {
+                                         const std::string& merge_from, bool features,
+                                         bool train, bool& folded, std::string& error) {
 #ifndef SS_BUILD_SAM
-    (void)job; (void)in; (void)images; (void)masks; (void)feature_masks; (void)train;
-    (void)folded;
+    (void)job; (void)in; (void)images; (void)masks; (void)merge_from; (void)features;
+    (void)train; (void)folded;
     error = backends().masking_reason;
     return false;
 #else
@@ -3794,13 +3787,6 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
     // read where they are, and those already have masks -- but the guard costs
     // nothing and the alternative is masking a folder of masks.
     std::vector<fs::path> files = own_images(job, in, images, masks);
-    const bool features = !feature_masks.empty();
-    if (features)
-        files.erase(std::remove_if(files.begin(), files.end(),
-                                   [&](const fs::path& f) {
-                                       return inside(f, fs::path(feature_masks));
-                                   }),
-                    files.end());
     if (files.empty()) {
         error = lmsg::err_no_images_to_mask.get();
         return false;
@@ -3868,7 +3854,7 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
     // over a mask that is already in memory, against a decode and a re-encode
     // of every PNG on disk (~131 ms per 2880-square fisheye frame).
     StencilRaster stencil;
-    const bool fold_stencil = write_train && !in.stencil.empty();
+    const bool fold_stencil = !in.stencil.empty();
     auto build_stencil = [&] {
         stencil.build(in.stencil, image_root, files,
                       [&](const std::string& camera, const app::BorderDetect& d) {
@@ -3885,10 +3871,42 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                           log(fmt(lmsg::frame_mask_border, {name, pct}), false);
                       });
     };
-    if (fold_stencil) folded = true;
+    if (fold_stencil || !train) folded = true;
     if (fold_stencil && !isolated) build_stencil();
 
-    const fs::path mask_root(masks), feature_root(feature_masks);
+    // Without `train` the masks are the input's own, read from `merge_from`
+    // (or the mask itself) and folded with the stencil and the sky here.
+    const fs::path mask_root(masks), merge_root(merge_from);
+    bool flip_base = !train && job.flip_found_masks && !merge_from.empty();
+    const bool base_in_place =
+        !merge_from.empty() &&
+        fs::weakly_canonical(masks, ec) == fs::weakly_canonical(merge_from, ec);
+    const fs::path flip_marker = mask_root / kFlippedMarker;
+    if (base_in_place && flip_base && fs::exists(flip_marker, ec)) flip_base = false;
+    if (!train && base_in_place) log(fmt(lmsg::masks_combined_in_place, {masks}), false);
+    // The trainer's mask in the model's frame, width x height (`turn` from the
+    // stored one): base, then stencil, then the sky as the segment class.
+    auto compose = [&](const fs::path& source, const sfm::ExifTransform& turn, int width,
+                       int height, sam::Mask& mask, const sam::Mask& sky, std::string& why) {
+        if (!train) {
+            const fs::path rel = under_root(source, image_root);
+            const fs::path name = rel.parent_path() / (rel.stem().string() + ".png");
+            int w = width, h = height;
+            spirula::oriented_size(app::inverse_turn(turn).turns_cw, w, h);
+            mask.data = app::read_mask_classes(
+                ((merge_from.empty() ? mask_root : merge_root) / name).string(), w, h, flip_base);
+            mask.width = w;
+            mask.height = h;
+            app::turn_pixels(turn, 1, mask.data, mask.width, mask.height);
+        } else if (mask.data.empty()) {
+            mask.width = width;
+            mask.height = height;
+            mask.data.assign((size_t)width * height, app::kMaskKeep);
+        }
+        if (fold_stencil && !stencil.apply(source, image_root, mask, why)) return false;
+        app::fold_segment(mask.data, mask.width, mask.height, sky.data, sky.width, sky.height);
+        return true;
+    };
 
     auto probe_size = [](const fs::path& file, int& width, int& height) {
         if (imagefile::handles(file.string())) {
@@ -3908,26 +3926,22 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
     };
     std::vector<size_t> todo;
     std::vector<fs::path> todo_files;
-    std::vector<Dst> todo_dst, todo_fdst;
+    std::vector<Dst> todo_dst;
     const bool resume = job.resume && !job.redo_masks;
     const uint64_t budget = isolated ? app::default_worker_memory_bytes() : 0;
     bool pending = false;
     int done = 0;
     try {
-        std::vector<Dst> dsts(files.size()), fdsts(files.size());
+        std::vector<Dst> dsts(files.size());
         {
             MaskOutputOwners owners;
             for (size_t i = 0; i < files.size(); ++i) {
                 if (isolated && _cancel.load()) { error = lmsg::err_cancelled.get(); return false; }
                 const fs::path rel = under_root(files[i], image_root);
-                auto wanted = [&](bool on, const fs::path& root, Dst& d) {
-                    if (!on) return;
-                    d.path = root / rel.parent_path() / (rel.stem().string() + ".png");
-                    if (isolated) owners.claim(d.path);
-                    d.write = !(resume && !isolated && fs::exists(d.path, ec));
-                };
-                wanted(write_train, mask_root, dsts[i]);
-                wanted(write_features, feature_root, fdsts[i]);
+                Dst& d = dsts[i];
+                d.path = mask_root / rel.parent_path() / (rel.stem().string() + ".png");
+                if (isolated) owners.claim(d.path);
+                d.write = !(resume && !isolated && fs::exists(d.path, ec));
             }
         }
         if (isolated && resume) {
@@ -3940,15 +3954,14 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                 try {
                     for (size_t i = 0; !failed.load() && !_cancel.load() && (i = next++) < files.size();) {
                         int width = 0, height = 0;
-                        for (Dst* d : {&dsts[i], &fdsts[i]}) {
-                            std::error_code fec;
-                            if (d->path.empty() || !fs::is_regular_file(d->path, fec)) continue;
-                            const auto size = fs::file_size(d->path, fec);
-                            if (fec || size < 45) continue;  // Signature, IHDR and IEND alone.
-                            if (width == 0 && !probe_size(files[i], width, height))
-                                throw std::runtime_error("Cannot size required mask input");
-                            d->write = !valid_retained_mask(d->path, size, width, height, host);
-                        }
+                        Dst* d = &dsts[i];
+                        std::error_code fec;
+                        if (d->path.empty() || !fs::is_regular_file(d->path, fec)) continue;
+                        const auto size = fs::file_size(d->path, fec);
+                        if (fec || size < 45) continue;  // Signature, IHDR and IEND alone.
+                        if (!probe_size(files[i], width, height))
+                            throw std::runtime_error("Cannot size required mask input");
+                        d->write = !valid_retained_mask(d->path, size, width, height, host);
                     }
                 } catch (const std::exception& e) {
                     std::lock_guard<std::mutex> lock(failure_mutex);
@@ -3966,10 +3979,8 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
         }
         for (size_t i = 0; i < files.size(); ++i) {
             Dst& dst = dsts[i];
-            Dst& fdst = fdsts[i];
-            for (const Dst* d : {&dst, &fdst})
-                if (d->write) fs::create_directories(d->path.parent_path(), ec);
-            if (dst.write || fdst.write) pending = true;
+            if (dst.write) fs::create_directories(dst.path.parent_path(), ec);
+            if (dst.write) pending = true;
             else if (!(isolated && mo.video)) {
                 ++done;
                 continue;
@@ -3977,7 +3988,6 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
             todo.push_back(i);
             if (!isolated) todo_files.push_back(files[i]);
             todo_dst.push_back(std::move(dst));
-            todo_fdst.push_back(std::move(fdst));
         }
     } catch (const std::exception& e) {
         if (!isolated) throw;
@@ -4059,7 +4069,8 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                             .field("source_sha256", source_hashes[k])
                             .field("stage", (local_scratch / std::to_string(k)).string())
                             .field("frame", std::to_string(ids[todo[k]]))
-                            .field("train", todo_dst[k].write).field("feature", write_features).end().str());
+                            .field("train", todo_dst[k].write && write_train)
+                            .field("feature", write_features).end().str());
                     }
                     records.close();
                     if (!records) throw std::runtime_error("Could not close mask input manifest");
@@ -4094,7 +4105,6 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                             spirula::replace_file(family / name, dst.path);
                         };
                         publish(todo_dst[k], "train-final.png");
-                        publish(todo_fdst[k], "feature-final.png");
                         remove_tree(local_scratch / std::to_string(k));
                         remove_tree(family);
                         ++done;
@@ -4106,7 +4116,6 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                             frame.name = under_root(files[todo[k]], image_root).generic_string();
                             frame.image_path = files[todo[k]].string();
                             frame.mask_path = todo_dst[k].path.string();
-                            frame.feature_mask_path = todo_fdst[k].path.string();
                             if (_films.masks->wants(1.0))
                                 selected_frames[group].push_back(std::move(frame));
                             else
@@ -4179,19 +4188,16 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                             return true;
                         };
                         sam::Mask mask, feature;
-                        if (!load("train.png", todo_dst[k].write, mask) ||
-                            !load("feature.png", todo_fdst[k].write, feature)) return false;
-                        if (todo_dst[k].write && !stencil.apply(source, image_root, mask, why)) return false;
-                        const auto back = app::inverse_turn(turn);
-                        app::turn_pixels(back, 1, mask.data, mask.width, mask.height);
-                        app::turn_pixels(back, 1, feature.data, feature.width, feature.height);
+                        const bool wanted = todo_dst[k].write;
+                        if (!load("train.png", wanted && write_train, mask) ||
+                            !load("feature.png", wanted && write_features, feature)) return false;
+                        if (wanted && !compose(source, turn, width, height, mask, feature, why))
+                            return false;
+                        app::turn_pixels(app::inverse_turn(turn), 1, mask.data, mask.width,
+                                         mask.height);
                         const auto family = scratch / std::to_string(k);
                         fs::create_directory(family);
-                        auto save = [&](const sam::Mask& m, const Dst& dst, const char* name) {
-                            return !dst.write || sam::save_mask_png(m, (family / name).string());
-                        };
-                        if (!save(mask, todo_dst[k], "train-final.png") ||
-                            !save(feature, todo_fdst[k], "feature-final.png")) {
+                        if (wanted && !sam::save_mask_png(mask, (family / "train-final.png").string())) {
                             why = "Could not close complete postprocessed mask family";
                             return false;
                         }
@@ -4208,6 +4214,8 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                 });
             remove_tree(scratch);
             remove_tree(local_scratch);
+            if (ok && !_cancel.load() && base_in_place && flip_base)
+                std::ofstream(flip_marker.string());
             return ok && !_cancel.load();
         } catch (const std::exception& e) {
             if (scratch_owned) remove_tree(scratch);
@@ -4243,35 +4251,31 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
         }
         // Still the way up the model saw it, which is the frame the stencil's
         // shapes were drawn in.
-        if (write_train && !stencil.apply(todo_files[k], image_root, mask, error))
+        if (!compose(todo_files[k], turn, img.width, img.height, mask, fmask, error))
             return false;
         // And back into the frame the file stores, which is the one the
         // trainer reads it against (docs/datasets.md, "EXIF orientation") and
         // the one the reel re-reads a frame nobody watched go by in.
         const sfm::ExifTransform back = app::inverse_turn(turn);
         app::turn_pixels(back, 1, mask.data, mask.width, mask.height);
-        app::turn_pixels(back, 1, fmask.data, fmask.width, fmask.height);
         app::turn_pixels(back, img.channels, img.data, img.width, img.height);
         if (_films.masks) {
             FilmFrame f;
             f.name = under_root(todo_files[k], image_root).generic_string();
             f.image_path = todo_files[k].string();
             f.mask_path = todo_dst[k].path.string();
-            f.feature_mask_path = todo_fdst[k].path.string();
             _films.masks->add(f, _films.masks->wants() ? img.data.data() : nullptr,
-                              img.width, img.height,
-                              write_train ? mask.data.data() : nullptr, {},
-                              fmask.data.empty() ? nullptr : fmask.data.data());
+                              img.width, img.height, mask.data.data());
         }
-        auto write = [&](sam::Mask& m, const Dst& dst) {
-            if (!dst.write || m.data.empty()) return;
+        if (todo_dst[k].write) {
+            // Unlinked first: a mask gathered beside the images may be a hard
+            // link to the user's own file.
+            fs::remove(todo_dst[k].path, ec);
             app::WriteJob wj;
-            wj.mask = std::move(m);
-            wj.path = dst.path.string();
+            wj.mask = std::move(mask);
+            wj.path = todo_dst[k].path.string();
             writers.submit(std::move(wj));
-        };
-        write(mask, todo_dst[k]);
-        write(fmask, todo_fdst[k]);
+        }
         // Sequenced deliberately: `update(++done, done == n)` leaves the
         // argument's read of `done` unsequenced against the increment, so
         // whether the last image is reported as the last one came down to the
@@ -4287,13 +4291,11 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                 "written to " + mask_root.string();
         return false;
     }
+    if (base_in_place && flip_base) std::ofstream(flip_marker.string());
     return true;
 #endif
 }
 
-// Written into the destination when the fold flipped what it read, so a second
-// run over the same folder does not flip an already-flipped mask.
-static const char* kFlippedMarker = ".spirula-mask-convention";
 
 bool DatasetPrep::apply_stencil(const PrepJob& job, const PrepInput& in,
                                 const std::string& images,

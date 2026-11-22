@@ -1075,9 +1075,10 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
     } else {
         const StepFields now = masks_fields(job.prep);
         // Masks that came with the input are there already; only a feature
-        // prompt still has something to make.
+        // prompt still has something to fold in, which may be over the input's
+        // own folder: its record is what says it was done.
         const bool features = job.prep.mask_enable && !job.prep.mask_feature_prompt.empty();
-        const bool have = masks_adopted ? (!features || ws.masks) : ws.masks;
+        const bool have = masks_adopted ? (!features || ws.masks || rm.present) : ws.masks;
         if (!have) {
             set(mk, Act::Run);
         } else if (!rm.present) {
@@ -1140,7 +1141,7 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
     StepPlan& dense = p[Step::Dense];
     const auto& rd = rec.step(Step::Dense);
     const auto& dc = job.dense.config;
-    const bool dense_masks = dc.use_masks && (dc.training_masks || dc.alpha_masks || dc.feature_masks);
+    const bool dense_masks = dc.use_masks && (dc.training_masks || dc.alpha_masks);
     if (fixed(Step::Dense)) dense = (*done)[Step::Dense];
     else if (!job.dense.enable) {}
     else if (makes(fr.act) && ws.dense) set(dense, Act::Redo, Why::Frames);

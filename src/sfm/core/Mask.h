@@ -44,6 +44,10 @@
 
 namespace sfm {
 
+// The trainer's segment_and_ignore band (TrainConfig mask_mode), the sky the
+// dataset screen writes as 128: binary training keeps it, features never do.
+inline bool isSegmentByte(uint8_t v) { return v >= 128 && v <= 250; }
+
 // Binary mask, row-major, 1 = keep / 0 = ignore.
 struct Mask {
     int width = 0, height = 0;
@@ -82,10 +86,10 @@ struct Mask {
     }
 };
 
-// Decode a mask image (any format stb_image reads) to strict 0/1. Returns an
-// empty Mask if the file cannot be decoded. Defined in image.cpp, the single
-// translation unit that instantiates stb_image (D5).
-Mask loadMask(const std::string& path);
+// Decode a mask image to strict 0/1, empty if undecodable; the segment band
+// drops too, and alone with `segment_only`. In image.cpp, which instantiates
+// stb_image (D5).
+Mask loadMask(const std::string& path, bool segment_only = false);
 
 // Drop every keypoint of `fs` that falls on a zero mask pixel, compacting
 // keypoints, descriptors and colors in place. Returns the number removed.
@@ -123,7 +127,7 @@ inline uint32_t applyMask(FeatureSet& fs, const Mask& m) {
     return n - out;
 }
 
-// Keep only what both keep (--masks and --feature-masks), on the finer of the
+// Keep only what both keep (a mask and the image's alpha), on the finer of the
 // two grids with the other sampled in uv, so the two need not share a
 // resolution. An empty mask keeps everything.
 inline void intersectMask(Mask& a, const Mask& b) {

@@ -58,7 +58,7 @@ same fields however the panel was arranged:
   that run pauses.
 - Masks: per input, masks it brought and the stencil drawn on it; the
   segmentation settings, split into those that make training masks and those
-  that make `feature_masks/`.
+  that make the sky's 128 band.
 - Reconstruction: per *camera folder* under `images/` (`cam0`, `cam1`, ...),
   the lens and focal it gets; rigs and sequences as their member folders; per
   input, a sensor switched off on its row (`imu` / `attitude` / `gps`, listed

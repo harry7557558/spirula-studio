@@ -174,7 +174,7 @@ std::string metavarFor(const std::string&, const char* name, const char* choices
     // No metavar column in the table: the flag name says what it takes, and
     // "DIR" reads better than "VALUE" on the handful that take a path.
     std::string n = name;
-    if (n.find("dir") != std::string::npos || n == "masks" || n == "feature-masks" ||
+    if (n.find("dir") != std::string::npos || n == "masks" ||
         n == "images" || n == "features" || n == "resume")
         return "DIR";
     if (n.find("path") != std::string::npos) return "FILE";

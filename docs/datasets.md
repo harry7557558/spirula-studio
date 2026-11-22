@@ -188,11 +188,14 @@ the first, middle and last of them: an RGBA export that is opaque everywhere is
 no mask. Training decodes each such image twice, once for its colour and once
 for its alpha.
 
-A dataset the GUI built may also carry `feature_masks/`, mirroring `masks/`:
-what its "Hide from the reconstruction only" prompt matched (the 360-camera
-preset's `sky; cloud; water; wave`). Only the reconstruction reads it -- `spirula sfm
---feature-masks`, intersected with `--masks` -- so training never sees it and
-still learns the sky.
+A dataset the GUI built writes `masks/` in the `segment_and_ignore`
+convention: 0 for what the mask prompt matched, 128 for what its "Hide from
+the reconstruction only" prompt matched (the 360-camera preset's `sky; cloud;
+water; wave`), 255 elsewhere. SfM, COLMAP (through a binary copy) and dense
+matching drop the 128 band whatever else they keep; `spirula sfm
+--mask-segment-only` drops nothing else. Training reads 128 as keep, and so
+still learns the sky, unless `--mask-mode segment_and_ignore` trains it as
+empty space. Older datasets may carry a `feature_masks/` that nothing reads.
 
 ## Seed points
 

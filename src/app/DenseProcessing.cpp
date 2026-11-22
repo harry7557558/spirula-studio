@@ -27,6 +27,7 @@
 #include "nn/vk/Context.h"
 #include "nn/vk/Memory.h"
 #include "roma/model/Fetch.h"
+#include "sfm/core/Mask.h"
 #include "core/HostMemory.h"
 
 #include <chrono>
@@ -464,10 +465,12 @@ private:
         const auto c = camera(ds_, p.image);
         if (image.width != c.width || image.height != c.height) throw std::runtime_error("dense image size no longer agrees with the camera");
         std::vector<uint8_t> keep((size_t)image.width * image.height, 1);
-        auto intersect = [&](std::vector<uint8_t> values, int w, int h, bool invert) {
+        auto intersect = [&](std::vector<uint8_t> values, int w, int h, bool invert, bool band) {
             if (turns) turn_pixels(sfm::ExifTransform{turns, false}, 1, values, w, h);
             uint8_t pass[256];
-            for (int v = 0; v < 256; ++v) pass[v] = (uint8_t)((v / 255.0 >= config_.mask_threshold) != invert);
+            for (int v = 0; v < 256; ++v)
+                pass[v] = (uint8_t)((v / 255.0 >= config_.mask_threshold) != invert &&
+                                    !(band && sfm::isSegmentByte((uint8_t)v)));
             std::vector<int> columns((size_t)image.width);
             for (int x = 0; x < image.width; ++x) columns[x] = std::min(w - 1, (int)((x + 0.5) * w / image.width));
             for (int y = 0; y < image.height; ++y) {
@@ -478,15 +481,11 @@ private:
         };
         if (config_.use_masks && config_.alpha_masks) {
             int w, h; auto values = alpha(ds_.image_filenames[p.image], w, h);
-            if (!values.empty()) intersect(std::move(values), w, h, false);
+            if (!values.empty()) intersect(std::move(values), w, h, false, false);
         }
         if (config_.use_masks && config_.training_masks && !ds_.mask_filenames.empty() && !ds_.mask_filenames[p.image].empty()) {
-            int w, h; auto values = mask(ds_.mask_filenames[p.image], w, h); intersect(std::move(values), w, h, config_.invert_masks);
-        }
-        if (config_.use_masks && config_.feature_masks && !config_.feature_mask_dir.empty()) {
-            const auto name = dsparse::relative_under(ds_.image_filenames[p.image], (root_ / config_.image_dir).string());
-            const auto path = dsparse::find_aux_file((root_ / config_.feature_mask_dir).string(), name, "");
-            if (!path.empty()) { int w, h; auto values = mask(path, w, h); intersect(std::move(values), w, h, false); }
+            int w, h; auto values = mask(ds_.mask_filenames[p.image], w, h);
+            intersect(std::move(values), w, h, config_.invert_masks, true);
         }
         if (config_.use_masks && config_.mask_boundary) edt::apply_mask_boundary_offset_in_place(keep.data(), image.height, image.width, (float)config_.mask_boundary);
         auto source = std::make_shared<Source>();
@@ -945,7 +944,7 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
     std::vector<std::string> input_paths = ds.image_filenames;
     input_paths.push_back(checkpoint);
     for (const auto& path : ds.mask_filenames) if (!path.empty()) input_paths.push_back(path);
-    for (const auto& path : {config.mask_dir, config.feature_mask_dir, config.pair_list, config.metashape_xml, config.metashape_psx})
+    for (const auto& path : {config.mask_dir, config.pair_list, config.metashape_xml, config.metashape_psx})
         if (!path.empty()) input_paths.push_back((root / path).string());
     if (!model_dir.empty()) input_paths.push_back(model_dir);
     for (const auto& entry : fs::directory_iterator(root)) {

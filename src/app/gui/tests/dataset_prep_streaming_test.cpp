@@ -1,3 +1,4 @@
+#include "app/FrameMask.h"
 #include "app/InferenceWorkerDevices.h"
 #include "app/MaskWorker.h"
 #include "app/gui/DatasetPrep.h"
@@ -161,9 +162,8 @@ std::string frame_name(int frame) {
     return std::to_string(frame) + ".png";
 }
 
-fs::path mask_path(const gui::PrepJob& job, int frame, bool feature = false) {
-    return fs::path(job.workspace) / (feature ? gui::kFeatureMaskDirName : "masks") /
-           frame_name(frame);
+fs::path mask_path(const gui::PrepJob& job, int frame) {
+    return fs::path(job.workspace) / "masks" / frame_name(frame);
 }
 
 gui::PrepJob mask_job(const fs::path& root, int frames, const fs::path& model, const char* device) {
@@ -198,19 +198,16 @@ gui::PrepJob mask_job(const fs::path& root, int frames, const fs::path& model, c
 }
 
 void seed_masks(const gui::PrepJob& job, int frames) {
-    for (bool feature : {false, true}) {
-        if (feature && job.mask_feature_prompt.empty()) continue;
-        const std::vector<unsigned char> saved(photo_width * photo_height, feature ? 91 : 37);
-        fs::create_directories(mask_path(job, 0, feature).parent_path());
-        for (int i = 0; i < frames; ++i)
-            require(stbi_write_png(mask_path(job, i, feature).string().c_str(),
-                photo_width, photo_height, 1, saved.data(), photo_width) != 0,
-                "write distinctive retained mask");
-    }
+    const std::vector<unsigned char> saved(photo_width * photo_height, 37);
+    fs::create_directories(mask_path(job, 0).parent_path());
+    for (int i = 0; i < frames; ++i)
+        require(stbi_write_png(mask_path(job, i).string().c_str(),
+            photo_width, photo_height, 1, saved.data(), photo_width) != 0,
+            "write distinctive retained mask");
 }
 
-std::string mask_hash(const gui::PrepJob& job, int frame, bool feature = false) {
-    return spirula::sha256_file(mask_path(job, frame, feature).string());
+std::string mask_hash(const gui::PrepJob& job, int frame) {
+    return spirula::sha256_file(mask_path(job, frame).string());
 }
 
 gui::StageProgress run_masks(const gui::PrepJob& job, const std::string& label, const char* expected_error = nullptr) {
@@ -230,8 +227,7 @@ gui::StageProgress run_masks(const gui::PrepJob& job, const std::string& label, 
         for (const auto& line : progress.drain()) std::fprintf(stderr, "%s\n", line.text.c_str());
     require(ok && error.empty() && masks_done &&
             out.mask_dir == mask_path(job, 0).parent_path().string() &&
-            (job.mask_feature_prompt.empty() ||
-             out.feature_mask_dir == mask_path(job, 0, true).parent_path().string()),
+            out.masks_segment == !job.mask_feature_prompt.empty(),
             label + ": " + error);
     return progress.stage(gui::Stage::Masks);
 }
@@ -247,14 +243,13 @@ void complete_only(const fs::path& root) {
     seed_masks(job, 3);
     for (bool temporal : {false, true}) {
         if (temporal) click_first(job);
-        const auto train = mask_hash(job, 0), feature = mask_hash(job, 0, true);
+        const auto train = mask_hash(job, 0);
         run_masks(job, temporal ? "complete click resume without a device or model"
                                 : "complete image resume without a device or model");
         check(!fs::exists(fs::path(job.workspace) / ".spirula-mask-attempts"), "no mask worker scratch");
         for (int i = 0; i < 3; ++i)
-            check(!train.empty() && !feature.empty() &&
-                mask_hash(job, i) == train && mask_hash(job, i, true) == feature,
-                "complete training and feature masks remain unchanged: " + frame_name(i));
+            check(!train.empty() && mask_hash(job, i) == train,
+                "complete masks remain unchanged: " + frame_name(i));
     }
     const std::vector<unsigned char> rgb(photo_width * photo_height * 3, 128);
     const auto alias = fs::path(job.inputs.front().path) / "0.jpg";
@@ -277,21 +272,34 @@ void mask_resume(const fs::path& root, const fs::path& model, const char* device
     fresh.workspace = (root / "independent/reference").string();
     fresh.resume = false;
     run_masks(fresh, "fresh independent reference");
+    {
+        // The blue background comes out as the sky's 128 band.
+        int w = 0, h = 0;
+        std::vector<uint8_t> px;
+        app::load_stencil(mask_path(fresh, 0).string(), w, h, px);
+        const auto has = [&](uint8_t v) { return std::count(px.begin(), px.end(), v) > 0; };
+        check(has(128) && has(255), "fresh masks hold the segment band");
+        // In process, without workers, the same pixels.
+        auto local = fresh;
+        local.workspace = (root / "independent/in-process").string();
+        local.inference_devices.clear();
+        run_masks(local, "fresh in-process reference");
+        std::vector<uint8_t> mine;
+        app::load_stencil(mask_path(local, 0).string(), w, h, mine);
+        check(mine == px, "in-process masks match the workers'");
+    }
     seed_masks(job, 6);
-    const auto train = mask_hash(job, 0), feature = mask_hash(job, 0, true);
+    const auto train = mask_hash(job, 0);
     fs::remove(mask_path(job, 0));
-    fs::remove(mask_path(job, 1, true));
-    fs::remove(mask_path(job, 2));
-    fs::remove(mask_path(job, 2, true));
-    fs::resize_file(mask_path(job, 3), 0);
-    const auto truncated = mask_path(job, 3, true);
+    const auto truncated = mask_path(job, 1);
     fs::resize_file(truncated, fs::file_size(truncated) - 4);
+    fs::resize_file(mask_path(job, 2), 0);
     const unsigned char tiny_pixel = 91;
-    require(stbi_write_png(mask_path(job, 4).string().c_str(), 1, 1, 1, &tiny_pixel, 1) != 0,
+    require(stbi_write_png(mask_path(job, 3).string().c_str(), 1, 1, 1, &tiny_pixel, 1) != 0,
         "write wrong-size PNG");
     {
         // stb writes IHDR then IDAT. Break zlib without disturbing dimensions or IEND.
-        std::fstream png(mask_path(job, 4, true), std::ios::binary | std::ios::in | std::ios::out);
+        std::fstream png(mask_path(job, 4), std::ios::binary | std::ios::in | std::ios::out);
         png.seekg(37);
         char chunk[4];
         require(bool(png.read(chunk, 4)) && std::string(chunk, 4) == "IDAT", "locate IDAT fixture payload");
@@ -304,26 +312,21 @@ void mask_resume(const fs::path& root, const fs::path& model, const char* device
     check(independent.done == 6 && independent.total == 6, "count each independent frame once");
     check_mask_scratch_empty(job, "independent resume leaves no staged masks");
     for (int i = 0; i < 6; ++i) {
-        for (bool is_feature : {false, true}) {
-            const bool retained = i == 5 || i == (is_feature ? 0 : 1);
-            const auto expected = retained ? (is_feature ? feature : train) : mask_hash(fresh, i, is_feature);
-            check(!expected.empty() && mask_hash(job, i, is_feature) == expected,
-                std::string(retained ? "retained mask bytes preserved: " : "missing or invalid mask repaired: ") +
-                mask_path(job, i, is_feature).lexically_relative(job.workspace).generic_string());
-        }
+        const bool retained = i == 5;
+        const auto expected = retained ? train : mask_hash(fresh, i);
+        check(!expected.empty() && mask_hash(job, i) == expected,
+            std::string(retained ? "retained mask bytes preserved: " : "missing or invalid mask repaired: ") +
+            mask_path(job, i).lexically_relative(job.workspace).generic_string());
     }
     seed_masks(job, 6);
     job.resume = true;
     job.redo_masks = true;
     run_masks(job, "redo rewrites valid retained masks");
     for (int i = 0; i < 6; ++i) {
-        for (bool is_feature : {false, true}) {
-            const auto expected = mask_hash(fresh, i, is_feature);
-            check(!expected.empty() && expected != (is_feature ? feature : train) &&
-                mask_hash(job, i, is_feature) == expected,
-                "redo replaces retained bytes: " +
-                mask_path(job, i, is_feature).lexically_relative(job.workspace).generic_string());
-        }
+        const auto expected = mask_hash(fresh, i);
+        check(!expected.empty() && expected != train && mask_hash(job, i) == expected,
+            "redo replaces retained bytes: " +
+            mask_path(job, i).lexically_relative(job.workspace).generic_string());
     }
 
     job = mask_job(root / "temporal", 3, fs::absolute(model), device);
@@ -334,22 +337,18 @@ void mask_resume(const fs::path& root, const fs::path& model, const char* device
     fresh.resume = false;
     run_masks(fresh, "fresh whole-sequence click reference");
     seed_masks(job, 3);
-    const auto retained_train = mask_hash(job, 0), retained_feature = mask_hash(job, 0, true);
-    fs::remove(mask_path(job, 1, true));
+    const auto retained_train = mask_hash(job, 0);
     fs::remove(mask_path(job, 2));
     const auto temporal = run_masks(job, "resume a click sequence with partial mask families");
     check(temporal.done == 3 && temporal.total == 3, "count each replayed frame once");
     check_mask_scratch_empty(job, "temporal resume leaves no staged masks");
     for (int i = 0; i < 3; ++i) {
-        for (bool is_feature : {false, true}) {
-            const bool retained = i != (is_feature ? 1 : 2);
-            const auto expected = retained ? (is_feature ? retained_feature : retained_train)
-                                           : mask_hash(fresh, i, is_feature);
-            check(!expected.empty() && mask_hash(job, i, is_feature) == expected,
-                std::string(retained ? "retained temporal mask bytes preserved: "
-                                     : "pending temporal mask matches whole-sequence reference: ") +
-                mask_path(job, i, is_feature).lexically_relative(job.workspace).generic_string());
-        }
+        const bool retained = i != 2;
+        const auto expected = retained ? retained_train : mask_hash(fresh, i);
+        check(!expected.empty() && mask_hash(job, i) == expected,
+            std::string(retained ? "retained temporal mask bytes preserved: "
+                                 : "pending temporal mask matches whole-sequence reference: ") +
+            mask_path(job, i).lexically_relative(job.workspace).generic_string());
     }
 }
 

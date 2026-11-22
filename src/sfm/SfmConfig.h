@@ -123,9 +123,9 @@ struct SfmConfig {
     // Swap keep and ignore in every mask, for the exporters that paint the
     // region to REMOVE (sfm/core/Mask.h).
     bool flip_mask = false;
-    // A second mask tree, intersected with mask_dir's: what extraction skips
-    // but training keeps, the sky. Never flipped, never guessed from a sibling.
-    std::string feature_mask_dir;
+    // Drop keypoints only on mask_dir's segment band (the sky), keeping its 0s:
+    // masks that hide people from training but not from SfM.
+    bool mask_segment_only = false;
 
     // The input files' colour space. Pixels convert to sRGB on decode, which
     // is what the detectors and the AI models were trained on.
@@ -363,8 +363,8 @@ struct SfmConfig {
     F(mask_dir, "mask-dir", CMD_AUTO | CMD_EXTRACT, Tier::Alias, "pipeline", 0, 0, "", mask_dir)   \
     F(flip_mask, "flip-mask", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "pipeline", 0, 0, "",        \
       flip_mask)                                                                                   \
-    F(feature_mask_dir, "feature-masks", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "pipeline", 0, 0, \
-      "", feature_masks)                                                                           \
+    F(mask_segment_only, "mask-segment-only", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "pipeline", \
+      0, 0, "", mask_segment_only)                                                                 \
     /* ---- colour ---- */                                                                         \
     F(image_gamut, "image-gamut", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "colour", 0, 0,          \
       "Rec.709|ACES2065-1|ACEScg|Rec.2020|AdobeRGB|DCI-P3", image_gamut)                           \

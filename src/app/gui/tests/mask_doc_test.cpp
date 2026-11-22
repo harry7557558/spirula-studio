@@ -9,6 +9,7 @@
 #include "app/gui/mask/Livewire.h"
 #include "app/gui/mask/MaskAdd.h"
 #include "app/gui/MaskPrompt.h"
+#include "app/gui/MaskTint.h"
 #include "app/gui/Picture.h"
 #include "app/gui/MaskSettings.h"
 #include "app/gui/mask/MaskSam.h"
@@ -7182,7 +7183,7 @@ bool wait_decoded(const mk::SlidePrefetch& p, int n, int ms = 3000) {
 
 // load_picture reads stb's buffers in place and boxes the photo before
 // it decodes the mask. The oracle shares no code with Picture.cpp: the photo
-// and the 0/255 stencil come from FrameMask.cpp, the box and the tint are here.
+// and the 0/128/255 stencil come from FrameMask.cpp, the box is here.
 void oracle_picture(const std::string& img, const std::string& msk, int target, bool flipped,
                     gui::Picture& out) {
     int w = 0, h = 0, mw = 0, mh = 0;
@@ -7199,26 +7200,27 @@ void oracle_picture(const std::string& img, const std::string& msk, int target, 
     out.rgb.resize((size_t)out.w * out.h * 3);
     for (int y = 0; y < out.h; y++)
         for (int x = 0; x < out.w; x++) {
-            int acc[3] = {0, 0, 0}, n = 0, keep = 0;
+            int acc[3] = {0, 0, 0}, n = 0, keep = 0, segment = 0;
             for (int sy = y * step; sy < std::min(h, y * step + step); sy++)
                 for (int sx = x * step; sx < std::min(w, x * step + step); sx++, n++) {
                     for (int c = 0; c < 3; c++) acc[c] += rgb[((size_t)sy * w + sx) * 3 + c];
                     if (!got) continue;
                     const int my = std::min(mh - 1, sy * mh / h), mx = std::min(mw - 1, sx * mw / w);
-                    keep += (m[(size_t)my * mw + mx] == 255) != flipped;
+                    const uint8_t v = m[(size_t)my * mw + mx];
+                    keep += flipped ? v == 0 : v == 255;
+                    segment += !flipped && v == 128;
                 }
             uint8_t* px = &out.rgb[((size_t)y * out.w + x) * 3];
             for (int c = 0; c < 3; c++) px[c] = (uint8_t)(acc[c] / n);
             if (got && 2 * keep < n) {
-                px[0] = (uint8_t)(px[0] / 3 + 150);
-                px[1] = (uint8_t)(px[1] / 3);
-                px[2] = (uint8_t)(px[2] / 3);
+                if (n - keep - segment >= segment) gui::tint_removed(px);
+                else gui::tint_features_only(px, x, y, gui::hatch_period(out.w, out.h));
             }
         }
 }
 
-// Grey, not 0/255: 127 and 128 sit either side of the keep threshold. The left
-// half alternates them by column, so every block of even width is exactly half kept.
+// Grey, not 0/255: 127 and 128 sit either side of the removed / sky threshold.
+// The left half alternates them by column; the right is every class.
 std::vector<uint8_t> grey_mask(int w, int h) {
     std::vector<uint8_t> px((size_t)w * h);
     for (int y = 0; y < h; y++)
@@ -7228,7 +7230,7 @@ std::vector<uint8_t> grey_mask(int w, int h) {
     return px;
 }
 
-// Blocks of `step` in which exactly half the pixels are kept (> 127).
+// Blocks of `step` in which exactly half the pixels are not removed (> 127).
 int half_kept_blocks(const std::vector<uint8_t>& m, int w, int h, int step) {
     int count = 0;
     for (int y = 0; y + step <= h; y += step)

@@ -24,9 +24,10 @@ struct DenseConfig {
     GeometryOptions geometry;
     std::string preset = "balanced", checkpoint = "romav2.0.1";
     std::string image_dir = "images", recon_dir, pair_list;
-    std::string mask_dir = "masks", feature_mask_dir = "feature_masks";
+    std::string mask_dir = "masks";
     bool use_masks = true;
-    bool training_masks = true, alpha_masks = true, feature_masks = true;
+    // training_masks also drops their 128 band, the sky (app::kMaskSegment).
+    bool training_masks = true, alpha_masks = true;
     bool invert_masks = false;
     double mask_threshold = 0.5;
     int mask_boundary = 0;

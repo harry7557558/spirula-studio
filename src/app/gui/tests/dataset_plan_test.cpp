@@ -72,7 +72,6 @@ void build(const fs::path& ws, const SfmJob& job) {
         for (const char* f : {"00010.jpg", "00020.jpg", "00030.jpg"}) {
             touch(ws / "images" / cam / f);
             touch(ws / "masks" / cam / (std::string(f) + ".png"));
-            touch(ws / "feature_masks" / cam / (std::string(f) + ".png"));
         }
     touch(ws / "sparse" / "0" / "cameras.bin");
     StepRecorder rec(ws.string(), DatasetRecord{});
@@ -416,7 +415,6 @@ int main() {
         for (const char* cam : {"a/cam0", "a/cam1", "b"}) {
             touch(two / "images" / cam / "00010.jpg");
             touch(two / "masks" / cam / "00010.png");
-            touch(two / "feature_masks" / cam / "00010.png");
         }
         touch(two / "sparse" / "0" / "cameras.bin");
         StepRecorder rec(two.string(), DatasetRecord{});
