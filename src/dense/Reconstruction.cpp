@@ -178,9 +178,10 @@ struct Reconstruction::Impl {
     void flush() {
         for (auto& [key, records] : pending) {
             if (records.empty()) continue;
-            std::ofstream stream(tile(key.first, key.second), std::ios::binary | std::ios::app);
+            const auto path = tile(key.first, key.second);
+            std::ofstream stream(path, std::ios::binary | std::ios::app);
             stream.write(reinterpret_cast<const char*>(records.data()), (std::streamsize)(records.size() * sizeof(Record)));
-            if (!stream) throw std::runtime_error("cannot write dense observation tile");
+            if (!stream) throw std::runtime_error("cannot write dense observation tile " + quoted_path(path) + ": " + io_error_text());
         }
         pending.clear();
         pending_bytes = 0;

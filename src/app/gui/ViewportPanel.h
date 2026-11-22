@@ -153,6 +153,8 @@ public:
     int view_model() const { return _cam_model; }
     // The primitive the scene options render with; empty without them.
     std::string primitive() const;
+    // A stochastic render of a still view is still converging.
+    bool refining() const { return _refining; }
     float view_fov() const { return _fov_deg[_cam_model]; }
     void set_view_lens(int model, float fov_deg);
     // The point under a fraction of the image (0..1 each way), found on the
@@ -349,6 +351,7 @@ private:
     std::string _hardware_path;
     float _hardware_center[3]{};
     float _hardware_unit = 1;
+    ViewerRenderConfig _hardware_cfg;   // what its buffer list follows
     RenderWorker _worker;
     PreviewRenderer _preview;
     std::array<float, 16> _preview_frame{};   // ParsedDataset::train_to_normalized
@@ -474,6 +477,8 @@ private:
     // Render options.
     int _buffer_idx = 0;
     std::vector<std::string> _buffer_keys;
+    // The worker's keys for the primitive rendered now, keeping the selection.
+    void refresh_buffer_keys();
     bool _show_cams = false;
     bool _show_roi = true;
     std::shared_ptr<const spirula::RegionOverlay> _roi_engine, _roi_preview;
@@ -504,6 +509,7 @@ private:
     uint64_t _pending = 0;
     double _last_submit = 0.0;
     bool _dirty = true;
+    bool _refining = false;
     unsigned int _tex = 0;
     int _tex_w = 0, _tex_h = 0;
     std::string _last_error;

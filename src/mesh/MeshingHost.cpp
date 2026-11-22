@@ -540,31 +540,47 @@ bool generate_mesh(
     }
 
     const bool tsdf = cfg.method == MeshMethod::Tsdf;
-    if (tsdf && !ev.has_render_cameras()) {
-        mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_needs_cameras);
+    const bool grid = tsdf && cfg.tsdf_voxel > 0.0f;   // else the field over the splat samples
+    const int cloud_cams = cam_pos ? num_cameras : 0;
+    const int spg = cfg.samples_per_gaussian <= 1 ? 1 : 7;
+    const int64_t max_pts = ev.max_delaunay_points();
+    // Refused here rather than inside the solver, which can only report an
+    // empty result as "no tetrahedra"; OccupancyEvaluator already skipped LBVH
+    // and RenderContext when over limit.
+    if (!grid && ev.num_points() + cloud_cams > max_pts) {
+        if (tsdf && (!cams.valid() || num_cameras <= 0)) {
+            mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_needs_cameras);
+            return false;
+        }
+        const long long max_gaussians =
+            std::max(0LL, (long long)(max_pts - cloud_cams) / spg);
+        mlog::fail(mlog::Stage::PointCloud, mmsg::too_many_gaussians,
+                   {(long long)ev.num_kept(), (long long)max_pts, max_gaussians, (long long)spg});
         return false;
     }
-    // Refused here rather than inside the solver, which can only report the
-    // empty result as "no tetrahedra".
-    const bool grid = tsdf && cfg.tsdf_voxel > 0.0f;   // else the field over the splat samples
-    const int spg = cfg.samples_per_gaussian <= 1 ? 1 : 7;
-    if (!grid && (long long)ev.num_kept() * spg > delaunay3d::kMaxPoints) {
-        mlog::fail(mlog::Stage::PointCloud, mmsg::too_many_gaussians,
-                   {(long long)ev.num_kept(), (long long)delaunay3d::kMaxPoints,
-                    (long long)(delaunay3d::kMaxPoints / spg), (long long)spg});
+    if (tsdf && !ev.has_render_cameras()) {
+        mlog::fail(mlog::Stage::Tsdf, mmsg::tsdf_needs_cameras);
         return false;
     }
 
     // Each long phase announces itself BEFORE it runs: one that prints only on
     // completion looks like a hang and leaves a progress display nothing to show.
-    MeshProgress prog(cfg, cfg.on_progress, ev.num_points(), want_vertex, want_texture);
+    MeshProgress prog(cfg, cfg.on_progress, (double)(ev.num_points() + cloud_cams), want_vertex,
+                      want_texture);
     Mesh mesh;
     if (grid) {
+        const std::vector<int>& sel = ev.selected_cameras();
         long long pixels = 0;
-        for (int c = 0; c < num_cameras; ++c) pixels += (long long)cams.widths[c] * cams.heights[c];
+        if (sel.empty()) {
+            for (int c = 0; c < num_cameras; ++c)
+                pixels += (long long)cams.widths[c] * cams.heights[c];
+        } else {
+            for (int c : sel)
+                pixels += (long long)cams.widths[c] * cams.heights[c];
+        }
         prog.tsdf((double)pixels);
         if (!extract_tsdf(ev, cams, num_cameras, cfg, prog, mesh)) return false;
-    } else if (!extract_opacity_field(ev, cfg, prog, t0, mesh, cam_pos, cam_pos ? num_cameras : 0)) {
+    } else if (!extract_opacity_field(ev, cfg, prog, t0, mesh, cam_pos, cloud_cams)) {
         return false;
     }
     return finish_mesh(mesh, ev, prog, cfg, cam_pos, cam_pos ? num_cameras : 0, outputs,

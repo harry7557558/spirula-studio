@@ -107,8 +107,13 @@ public:
     // Which panel is beside the panes: the editor's, the render's, or none.
     enum class Sidebar { None, Edit, Render };
     Sidebar sidebar() const;
-    // Playing back or exporting: the window keeps drawing.
-    bool animating() const { return _render.animating(); }
+    // Playing back, exporting or refining a pane: the window keeps drawing.
+    bool animating() const {
+        if (_render.animating()) return true;
+        for (const auto& m : _models)
+            if (m->panel.refining()) return true;
+        return false;
+    }
 
     // Attach panels whose loaders have finished and refresh the placements.
     // Once a frame, before draw().

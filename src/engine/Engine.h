@@ -562,6 +562,22 @@ void engine_copy_render_normal_to_host(TorchTensorView out); // [B,H,W,3]
 // Whether forward_3dgs's output_normal gives this primitive a normal.
 bool engine_primitive_renders_normal(const std::string& primitive);
 
+// Stochastic (sort-free, Monte Carlo) viewer renders, forced on by
+// SS_VIEWER_STOCHASTIC=1 (docs/notes/stochastic-splats.md).
+bool engine_stochastic_enabled();
+// The next forward_3dgs renders one stochastic frame into `channel`'s running
+// average, which restarts when `key` (the caller's view and settings) or the
+// splats change. Channels are independent: one per pane, say.
+void engine_arm_stochastic(int channel, uint64_t key);
+// Frames the last forward averaged; 0 when it was not stochastic.
+uint32_t engine_stochastic_frames();
+// Frames after which a still view has converged (SS_VIEWER_STOCHASTIC_FRAMES),
+// and the samples a pixel each frame takes (SS_VIEWER_STOCHASTIC_SPP).
+uint32_t engine_stochastic_frame_target();
+uint32_t engine_stochastic_spp();
+// A pixel's samples split one uniform a splat (SS_VIEWER_STOCHASTIC_STRATIFIED).
+bool engine_stochastic_stratified();
+
 
 void engine_copy_render_to_host(
     TorchTensorView out_rgb,      // [C, H, W, 3] float32, CPU

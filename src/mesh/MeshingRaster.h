@@ -78,15 +78,10 @@ void render_evaluate_merge(
     const float* d_verts, int nv, float* d_dens, float* d_rgb,
     const float* d_probes, int np, float* d_occ);
 
-// Visibility cull. For each mesh vertex, decide whether some camera sees it: it
-// projects in-frame (project_point) AND the segment vertex->camera is not
-// blocked by a mesh triangle that does not contain the vertex (tested against an
-// LBVH built over the mesh triangles). Iterates over ALL cameras in the context.
-// All arguments are HOST arrays: verts [nv*3], faces [nf*3] (vertex indices),
-// visible [nv] (written 1 = seen / keep, 0 = unseen). Device work + the triangle
-// LBVH are allocated and freed internally.
+// Visibility cull: visible[v]=1 iff some cam in cam_indices[0..num_cams) (or
+// all when null/<=0) sees verts[v] unoccluded by other faces (HOST arrays).
 void render_cull_unseen_vertices(
-    RenderContext*, const float* verts, int nv,
-    const int* faces, int nf, unsigned char* visible);
+    RenderContext*, const int* cam_indices, int num_cams,
+    const float* verts, int nv, const int* faces, int nf, unsigned char* visible);
 
 } // namespace meshing

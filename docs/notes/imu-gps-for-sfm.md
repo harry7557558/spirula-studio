@@ -32,6 +32,11 @@ on. Skip it if you know what a gyro bias is.
 - **DJI Osmo 360 `.OSV` files carry a 1 kHz fused attitude quaternion and one
   accelerometer reading per frame**, plus the lens intrinsics. No raw gyro is
   written and there is no GPS.
+- **The Osmo 360 II declares a new schema name (`dvtm_OQ102.proto`) but
+  writes the Avata 360's `eagle4_wa530` format** — DJI picks the wire format by
+  product, not by the declared name. It adds what the Osmo 360 lacks: a raw
+  1 kHz gyro and accelerometer stamped on the frame clock. One of three clips
+  also has a GPS log that moves (section 2.3).
 - **A Kandao QooCam 3 Ultra `.mp4` carries a 0.83 to 1 kHz gyro+accelerometer
   log** and a timestamp per frame on the same clock, and from firmware 1.0.1 a
   1 Hz GPS log that moves (section 2.4, seven clips).
@@ -145,7 +150,7 @@ first reported) drops it, leaving a 1.16 km path where the raw numbers said
 the file from being usable; both say the DOP is not enough of a gate on its
 own.
 
-### 2.3 DJI Osmo 360 and Avata 360 (`.OSV`)
+### 2.3 DJI Osmo 360, Osmo 360 II and Avata 360 (`.OSV`)
 
 | stream | rate | notes |
 |---|---|---|
@@ -194,6 +199,49 @@ is written, so the report says `IMU absent` and the attitude alone gives
 rotation but not up; a hover also reads `GPS not usable` (no spread), which is
 the right answer. The `.LRF` proxy carries the same metadata at 30 fps; its
 second attitude batch (`3.3.2.2`) is not read.
+
+**DJI Osmo 360 II** declares `dvtm_OQ102.proto` but writes the Avata's field
+numbers: DJI picks the wire format by product, not by the declared name
+(telemetry-parser's `Schema::detect` routes "Osmo 360 II" and the Air to Wa530
+the same way), so `read_dji` maps the declared name onto the Avata 360 layout.
+Read on three clips: two handheld (25 fps, 313 frames; 59.94 fps, 121 s) and
+one motorcycle-mounted (25 fps, 258 frames). The header gives IMU rate 1000
+at `1.8.1` and fps at `1.9.1`; `1.10.1` (int64-328) and `1.11.1` (4810)
+are not the Osmo 360's rate and fps. Additions to the Avata table:
+
+| quantity | path | wire, unit |
+|---|---|---|
+| attitude batch stamp | `3.3.2.1.1`; `3.3.2.1.2` is a frame counter | varint us |
+| raw batch stamp | `3.3.5.1`, equal to the attitude batch's | varint us |
+| raw IMU | `3.3.5.2.{1..6}`, one row per attitude quaternion (40-41 at 25 fps) | f32 gyro rad/s x,y,z, then accel g x,y,z |
+
+Both stamps are on the frame header's microsecond clock (`3.1.2`), 760-900 us
+before the frame, so the raw rows and the quaternions share one time base.
+telemetry-parser treats the stamp as the low 32 bits of that clock and unwraps
+it per frame; `read_dji` does the same, though the motorcycle clip's clock
+(2.47e9 us) does not reach the wrap. Rows come every 995 us, not the stated
+1000 (206 frames of 40 rows and 52 of 41 on the motorcycle clip), so the
+reader spaces each batch by the gap to the next stamp and falls back to the
+stated rate across a missing batch. The 59.94 fps clip's 29.97 fps `.LRF`
+keeps alternate batches, leaving gaps of up to 18.5 ms.
+
+The gyro is in the attitude's body frame: a linear fit onto the body rate of
+consecutive quaternions is close to identity, determinant positive. The
+accelerometer rotated by the quaternion sits at -1.00 g on world z on the
+motorcycle clip and -0.996 g (sigma 0.077) on the 25 fps handheld clip, so the
+attitude world is z-down, as on the Avata. Lens calibration is in the same
+`PanoDewarpParams` entries 3 and 4 with lens_model 8. GPS at `3.4.4.1` is
+empty on both handheld clips and moves on the motorcycle clip (104 distinct
+positions over a 128 m path in 10.3 s). ISO and colour temperature parse at
+the Avata's fields; `3.2.4.1` is not the two-varint shutter fraction.
+
+With the raw gyro read, the IMU-to-lens rotation comes from the gyro fit
+instead of the attitude. On the motorcycle clip (static masks over the bike
+and rider, eight `sfm auto` runs each) the gyro fit agrees to 0.23-0.39 deg
+where it succeeds, against 1.04-1.13 deg from the attitude, but succeeds in
+4 of 8 runs against 8 of 8. The handheld 25 fps clip failed the gyro fit on
+both lenses. Registration and the GPS fit vary as much from run to run on one
+build as between builds on this clip.
 
 With no accelerometer nothing in the file says which way the attitude
 quaternion maps, or which way is up in its world. The hand-eye fit therefore

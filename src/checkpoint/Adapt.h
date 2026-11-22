@@ -14,6 +14,7 @@
 
 #include <array>
 #include <filesystem>
+#include <iosfwd>
 #include <optional>
 
 namespace ckpt {
@@ -44,5 +45,9 @@ bool needs_adapt(const JsonValue& state, const TargetLayout& t);
 bool adapt_checkpoint(const std::filesystem::path& ckpt_dir,
                       const TargetLayout& t,
                       const std::filesystem::path& out_dir);
+
+namespace detail {
+bool adapt_checkpoint_stream(std::istream& in, const TargetLayout& t, std::ostream& out);
+}
 
 }  // namespace ckpt

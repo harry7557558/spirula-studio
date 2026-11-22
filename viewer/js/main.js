@@ -1,7 +1,7 @@
 // Application entry: wires the WASM loader, WebGL renderer, camera controller,
 // and the UI panel together.
 
-import { dsNavigation, initWasm, loadModel, sortSplats, freeSplatSh, reduceSh, splatHistogram, meshHistogram, meshEdgeCount, fitSphere, raycastMesh, dsFree, dsFitSphere, dsPickPoint } from './wasm.js';
+import { dsNavigation, initWasm, loadModel, sortSplats, freeSplatSh, freeSplat, freeMesh, reduceSh, splatHistogram, meshHistogram, meshEdgeCount, fitSphere, raycastMesh, dsFree, dsFitSphere, dsPickPoint } from './wasm.js';
 import { loadDatasetFiles, parseDatasetComponent } from './dataset.js';
 import { Renderer } from './renderer.js';
 import { Camera, Nav } from './camera.js';
@@ -213,13 +213,12 @@ function setCenterMode(mode) {
   recenterAt(mat3.mulVec(upTransform(), [fs[0], fs[1], fs[2]]));
 }
 const CAMERA_CENTER_MODES = { 2: 1, 3: 4, 5: 4 };   // camera mode -> its point fallback
-// A file has no cameras, so the camera statistics are offered only over a
-// dataset; a selected one drops to the point statistic it would fall back to.
+// Camera modes fall back to point statistics when no camera poses exist.
 function syncCenterMenu() {
   const sel = $('center-mode');
-  const isDataset = !!(model && model.type === 'dataset');
-  for (const o of sel.options) o.disabled = !isDataset && (+o.value in CAMERA_CENTER_MODES);
-  if (!isDataset && opts.centerMode in CAMERA_CENTER_MODES) {
+  const hasCameras = !!(model?.type === 'dataset' && dataset?.cameras.length);
+  for (const o of sel.options) o.disabled = !hasCameras && (+o.value in CAMERA_CENTER_MODES);
+  if (!hasCameras && opts.centerMode in CAMERA_CENTER_MODES) {
     opts.centerMode = CAMERA_CENTER_MODES[opts.centerMode];
     sel.value = String(opts.centerMode);
   }
@@ -343,6 +342,8 @@ function looksLikeDataset(entries) {
 }
 
 async function load(input) {
+  clearTimeout(toastTimer);
+  $('toast').style.display = 'none';
   const entries = toEntries(input);
   try {
     if (looksLikeDataset(entries)) { await loadDataset(entries); return; }
@@ -357,10 +358,28 @@ async function load(input) {
       throw e;
     }
   } catch (e) {
+    clearLoadedModel();
     console.error(e);
     setStatus('Load error: ' + e.message, 'err');
     showToast('Load error: ' + e.message);
   }
+}
+
+function clearLoadedModel() {
+  renderer.clearModel();
+  freeSplat(); freeMesh(); dsFree();
+  model = null; dataset = null;
+  sortWorkerInitModel({ count: 0, posop: new Float32Array(0) });
+  histCache.clear();
+  opts.hoverCam = -1;
+  focusUntil = 0;
+  for (const id of ['st-file', 'st-type', 'st-count', 'st-sh', 'st-sb']) $(id).textContent = '—';
+  for (const id of ['sec-splat', 'sec-mesh', 'sec-dataset']) $(id).classList.add('hidden');
+  for (const id of ['st-splat-stats', 'st-mesh-stats', 'st-dataset-stats', 'ds-component-row', 'sec-hist']) $(id).style.display = 'none';
+  $('drop-hint').style.display = 'flex';
+  $('cam-tooltip').style.display = 'none';
+  syncCenterMenu();
+  dirty = true;
 }
 
 async function loadSingleModel(entries) {
@@ -586,6 +605,7 @@ function wireInput() {
   let prevPinch = null;
 
   vp.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('#browse-files')) return;
     vp.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x:e.clientX, y:e.clientY, button:e.button });
     if (pointers.size === 2) prevPinch = pinchState(pointers);
@@ -645,8 +665,12 @@ function wireInput() {
     const entries = await gatherEntries(e.dataTransfer);
     if (entries.length) load(entries);
   });
-  $('file-input').addEventListener('change', (e) => { if (e.target.files.length) load(e.target.files); });
-  $('drop-hint').addEventListener('pointerup', () => $('file-input').click());
+  $('file-input').addEventListener('change', (e) => {
+    const files = Array.from(e.target.files);
+    e.target.value = '';
+    if (files.length) load(files);
+  });
+  $('browse-files').addEventListener('click', () => $('file-input').click());
 }
 
 // Recursively collect dropped files (folders via webkitGetAsEntry) into

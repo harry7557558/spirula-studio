@@ -39,7 +39,8 @@ struct SbOptimCells {
     float lr = 0.0f;
 };
 
-// The CUDA kernels carry no lobes; their launchers refuse a request for any.
+// The CUDA backward and optimizer kernels carry no lobes; their launchers
+// refuse a request for any (kernels/projection/ProjectionLobes.cu renders them).
 inline int sh_only_degree(const ColorBasis& c, const char* what) {
     if (c.sb_lobes != 0)
         throw std::runtime_error(std::string(what) +

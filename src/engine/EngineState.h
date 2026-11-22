@@ -770,6 +770,21 @@ struct EngineState {
     // flag outliving it leaves the next scene reading the reallocated buffer.
     bool    v_losses_uploaded = false;
 
+    // Stochastic viewer renders (engine/EngineStochastic.cpp): a running sum per
+    // channel (engine_arm_stochastic), restarted whenever its key moves.
+    struct Stochastic {
+        struct Sum {
+            uint64_t key = 0;
+            uint32_t frames = 0;
+        };
+        std::map<int, Sum> sums;
+        bool     armed = false;
+        int      arm_channel = 0;
+        uint64_t arm_key = 0;
+        uint32_t last_frames = 0;  // what the last forward averaged; 0: not stochastic
+        uint64_t revision = 0;     // moves whenever the splats change outside a train step
+    } stochastic;
+
     WorldSplats    world;
     CameraTable    camera;
     ForwardCache   fwd;

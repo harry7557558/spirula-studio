@@ -177,12 +177,17 @@ public:
     void merge_fields(const float* verts, int nv, float* dens_out, float* rgb_out,
                       const float* probes, int np, float* occ_out);
 
-    int num_points() const { return num_points_; }
+    int64_t num_points() const { return num_points_; }
     int num_kept()   const { return num_kept_; }
+    int64_t max_delaunay_points() const { return max_points_; }
 
     // True when the rasterize-and-sample (dataset / camera-intrinsics) path is
     // active, i.e. camera-based visibility culling is possible.
     bool has_render_cameras() const;
+
+    // Camera indices selected for rendering (all cameras, or the k-means
+    // medoids when cfg.max_cameras caps them). Empty without camera centers.
+    const std::vector<int>& selected_cameras() const;
 
     // Mark which mesh vertices are seen by >= 1 camera: a vertex is seen when it
     // projects in-frame AND the segment to that camera is not blocked by a mesh
@@ -201,8 +206,9 @@ public:
 private:
     struct Impl;
     Impl* impl_;
-    int num_points_ = 0;
+    int64_t num_points_ = 0;
     int num_kept_ = 0;
+    int64_t max_points_ = 0;
 };
 
 // Full pipeline entry point. Writes a binary PLY to output_path. False on
