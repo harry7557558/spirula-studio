@@ -45,10 +45,9 @@ static_assert(sizeof(MeshActivateParams) == 15 * 8 + 2 * 4, "layout");
 struct MeshPointCloudParams {
     uint64_t kept, mean, ax0, ax1, ax2, invs2, k2, out_xyz;
     float min_axis_ratio;
-    uint32_t num_kept, wgs_per_row;
+    uint32_t num_kept, wgs_per_row, samples_per_gaussian;
 };
-static_assert(sizeof(MeshPointCloudParams) == 8 * 8 + 3 * 4 + 4 /*pad*/,
-              "layout");
+static_assert(sizeof(MeshPointCloudParams) == 8 * 8 + 4 * 4, "layout");
 
 struct MeshBvhPrepParams {
     uint64_t kept, mean, ax0, ax1, ax2, invs2, k2, leafMin, leafMax, morton,
@@ -124,16 +123,20 @@ static_assert(sizeof(MeshOccCombineParams) == 2 * 8 + 2 * 4, "layout");
 // --- meshing_raster.slang ---
 
 struct MeshSampleOccParams {
-    uint64_t xyz, viewmat, intrin, dist, moments, occ_kmin, cnt;
-    uint32_t n, W, H, k, wgs_per_row, _pad0;
+    uint64_t xyz, viewmat, intrin, dist, moments, acc;
+    uint32_t n, W, H, tsdf;
+    float iso, band_px, deep_weight, clean;
+    uint32_t wgs_per_row, _pad0;
 };
-static_assert(sizeof(MeshSampleOccParams) == 7 * 8 + 6 * 4, "layout");
+static_assert(sizeof(MeshSampleOccParams) == 6 * 8 + 10 * 4, "layout");
 
 struct MeshFinalizeOccParams {
-    uint64_t occ_kmin, cnt, occ;
-    uint32_t n, k, wgs_per_row, _pad0;
+    uint64_t acc, occ;
+    uint32_t n, tsdf;
+    float iso, clean;
+    uint32_t wgs_per_row, _pad0;
 };
-static_assert(sizeof(MeshFinalizeOccParams) == 3 * 8 + 4 * 4, "layout");
+static_assert(sizeof(MeshFinalizeOccParams) == 2 * 8 + 6 * 4, "layout");
 
 struct MeshSampleColorParams {
     uint64_t xyz, viewmat, intrin, dist, moments, rgb_img, num, den;
@@ -256,7 +259,7 @@ void launch_pointcloud(
     int num_kept, const int* kept,
     const float3* mean, const float3* ax0, const float3* ax1,
     const float3* ax2, const float3* invs2, const float* k2,
-    float min_axis_ratio, float* out
+    float min_axis_ratio, int samples_per_gaussian, float* out
 ) {
     if (num_kept <= 0) return;
     MeshPointCloudParams p{};
@@ -270,6 +273,7 @@ void launch_pointcloud(
     p.out_xyz = (uint64_t)out;
     p.min_axis_ratio = min_axis_ratio;
     p.num_kept = (uint32_t)num_kept;
+    p.samples_per_gaussian = (uint32_t)samples_per_gaussian;
     dispatch_flat_ring("meshing.mesh_pointcloud", {}, num_kept, 256, &p,
                        sizeof(p), &p.wgs_per_row);
 }
@@ -441,8 +445,7 @@ void launch_sample_occ(
     const float* xyz, int n,
     const float* viewmat, const float* intrin, const float* dist,
     int camera_model, int distortion,
-    const float3* moments, int W, int H, int k,
-    float* occ_kmin, int* cnt
+    const float3* moments, int W, int H, const OccFusion& f, float4* acc
 ) {
     if (n <= 0) return;
     MeshSampleOccParams p{};
@@ -451,26 +454,29 @@ void launch_sample_occ(
     p.intrin = (uint64_t)intrin;
     p.dist = vkk::or_fallback(dist);
     p.moments = (uint64_t)moments;
-    p.occ_kmin = (uint64_t)occ_kmin;
-    p.cnt = (uint64_t)cnt;
+    p.acc = (uint64_t)acc;
     p.n = (uint32_t)n;
     p.W = (uint32_t)W;
     p.H = (uint32_t)H;
-    p.k = (uint32_t)k;
+    p.tsdf = (uint32_t)f.tsdf;
+    p.iso = f.iso;
+    p.band_px = f.band_px;
+    p.deep_weight = f.deep_weight;
+    p.clean = f.clean;
     vkk::dispatch_flat("meshing_raster.mesh_sample_occ",
                        camera_spec(camera_model, distortion), n, 256, &p,
                        sizeof(p), &p.wgs_per_row);
 }
 
-void launch_finalize_occ(int n, const float* occ_kmin, const int* cnt, int k,
-                         float* occ) {
+void launch_finalize_occ(int n, const float4* acc, const OccFusion& f, float* occ) {
     if (n <= 0) return;
     MeshFinalizeOccParams p{};
-    p.occ_kmin = (uint64_t)occ_kmin;
-    p.cnt = (uint64_t)cnt;
+    p.acc = (uint64_t)acc;
     p.occ = (uint64_t)occ;
     p.n = (uint32_t)n;
-    p.k = (uint32_t)k;
+    p.tsdf = (uint32_t)f.tsdf;
+    p.iso = f.iso;
+    p.clean = f.clean;
     vkk::dispatch_flat("meshing_raster.mesh_finalize_occ", camera_spec(0, 0), n,
                        256, &p, sizeof(p), &p.wgs_per_row);
 }

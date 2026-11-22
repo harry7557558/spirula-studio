@@ -18,10 +18,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
-#include <functional>
 #include <stdexcept>
-#include <unordered_map>
-#include <unordered_set>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -733,88 +730,5 @@ void compute_vertex_normals(MeshData& mesh) {
     }
 }
 
-void print_mesh_stats(const MeshData& mesh) {
-    const size_t nv = mesh.V.size(), nf = mesh.F.size();
-    if (nf == 0) {
-        mlog::out(mlog::Stage::Stats, mmsg::stats_empty);
-        return;
-    }
-
-    // undirected edge -> (face count, winding balance). For a consistently
-    // oriented 2-face edge the two traversals are opposite: balance == 0.
-    std::unordered_map<int64_t, std::pair<int,int>> edges;
-    edges.reserve(nf * 3);
-    const int64_t P = (int64_t)nv;
-    for (const auto& f : mesh.F)
-        for (int k = 0; k < 3; ++k) {
-            int a = f[k], b = f[(k+1)%3];
-            int64_t lo = a < b ? a : b, hi = a < b ? b : a;
-            auto& e = edges[lo * P + hi];
-            e.first += 1;
-            e.second += (a < b) ? 1 : -1;
-        }
-    long n_bnd = 0, n_nonmanif = 0, n_misoriented = 0;
-    for (const auto& kv : edges) {
-        if (kv.second.first == 1) ++n_bnd;
-        else if (kv.second.first > 2) ++n_nonmanif;
-        else if (kv.second.second != 0) ++n_misoriented;
-    }
-
-    // duplicate faces
-    std::unordered_set<int64_t> seen;
-    seen.reserve(nf * 2);
-    long n_dup = 0;
-    for (const auto& f : mesh.F) {
-        int a = f[0], b = f[1], c = f[2];
-        if (a > b) std::swap(a, b);
-        if (b > c) std::swap(b, c);
-        if (a > b) std::swap(a, b);
-        if (!seen.insert((int64_t)a * P * P + (int64_t)b * P + c).second) ++n_dup;
-    }
-
-    // connected components (union-find over vertices)
-    std::vector<int> parent(nv);
-    for (size_t i = 0; i < nv; ++i) parent[i] = (int)i;
-    std::function<int(int)> find = [&](int x) {
-        while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
-        return x;
-    };
-    for (const auto& f : mesh.F) {
-        int a = find(f[0]), b = find(f[1]), c = find(f[2]);
-        if (a != b) parent[a] = b;
-        b = find(b);
-        if (b != c) parent[b] = c;
-    }
-    std::unordered_set<int> roots;
-    for (const auto& f : mesh.F) roots.insert(find(f[0]));
-
-    // triangle min-angle stats
-    long n_deg5 = 0, n_deg15 = 0;
-    double min_angle = 180.0;
-    for (const auto& f : mesh.F) {
-        const auto& A = mesh.V[f[0]];
-        const auto& B = mesh.V[f[1]];
-        const auto& C2 = mesh.V[f[2]];
-        auto d2 = [](const std::array<float,3>& p, const std::array<float,3>& q) {
-            double dx = p[0]-q[0], dy = p[1]-q[1], dz = p[2]-q[2];
-            return dx*dx + dy*dy + dz*dz;
-        };
-        double la = d2(B, C2), lb = d2(C2, A), lc = d2(A, B);
-        auto ang = [](double opp, double s1, double s2) {
-            double dn = 2.0 * std::sqrt(s1 * s2);
-            double c = dn > 1e-300 ? (s1 + s2 - opp) / dn : 1.0;
-            return std::acos(std::min(std::max(c, -1.0), 1.0)) * 57.29577951308232;
-        };
-        double m = std::min(ang(la, lb, lc), std::min(ang(lb, lc, la), ang(lc, la, lb)));
-        min_angle = std::min(min_angle, m);
-        if (m < 5.0) ++n_deg5;
-        if (m < 15.0) ++n_deg15;
-    }
-
-    mlog::out(mlog::Stage::Stats, mmsg::stats_line,
-              {(long long)nv, (long long)nf, (long long)roots.size(), n_bnd,
-               n_nonmanif, n_misoriented, n_dup, mlog::num(min_angle, 2),
-               n_deg5, n_deg15});
-}
 
 } // namespace meshing

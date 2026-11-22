@@ -93,14 +93,13 @@ void launch_activate(
 // spikes and holes flat surfaces; 0.1 doubles a cube of discs (docs/notes/2dgs.md).
 constexpr float kSampleMinAxisRatio = 0.25f;
 
-// 7 points per kept Gaussian (center + +/-k sigma along each principal axis,
-// each sigma at least min_axis_ratio * the largest), interleaved xyz into
-// out[num_kept * 21].
+// 1 (center) or 7 (center + +/-k sigma along principal axes) points per kept
+// Gaussian, interleaved xyz into out[num_kept * 3 * samples_per_gaussian].
 void launch_pointcloud(
     int num_kept, const int* kept,
     const float3* mean, const float3* ax0, const float3* ax1,
     const float3* ax2, const float3* invs2, const float* k2,
-    float min_axis_ratio, float* out);
+    float min_axis_ratio, int samples_per_gaussian, float* out);
 
 // Per kept Gaussian: leaf AABB (real space) + remapped Morton code + iota.
 void launch_bvh_prep(
@@ -157,20 +156,27 @@ void launch_colorize_fallback(const GpuScene& s, const float* verts, int n,
 // Rasterize-and-sample driver kernels  (mesh/MeshingRaster.cu)
 // ===========================================================================
 
-// Project each query point into one camera, sample the rendered occupancy
-// moments and keep the k smallest occupancies seen so far (ascending, +inf
-// padded); `cnt` counts the cameras that did not abstain.
+// How one camera's view of a point is folded in (docs/notes/mesh-field.md).
+// Plain scalars: the Vulkan launcher copies them into its params block.
+struct OccFusion {
+    int   tsdf = 0;            // 1: mean truncated signed distance, not the vote
+    float iso = 0.5f;          // the field's level; a camera's surface is where it reaches it
+    float band_px = 6.0f;      // pixel footprints behind its surface a camera still votes fully
+    float deep_weight = 0.01f; // its vote for points deeper than twice that
+    float clean = 0.2f;        // occupancy under which one camera's sight carves alone
+};
+
+// Folds one camera's view of each query point into acc[n], which starts zeroed:
+// its occupancy by the rendered moments, or its signed distance under f.tsdf,
+// each weighted by how sharply the camera sees the point.
 void launch_sample_occ(
     const float* xyz, int n,
     const float* viewmat, const float* intrin, const float* dist,
     int camera_model, int distortion,
-    const float3* moments, int W, int H, int k,
-    float* occ_kmin, int* cnt);
+    const float3* moments, int W, int H, const OccFusion& f, float4* acc);
 
-// occ[i] = the k-th smallest sample (or the largest available when fewer
-// cameras saw the point); 0 for points no camera saw.
-void launch_finalize_occ(int n, const float* occ_kmin, const int* cnt, int k,
-                         float* occ);
+// occ[i] from the folded views; 0 for points no camera saw.
+void launch_finalize_occ(int n, const float4* acc, const OccFusion& f, float* occ);
 
 // Accumulate transmittance-weighted rendered color for one camera.
 void launch_sample_color(

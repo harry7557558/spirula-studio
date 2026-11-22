@@ -32,11 +32,3 @@ bool aabb16_is_empty(uint2 a) {
     return SS_AABB16_HI(a.x) <= SS_AABB16_LO(a.x) ||
            SS_AABB16_HI(a.y) <= SS_AABB16_LO(a.y);
 }
-
-// Ellipse center for 3DGUT, which stores no screen center of its own.
-[ForceInline]
-float2 aabb16_center(uint2 a, uint image_width, uint image_height) {
-    return float2(
-        0.5f * float(SS_AABB16_LO(a.x) + SS_AABB16_HI(a.x)) * SS_AABB16_INV(image_width),
-        0.5f * float(SS_AABB16_LO(a.y) + SS_AABB16_HI(a.y)) * SS_AABB16_INV(image_height));
-}

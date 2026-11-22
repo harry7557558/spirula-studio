@@ -31,7 +31,7 @@ float erank_reg_3dgs(float3 scales, float erank_reg, float erank_reg_s3) {
     float s2 = max(1.0 - s1 - s3, kMinEigenRatio);
     float r = exp(-s1*log(s1) - s2*log(s2) - s3*log(s3));
     float reg = max(-log(r-0.99999), 0.0);
-    return erank_reg * reg + erank_reg_s3 * s3;
+    return erank_reg * reg + erank_reg_s3 * s3*s3;
 }
 
 [ForceInline]

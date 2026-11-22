@@ -23,6 +23,7 @@
 namespace meshing {
 
 struct RenderContext;
+struct OccFusion;   // mesh/MeshingDevice.h
 
 // All pointers are HOST arrays, uploaded here, laid out as Meshing.h's
 // CameraParams; the splat params are raw (un-activated). `verbose` reports
@@ -33,7 +34,7 @@ RenderContext* render_context_create(
     const float* viewmats, const float* intrins, const float* dist,
     int num_cameras, const int* widths, const int* heights,
     const int* camera_models, const int* distortions,
-    int carve_k, bool verbose);
+    const OccFusion& fusion, bool verbose);
 
 void render_context_destroy(RenderContext*);
 
@@ -45,11 +46,9 @@ int render_context_num_cameras(const RenderContext*);
 // [width*height] float3 = (m0, mean_depth, std_depth)). Caller owns d_moments.
 void render_camera_moments(RenderContext*, int cam_idx, void* d_moments);
 
-// Evaluate occupancy at device query points d_xyz [n*3], writing d_occ [n]
-// (device). Renders each camera in cam_indices once, samples (project + bilinear
-// + Gaussian-CDF), aggregates by min over the cameras that SEE each point;
-// points seen by no camera get occupancy 0 (free / carved). Manages its own
-// scratch internally.
+// Occupancy at device query points d_xyz [n*3] into d_occ [n] (device): each
+// camera in cam_indices is rendered once and its view of every point fused as
+// the context's OccFusion says. Points no camera saw are free (0).
 void render_evaluate_occupancy(
     RenderContext*, const int* cam_indices, int num_cams,
     const float* d_xyz, int n, float* d_occ);
@@ -71,15 +70,18 @@ void render_evaluate_view_density(
     RenderContext*, const int* cam_indices, int num_cams,
     const float* d_xyz, int n, float* d_dens);
 
-// Visibility cull. For each mesh vertex, decide whether some camera sees it: it
-// projects in-frame (project_point) AND the segment vertex->camera is not
-// blocked by a mesh triangle that does not contain the vertex (tested against an
-// LBVH built over the mesh triangles). Iterates over ALL cameras in the context.
-// All arguments are HOST arrays: verts [nv*3], faces [nf*3] (vertex indices),
-// visible [nv] (written 1 = seen / keep, 0 = unseen). Device work + the triangle
-// LBVH are allocated and freed internally.
+// The three above in one pass over the cameras, each rendered once: view
+// density and (with d_rgb) colour at d_verts [nv*3], occupancy at d_probes
+// [np*3]. Same outputs as the separate calls.
+void render_evaluate_merge(
+    RenderContext*, const int* cam_indices, int num_cams,
+    const float* d_verts, int nv, float* d_dens, float* d_rgb,
+    const float* d_probes, int np, float* d_occ);
+
+// Visibility cull: visible[v]=1 iff some cam in cam_indices[0..num_cams) (or
+// all when null/<=0) sees verts[v] unoccluded by other faces (HOST arrays).
 void render_cull_unseen_vertices(
-    RenderContext*, const float* verts, int nv,
-    const int* faces, int nf, unsigned char* visible);
+    RenderContext*, const int* cam_indices, int num_cams,
+    const float* verts, int nv, const int* faces, int nf, unsigned char* visible);
 
 } // namespace meshing

@@ -2415,3 +2415,34 @@ _DECL_Q(0,  8, uint8_t)  _DECL_Q(1,  8, uint8_t)  _DECL_Q(2,  8, uint8_t)  _DECL
 _DECL_Q(0, 16, uint16_t) _DECL_Q(1, 16, uint16_t) _DECL_Q(2, 16, uint16_t) _DECL_Q(3, 16, uint16_t) _DECL_Q(4, 16, uint16_t)
 
 #undef _DECL_Q
+
+
+// ----------------------------------------------------------------------------
+// Spherical-beta lobes at the end of a colour row, from float3 coefficient
+// sb_base on (core/ColorBasis.h): what the CUDA projection forward adds to the
+// SH colour. Vulkan reads them through view_color.slang.
+// ----------------------------------------------------------------------------
+#include "spherical_beta.slang"
+
+[CudaDeviceExport]
+float3 sb_lobes_to_color(int lobes, int sb_base, float3 mean, float3x3 R, float3 t, float3* coeffs) {
+    float3 dir = normalize(mean_viewmat_to_unnormalized_viewdir(mean, R, t));
+    float3 c = float3(0.0f);
+    for (int l = 0; l < lobes; l++)
+        c += sb_lobe_color(dir, coeffs[sb_base + 2 * l], coeffs[sb_base + 2 * l + 1]);
+    return c;
+}
+
+#define _DECL_SB_Q(qbits, dtype) \
+    [CudaDeviceExport] \
+    float3 sb_lobes_to_color_q##qbits(int lobes, int sb_base, float3 mean, float3x3 R, float3 t, dtype* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch) { \
+        float3 dir = normalize(mean_viewmat_to_unnormalized_viewdir(mean, R, t)); \
+        float3 c = float3(0.0f); \
+        for (int l = 0; l < lobes; l++) \
+            c += sb_lobe_color(dir, _sh_load_q##qbits(packed, bounds, base, sb_base + 2 * l, bounds_stride, pair_pitch), \
+                               _sh_load_q##qbits(packed, bounds, base, sb_base + 2 * l + 1, bounds_stride, pair_pitch)); \
+        return c; \
+    }
+_DECL_SB_Q(8, uint8_t)
+_DECL_SB_Q(16, uint16_t)
+#undef _DECL_SB_Q

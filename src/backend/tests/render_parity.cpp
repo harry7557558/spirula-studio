@@ -6,10 +6,10 @@
 //   Vulkan build: ./render_parity compare ref.bin   (per device)
 //
 // Covers background SH and projection -> intersect -> rasterize (packed or
-// not, per primitive, with distortion / median / score-map variants; 2DGS's
-// normal and normal distortion too). Near-tie
-// depth keys may sort differently across backends, so a small violation
-// fraction is allowed.
+// not, per primitive, with distortion / median / score-map variants; the
+// normal and normal distortion of 2DGS and of 3DGUT rendering one too).
+// Near-tie depth keys may sort differently across backends, so a small
+// violation fraction is allowed.
 
 #include <backend/tests/DistortionFixture.h>
 #include <kernels/background/BackgroundSphericalHarmonics.cuh>
@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
 
     // === 2. Projection -> intersect -> rasterize pipeline ===
     struct Cfg {
-        int prim;      // 0 = 3dgs, 1 = mip, 2 = 3dgut, 3 = 2dgs
+        int prim;      // 0 = 3dgs, 1 = mip, 2 = 3dgut, 3 = 2dgs, 4 = 3dgut + normal
         bool packed;
         int cam;
         int dist;      // distortion tier, index into dist_fixture::kTierNames
@@ -204,6 +204,10 @@ int main(int argc, char** argv) {
         {3, false, 0, 2, DistortionType::D, false, false},
         {3, true, 3, 0, DistortionType::None, true, false},
         {3, true, 2, 1, DistortionType::RGB_D, false, true},
+        {4, false, 0, 1, DistortionType::RGB_DN, true, true},
+        {4, false, 1, 0, DistortionType::DN, false, false},
+        {4, true, 3, 0, DistortionType::None, true, false},
+        {4, true, 2, 2, DistortionType::D, false, true},
     };
 
     // Scores as the densify state holds them, (s^p, updates); every fifth
@@ -232,8 +236,8 @@ int main(int argc, char** argv) {
         if (cfg.packed) {
             auto fn = cfg.prim == 0   ? projection_3dgs_packed_forward
                       : cfg.prim == 1 ? projection_mip_packed_forward
-                      : cfg.prim == 2 ? projection_3dgut_packed_forward
-                                      : projection_2dgs_packed_forward;
+                      : cfg.prim == 3 ? projection_2dgs_packed_forward
+                                      : projection_3dgut_packed_forward;
             auto out = fn(N, ColorBasis{3, 0}, in_splats, ttv(d_vm, {(int64_t)C, 16}),
                           ttv(d_intr, {(int64_t)C, 4}), W, H, cams[cfg.cam],
                           dist_fixture::kTierNames[cfg.dist],
@@ -250,8 +254,8 @@ int main(int argc, char** argv) {
         } else {
             auto fn = cfg.prim == 0   ? projection_3dgs_forward
                       : cfg.prim == 1 ? projection_mip_forward
-                      : cfg.prim == 2 ? projection_3dgut_forward
-                                      : projection_2dgs_forward;
+                      : cfg.prim == 3 ? projection_2dgs_forward
+                                      : projection_3dgut_forward;
             auto out = fn(N, ColorBasis{3, 0}, in_splats, ttv(d_vm, {(int64_t)C, 16}),
                           ttv(d_intr, {(int64_t)C, 4}), W, H, cams[cfg.cam],
                           dist_fixture::kTierNames[cfg.dist],
@@ -265,14 +269,20 @@ int main(int argc, char** argv) {
         backend::device_synchronize();
         if (check_error()) return 1;
 
-        // --- tile intersection (ellipse mode) ---
+        // --- tile intersection (ellipse mode; exact footprints for eval3d) ---
         DeviceVector<int32_t>* image_ids_ptr =
             cfg.packed && cam_ids.data_ptr() ? &cam_ids : nullptr;
 
         int macro_log2 = kMacroLog2Default;
 
+        FootprintView footprint;
+        if (cfg.prim >= 2)
+            footprint = footprint_view(
+                in_splats, cfg.packed ? gauss_ids.data_ptr() : nullptr,
+                ttv(d_vm, {(int64_t)C, 16}), dist_tv(cfg.dist), cams[cfg.cam],
+                dist_fixture::kTierNames[cfg.dist], cfg.prim == 3);
         auto intersections = do_intersect_tile_generic(
-            aabb_2d, depths_nd, ellipse_view(splats_s, cfg.prim >= 2), C,
+            aabb_2d, depths_nd, ellipse_view(splats_s, cfg.prim >= 2), footprint, C,
             ttv(d_intr, {(int64_t)C, 4}), W, H, image_ids_ptr, /*tile_active=*/nullptr,
         macro_log2);
         auto& flatten_ids = std::get<1>(intersections);
@@ -299,8 +309,9 @@ int main(int argc, char** argv) {
                 sr.prior = 0.3f;
             }
             if (cfg.prim >= 2) {
-                auto fn = cfg.prim == 2 ? rasterize_to_pixels_3dgut_fwd
-                                        : rasterize_to_pixels_2dgs_fwd;
+                auto fn = cfg.prim == 2   ? rasterize_to_pixels_3dgut_fwd
+                          : cfg.prim == 3 ? rasterize_to_pixels_2dgs_fwd
+                                          : rasterize_to_pixels_3dgut_normal_fwd;
                 rout = fn(
                     N, in_splats, splats_s, gauss_ids,
                     ttv(d_vm, {(int64_t)C, 16}), ttv(d_intr, {(int64_t)C, 4}),
@@ -357,7 +368,7 @@ int main(int argc, char** argv) {
                      n_pix * 3);
         if (dist_has_depth(cfg.dt))
             readback(acc, std::get<1>(distortions).data_ptr(), n_pix);
-        if (cfg.prim == 3)
+        if (cfg.prim >= 3)
             readback(acc, (const float*)std::get<2>(renders).data_ptr(),
                      n_pix * 3);
         if (dist_has_normal(cfg.dt))

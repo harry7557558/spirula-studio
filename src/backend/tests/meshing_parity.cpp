@@ -269,10 +269,14 @@ int main(int argc, char** argv) {
     // === 3. Point cloud, occupancy, bisection, color ===
     float* d_cloud = alloc<float>((size_t)nk * 21);
     meshing::launch_pointcloud(nk, d_kept, d_mean, d_ax0, d_ax1, d_ax2,
-                               d_invs2, d_k2, meshing::kSampleMinAxisRatio, d_cloud);
+                               d_invs2, d_k2, meshing::kSampleMinAxisRatio, 7, d_cloud);
+    float* d_cloud_1 = alloc<float>((size_t)nk * 3);
+    meshing::launch_pointcloud(nk, d_kept, d_mean, d_ax0, d_ax1, d_ax2,
+                               d_invs2, d_k2, meshing::kSampleMinAxisRatio, 1, d_cloud_1);
     backend::device_synchronize();
     if (check_error()) return 1;
     readback(acc, d_cloud, (int64_t)nk * 21);
+    readback(acc, d_cloud_1, (int64_t)nk * 3);
 
     // camera centers on a ring above the blob
     std::vector<float> campos(3 * NCAM);
@@ -447,8 +451,12 @@ int main(int argc, char** argv) {
         DeviceTensorFloatND depths_nd(depths_2d);
         int macro_log2 = kMacroLog2Default;
         auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-            aabb_2d, depths_nd, ellipse_view(splats_s, true), 1,
-            ttv(d_intr + 4 * cam, {1, 4}), W, H, nullptr, /*tile_active=*/nullptr,
+            aabb_2d, depths_nd, ellipse_view(splats_s, true),
+            footprint_view(in_splats, nullptr, ttv(d_vm + 16 * cam, {1, 4, 4}),
+                           ttv(d_dist + dist_fixture::row_offset(2, NCAM, cam),
+                               {1, kCameraDistortionParams}),
+                           "PINHOLE", "THIN_PRISM", false),
+            1, ttv(d_intr + 4 * cam, {1, 4}), W, H, nullptr, /*tile_active=*/nullptr,
         macro_log2);
         backend::device_synchronize();
         if (check_error()) return 1;
@@ -506,8 +514,11 @@ int main(int argc, char** argv) {
         DeviceTensorFloatND depths_nd(depths_2d);
         int macro_log2 = kMacroLog2Default;
         auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-            aabb_2d, depths_nd, ellipse_view(splats_s, true), 1,
-            ttv(d_equi_intr, {1, 4}), equi_W, equi_H, nullptr, /*tile_active=*/nullptr,
+            aabb_2d, depths_nd, ellipse_view(splats_s, true),
+            footprint_view(in_splats, nullptr, ttv(d_equi_vm, {1, 4, 4}),
+                           ttv(d_dist, {1, kCameraDistortionParams}),
+                           "EQUIRECTANGULAR", "NONE", false),
+            1, ttv(d_equi_intr, {1, 4}), equi_W, equi_H, nullptr, /*tile_active=*/nullptr,
             macro_log2);
         backend::device_synchronize();
         if (check_error()) return 1;
@@ -553,16 +564,13 @@ int main(int argc, char** argv) {
         float3* d_mom_s = (float3*)upload(mom);
         float3* d_rgb_s = (float3*)upload(rgbimg);
 
-        const int k = 2;
-        float* d_kmin = alloc<float>((size_t)NQ * k);
-        int* d_cnt = alloc<int>(NQ);
-        {
-            std::vector<float> big((size_t)NQ * k, 1e30f);
-            backend::memcpy_sync(d_kmin, big.data(), big.size() * sizeof(float),
-                                 MemcpyKind::HostToDevice);
-            backend::memset_sync(d_cnt, 0, NQ * sizeof(int));
-        }
-        float* d_occ_k = alloc<float>(NQ);
+        // both fusions: the occupancy vote, and the signed distance
+        meshing::OccFusion fuse[2];
+        fuse[1].tsdf = 1;
+        fuse[1].band_px = 4.0f;
+        float4* d_acc[2] = {alloc<float4>(NQ), alloc<float4>(NQ)};
+        float* d_occ_k[2] = {alloc<float>(NQ), alloc<float>(NQ)};
+        for (int m = 0; m < 2; ++m) backend::memset_sync(d_acc[m], 0, NQ * sizeof(float4));
         float3* d_num = alloc<float3>(NQ);
         float* d_den = alloc<float>(NQ);
         backend::memset_sync(d_num, 0, NQ * sizeof(float3));
@@ -576,9 +584,10 @@ int main(int argc, char** argv) {
             const int td = c == 0 ? 0 : c == 1 ? 1 : 2;
             const float* d_dc =
                 d_dist + dist_fixture::row_offset(td, NCAM, c);
-            meshing::launch_sample_occ(d_q, NQ, d_vm + 16 * c, d_intr + 4 * c,
-                                       d_dc, cm, td, d_mom_s, W, H, k,
-                                       d_kmin, d_cnt);
+            for (int m = 0; m < 2; ++m)
+                meshing::launch_sample_occ(d_q, NQ, d_vm + 16 * c, d_intr + 4 * c,
+                                           d_dc, cm, td, d_mom_s, W, H, fuse[m],
+                                           d_acc[m]);
             meshing::launch_sample_color(d_q, NQ, d_vm + 16 * c,
                                          d_intr + 4 * c, d_dc, cm, td,
                                          d_mom_s, d_rgb_s, W, H, d_num, d_den);
@@ -586,21 +595,25 @@ int main(int argc, char** argv) {
                 d_q, NQ, d_vm + 16 * c, d_intr + 4 * c, d_dc, cm, td,
                 d_mom_s, W, H, d_dens);
         }
-        meshing::launch_finalize_occ(NQ, d_kmin, d_cnt, k, d_occ_k);
+        for (int m = 0; m < 2; ++m)
+            meshing::launch_finalize_occ(NQ, d_acc[m], fuse[m], d_occ_k[m]);
         meshing::launch_finalize_color(NQ, d_num, d_den, d_rgb_out);
         backend::device_synchronize();
         if (check_error()) return 1;
 
-        readback(acc, d_occ_k, NQ);
+        for (int m = 0; m < 2; ++m) {
+            readback(acc, (float*)d_acc[m], 4 * NQ);
+            readback(acc, d_occ_k[m], NQ);
+        }
         readback(acc, d_rgb_out, 3 * NQ);
         readback(acc, d_dens, NQ);
-        readback_i32(codes, d_cnt, NQ);
 
         backend::device_free(d_mom_s);
         backend::device_free(d_rgb_s);
-        backend::device_free(d_kmin);
-        backend::device_free(d_cnt);
-        backend::device_free(d_occ_k);
+        for (int m = 0; m < 2; ++m) {
+            backend::device_free(d_acc[m]);
+            backend::device_free(d_occ_k[m]);
+        }
         backend::device_free(d_num);
         backend::device_free(d_den);
         backend::device_free(d_rgb_out);

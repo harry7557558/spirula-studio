@@ -80,6 +80,7 @@
 #endif
 
 #include <algorithm>
+#include <cerrno>
 #include <cfloat>
 #include <chrono>
 #include <cmath>
@@ -346,7 +347,15 @@ GuiApp::~GuiApp() = default;
 void GuiApp::shutdown() {
     if (_dense_delete.valid()) _dense_delete.wait();
     save_settings();
-    save_batch_list(_batch);
+    if (!_batch_save.save(_batch)) {
+        try {
+            const std::string message = i18n::format(emsg::save_failed.terminal(), {_batch_save.error()});
+            std::fprintf(stderr, "%s\n", message.c_str());
+        } catch (...) {
+            std::fprintf(stderr, "batch.json: %s\n", std::strerror(EIO));
+        }
+        std::fflush(stderr);
+    }
     _batch_active = false;
     detach_session_views();
     _viewport.destroy_gl();
@@ -1548,8 +1557,12 @@ void GuiApp::add_batch_mesh_row(const std::string& model) {
 }
 
 void GuiApp::batch_edited() {
-    _batch_dirty = true;
+    _batch_save.edited();
     _batch_checked = false;
+}
+
+void GuiApp::save_batch() {
+    if (!_batch_save.save(_batch)) log(i18n::format(emsg::save_failed, {_batch_save.error()}));
 }
 
 BatchCapabilities GuiApp::batch_capabilities() const {
@@ -1746,8 +1759,7 @@ void GuiApp::start_batch(bool skip_invalid) {
     for (BatchTask& t : _batch_tasks)
         if (batch_has_error(_batch[(size_t)t.row].issues))
             t.status = BatchStatus::Skipped;
-    _batch_dirty = false;
-    save_batch_list(_batch);
+    save_batch();
 
     _batch_active = true;
     _batch_launched = false;
@@ -1821,7 +1833,7 @@ void GuiApp::record_batch_task() {
                 // row remembers it even for a re-run started later.
                 if (t.row < (int)_batch.size() && _batch[(size_t)t.row].dataset.empty()) {
                     _batch[(size_t)t.row].dataset = t.result;
-                    _batch_dirty = true;
+                    _batch_save.edited();
                 }
             }
             break;
@@ -2066,7 +2078,7 @@ void GuiApp::finish_batch() {
         if (_batch[(size_t)i].enabled && batch_row_done(i)) {
             _batch[(size_t)i].enabled = false;
             _batch[(size_t)i].done = true;
-            _batch_dirty = true;
+            _batch_save.edited();
         }
     _batch_active = false;
     _batch_launched = false;
@@ -2078,10 +2090,7 @@ void GuiApp::finish_batch() {
                                (long long)other});
     _batch_msg_err = failed > 0;
     log(_batch_msg);
-    if (_batch_dirty) {
-        _batch_dirty = false;
-        save_batch_list(_batch);
-    }
+    if (_batch_save.dirty()) save_batch();
     run_batch_command(i18n::format(msg::batch_cmd_message,
                                    {(long long)done, (long long)failed,
                                     (long long)other}));
@@ -3632,10 +3641,7 @@ void GuiApp::frame() {
 
     // The queue survives a restart, so it is written back once the widget
     // being edited is idle -- the same deferral the dataset options use.
-    if (_batch_dirty && !ImGui::IsAnyItemActive()) {
-        _batch_dirty = false;
-        save_batch_list(_batch);
-    }
+    if (_batch_save.needs_autosave() && !ImGui::IsAnyItemActive()) save_batch();
     // Same deferral for a dragged splitter: the file would otherwise be
     // rewritten on every frame of the drag.
     if (_layout_dirty && !ImGui::IsAnyItemActive()) {
@@ -10338,6 +10344,8 @@ void GuiApp::draw_batch() {
 
     if (!_batch_msg.empty())
         ui::TextColoredWrappedRaw(_batch_msg_err ? kErr : kOk, _batch_msg);
+    if (_batch_save.failed())
+        ui::TextColoredWrapped(kErr, emsg::save_failed, {_batch_save.error()});
 
     draw_batch_issues();
     draw_batch_command();
@@ -12357,8 +12365,8 @@ void GuiApp::draw_basic_options() {
             _cfg_ui.touched.insert("primitive");
         }
         ui::help_on_hover(spirula::i18n::msg::field::primitive_help);
-        if (_cfg.primitive == "3dgut")
-            ui::TextColoredWrapped(kWarn, msg::opt_primitive_3dgut_warn);
+        // if (_cfg.primitive == "3dgut")
+        //     ui::TextColoredWrapped(kWarn, msg::opt_primitive_3dgut_warn);
     }
 
     int ds_idx = _cfg.train_resolution_divisor == 2.0f ? 1

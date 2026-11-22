@@ -3,7 +3,9 @@
 #include "core/BufferedFile.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -19,6 +21,27 @@ inline size_t disk_io_buffer_bytes(uint64_t budget) {
     return share >= kFileBufferBytes ? kFileBufferBytes : share >= (8u << 20) ? (8u << 20) : 0;
 }
 
+// A bare "write failed" cannot say whether the volume filled, the directory vanished or the
+// handle was lost; the CRT's errno can, and it is the first thing a bug report needs.
+inline std::string io_error_text() {
+    const int code = errno;
+    return code ? std::string(std::strerror(code)) : std::string("stream state failed");
+}
+
+inline std::string quoted_path(const std::filesystem::path& path) {
+    return "'" + path.string() + "'";
+}
+
+template<class Stream>
+void open_disk_file(Stream& stream, const std::filesystem::path& path, std::ios::openmode mode,
+                    size_t buffer_bytes, const char* what) {
+    errno = 0;
+    stream.open(path, mode, buffer_bytes);
+    if (!stream.is_open())
+        throw std::runtime_error(std::string("cannot open ") + what + " " + quoted_path(path) +
+                                 ": " + io_error_text());
+}
+
 template<class T> bool read_disk_record(std::istream& input, T& value) {
     input.read(reinterpret_cast<char*>(&value), sizeof(T));
     if (!input.gcount() && input.eof()) return false;
@@ -29,6 +52,12 @@ template<class T> bool read_disk_record(std::istream& input, T& value) {
 template<class T> void write_disk_record(std::ostream& output, const T& value) {
     output.write(reinterpret_cast<const char*>(&value), sizeof(T));
     if (!output) throw std::runtime_error("dense intermediate write failed");
+}
+
+template<class T>
+void write_disk_record_to(std::ostream& output, const T& value, const std::filesystem::path& path) {
+    output.write(reinterpret_cast<const char*>(&value), sizeof(T));
+    if (!output) throw std::runtime_error("cannot write " + quoted_path(path) + ": " + io_error_text());
 }
 
 inline void flush_disk_output(std::ostream& output) {
@@ -59,9 +88,9 @@ template<class T, class Compare> void external_sort(const std::filesystem::path&
         return destination.string() + ".sort-" + std::to_string(pass) + "-" + std::to_string(index);
     };
     {
-        BufferedInputFile input(source, std::ios::binary, buffer_bytes);
+        BufferedInputFile input;
+        open_disk_file(input, source, std::ios::binary, buffer_bytes, "dense sort input");
         BufferedOutputFile output;
-        if (!input) throw std::runtime_error("cannot read dense sort input");
         std::vector<T> chunk; chunk.reserve((size_t)capacity); T value;
         for (;;) {
             if (check) check();
@@ -71,11 +100,11 @@ template<class T, class Compare> void external_sort(const std::filesystem::path&
             advance(chunk.size());
             std::stable_sort(chunk.begin(), chunk.end(), compare);
             const auto path = run_file(0,run_count++);
-            output.open(path, std::ios::binary | std::ios::trunc, buffer_bytes);
-            for (const auto& record : chunk) write_disk_record(output, record);
+            open_disk_file(output, path, std::ios::binary | std::ios::trunc, buffer_bytes, "dense sort run");
+            for (const auto& record : chunk) write_disk_record_to(output, record, path);
             flush_disk_output(output);
             output.close();
-            if (!output) throw std::runtime_error("cannot close dense sort run");
+            if (!output) throw std::runtime_error("cannot close dense sort run " + quoted_path(path));
         }
     }
     uint64_t pass = 0;
@@ -90,27 +119,30 @@ template<class T, class Compare> void external_sort(const std::filesystem::path&
                 fs::rename(first,path); continue;
             }
             {
-                a.open(first, std::ios::binary, buffer_bytes);
-                b.open(second, std::ios::binary, buffer_bytes);
-                output.open(path, std::ios::binary | std::ios::trunc, buffer_bytes);
+                open_disk_file(a, first, std::ios::binary, buffer_bytes, "dense sort run");
+                open_disk_file(b, second, std::ios::binary, buffer_bytes, "dense sort run");
+                open_disk_file(output, path, std::ios::binary | std::ios::trunc, buffer_bytes, "dense sort merge");
                 T va, vb; bool has_a = read_disk_record(a, va), has_b = read_disk_record(b, vb);
                 while (has_a || has_b) {
                     if (check) check();
                     advance(1);
                     if (has_a && (!has_b || !compare(vb, va))) {
-                        write_disk_record(output, va); has_a = read_disk_record(a, va);
-                    } else { write_disk_record(output, vb); has_b = read_disk_record(b, vb); }
+                        write_disk_record_to(output, va, path); has_a = read_disk_record(a, va);
+                    } else { write_disk_record_to(output, vb, path); has_b = read_disk_record(b, vb); }
                 }
                 flush_disk_output(output);
                 a.close(); b.close(); output.close();
-                if (!output) throw std::runtime_error("cannot close dense sort merge");
+                if (!output) throw std::runtime_error("cannot close dense sort merge " + quoted_path(path));
             }
             fs::remove(first); fs::remove(second);
         }
         run_count = run_count / 2 + run_count % 2; ++pass;
     }
-    if (!run_count) { std::ofstream output(destination, std::ios::binary | std::ios::trunc); flush_disk_output(output); }
-    else fs::rename(run_file(pass,0),destination);
+    if (!run_count) {
+        open_disk_file(output, destination, std::ios::binary | std::ios::trunc, buffer_bytes, "dense sort output");
+        flush_disk_output(output);
+        output.close();
+    } else fs::rename(run_file(pass,0),destination);
     if (progress) progress(total, total);
 }
 

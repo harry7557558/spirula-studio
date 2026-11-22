@@ -3,7 +3,8 @@
 // are separate entries here because their groupshared fragments differ. One
 // 64-thread workgroup per micro-tile, binned per macro tile; the CUDA template
 // axes are the specialization constants below. 3DGS / Mip / 3DGUT render
-// rgb + depth; 2DGS (kSurfel, the eval3d entry) adds the normal.
+// rgb + depth; kNormal (the eval3d entry) adds the normal: 2DGS's (kSurfel),
+// or 3DGUT's (evaluate_color_3dgs_normal).
 //
 // CUDA's __syncthreads_count(done) early-out is a monotonic groupshared
 // counter each thread bumps once on turning done; the loop-top barrier, which
@@ -302,9 +303,9 @@ void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 }
 
 // ---------------------------------------------------------------------------
-// eval3D (Vanilla3DGUT, Vanilla2DGS when kSurfel): per-pixel rays; the
-// projected 2D conic lives in the screen "scale" slot and the ellipse center
-// is the AABB center. kDistType 3 / 4 (DN / RGB_DN) are 2DGS only.
+// eval3D (Vanilla3DGUT, Vanilla2DGS when kSurfel): per-pixel rays; the screen
+// "scale" slot holds the slab of the splat's bounds (docs/notes/footprint.md).
+// kDistType 3 / 4 (DN / RGB_DN) need kNormal.
 // ---------------------------------------------------------------------------
 
 // Vanilla3DGUT::FragmentFwd, and Vanilla2DGS's
@@ -323,7 +324,7 @@ struct RasterFwd3dgutParams {
     float* quats;   // [N, 4]
     float* scales;  // [N, 3]
     int* gaussian_ids;  // [nnz] packed mode or null (world idx = g % N)
-    float* s_screen;  // packed ScreenBuffer rows; "scale" slot = 2D conic
+    float* s_screen;  // packed ScreenBuffer rows
     // cameras
     float* viewmats;     // [I, 16] row-major
     float4* intrins;     // [I]
@@ -333,7 +334,7 @@ struct RasterFwd3dgutParams {
     int* flatten_ids;    // [n_isects]
     float* out_rgb;
     float* out_depth;
-    float* out_normal;   // kSurfel only
+    float* out_normal;   // kNormal only
     float* out_T;
     int* out_last_ids;
     float* dist_rgb;
@@ -429,6 +430,9 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     float mt_bx0 = float(mt_x * TILE_SIZE_X);
     float mt_by0 = float(mt_y * TILE_SIZE_Y);
+    // the box of its pixel centres
+    float2 mt_half = 0.5f * float2(float(TILE_SIZE_X) - 1.0f, float(TILE_SIZE_Y) - 1.0f);
+    float2 mt_centre = float2(mt_bx0, mt_by0) + 0.5f + mt_half;
 
     if (tid == 0)
         _done_count = 0;
@@ -448,23 +452,14 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             int g = p.flatten_ids[idx];
             uint wi = kRasterPacked != 0 ? uint(p.gaussian_ids[g])
                                                 : uint(g) % p.N;
-            // 3dgut keeps the projected 2D conic in the screen "scale"
-            // channel and the ellipse center is the AABB center. Cull here,
-            // before the (expensive) 3D fragment load, matching the tile
-            // intersector.
+            // Cull on the bounds alone, before the fragment load: each pixel
+            // tests its own alpha, so a bound that keeps too much costs time only.
             float* r = scrg_row(p.s_screen, g);
             float opac = scrg_opac(r);
-            if (opac > ALPHA_THRESHOLD) {
-                float3 conic = scrg_scale(r);
-                float2 ec = aabb16_center(p.aabb[g], p.width, p.height);
-                float ecx = ec.x, ecy = ec.y;
-                float kk = 0.5f / log(opac / ALPHA_THRESHOLD);
-                float3 inv_cov = conic * kk;
-                hit = ellipse_box_overlap_test(
-                    inv_cov, mt_bx0 - ecx,
-                    mt_bx0 + float(TILE_SIZE_X) - ecx, mt_by0 - ecy,
-                    mt_by0 + float(TILE_SIZE_Y) - ecy);
-            }
+            hit = opac > ALPHA_THRESHOLD &&
+                aabb_reaches_micro_tile(aabb16_decode(p.aabb[g], p.width, p.height),
+                                        mt_bx0, mt_by0, float(TILE_SIZE_X)) &&
+                !slab_misses_box(scrg_scale(r), mt_centre, mt_half);
             if (hit) {
                 // FragmentFwd::load
                 Frag3dgut f;
@@ -510,6 +505,10 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 evaluate_color_2dgs(f.mean, f.iscl_rot, f.opacity, f.rgb,
                                     ray_o, ray_d, color_rgb,
                                     color_depth, color_normal);
+            else if (kNormal != 0)
+                evaluate_color_3dgs_normal(f.mean, f.iscl_rot, f.opacity,
+                                           f.rgb, ray_o, ray_d, color_rgb,
+                                           color_depth, color_normal);
             else
                 evaluate_color_3dgs(f.mean, f.iscl_rot, f.opacity, f.rgb,
                                     ray_o, ray_d, color_rgb, color_depth);
@@ -545,7 +544,7 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 }
                 pix_rgb += color_rgb * vis;
                 pix_depth += acc_depth * vis;
-                if (kSurfel != 0) pix_normal += color_normal * vis;
+                if (kNormal != 0) pix_normal += color_normal * vis;
                 if (kOutputScore != 0) pix_score += vis * _score[t];
                 cur_idx = uint(batch_start) + t;
                 T = next_T;
@@ -586,7 +585,7 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         p.out_rgb[3 * pix_id_global + 1] = pix_rgb.y;
         p.out_rgb[3 * pix_id_global + 2] = pix_rgb.z;
         if (p.out_depth_on != 0) p.out_depth[pix_id_global] = out_depth;
-        if (kSurfel != 0) {
+        if (kNormal != 0) {
             // composited in world space, stored in camera space
             pix_normal = undo_transform_ray_d(R, pix_normal);
             p.out_normal[3 * pix_id_global + 0] = pix_normal.x;
@@ -602,6 +601,9 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 // 2DGS surfels in the eval3d entry.
 [SpecializationConstant]
 const int kSurfel = 0;
+// The eval3d entry renders a normal; set with kSurfel too.
+[SpecializationConstant]
+const int kNormal = 0;
 
 // Declared last: spec IDs follow declaration order (see dist_spec.slang).
 [SpecializationConstant]

@@ -472,6 +472,7 @@ struct MeshPointCloudParams {
     float min_axis_ratio;
     uint32_t num_kept;
     uint32_t wgs_per_row;
+    uint32_t samples_per_gaussian;
 };
 
 [shader("compute")]
@@ -483,20 +484,27 @@ void mesh_pointcloud(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (gid >= p.num_kept) return;
     int i = int(gid);
     int g = p.kept[i];
-    float k = sqrt(p.k2[g]) * 2.5f;  // 2.5x the cutoff, for overlapping splats
     float3 m = ld3(p.mean, g);
+    if (p.samples_per_gaussian <= 1u) {
+        gindex_t base = gindex_t(gid) * 3;
+        elem_at(p.out_xyz, base + gindex_t(0))[0] = m.x;
+        elem_at(p.out_xyz, base + gindex_t(1))[0] = m.y;
+        elem_at(p.out_xyz, base + gindex_t(2))[0] = m.z;
+        return;
+    }
+    float k = sqrt(p.k2[g]) * 2.5f;  // 2.5x the cutoff, for overlapping splats
     float3 s = rsqrt(ld3(p.invs2, g));
     float lo = p.min_axis_ratio * max(s.x, max(s.y, s.z));
     float3 o0 = ld3(p.ax0, g) * (k * max(s.x, lo));
     float3 o1 = ld3(p.ax1, g) * (k * max(s.y, lo));
     float3 o2 = ld3(p.ax2, g) * (k * max(s.z, lo));
     float3 pts[7] = { m, m + o0, m - o0, m + o1, m - o1, m + o2, m - o2 };
-    int base = i * 21;
+    gindex_t base = gindex_t(gid) * 21;
     [ForceUnroll]
     for (int j = 0; j < 7; ++j) {
-        p.out_xyz[base + 3 * j + 0] = pts[j].x;
-        p.out_xyz[base + 3 * j + 1] = pts[j].y;
-        p.out_xyz[base + 3 * j + 2] = pts[j].z;
+        elem_at(p.out_xyz, base + gindex_t(3 * j + 0))[0] = pts[j].x;
+        elem_at(p.out_xyz, base + gindex_t(3 * j + 1))[0] = pts[j].y;
+        elem_at(p.out_xyz, base + gindex_t(3 * j + 2))[0] = pts[j].z;
     }
 }
 

@@ -1,10 +1,10 @@
 // Occupancy-moment rasterization (Vulkan backend), mirroring
 // kernels/raster/RasterizationMomentsFwd.cu. Same front-to-back micro-tile
 // walk as rasterize_fwd.slang's 3DGUT entry; the only difference is the
-// per-pixel accumulator -- a two-point linear fit of
-// sqrt(-log T) against the fragment depth, which the meshing sampler turns
-// back into occupancy at an arbitrary depth (see MeshingRaster's
-// occ_from_moment) -- plus the optional full-ray DC color image.
+// per-pixel accumulator -- a line for sqrt(-log T) against ray depth, fitted
+// to the middle half of the light the ray loses, which the meshing sampler
+// turns back into occupancy at any depth (meshing_raster.slang) -- plus the
+// optional full-ray DC color image.
 //
 // 3DGUT camera model and distortion tier are specialization constants
 // (kDistortion declared last -- see dist_spec.slang).
@@ -30,6 +30,39 @@ const int kRasterPacked = 0;
 const int kOutputRgb = 0;
 
 // Vanilla3DGUT::FragmentFwd
+// The line is fitted to the fragments that take T from kBandHi to kBandLo: the
+// middle half of the light a ray loses (docs/notes/mesh-field.md).
+static const float kBandHi = 0.75f;
+static const float kBandLo = 0.25f;
+static const float kMaxSlope = 1000.0f;   // times depth: no profile is sharper
+static const float kEntrySigmas = 1.0f;
+// A ray that has lost kSurfaceAlpha of its light stops at a depth gap of
+// kSurfaceGap (relative): what lies beyond is another surface.
+static const float kSurfaceAlpha = 0.5f;
+static const float kSurfaceGap = 0.02f;
+
+// A fragment's share of that band: 0 when it lies outside it. `T` before the
+// fragment, `alpha` its opacity on the ray.
+[ForceInline]
+float band_share(float T, float alpha) {
+    return max(min(T, kBandHi) - max(T * (1.0f - alpha), kBandLo), 0.0f);
+}
+
+// (c0, c1) through the band's mean depth with the slope its spread gives, from
+// the sums of share, share * d and share * d^2 (d: depth - z0); `T` at the end.
+[ForceInline]
+void band_line(float sw, float sz, float szz, float z0, float T,
+               out float c0, out float c1) {
+    c0 = 0.0f; c1 = 0.0f;
+    if (!(sw > 0.0f)) return;
+    float ds = sz / sw, zs = z0 + ds;
+    float range = sqrt(12.0f * max(szz / sw - ds * ds, 0.0f));
+    float end = max(T, kBandLo);
+    float dv = sqrt(-log(end)) - sqrt(-log(kBandHi));
+    c1 = min(dv / max(range, 1e-12f), kMaxSlope / zs);
+    c0 = sqrt(-log(0.5f * (kBandHi + end))) - c1 * zs;
+}
+
 struct FragMoments {
     float3 mean;
     float3x3 iscl_rot;
@@ -118,7 +151,9 @@ void rasterize_moments_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint pix_id = image_id * p.height * p.width + i * p.width + j;
 
     float T = 1.0f;
-    float z1 = 0.0f, z2 = 0.0f, v1 = 0.0f, v2 = 0.0f, c0 = 0.0f, c1 = 0.0f;
+    // band_share sums, depths taken from the first (z0): float holds no z^2
+    float sw = 0.0f, sz = 0.0f, szz = 0.0f, z0 = 0.0f;
+    float z_last = 0.0f, T_stop = -1.0f;   // the surface's last fragment; T where it stopped
     float3 crgb = float3(0.0f);
 
     int range_start = tile_offsets[tile_id];
@@ -132,6 +167,9 @@ void rasterize_moments_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     float mt_bx0 = float(mt_x * TILE_SIZE_X);
     float mt_by0 = float(mt_y * TILE_SIZE_Y);
+    // the box of its pixel centres
+    float2 mt_half = 0.5f * float2(float(TILE_SIZE_X) - 1.0f, float(TILE_SIZE_Y) - 1.0f);
+    float2 mt_centre = float2(mt_bx0, mt_by0) + 0.5f + mt_half;
 
     if (tid == 0)
         _done_count_mom = 0;
@@ -151,18 +189,13 @@ void rasterize_moments_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             int g = p.flatten_ids[idx];
             uint wi = kRasterPacked != 0 ? uint(p.gaussian_ids[g])
                                          : uint(g) % p.N;
+            // As rasterize_fwd.slang's 3DGUT entry culls.
             float* r = scrg_row(p.s_screen, g);
             float opac = scrg_opac(r);
-            if (opac > ALPHA_THRESHOLD) {
-                float3 conic = scrg_scale(r);
-                float2 ec = aabb16_center(p.aabb[g], p.width, p.height);
-                float ecx = ec.x, ecy = ec.y;
-                float kk = 0.5f / log(opac / ALPHA_THRESHOLD);
-                float3 inv_cov = conic * kk;
-                hit = ellipse_box_overlap_test(
-                    inv_cov, mt_bx0 - ecx, mt_bx0 + float(TILE_SIZE_X) - ecx,
-                    mt_by0 - ecy, mt_by0 + float(TILE_SIZE_Y) - ecy);
-            }
+            hit = opac > ALPHA_THRESHOLD &&
+                aabb_reaches_micro_tile(aabb16_decode(p.aabb[g], p.width, p.height),
+                                        mt_bx0, mt_by0, float(TILE_SIZE_X)) &&
+                !slab_misses_box(scrg_scale(r), mt_centre, mt_half);
             if (hit) {
                 FragMoments f;
                 f.mean = float3(p.means[3 * wi], p.means[3 * wi + 1],
@@ -204,20 +237,19 @@ void rasterize_moments_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             float next_T = T * (1.0f - alpha);
             if (next_T > 1e-4f) {
                 float vis = alpha * T;
-                float v = sqrt(max(-log(max(next_T, 1e-12f)), 1e-12f));
-                if (z1 == 0.0f || (z2 == 0.0f && z <= z1)) {
-                    z1 = z; v1 = v;
-                } else {
-                    if (z2 == 0.0f) {
-                        z2 = z; v2 = v;
-                    } else if (v > c0 + c1 * z) {
-                        if (z < z1) { z1 = z; v1 = v; }
-                        else        { z2 = z; v2 = v; }
+                // where the ray enters the Gaussian: kEntrySigmas before its peak
+                float3 grd = mul(f.iscl_rot, ray_d);
+                float zb = max(z - kEntrySigmas * rsqrt(dot(grd, grd)), 1e-6f);
+                if (T_stop < 0.0f && sw > 0.0f && 1.0f - T >= kSurfaceAlpha &&
+                    zb > z_last * (1.0f + kSurfaceGap))
+                    T_stop = T;
+                if (T_stop < 0.0f) {
+                    float w = band_share(T, alpha);
+                    if (w > 0.0f) {
+                        if (sw == 0.0f) z0 = zb;
+                        sw += w; sz += w * (zb - z0); szz += w * (zb - z0) * (zb - z0);
                     }
-                    if (1.0f - T <= 0.9f) {
-                        c1 = (v2 - v1) / (z2 - z1);
-                        c0 = v1 - c1 * z1;
-                    }
+                    z_last = zb;
                 }
                 if (kOutputRgb != 0)
                     crgb += color_rgb * vis;
@@ -230,7 +262,10 @@ void rasterize_moments_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     }
 
     if (i < p.height && j < p.width) {
-        p.out_moments[3 * pix_id + 0] = 1.0f - T;
+        float c0, c1;
+        float T_end = T_stop < 0.0f ? T : T_stop;
+        band_line(sw, sz, szz, z0, T_end, c0, c1);
+        p.out_moments[3 * pix_id + 0] = 1.0f - T_end;
         p.out_moments[3 * pix_id + 1] = c0;
         p.out_moments[3 * pix_id + 2] = c1;
         if (kOutputRgb != 0) {

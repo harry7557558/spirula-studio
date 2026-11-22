@@ -3,10 +3,10 @@
 #include "app/gui/PresetFile.h"
 
 #include "app/AppPaths.h"
+#include "core/AtomicFile.h"
 
 #include <cctype>
 #include <cstdint>
-#include <cstdio>
 #include <stdexcept>
 
 namespace fs = std::filesystem;
@@ -120,16 +120,8 @@ JsonWriter preset_writer(PresetKind kind, const PresetHeader& head) {
 
 
 void write_preset_file(const std::string& path, const std::string& text) {
-    std::error_code ec;
-    const fs::path parent = fs::path(path).parent_path();
-    if (!parent.empty()) fs::create_directories(parent, ec);
-
-    FILE* f = std::fopen(path.c_str(), "wb");
-    if (!f) throw std::runtime_error("cannot write " + path);
-    const size_t n = std::fwrite(text.data(), 1, text.size(), f);
-    const bool ok = n == text.size() && std::ferror(f) == 0;
-    std::fclose(f);
-    if (!ok) throw std::runtime_error("failed while writing " + path);
+    if (!spirula::write_file_atomic(spirula::resolve_output_symlink(path), text.data(), text.size()))
+        throw std::runtime_error("cannot write " + path);
 }
 
 

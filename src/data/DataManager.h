@@ -1,25 +1,14 @@
 #pragma once
 
-// DataManager — host-side training-data orchestrator.
+// DataManager: decodes the dataset's images and batches them by image shape so
+// each engine_train_step sees uniform [B,H,W,C] inputs. Formats are stb_image's:
+// 8/16-bit PNG (1 channel for depth/masks, 3-4 for RGB/normals), JPEG, BMP, TGA.
 //
-// Owns the on-disk dataset layout, decodes images via stb_image, batches
-// indices by image-shape group (so each engine_train_step sees uniform
-// [B,H,W,C] inputs), and feeds the resulting batches directly into the engine.
-//
-// The two cache modes trade RAM for per-step latency:
-//
-//   CPU    every image is decoded up front into a host byte buffer, so
-//          next_*_batch() only gathers rows. Peak RAM ~= the whole decoded
-//          dataset.
-//   DISK   nothing is pre-decoded. Three worker pools (four with masks) run
-//          per modality -- RGB+MASK / DEPTH / NORMAL -- each with its own
-//          bounded job and ready queues, keeping `prefetch_batches` batches in
-//          flight. The split is per modality because depth and normal dominate
-//          decode cost on dense-supervision datasets, and one shared pool lets
-//          them starve the RGB stream.
-//
-// Formats are whatever stb_image reads: 8- and 16-bit PNG (one channel for
-// depth / masks, three or four for RGB / normals), JPEG, BMP, TGA.
+//   CPU    every image is decoded up front (peak RAM ~ the decoded dataset);
+//          next_train_step() gathers rows.
+//   DISK   nothing is pre-decoded. One bounded worker pool per modality
+//          (RGB+MASK / DEPTH / NORMAL) keeps `prefetch_batches` in flight;
+//          depth and normal decode cost would starve RGB in a shared pool.
 
 #include "core/Common.cuh"
 #include "core/Tensor.h"
@@ -38,8 +27,8 @@
 #include <vector>
 
 
-// Thrown by next_train_step() / next_val_batch() when a decode worker is
-// parked on a file it could not read. Answer with resolve_data_error().
+// Thrown by next_train_step() when a decode worker is parked on a file it
+// could not read. Answer with resolve_data_error().
 class DataDecodeError : public std::runtime_error {
 public:
     explicit DataDecodeError(const std::string& what)
@@ -69,10 +58,7 @@ struct DataManagerConfig {
     // with fewer than batch_size images yield a smaller batch.
     int  train_batch_size = 1;
 
-    // Eval batch size. Ignored when val_indices is empty.
-    int  val_batch_size   = 1;
-
-    // RNG seed for group sampling and shuffle. 0 lets the implementation pick
+    // RNG seed for the training shuffle. 0 lets the implementation pick
     // a nondeterministic value (steady_clock).
     uint64_t seed = 0;
 
@@ -127,7 +113,7 @@ struct DataManagerConfig {
 
     // (first step, divisor) stages for training batches (data/ResolutionSchedule.h);
     // empty trains at the loaded size. `first_step` is the step a resumed run
-    // continues from. Validation and fetch_one always use divisor 1.
+    // continues from. fetch_one always uses divisor 1.
     std::vector<std::pair<int64_t, int>> resolution_stages;
     int64_t first_step = 0;
 };
@@ -369,14 +355,9 @@ public:
     // known to produce single-sub-batch steps.
     const DecodedBatch& next_train_batch();
 
-    // Same for eval. Returns nullptr if no validation indices were configured.
-    const DecodedBatch* next_val_batch();
-
-    // Decode ONE input image, by dataset index, into `out`: a batch of size 1
-    // carrying the mask, warp and resize a training batch over that image
-    // would carry. Synchronous, and it touches neither the sampling cursors
-    // nor the prefetch queues, so it may run between training steps. RGB and
-    // mask only -- its caller is the GUI's ground-truth-vs-render view.
+    // Decode one image by dataset index into a size-1 batch with the mask, warp
+    // and resize training would apply. Synchronous; leaves the sampling cursors
+    // and prefetch queues alone. Final eval and the GUI's ground-truth view.
     void fetch_one(int32_t index, DecodedBatch& out);
 
     // ---- Decode faults ----------------------------------------------------
@@ -387,8 +368,8 @@ public:
     std::string data_error() const;
 
     // true re-runs the parked decode -- the run continues where it stopped
-    // once the file is back. false abandons the pipeline: the ready queues
-    // close, so the next fetch throws instead of blocking forever.
+    // once the file is back. false abandons the pipeline: the ready queue
+    // closes, so the next fetch throws instead of blocking forever.
     void resolve_data_error(bool retry);
 
     // ---- View stats -------------------------------------------------------
@@ -401,8 +382,6 @@ public:
     // ---- Stats ------------------------------------------------------------
 
     int64_t num_train()     const;
-    int64_t num_val()       const;
-    bool    has_val()       const;
     CacheMode cache_mode()  const;
 
     // Whether each modality is present in the dataset AND enabled.

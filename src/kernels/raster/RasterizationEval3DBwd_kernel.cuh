@@ -353,25 +353,28 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         if (gi >= range_start) {
             int32_t sid = flatten_ids[gi];
         #if IS_EVAL3D
-            // 3dgut keeps the 2D conic in the screen "scale" channel; center is
-            // the AABB center (matches the tile intersector / forward mask).
-            float c_opac = splat_sbuffer.opacities(sid);
-            float3 c_conic = splat_sbuffer.scales(sid);
-            float2 c_ec = aabb16_center(aabb[sid], image_width, image_height);
-            float c_ex = c_ec.x, c_ey = c_ec.y;
+            // The forward's cull.
+            ok = splat_sbuffer.opacities(sid) > ALPHA_THRESHOLD &&
+                SlangProjectionUtils::aabb_reaches_micro_tile(
+                    aabb16_decode(aabb[sid], image_width, image_height),
+                    cull_bx0, cull_by0, (float)TILE_SIZE_DX) &&
+                !SlangProjectionUtils::slab_misses_box(
+                    splat_sbuffer.scales(sid),
+                    {cull_bx0 + 0.5f * TILE_SIZE_DX, cull_by0 + 0.5f * TILE_SIZE_DY},
+                    {0.5f * (TILE_SIZE_DX - 1), 0.5f * (TILE_SIZE_DY - 1)});
         #else
             float c_opac = splat_sbuffer.opac(sid);
             float3 c_conic = splat_sbuffer.conic(sid);
             float2 c_xy = splat_sbuffer.xy(sid);
             float c_ex = c_xy.x, c_ey = c_xy.y;
-        #endif
             if (c_opac > ALPHA_THRESHOLD) {
-                float kk = 0.5f / kernel_reach(c_opac, IS_EVAL3D ? 0.f : kernel_cut);
+                float kk = 0.5f / kernel_reach(c_opac, kernel_cut);
                 float3 inv_cov = { c_conic.x*kk, c_conic.y*kk, c_conic.z*kk };
                 ok = ellipse_box_overlap_test(inv_cov,
                     cull_bx0 - c_ex, cull_bx0 + TILE_SIZE_DX - c_ex,
                     cull_by0 - c_ey, cull_by0 + TILE_SIZE_DY - c_ey);
             }
+        #endif
         }
         uint32_t bal = __ballot_sync(~0u, ok);
         int pos = count + __popc(bal & (((uint32_t)1 << thread_id) - 1));

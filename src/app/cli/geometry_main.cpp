@@ -183,6 +183,24 @@ float depth_scale(const std::vector<float>& depth) {
 // that merely looks plausible.
 // ---------------------------------------------------------------------------
 
+bool geometry_serial_fallback(bool explicit_memory, uint64_t model_bytes,
+                              uint64_t memory, size_t children) {
+    return !explicit_memory && children != 0 && model_bytes > memory / children;
+}
+
+bool pair_fits(uint64_t first, uint64_t second, uint64_t task_budget, size_t children) {
+    const uint64_t share = task_budget / children;
+    return first <= share && second <= share - first;
+}
+bool request_flags_match(bool normal, bool depth, bool want_normal, bool want_depth) {
+    return (normal || depth) && (!normal || want_normal) && (!depth || want_depth);
+}
+
+bool geometry_map_complete(bool worker, bool requested, bool enabled,
+                           const fs::path& path, const std::string& key) {
+    return !(worker ? requested : enabled) || app::geometry_output_complete(path, key);
+}
+
 int output_self_check() {
     const fs::path root = fs::temp_directory_path() / ("spirula-geometry-check-" +
         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
@@ -196,6 +214,25 @@ int output_self_check() {
         std::printf("  %s geometry resume: %s\n", good ? "ok  " : "FAIL", what);
         if (!good) ++failures;
     };
+    check(geometry_serial_fallback(false, 11, 20, 2) &&
+          !geometry_serial_fallback(false, 10, 20, 2),
+          "default worker memory falls back only above the per-worker share");
+    check(!geometry_serial_fallback(true, 11, 20, 2) &&
+          !geometry_serial_fallback(false, 11, 20, 0),
+          "explicit memory and serial runs never use the worker fallback");
+    check(!pair_fits(6, 6, 20, 2), "pairing leaves a fair share for another worker");
+    check(pair_fits(5, 5, 20, 2) && !pair_fits(11, 0, 20, 2),
+          "pairing accepts the share boundary without unsigned underflow");
+    check(!pair_fits(UINT64_MAX, 1, UINT64_MAX, 1),
+          "pairing rejects an overflowing sum");
+    check(request_flags_match(true, false, true, true) &&
+          request_flags_match(false, true, true, true) &&
+          request_flags_match(true, true, true, true),
+          "workers accept missing siblings from a partially completed family");
+    check(!request_flags_match(false, false, true, true) &&
+          !request_flags_match(true, false, false, true) &&
+          !request_flags_match(false, true, true, false),
+          "workers reject empty work and maps disabled by the CLI flags");
     const std::string normal_key = "synthetic-source|six-faces|normal|png";
     const std::string depth_key = "synthetic-source|six-faces|depth";
     const auto normal = root / "normal.png";
@@ -247,6 +284,18 @@ int output_self_check() {
           app::geometry_output_complete(root / "normal.jpg", normal_key + "|jpg") &&
           app::geometry_output_complete(depth, depth_key),
           "PNG/JPEG normals and 16-bit depth resume only after publication");
+    check(geometry_map_complete(true, true, true, normal, normal_key) &&
+          geometry_map_complete(true, false, true, {}, depth_key),
+          "normal-only worker completion ignores an unstaged depth sibling");
+    check(geometry_map_complete(true, false, true, {}, normal_key) &&
+          geometry_map_complete(true, true, true, depth, depth_key),
+          "depth-only worker completion ignores an unstaged normal sibling");
+    check(!geometry_map_complete(false, false, true, {}, depth_key) &&
+          !geometry_map_complete(false, false, true, {}, normal_key),
+          "parent and serial completion still require enabled siblings");
+    check(!geometry_map_complete(true, true, true, {}, normal_key) &&
+          !geometry_map_complete(true, true, true, {}, depth_key),
+          "worker completion rejects a missing requested map");
     check(!app::geometry_output_complete(normal, normal_key + "|different-faces") &&
           !app::geometry_output_complete(normal, depth_key),
           "completion is bound to the requested faces and output family");
@@ -773,6 +822,7 @@ int spirula_geometry_main(int argc, char** argv) {
     // An explicit --device, including an empty one: `--device ""` is the
     // caller's Auto, which must beat SS_VK_DEVICE the way a chosen index does.
     bool device_set = false;
+    bool worker_memory_set = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -817,6 +867,7 @@ int spirula_geometry_main(int argc, char** argv) {
                     mb > std::numeric_limits<uint64_t>::max() / (1024 * 1024))
                     throw std::invalid_argument("range");
                 o.worker_memory = mb * 1024 * 1024;
+                worker_memory_set = true;
             } catch (...) {
                 std::fprintf(stderr, "--worker-memory-mb needs a positive integer\n");
                 return 2;
@@ -869,7 +920,7 @@ int spirula_geometry_main(int argc, char** argv) {
     try {
         const unsigned copies = o.worker ? 1 : app::workers_per_gpu();
         if (copies > 1 && o.worker_devices.empty()) o.worker_devices = selector;
-        const auto worker_devices = app::expand_worker_devices(
+        auto worker_devices = app::expand_worker_devices(
             app::parse_worker_devices(o.worker_devices), copies);
         // ---- the dataset --------------------------------------------------
         DatasetParserConfig cfg;
@@ -880,10 +931,10 @@ int spirula_geometry_main(int argc, char** argv) {
         const int64_t N = ds.num_cameras;
         NN_CHECK(N > 0, "'%s' holds no images", o.dataset.c_str());
 
-        std::vector<std::string> keys((size_t)N);
-        std::vector<int> group((size_t)N, 0);
-        std::vector<int64_t> group_first;
-        {
+        std::vector<std::string> keys(o.worker ? 0 : (size_t)N);
+        std::vector<int> group(o.worker ? 0 : (size_t)N, 0);
+        std::vector<int64_t> group_first(o.worker ? 2 : 0);
+        if (!o.worker) {
             std::vector<std::string> seen;
             for (int64_t i = 0; i < N; ++i) {
                 keys[(size_t)i] = camera_key(ds, i);
@@ -897,7 +948,7 @@ int spirula_geometry_main(int argc, char** argv) {
                 }
             }
         }
-        std::printf("%s\n", format(G::log_dataset,
+        if (!o.worker) std::printf("%s\n", format(G::log_dataset,
                                    {fs::path(o.dataset).filename().string(),
                                     (long long)N, (long long)group_first.size()})
                                 .c_str());
@@ -920,13 +971,27 @@ int spirula_geometry_main(int argc, char** argv) {
             if (const int rc = install_model(o.model, o.want_depth, o.want_normal)) return rc;
         }
 
+        uint64_t model_host_bytes = 0;
+        int patch = 0;
+        if (!worker_devices.empty()) {
+            patch = app::geometry_model_preflight(
+                o.model, o.want_depth, o.want_normal, model_host_bytes);
+            const size_t children = std::min(worker_devices.size(), (size_t)N);
+            if (geometry_serial_fallback(worker_memory_set, model_host_bytes,
+                                         o.worker_memory, children)) {
+                NN_LOG_WARN("%s\n", format(G::warn_serial_memory,
+                    {o.model, gb(model_host_bytes), gb(o.worker_memory)}).c_str());
+                o.worker_devices.clear();
+                worker_devices.clear();
+            }
+        }
         app::GeometryModel pred;
-        if (o.worker_devices.empty()) pred.load(o.model, selector, o.want_depth, o.want_normal);
+        if (o.worker_devices.empty()) {
+            pred.load(o.model, selector, o.want_depth, o.want_normal);
+            patch = pred.sizeGranularity();
+        }
 
         // ---- camera plans --------------------------------------------------
-        uint64_t model_host_bytes = 0;
-        const int patch = o.worker_devices.empty() ? pred.sizeGranularity()
-            : app::geometry_model_preflight(o.model, o.want_depth, o.want_normal, model_host_bytes);
         auto make_warp = [&](size_t g) {
             app::GeometryWarp warp;
             const int64_t i = group_first[g];
@@ -971,41 +1036,49 @@ int spirula_geometry_main(int argc, char** argv) {
             uint64_t pixels;
         };
         // Prefetch and resume checks need dimensions, not resident pixel maps.
-        std::vector<WarpInfo> warps;
-        warps.reserve(group_first.size());
-        uint64_t max_warp_bytes = 0;
-        for (size_t g = 0; g < group_first.size(); ++g) {
-            const auto warp = make_warp(g);
+        std::vector<WarpInfo> warps(group_first.size());
+        auto warp_info = [](const app::GeometryWarp& warp) {
             uint64_t pixels = 0;
             for (int k = 0; k < warp.faces(); ++k)
                 pixels += (uint64_t)warp.faceWidth(k) * warp.faceHeight(k);
-            warps.push_back({warp.outWidth(), warp.outHeight(), warp.sampleWidth(),
-                             warp.sampleHeight(), warp.faces(), pixels});
-            max_warp_bytes = std::max(max_warp_bytes, warp.bytes());
+            return WarpInfo{warp.outWidth(), warp.outHeight(), warp.sampleWidth(),
+                            warp.sampleHeight(), warp.faces(), pixels};
+        };
+        std::vector<uint64_t> warp_bytes(group_first.size());
+        std::vector<std::string> camera_logs(group_first.size());
+        // Two resident planning maps at most; hashing below caps 16 MiB buffers at eight.
+        if (!o.worker) nn::parallel_for(std::min<size_t>(2, group_first.size()),
+            [&](int64_t lo, int64_t hi) {
+                const size_t lanes = std::min<size_t>(2, group_first.size());
+                for (size_t lane = (size_t)lo; lane < (size_t)hi; ++lane)
+                for (size_t g = lane; g < group_first.size(); g += lanes) {
+                    const auto warp = make_warp(g);
+                    warps[g] = warp_info(warp);
+                    warp_bytes[g] = warp.bytes();
+                    const size_t i = (size_t)group_first[g];
+                    const char* model_name = camera_model_to_string(
+                        (CameraModelType)ds.camera_models[i]);
+                    int fw = 0, fh = 0;
+                    for (int k = 0; k < warp.faces(); ++k)
+                        if ((int64_t)warp.faceWidth(k) * warp.faceHeight(k) >
+                            (int64_t)fw * fh) {
+                            fw = warp.faceWidth(k);
+                            fh = warp.faceHeight(k);
+                        }
+                    camera_logs[g] = warp.split()
+                        ? format(G::log_camera_split, {(long long)g, model_name,
+                            (long long)warp.faces(), (long long)fw, (long long)fh})
+                        : format(G::log_camera_single, {(long long)g, model_name,
+                            (long long)fw, (long long)fh});
+                }
+            });
+        uint64_t max_warp_bytes = 0;
+        if (!o.worker) for (size_t g = 0; g < group_first.size(); ++g) {
+            max_warp_bytes = std::max(max_warp_bytes, warp_bytes[g]);
             const size_t i = (size_t)group_first[g];
             if (!ds.redistort.empty() && ds.redistort[i].source_model >= 0)
                 NN_LOG_WARN("%s\n", format(G::warn_fitted_camera, {(long long)g}).c_str());
-            const char* model_name = camera_model_to_string(
-                (CameraModelType)ds.camera_models[i]);
-            // The faces differ in size; the largest is the one the cost is.
-            int fw = 0, fh = 0;
-            for (int k = 0; k < warp.faces(); ++k)
-                if ((int64_t)warp.faceWidth(k) * warp.faceHeight(k) >
-                    (int64_t)fw * fh) {
-                    fw = warp.faceWidth(k);
-                    fh = warp.faceHeight(k);
-                }
-            if (warp.split())
-                std::printf("  %s\n", format(G::log_camera_split,
-                                             {(long long)g, model_name,
-                                              (long long)warp.faces(),
-                                              (long long)fw, (long long)fh})
-                                          .c_str());
-            else
-                std::printf("  %s\n", format(G::log_camera_single,
-                                             {(long long)g, model_name,
-                                              (long long)fw, (long long)fh})
-                                          .c_str());
+            std::printf("  %s\n", camera_logs[g].c_str());
         }
 
         // ---- where the output goes -----------------------------------------
@@ -1014,8 +1087,8 @@ int spirula_geometry_main(int argc, char** argv) {
         const fs::path normal_dir = root / cfg.normal_dir;
         const fs::path depth_dir = root / cfg.depth_dir;
         std::error_code ec;
-        if (o.want_normal) fs::create_directories(normal_dir, ec);
-        if (o.want_depth) fs::create_directories(depth_dir, ec);
+        if (!o.worker && o.want_normal) fs::create_directories(normal_dir, ec);
+        if (!o.worker && o.want_depth) fs::create_directories(depth_dir, ec);
 
         // The output mirrors whatever shape `images/` has, subdirectories and
         // all -- a multi-camera capture is `images/cam0/...`, and a writer
@@ -1039,6 +1112,7 @@ int spirula_geometry_main(int argc, char** argv) {
         // while the network runs on this one.
         struct Todo {
             int64_t i = 0;
+            size_t g = 0;
             fs::path np, dp;
             bool normal = false, depth = false;
             std::string key;
@@ -1046,12 +1120,38 @@ int spirula_geometry_main(int argc, char** argv) {
         std::vector<Todo> todo;
         std::vector<Todo> retained;
         std::set<fs::path> owned;
-        for (int64_t i = 0; i < N; ++i) {
+        std::vector<std::string> source_hashes(o.worker ? 0 : (size_t)N);
+        if (!o.worker) nn::parallel_for(std::min<int64_t>(8, N),
+            [&](int64_t lo, int64_t hi) {
+                const int64_t lanes = std::min<int64_t>(8, N);
+                for (int64_t lane = lo; lane < hi; ++lane)
+                for (int64_t i = lane; i < N; i += lanes) {
+                    auto& hash = source_hashes[(size_t)i];
+                    hash = spirula::sha256_file(ds.image_filenames[(size_t)i]);
+                    NN_CHECK(!hash.empty(), "cannot hash geometry source %s",
+                             ds.image_filenames[(size_t)i].c_str());
+                }
+            });
+        auto input_key = [&](const std::string& source,
+                             const std::string& camera, const WarpInfo& warp) {
+            return source + "|" + camera + "|" +
+                o.model + "|" + std::to_string(warp.out_w) + "," +
+                std::to_string(warp.out_h) + "," + std::to_string(warp.faces) + "|" +
+                std::to_string(o.max_size) + "," + std::to_string(o.num_tokens) + "," +
+                std::to_string(o.refine_steps) + "," + std::to_string((int)o.split) + "," +
+                std::to_string((int)o.face_res) + "," + std::to_string((int)o.ray_depth) + "," +
+                std::to_string(o.depth_mm) + "|" + o.image_gamut + "|" +
+                (o.image_is_linear ? (*o.image_is_linear ? "linear" : "srgb") : "auto") + "|" +
+                std::to_string(o.image_exposure.automatic) + "," +
+                std::to_string(o.image_exposure.stops);
+        };
+        if (!o.worker) for (int64_t i = 0; i < N; ++i) {
             // out_path creates the folder it names, so a map that was not asked
             // for must not have its path built: it would leave an empty depths/
             // in the dataset for a normals-only run.
             Todo t;
             t.i = i;
+            t.g = (size_t)group[(size_t)i];
             if (o.want_normal)
                 t.np = out_path(normal_dir, i, o.normal_format == "jpg" ? ".jpg" : ".png");
             if (o.want_depth) t.dp = out_path(depth_dir, i, ".png");
@@ -1067,20 +1167,7 @@ int spirula_geometry_main(int argc, char** argv) {
                              "multiple images own geometry output %s", path.string().c_str());
                 }
             }
-            const WarpInfo& warp = warps[(size_t)group[(size_t)i]];
-            const std::string source = spirula::sha256_file(ds.image_filenames[(size_t)i]);
-            NN_CHECK(!source.empty(), "cannot hash geometry source %s",
-                     ds.image_filenames[(size_t)i].c_str());
-            t.key = source + "|" + keys[(size_t)i] + "|" +
-                o.model + "|" + std::to_string(warp.out_w) + "," +
-                std::to_string(warp.out_h) + "," + std::to_string(warp.faces) + "|" +
-                std::to_string(o.max_size) + "," + std::to_string(o.num_tokens) + "," +
-                std::to_string(o.refine_steps) + "," + std::to_string((int)o.split) + "," +
-                std::to_string((int)o.face_res) + "," + std::to_string((int)o.ray_depth) + "," +
-                std::to_string(o.depth_mm) + "|" + o.image_gamut + "|" +
-                (o.image_is_linear ? (*o.image_is_linear ? "linear" : "srgb") : "auto") + "|" +
-                std::to_string(o.image_exposure.automatic) + "," +
-                std::to_string(o.image_exposure.stops);
+            t.key = input_key(source_hashes[(size_t)i], keys[(size_t)i], warps[t.g]);
             const std::string normal_key = t.key + "|normal|" + o.normal_format + "|" +
                                            std::to_string(o.jpeg_quality);
             t.normal = o.want_normal && (o.overwrite ||
@@ -1106,8 +1193,8 @@ int spirula_geometry_main(int argc, char** argv) {
             return t.key + "|normal|" + o.normal_format + "|" + std::to_string(o.jpeg_quality);
         };
         auto complete = [&](const Todo& t) {
-            return (!o.want_normal || app::geometry_output_complete(t.np, normal_key(t))) &&
-                   (!o.want_depth || app::geometry_output_complete(t.dp, t.key + "|depth"));
+            return geometry_map_complete(o.worker, t.normal, o.want_normal, t.np, normal_key(t)) &&
+                   geometry_map_complete(o.worker, t.depth, o.want_depth, t.dp, t.key + "|depth");
         };
         std::optional<app::GeometryWarp> current_warp;
         size_t current_group = group_first.size();
@@ -1117,8 +1204,9 @@ int spirula_geometry_main(int argc, char** argv) {
         // Empty when the file does not decode.
         auto read_at = [&](size_t j) {
             const int64_t i = todo[j].i;
-            return std::async(std::launch::async, [&, i] {
-                const WarpInfo& warp = warps[(size_t)group[(size_t)i]];
+            const size_t g = todo[j].g;
+            return std::async(std::launch::async, [&, i, g] {
+                const WarpInfo& warp = warps[g];
                 const nn::Image img =
                     nn::load_image(ds.image_filenames[(size_t)i], o.image_gamut,
                                    o.image_is_linear, o.image_exposure);
@@ -1140,7 +1228,7 @@ int spirula_geometry_main(int argc, char** argv) {
         };
 
         for (size_t j0 = 0; j0 < todo.size();) {
-            const size_t g = (size_t)group[(size_t)todo[j0].i];
+            const size_t g = todo[j0].g;
             if (g != current_group) {
                 // Release the previous maps before allocating the next camera's maps.
                 current_warp.reset();
@@ -1152,7 +1240,7 @@ int spirula_geometry_main(int argc, char** argv) {
                 1, (size_t)pred.batchCapacity(app::face_request(warp, 0, o.num_tokens)) /
                        (size_t)std::max(1, warp.faces()));
             size_t j1 = j0 + 1;
-            while (j1 < todo.size() && j1 - j0 < per && (size_t)group[(size_t)todo[j1].i] == g &&
+            while (j1 < todo.size() && j1 - j0 < per && todo[j1].g == g &&
                    todo[j1].normal == todo[j0].normal && todo[j1].depth == todo[j0].depth)
                 ++j1;
             read_until(j1 + (o.worker ? 1 : per));
@@ -1320,6 +1408,7 @@ int spirula_geometry_main(int argc, char** argv) {
         };
         if (o.worker) {
             std::set<int64_t> assigned;
+            std::string worker_camera;
             std::string frame;
             while (app::worker_read_frame(frame)) {
                 const auto batch = json_parse(frame);
@@ -1327,6 +1416,9 @@ int spirula_geometry_main(int argc, char** argv) {
                 std::vector<std::string> requests{frame};
                 if (next) requests.push_back(next->as_string());
                 std::vector<Todo> pending;
+                pending.reserve(requests.size());
+                std::string cameras[2];
+                size_t camera_count = 0;
                 for (const auto& item : requests) {
                     const JsonValue request = json_parse(item);
                     const auto* image = request.find("i");
@@ -1343,31 +1435,54 @@ int spirula_geometry_main(int argc, char** argv) {
                              depth && depth->type == JsonValue::Type::Bool,
                              "invalid geometry worker request");
                     const int64_t i = image->as_int();
-                    const auto found = std::find_if(todo.begin(), todo.end(),
-                        [&](const Todo& t) { return t.i == i; });
-                    NN_CHECK(found != todo.end() && assigned.insert(i).second &&
-                             !key->str.empty() && found->key == key->str &&
-                             found->normal == normal->b && found->depth == depth->b,
-                             "geometry worker request does not match frozen inputs");
-                    Todo task = *found;
-                    auto unchanged = [&] {
-                        const auto hash = spirula::sha256_file(ds.image_filenames[(size_t)i]);
-                        return !hash.empty() && task.key.compare(0, hash.size() + 1, hash + "|") == 0;
-                    };
-                    NN_CHECK(unchanged(), "geometry source changed before inference");
+                    NN_CHECK(assigned.insert(i).second && !key->str.empty() &&
+                             request_flags_match(normal->b, depth->b, o.want_normal, o.want_depth),
+                             "geometry worker request does not match frozen flags");
+                    const std::string camera = camera_key(ds, i);
+                    const size_t g = camera_count && camera != cameras[0] ? 1 : 0;
+                    if (g == camera_count) {
+                        cameras[g] = camera;
+                        group_first[g] = i;
+                        ++camera_count;
+                    }
+                    Todo task;
+                    task.i = i;
+                    task.g = g;
+                    task.key = key->str;
+                    task.normal = normal->b;
+                    task.depth = depth->b;
                     const fs::path folder(stage->str);
-                    NN_CHECK(fs::create_directory(folder), "geometry staging directory is not private");
                     if (task.normal)
                         task.np = folder / (o.normal_format == "jpg" ? "normal.jpg" : "normal.png");
                     if (task.depth) task.dp = folder / "depth.png";
                     pending.push_back(std::move(task));
                 }
-                process(pending);
+                bool known[2] = {};
+                for (size_t g = 0; g < camera_count; ++g) {
+                    if (current_warp && cameras[g] == worker_camera) {
+                        warps[g] = warp_info(*current_warp);
+                        current_group = g;
+                        known[g] = true;
+                    }
+                }
+                // Plan the second camera first so the first map can stay resident for inference.
+                for (size_t g = camera_count; g-- > 0;) {
+                    if (known[g]) continue;
+                    current_warp.reset();
+                    current_warp.emplace(make_warp(g));
+                    current_group = g;
+                    warps[g] = warp_info(*current_warp);
+                }
                 for (const auto& task : pending) {
                     const auto hash = spirula::sha256_file(ds.image_filenames[(size_t)task.i]);
-                    NN_CHECK(!hash.empty() && task.key.compare(0, hash.size() + 1, hash + "|") == 0 &&
-                             complete(task), "geometry worker did not complete the frozen image");
+                    NN_CHECK(!hash.empty() &&
+                             task.key == input_key(hash, cameras[task.g], warps[task.g]),
+                             "geometry worker request does not match frozen inputs");
+                    const fs::path folder = (task.normal ? task.np : task.dp).parent_path();
+                    NN_CHECK(fs::create_directory(folder), "geometry staging directory is not private");
                 }
+                process(pending);
+                worker_camera = cameras[pending.back().g];
                 NN_CHECK(app::worker_write_frame(frame), "geometry worker acknowledgement failed");
             }
             return 0;
@@ -1390,7 +1505,7 @@ int spirula_geometry_main(int argc, char** argv) {
                      "resident geometry models exceed the shared worker memory budget");
             task_budget -= model_host_bytes * children;
             for (const auto& t : todo) {
-                const auto& warp = warps[(size_t)group[(size_t)t.i]];
+                const auto& warp = warps[t.g];
                 int source_w = 0, source_h = 0;
                 NN_CHECK(probe_image_size(ds.image_filenames[(size_t)t.i].c_str(),
                                          &source_w, &source_h),
@@ -1406,14 +1521,16 @@ int spirula_geometry_main(int argc, char** argv) {
                 add_pixels(source_w, source_h);
                 add_pixels(warp.sample_w, warp.sample_h);
                 add_pixels(warp.out_w, warp.out_h);
-                NN_CHECK(pixels <= std::numeric_limits<uint64_t>::max() / 128,
+                // MoGe-2 L, 5760x3240 in 6 faces: 2.87 GB peak worker commit; 64 B/pixel + model reserve keeps >=1.9x.
+                constexpr uint64_t bytes_per_pixel = 64;
+                NN_CHECK(pixels <= std::numeric_limits<uint64_t>::max() / bytes_per_pixel,
                          "geometry task memory estimate overflow");
                 const fs::path folder = scratch / std::to_string(t.i);
                 JsonWriter request(false);
                 request.object().field("i", (long long)t.i).field("key", t.key)
                     .field("stage", fs::absolute(folder).string())
                     .field("normal", t.normal).field("depth", t.depth).end();
-                tasks.push_back({request.str(), pixels * 128});
+                tasks.push_back({request.str(), pixels * bytes_per_pixel});
                 std::vector<app::GeometryStagedOutput> outputs;
                 if (t.normal) outputs.push_back({
                     folder / (o.normal_format == "jpg" ? "normal.jpg" : "normal.png"),
@@ -1426,8 +1543,8 @@ int spirula_geometry_main(int argc, char** argv) {
             for (size_t j = 0; j < tasks.size(); ++j) {
                 std::vector<size_t> batch{j};
                 auto task = tasks[j];
-                if (j + 1 < tasks.size() && tasks[j + 1].host_bytes <= task_budget -
-                    std::min(task.host_bytes, task_budget)) {
+                if (j + 1 < tasks.size() &&
+                    pair_fits(task.host_bytes, tasks[j + 1].host_bytes, task_budget, children)) {
                     const auto first = task.request.substr(0, task.request.size() - 1);
                     JsonWriter extra(false);
                     task.request = first + ",\"next\":" + extra.value(tasks[j + 1].request).str() + "}";
@@ -1464,7 +1581,7 @@ int spirula_geometry_main(int argc, char** argv) {
                             const auto hash = spirula::sha256_file(ds.image_filenames[(size_t)t.i]);
                             NN_CHECK(!hash.empty() && t.key.compare(0, hash.size() + 1, hash + "|") == 0,
                                      "geometry source changed during inference");
-                            const auto& warp = warps[(size_t)group[(size_t)t.i]];
+                            const auto& warp = warps[t.g];
                             for (const auto& output : families[index]) {
                                 int w = 0, h = 0;
                                 NN_CHECK(probe_image_size(output.staged.string().c_str(), &w, &h) &&

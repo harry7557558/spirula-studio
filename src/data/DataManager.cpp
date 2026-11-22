@@ -162,31 +162,7 @@ struct IndexGroup {
     int32_t              out_w    = 0;
     std::vector<WarpFacePass> passes;
 
-    std::vector<int32_t> indices;       // dataset-global indices, shuffled
-    size_t               cursor = 0;    // next index to emit
-
-    // Refill from `indices` end-of-list. Reshuffles for non-eval datasets.
-    void rewind(std::mt19937_64& rng, bool eval) {
-        if (!eval) std::shuffle(indices.begin(), indices.end(), rng);
-        cursor = 0;
-    }
-};
-
-// Group-size-weighted sampler — picks a group with probability proportional
-// to its size.
-class GroupSampler {
-public:
-    GroupSampler() = default;
-    explicit GroupSampler(const std::vector<IndexGroup>& groups) {
-        _weights.reserve(groups.size());
-        for (auto& g : groups) _weights.push_back((double)g.indices.size());
-        _dist = std::discrete_distribution<size_t>(_weights.begin(), _weights.end());
-    }
-    size_t operator()(std::mt19937_64& rng) { return _dist(rng); }
-    bool   empty() const { return _weights.empty(); }
-private:
-    std::vector<double>                _weights;
-    std::discrete_distribution<size_t> _dist;
+    std::vector<int32_t> indices;       // dataset-global indices
 };
 
 // ---------------------------------------------------------------------------
@@ -908,15 +884,12 @@ public:
 
     const TrainStep&    next_train_step();
     const DecodedBatch& next_train_batch();
-    const DecodedBatch* next_val_batch();
     void                fetch_one(int32_t index, DecodedBatch& out);
 
     std::string data_error() const;
     void        resolve_data_error(bool retry);
 
     int64_t num_train()    const { return (int64_t)_train_indices.size(); }
-    int64_t num_val()      const { return (int64_t)_val_indices.size(); }
-    bool    has_val()      const { return !_val_indices.empty(); }
     CacheMode cache_mode() const { return _cfg.cache_mode; }
     void set_view_stats(std::vector<float> cam_sum, std::vector<uint32_t> cam_cnt);
 
@@ -989,7 +962,6 @@ private:
     std::vector<float>        _input_intrins;
     std::vector<float>        _input_dist_coeffs;
     std::vector<int32_t>      _train_indices;
-    std::vector<int32_t>      _val_indices;
 
     // Per-image detected RGB / depth / normal dtypes. Cached at construction
     // so the disk path doesn't re-probe headers on every fetch.
@@ -1032,7 +1004,6 @@ private:
     std::mt19937_64           _rng;
     std::vector<IndexGroup>   _train_groups;
     std::vector<IndexGroup>   _val_groups;
-    GroupSampler              _val_sampler;
 
     // Deterministic per-epoch training schedule. Every training image appears
     // exactly once per pass over `_train_schedule`; when the cursor reaches the
@@ -1043,11 +1014,7 @@ private:
     int64_t                   _issued = 0;   // steps handed out since first_step
     std::atomic<int>          _last_train_divisor{1};
 
-    // The currently-returned-to-caller data. We hold one slot per kind so the
-    // reference returned by next_*_batch()/next_train_step() stays valid until
-    // the next call to that same getter.
-    TrainStep                 _cpu_train_step;   // CPU-mode train (persistent)
-    DecodedBatch              _cpu_val_batch;
+    TrainStep                 _cpu_train_step;
 
     // ---- DISK mode: prefetch pipeline ------------------------------------
     struct DecodeJob {
@@ -1056,16 +1023,8 @@ private:
         int32_t              ds_index   = 0;   // dataset-global image index
         std::shared_ptr<DecodedBatch>     batch;
         std::shared_ptr<std::atomic<int>> remaining;  // decrement on done
-        // Exactly one of the two publish targets is set. For validation
-        // (single-batch) jobs, `ready_q` receives the finished DecodedBatch.
-        // For training (step) jobs, `step_q` receives the finished TrainStep
-        // (and `step` keeps all its sub-batches alive). The worker that
-        // decrements `remaining` to zero publishes; no separate completer /
-        // scheduler-side wait is involved, so all worker pools stay saturated
-        // while multiple batches/steps are in flight.
-        BoundedQueue<std::shared_ptr<DecodedBatch>>* ready_q = nullptr;
+        // The last completing job publishes the step.
         std::shared_ptr<TrainStep>                   step;
-        BoundedQueue<std::shared_ptr<TrainStep>>*    step_q  = nullptr;
     };
 
     bool _disk_started = false;
@@ -1075,7 +1034,6 @@ private:
     std::unique_ptr<BoundedQueue<DecodeJob>> _q_depth;
     std::unique_ptr<BoundedQueue<DecodeJob>> _q_normal;
     std::unique_ptr<BoundedQueue<std::shared_ptr<TrainStep>>>    _q_ready_train;
-    std::unique_ptr<BoundedQueue<std::shared_ptr<DecodedBatch>>> _q_ready_val;
 
     std::vector<std::thread> _workers;
     std::thread              _scheduler;
@@ -1091,13 +1049,9 @@ private:
     bool                     _fault_parked  = false;
     bool                     _fault_give_up = false;
 
-    // The objects currently held alive on behalf of the most recent
-    // next_*() return value.
-    std::shared_ptr<TrainStep>    _last_train_step_held;
-    std::shared_ptr<DecodedBatch> _last_val_held;
+    std::shared_ptr<TrainStep> _last_train_step_held;
 
-    // Decrement a job's shared step/batch counter and, when it reaches zero,
-    // build the views and publish to the appropriate ready queue.
+    // Decrement the shared counter and publish the step when all jobs are done.
     void publish_if_done(DecodeJob& job);
 
     // The colour image i's alpha is composited onto at decode, or null.
@@ -1139,11 +1093,6 @@ private:
     void scale_batch(DecodedBatch& b, const IndexGroup& g, int divisor) const;
     void fill_camera_params(DecodedBatch& b);
 
-    // CPU-mode synchronous batch fetch helpers.
-    DecodedBatch& next_batch_cpu(DecodedBatch& slot,
-                                 std::vector<IndexGroup>& groups,
-                                 GroupSampler& sampler,
-                                 int batch_size);
     void fill_batch_from_cache(DecodedBatch& b);
 
     // ---- Deterministic epoch schedule (training) -------------------------
@@ -1172,12 +1121,9 @@ private:
     bool decode_or_park(const std::function<void()>& decode);
     // decode_or_park, with bad_alloc restated as something a reader can act on.
     bool stage_or_park(const std::function<void()>& stage);
-    void enqueue_batch(IndexGroup& group, int batch_size,
-                       BoundedQueue<std::shared_ptr<DecodedBatch>>& ready_q);
     // Disk-mode: allocate + enqueue decode jobs for a whole training step
     // (one or more sub-batches), publishing the TrainStep when all decode.
-    void enqueue_step(const StepSpec& spec,
-                      BoundedQueue<std::shared_ptr<TrainStep>>& step_q);
+    void enqueue_step(const StepSpec& spec);
 };
 
 
@@ -1228,8 +1174,7 @@ DataManagerImpl::DataManagerImpl(
       _face_axes(std::move(face_axes)),
       _input_intrins(std::move(input_intrins)),
       _input_dist_coeffs(std::move(input_dist_coeffs)),
-      _train_indices(std::move(train_indices)),
-      _val_indices(std::move(val_indices))
+      _train_indices(std::move(train_indices))
 {
     int64_t N = (int64_t)_image_filenames.size();
     if ((int64_t)_camera_models.size() != N)
@@ -1335,10 +1280,9 @@ DataManagerImpl::DataManagerImpl(
     probe_dtypes();
 
     _train_groups = build_index_groups_member(_train_indices);
-    _val_groups   = build_index_groups_member(_val_indices);
-    for (auto& g : _train_groups) g.rewind(_rng, /*eval=*/false);
-    for (auto& g : _val_groups)   g.rewind(_rng, /*eval=*/true);
-    _val_sampler   = GroupSampler(_val_groups);
+    _val_groups   = build_index_groups_member(val_indices);
+    for (auto& g : _train_groups)
+        std::shuffle(g.indices.begin(), g.indices.end(), _rng);
 
     // Build the first epoch's deterministic training schedule (once-per-epoch
     // traversal + cross-group remainder packing). The DISK scheduler thread
@@ -2027,38 +1971,6 @@ void DataManagerImpl::fill_batch_from_cache(DecodedBatch& b) {
 
 
 // ===========================================================================
-// CPU-mode batch fetch
-// ===========================================================================
-DecodedBatch& DataManagerImpl::next_batch_cpu(
-    DecodedBatch& slot,
-    std::vector<IndexGroup>& groups,
-    GroupSampler& sampler,
-    int batch_size)
-{
-    std::lock_guard<std::mutex> lk(_sampling_mu);
-    if (sampler.empty()) {
-        throw std::runtime_error("DataManager: no indices configured for this split");
-    }
-    size_t gi = sampler(_rng);
-    auto& g = groups[gi];
-
-    int eff_bs = std::min(batch_size, (int)g.indices.size());
-    eff_bs = std::max(eff_bs, 1);
-    std::vector<int32_t> picks;
-    picks.reserve(eff_bs);
-    for (int k = 0; k < eff_bs; ++k) {
-        if (g.cursor >= g.indices.size()) g.rewind(_rng, /*eval=*/false);
-        picks.push_back(g.indices[g.cursor++]);
-    }
-
-    allocate_batch(slot, g, picks);
-    fill_batch_from_cache(slot);
-    slot.build_views();
-    return slot;
-}
-
-
-// ===========================================================================
 // Deterministic epoch schedule (training)
 // ===========================================================================
 void DataManagerImpl::build_train_schedule_locked() {
@@ -2271,13 +2183,12 @@ void DataManagerImpl::start_disk_pipeline() {
     // Job queues are sized generously — each batch enqueues B jobs per
     // modality so cap = prefetch * batch_size keeps the scheduler from
     // running ahead of the consumer.
-    int job_cap = std::max(1, prefetch * std::max(_cfg.train_batch_size, _cfg.val_batch_size));
+    int job_cap = std::max(1, prefetch * _cfg.train_batch_size);
     _q_rgb    = std::make_unique<BoundedQueue<DecodeJob>>((size_t)job_cap);
     _q_mask   = std::make_unique<BoundedQueue<DecodeJob>>((size_t)job_cap);
     _q_depth  = std::make_unique<BoundedQueue<DecodeJob>>((size_t)job_cap);
     _q_normal = std::make_unique<BoundedQueue<DecodeJob>>((size_t)job_cap);
     _q_ready_train = std::make_unique<BoundedQueue<std::shared_ptr<TrainStep>>>((size_t)prefetch);
-    _q_ready_val   = std::make_unique<BoundedQueue<std::shared_ptr<DecodedBatch>>>((size_t)prefetch);
 
     int n_rgb_workers = std::max(1, _cfg.workers_rgb);
     for (int t = 0; t < n_rgb_workers; ++t)
@@ -2312,7 +2223,6 @@ void DataManagerImpl::stop_disk_pipeline() {
     _q_depth->close();
     _q_normal->close();
     _q_ready_train->close();
-    _q_ready_val->close();
     if (_scheduler.joinable()) _scheduler.join();
     for (auto& th : _workers) if (th.joinable()) th.join();
     _workers.clear();
@@ -2356,10 +2266,7 @@ void DataManagerImpl::resolve_data_error(bool retry) {
     _fault_cv.notify_all();
     // Nothing will finish the parked batches, so let the consumer's pop fail
     // instead of blocking on a pipeline that has stopped producing.
-    if (!retry) {
-        _q_ready_train->close();
-        _q_ready_val->close();
-    }
+    if (!retry) _q_ready_train->close();
 }
 
 
@@ -2437,148 +2344,33 @@ bool DataManagerImpl::stage_or_park(const std::function<void()>& stage) {
     });
 }
 
-// Scheduler: produces decoded-batch shells, hands jobs to per-modality
-// queues, and routes the finished batch to the right ready queue.
 void DataManagerImpl::scheduler_loop() {
     // Staging a step is the largest allocation the pipeline makes, and an
     // exception leaving a thread entry point calls terminate() instead of
     // reaching anyone -- so park on it, as the decode workers do.
+    if (_train_groups.empty()) return;
     while (!_stop.load()) {
-        // Alternate fill order: prefer training to validation, refill val
-        // when ready_val is near-empty. (Simple heuristic.)
-        if (!_train_groups.empty()) {
-            if (!stage_or_park([&] {
-                    StepSpec spec = next_train_step_spec();  // locks _sampling_mu
-                    enqueue_step(spec, *_q_ready_train);
-                }))
-                return;
-        }
-        if (!_val_groups.empty()) {
-            if (!stage_or_park([&] {
-                    std::unique_lock<std::mutex> lk(_sampling_mu);
-                    size_t gi = _val_sampler(_rng);
-                    auto& g = _val_groups[gi];
-                    lk.unlock();
-                    enqueue_batch(g, _cfg.val_batch_size, *_q_ready_val);
-                }))
-                return;
-        }
+        if (!stage_or_park([&] {
+                StepSpec spec = next_train_step_spec();
+                enqueue_step(spec);
+            }))
+            return;
     }
 }
-
-void DataManagerImpl::enqueue_batch(
-    IndexGroup& group, int batch_size,
-    BoundedQueue<std::shared_ptr<DecodedBatch>>& ready_q)
-{
-    int eff_bs = std::min(batch_size, (int)group.indices.size());
-    eff_bs = std::max(eff_bs, 1);
-
-    std::vector<int32_t> picks;
-    picks.reserve(eff_bs);
-    {
-        std::lock_guard<std::mutex> lk(_sampling_mu);
-        for (int k = 0; k < eff_bs; ++k) {
-            if (group.cursor >= group.indices.size()) group.rewind(_rng, /*eval=*/false);
-            picks.push_back(group.indices[group.cursor++]);
-        }
-    }
-
-    auto batch = std::make_shared<DecodedBatch>();
-    allocate_batch(*batch, group, picks);
-
-    // Number of decode jobs per image — RGB always, plus each enabled modality.
-    int per_image = 1;
-    if (has_masks())   per_image += 1;
-    if (has_depths())  per_image += 1;
-    if (has_normals()) per_image += 1;
-    auto remaining = std::make_shared<std::atomic<int>>(eff_bs * per_image);
-
-    // Helper: a single per-job completion decrement. When the counter flips
-    // to 0 (returns 1 before the subtract), publish the batch ourselves —
-    // no scheduler wait, no promise/future. Backpressure comes from the
-    // bounded ready queue.
-    auto try_publish = [&ready_q, batch, remaining]() {
-        if (remaining->fetch_sub(1) == 1) {
-            batch->build_views();
-            ready_q.push(batch);
-        }
-    };
-
-    // Stage all jobs into local lists first, so each modality queue is
-    // pushed in one tight burst (more chance for workers to pick them up
-    // in parallel) and we don't interleave producer-side contention with
-    // worker wakeups.
-    std::vector<DecodeJob> rgb_jobs, mask_jobs, depth_jobs, normal_jobs;
-    rgb_jobs.reserve(eff_bs);
-    if (has_masks())   mask_jobs.reserve(eff_bs);
-    if (has_depths())  depth_jobs.reserve(eff_bs);
-    if (has_normals()) normal_jobs.reserve(eff_bs);
-
-    for (int j = 0; j < eff_bs; ++j) {
-        int32_t i = picks[j];
-
-        DecodeJob jb;
-        jb.slot      = j;
-        jb.ds_index  = i;
-        jb.batch     = batch;
-        jb.remaining = remaining;
-        jb.ready_q   = &ready_q;
-        jb.batch_id  = _next_batch_id.fetch_add(1);
-
-        rgb_jobs.push_back(jb);
-        if (has_masks()) {
-            if (mask_present(i)) mask_jobs.push_back(jb);
-            else                 try_publish();  // truly absent
-        }
-        if (has_depths()) {
-            if (!_depth_filenames[i].empty()) depth_jobs.push_back(jb);
-            else                               try_publish();
-        }
-        if (has_normals()) {
-            if (!_normal_filenames[i].empty()) normal_jobs.push_back(jb);
-            else                                try_publish();
-        }
-    }
-
-    // Hand off to the workers. The bounded ready queue (cap =
-    // prefetch_batches) provides backpressure: once `prefetch_batches`
-    // batches are decoded but unconsumed, the publishing worker blocks
-    // here, while other workers keep draining their modality queues.
-    // Modality job queues are also bounded (cap = prefetch_batches *
-    // train_batch_size), so this scheduler call returns as soon as those
-    // queues have room — and the next batch's jobs start enqueueing
-    // immediately. This is what keeps all N workers busy when batch
-    // size is 1.
-    for (auto& jb : rgb_jobs)    if (!_q_rgb->push(std::move(jb))) return;
-    for (auto& jb : mask_jobs)   if (!_q_mask->push(std::move(jb))) return;
-    for (auto& jb : depth_jobs)  if (!_q_depth->push(std::move(jb))) return;
-    for (auto& jb : normal_jobs) if (!_q_normal->push(std::move(jb))) return;
-}
-
 
 void DataManagerImpl::publish_if_done(DecodeJob& job) {
     // fetch_sub returns the value BEFORE the subtract, so == 1 means this call
     // took the counter to zero: we own publishing.
     if (job.remaining->fetch_sub(1) != 1) return;
-    if (job.step) {
-        for (auto& sub : job.step->subs) sub->build_views();
-        job.step_q->push(job.step);
-    } else {
-        job.batch->build_views();
-        job.ready_q->push(job.batch);
-    }
+    for (auto& sub : job.step->subs) sub->build_views();
+    _q_ready_train->push(std::move(job.step));
 }
 
 
-// Disk-mode: allocate shells + enqueue decode jobs for a whole training step.
-// A single shared `remaining` counter spans every sub-batch's jobs; the worker
-// that drives it to zero publishes the TrainStep. Mirrors enqueue_batch's
-// staging discipline (RGB is always present, so `remaining` can never reach
-// zero mid-staging before the RGB jobs are pushed).
-void DataManagerImpl::enqueue_step(
-    const StepSpec& spec,
-    BoundedQueue<std::shared_ptr<TrainStep>>& step_q)
-{
+// One `remaining` counter spans every sub-batch's decode jobs; the worker that
+// drives it to zero publishes the TrainStep. RGB is always queued, so it cannot
+// reach zero before every job is queued.
+void DataManagerImpl::enqueue_step(const StepSpec& spec) {
     auto stepp = std::make_shared<TrainStep>();
     stepp->subs.resize(spec.size());
 
@@ -2602,7 +2394,6 @@ void DataManagerImpl::enqueue_step(
         DecodeJob j;
         j.remaining = remaining;
         j.step      = stepp;
-        j.step_q    = &step_q;
         publish_if_done(j);
     };
 
@@ -2619,7 +2410,6 @@ void DataManagerImpl::enqueue_step(
             jb.batch     = sub;
             jb.remaining = remaining;
             jb.step      = stepp;
-            jb.step_q    = &step_q;
             jb.batch_id  = _next_batch_id.fetch_add(1);
 
             rgb_jobs.push_back(jb);
@@ -2673,25 +2463,6 @@ const DecodedBatch& DataManagerImpl::next_train_batch() {
     if (s.subs.empty())
         throw std::runtime_error("DataManager: empty training step");
     return *s.subs.front();
-}
-
-const DecodedBatch* DataManagerImpl::next_val_batch() {
-    if (!has_val()) return nullptr;
-    if (_cfg.cache_mode == CacheMode::CPU) {
-        return &next_batch_cpu(_cpu_val_batch, _val_groups,
-                               _val_sampler, _cfg.val_batch_size);
-    }
-    std::shared_ptr<DecodedBatch> b;
-    for (;;) {
-        auto r = _q_ready_val->pop_for(b, std::chrono::milliseconds(100));
-        if (r == BoundedQueue<std::shared_ptr<DecodedBatch>>::Pop::Ok) break;
-        std::string err = data_error();
-        if (!err.empty()) throw DataDecodeError(err);
-        if (r == BoundedQueue<std::shared_ptr<DecodedBatch>>::Pop::Closed)
-            throw std::runtime_error("DataManager: val prefetch queue closed");
-    }
-    _last_val_held = b;
-    return _last_val_held.get();
 }
 
 void DataManagerImpl::fetch_one(int32_t index, DecodedBatch& out) {
@@ -2775,13 +2546,10 @@ DataManager::~DataManager() = default;
 
 const TrainStep&    DataManager::next_train_step()         { return _impl->next_train_step(); }
 const DecodedBatch& DataManager::next_train_batch()        { return _impl->next_train_batch(); }
-const DecodedBatch* DataManager::next_val_batch()          { return _impl->next_val_batch(); }
 void      DataManager::fetch_one(int32_t i, DecodedBatch& o) { _impl->fetch_one(i, o); }
 std::string DataManager::data_error() const { return _impl->data_error(); }
 void      DataManager::resolve_data_error(bool r) { _impl->resolve_data_error(r); }
 int64_t   DataManager::num_train()      const              { return _impl->num_train(); }
-int64_t   DataManager::num_val()        const              { return _impl->num_val(); }
-bool      DataManager::has_val()        const              { return _impl->has_val(); }
 CacheMode DataManager::cache_mode()     const              { return _impl->cache_mode(); }
 bool      DataManager::has_masks()      const              { return _impl->has_masks(); }
 bool      DataManager::has_depths()     const              { return _impl->has_depths(); }

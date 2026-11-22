@@ -4616,6 +4616,35 @@ SS_MSG(distortion_reg_warmup_help,
     RU("За сколько шагов штрафы согласованности набирают полную силу.\nПостепенное включение даёт сложиться грубой структуре, прежде чем геометрию затянут."),
     TR("Tutarlılık cezalarının tam güce ulaşması için gereken adım sayısı.\nKademeli devreye girmek, geometri sıkılmadan önce kaba yapının oluşmasını sağlar."));
 
+SS_MSG(distortion_reg_warmup_schedule,
+    EN("Consistency warm-up curve"),
+    JA("一貫性ペナルティの立ち上がり方"),
+    ZH_HANS("一致性惩罚预热曲线"),
+    ZH_HANT("一致性懲罰預熱曲線"),
+    KO("일관성 페널티 워밍업 곡선"),
+    DE("Anlaufkurve der Konsistenzstrafen"),
+    FR("Courbe de montée des pénalités de cohérence"),
+    ES("Curva de arranque de las penalizaciones de coherencia"),
+    PT("Curva de aquecimento das penalidades de coerência"),
+    IT("Curva di avvio delle penalità di coerenza"),
+    NL("Opbouwcurve van de consistentiestraffen"),
+    RU("Кривая разгона штрафов согласованности"),
+    TR("Tutarlılık cezaları ısınma eğrisi"));
+SS_MSG(distortion_reg_warmup_schedule_help,
+    EN("`cosine` eases into full strength; `quadratic` and `quartic` start slow and end steep; `step` waits, then switches on."),
+    JA("`cosine` は最後になめらかに最大へ、`quadratic` と `quartic` は始めがゆっくりで終わりが急、`step` は待ってから一度に効かせます。"),
+    ZH_HANS("`cosine` 在末尾平滑地达到最大；`quadratic` 和 `quartic` 开始慢、结尾快；`step` 先等待，再一次开启。"),
+    ZH_HANT("`cosine` 在末尾平滑地達到最大；`quadratic` 和 `quartic` 開始慢、結尾快；`step` 先等待，再一次開啟。"),
+    KO("`cosine`은 끝에서 부드럽게 최대에 이르고, `quadratic`과 `quartic`은 처음엔 느리고 끝이 가파르며, `step`은 기다렸다가 한 번에 켜집니다."),
+    DE("`cosine` läuft sanft in die volle Stärke, `quadratic` und `quartic` beginnen langsam und enden steil, `step` wartet und schaltet dann ein."),
+    FR("`cosine` atteint la pleine force en douceur ; `quadratic` et `quartic` démarrent lentement et finissent raides ; `step` attend puis s'active."),
+    ES("`cosine` llega con suavidad a toda su fuerza; `quadratic` y `quartic` empiezan lento y acaban rápido; `step` espera y luego se activa."),
+    PT("`cosine` chega suavemente à força total; `quadratic` e `quartic` começam devagar e terminam íngremes; `step` espera e então liga."),
+    IT("`cosine` arriva dolcemente alla piena forza; `quadratic` e `quartic` partono lenti e finiscono ripidi; `step` attende e poi si attiva."),
+    NL("`cosine` loopt zacht op naar volle sterkte; `quadratic` en `quartic` beginnen langzaam en eindigen steil; `step` wacht en schakelt dan in."),
+    RU("`cosine` плавно выходит на полную силу; `quadratic` и `quartic` начинают медленно и заканчивают круто; `step` ждёт, затем включается сразу."),
+    TR("`cosine` tam güce yumuşakça ulaşır; `quadratic` ve `quartic` yavaş başlar, dik biter; `step` bekler, sonra birden devreye girer."));
+
 SS_MSG(normal_reg_weight,
     EN("Flatten splats onto surfaces"), JA("スプラットを面に沿わせる"),
     ZH_HANS("让泼溅贴合表面"), ZH_HANT("讓潑濺貼合表面"),
@@ -4662,39 +4691,6 @@ SS_MSG(normal_reg_weight_help,
     TR("Splat'ları temsil ettikleri yüzeyler boyunca yatmaya teşvik eder. Yüksek "
        "değerler daha temiz geometri ve daha iyi ağ verir; aşırısı ince ayrıntıyı "
        "düzleştirir."));
-
-SS_MSG(normal_reg_warmup,
-    EN("Surface alignment warm-up"), JA("面沿わせの立ち上がり"),
-    ZH_HANS("表面对齐预热"), ZH_HANT("表面對齊預熱"), KO("표면 정렬 워밍업"),
-    DE("Anlauf der Oberflächenausrichtung"),
-    FR("Montée de l'alignement aux surfaces"),
-    ES("Arranque de la alineación con las superficies"),
-    PT("Aquecimento do alinhamento às superfícies"),
-    IT("Avvio dell'allineamento alle superfici"),
-    NL("Opbouw van de oppervlakte-uitlijning"),
-    RU("Разгон выравнивания по поверхности"),
-    TR("Yüzeye hizalamanın ısınması"));
-SS_MSG(normal_reg_warmup_help,
-    EN("How many steps the surface-alignment penalty takes to reach full strength."),
-    JA("面沿わせのペナルティが最大になるまでのステップ数です。"),
-    ZH_HANS("表面对齐惩罚达到最大强度所需的步数。"),
-    ZH_HANT("表面對齊懲罰達到最大強度所需的步數。"),
-    KO("표면 정렬 페널티가 최대 강도에 이르기까지의 스텝 수입니다."),
-    DE("Wie viele Schritte die Oberflächenausrichtungsstrafe braucht, um volle "
-       "Stärke zu erreichen."),
-    FR("Combien d'étapes la pénalité d'alignement aux surfaces met à atteindre "
-       "sa pleine force."),
-    ES("Cuántos pasos tarda la penalización de alineación con las superficies "
-       "en alcanzar toda su fuerza."),
-    PT("Quantos passos a penalidade de alinhamento às superfícies leva para atingir "
-       "força total."),
-    IT("Quanti passi impiega la penalità di allineamento alle superfici a raggiungere "
-       "la piena forza."),
-    NL("Hoeveel stappen de straf voor oppervlakte-uitlijning nodig heeft om op "
-       "volle sterkte te komen."),
-    RU("За сколько шагов штраф за выравнивание по поверхности набирает полную "
-       "силу."),
-    TR("Yüzeye hizalama cezasının tam güce ulaşması için gereken adım sayısı."));
 
 SS_MSG(alpha_reg_weight,
     EN("Solid-or-empty coverage"), JA("被覆を不透明か空かに寄せる"),
@@ -4747,51 +4743,34 @@ SS_MSG(alpha_reg_warmup_help,
     RU("За сколько шагов штраф за покрытие набирает полную силу."),
     TR("Kaplama cezasının tam güce ulaşması için gereken adım sayısı."));
 
-SS_MSG(reg_warmup_length,
-    EN("Geometry penalty delay"), JA("ジオメトリのペナルティを遅らせる長さ"),
-    ZH_HANS("几何惩罚延迟步数"), ZH_HANT("幾何懲罰延遲步數"),
-    KO("지오메트리 페널티 지연"), DE("Verzögerung der Geometriestrafen"),
-    FR("Retard des pénalités de géométrie"),
-    ES("Retraso de las penalizaciones de geometría"),
-    PT("Atraso das penalidades de geometria"),
-    IT("Ritardo delle penalità di geometria"),
-    NL("Vertraging van de geometriestraffen"),
-    RU("Задержка геометрических штрафов"),
-    TR("Geometri cezalarının gecikmesi"));
-SS_MSG(reg_warmup_length_help,
-    EN("Hold the depth, normal and coverage penalties off for this many steps. "
-       "Lets the scene take shape before geometry constraints start pulling on "
-       "it."),
-    JA("深度・法線・被覆のペナルティを、このステップ数のあいだ効かせません。ジ"
-       "オメトリの制約が引っ張り始める前に、シーンの形ができあがります。"),
-    ZH_HANS("在这么多步内先不施加深度、法线和覆盖惩罚。让场景先成形，几何约束"
-            "再开始拉扯。"),
-    ZH_HANT("在這麼多步內先不施加深度、法線和覆蓋懲罰。讓場景先成形，幾何約束"
-            "再開始拉扯。"),
-    KO("깊이·노멀·커버리지 페널티를 이 스텝 수 동안 걸지 않습니다. 지오메트리"
-       " 제약이 잡아당기기 전에 장면이 먼저 모양을 갖춥니다."),
-    DE("Die Tiefen-, Normalen- und Deckungsstrafen für so viele Schritte aussetzen. "
-       "So nimmt die Szene Gestalt an, bevor Geometriebeschränkungen an ihr ziehen."),
-    FR("Suspendre les pénalités de profondeur, de normales et de couverture pendant "
-       "ce nombre d'étapes. La scène prend forme avant que les contraintes de "
-       "géométrie ne tirent dessus."),
-    ES("Suspender las penalizaciones de profundidad, normales y cobertura durante "
-       "este número de pasos. La escena toma forma antes de que las restricciones "
-       "de geometría tiren de ella."),
-    PT("Suspender as penalidades de profundidade, normais e cobertura durante "
-       "este número de passos. A cena toma forma antes que as restrições de geometria "
-       "puxem por ela."),
-    IT("Sospendere le penalità di profondità, normali e copertura per questo "
-       "numero di passi. La scena prende forma prima che i vincoli di geometria "
-       "comincino a tirarla."),
-    NL("De diepte-, normalen- en dekkingsstraffen dit aantal stappen uitstellen. "
-       "Zo krijgt de scène vorm voordat geometriebeperkingen eraan gaan trekken."),
-    RU("Не включать штрафы по глубине, нормалям и покрытию столько шагов. Сцена "
-       "успевает обрести форму, прежде чем геометрические ограничения начнут "
-       "её тянуть."),
-    TR("Derinlik, normal ve kaplama cezalarını bu kadar adım boyunca devre dışı "
-       "bırakır. Böylece geometri kısıtları çekiştirmeye başlamadan önce sahne "
-       "biçimlenir."));
+SS_MSG(alpha_reg_warmup_schedule,
+    EN("Coverage warm-up curve"),
+    JA("被覆ペナルティの立ち上がり方"),
+    ZH_HANS("覆盖惩罚预热曲线"),
+    ZH_HANT("覆蓋懲罰預熱曲線"),
+    KO("커버리지 페널티 워밍업 곡선"),
+    DE("Anlaufkurve der Deckungsstrafe"),
+    FR("Courbe de montée de la pénalité de couverture"),
+    ES("Curva de arranque de la penalización de cobertura"),
+    PT("Curva de aquecimento da penalidade de cobertura"),
+    IT("Curva di avvio della penalità di copertura"),
+    NL("Opbouwcurve van de dekkingsstraf"),
+    RU("Кривая разгона штрафа за покрытие"),
+    TR("Kaplama cezası ısınma eğrisi"));
+SS_MSG(alpha_reg_warmup_schedule_help,
+    EN("`cosine` eases into full strength; `quadratic` and `quartic` start slow and end steep; `step` waits, then switches on."),
+    JA("`cosine` は最後になめらかに最大へ、`quadratic` と `quartic` は始めがゆっくりで終わりが急、`step` は待ってから一度に効かせます。"),
+    ZH_HANS("`cosine` 在末尾平滑地达到最大；`quadratic` 和 `quartic` 开始慢、结尾快；`step` 先等待，再一次开启。"),
+    ZH_HANT("`cosine` 在末尾平滑地達到最大；`quadratic` 和 `quartic` 開始慢、結尾快；`step` 先等待，再一次開啟。"),
+    KO("`cosine`은 끝에서 부드럽게 최대에 이르고, `quadratic`과 `quartic`은 처음엔 느리고 끝이 가파르며, `step`은 기다렸다가 한 번에 켜집니다."),
+    DE("`cosine` läuft sanft in die volle Stärke, `quadratic` und `quartic` beginnen langsam und enden steil, `step` wartet und schaltet dann ein."),
+    FR("`cosine` atteint la pleine force en douceur ; `quadratic` et `quartic` démarrent lentement et finissent raides ; `step` attend puis s'active."),
+    ES("`cosine` llega con suavidad a toda su fuerza; `quadratic` y `quartic` empiezan lento y acaban rápido; `step` espera y luego se activa."),
+    PT("`cosine` chega suavemente à força total; `quadratic` e `quartic` começam devagar e terminam íngremes; `step` espera e então liga."),
+    IT("`cosine` arriva dolcemente alla piena forza; `quadratic` e `quartic` partono lenti e finiscono ripidi; `step` attende e poi si attiva."),
+    NL("`cosine` loopt zacht op naar volle sterkte; `quadratic` en `quartic` beginnen langzaam en eindigen steil; `step` wacht en schakelt dan in."),
+    RU("`cosine` плавно выходит на полную силу; `quadratic` и `quartic` начинают медленно и заканчивают круто; `step` ждёт, затем включается сразу."),
+    TR("`cosine` tam güce yumuşakça ulaşır; `quadratic` ve `quartic` yavaş başlar, dik biter; `step` bekler, sonra birden devreye girer."));
 
 SS_MSG(depth_supervision_weight,
     EN("Predicted depth guidance"), JA("推定深度による誘導"),
@@ -4902,48 +4881,6 @@ SS_MSG(input_depth_is_ray_depth_help,
     NL("Diepte langs de camerastraal in plaats van recht vooruit. Leeg: straaldiepte bij door spirula geometry gesplitste groothoeken, anders vooruitdiepte."),
     RU("Глубина вдоль луча, а не прямо вперёд. Не задано: вдоль луча для широких линз, разделённых spirula geometry, иначе вперёд."),
     TR("Derinlik ileri yönde değil kamera ışını boyuncadır. Boşsa: spirula geometry’nin böldüğü geniş lenslerde ışın derinliği, diğerlerinde ileri derinlik."));
-
-SS_MSG(supervision_warmup,
-    EN("Predicted-geometry guidance start"), JA("推定ジオメトリの誘導開始"),
-    ZH_HANS("预测几何引导起始步"), ZH_HANT("預測幾何引導起始步"),
-    KO("예측 지오메트리 안내 시작"),
-    DE("Beginn der Führung durch geschätzte Geometrie"),
-    FR("Début du guidage par la géométrie estimée"),
-    ES("Inicio de la guía por la geometría estimada"),
-    PT("Início da orientação pela geometria estimada"),
-    IT("Inizio della guida dalla geometria stimata"),
-    NL("Start van de sturing door de voorspelde geometrie"),
-    RU("Начало направления по предсказанной геометрии"),
-    TR("Tahmini geometri rehberliğinin başlangıcı"));
-SS_MSG(supervision_warmup_help,
-    EN("Step at which AI-predicted depth and normals start guiding training. "
-       "Waiting lets photometric detail establish itself first."),
-    JA("AI が推定した深度と法線が学習を導き始めるステップです。待つことで、ま"
-       "ず写真から得られる細部が定着します。"),
-    ZH_HANS("AI 预测的深度和法线开始引导训练的步数。先等一等，可以让来自照片本"
-            "身的细节先立住。"),
-    ZH_HANT("AI 預測的深度和法線開始引導訓練的步數。先等一等，可以讓來自照片本"
-            "身的細節先立住。"),
-    KO("AI가 예측한 깊이와 노멀이 학습을 이끌기 시작하는 스텝입니다. 기다리면"
-       " 사진에서 얻는 디테일이 먼저 자리를 잡습니다."),
-    DE("Schritt, ab dem KI-geschätzte Tiefe und Normalen das Training führen. "
-       "Zu warten lässt zuerst das photometrische Detail Fuß fassen."),
-    FR("Étape à partir de laquelle la profondeur et les normales estimées par "
-       "l'IA guident l'entraînement. Attendre laisse d'abord le détail photométrique "
-       "s'installer."),
-    ES("Paso a partir del cual la profundidad y las normales estimadas por la "
-       "IA guían el entrenamiento. Esperar deja que primero se afiance el detalle "
-       "fotométrico."),
-    PT("Passo a partir do qual a profundidade e as normais estimadas pela IA "
-       "guiam o treinamento. Esperar deixa o detalhe fotométrico se firmar primeiro."),
-    IT("Passo dal quale profondità e normali stimate dall'IA guidano l'addestramento. "
-       "Aspettare lascia prima consolidarsi il dettaglio fotometrico."),
-    NL("Stap vanaf welke door AI voorspelde diepte en normalen de training sturen. "
-       "Wachten laat eerst het fotometrische detail zich vestigen."),
-    RU("Шаг, с которого предсказанные ИИ глубина и нормали начинают направлять "
-       "обучение. Ожидание даёт сначала закрепиться фотометрическим деталям."),
-    TR("Yapay zekânın kestirdiği derinlik ve normallerin eğitimi yönlendirmeye "
-       "başladığı adım. Beklemek, önce fotometrik ayrıntının yerleşmesini sağlar."));
 
 SS_MSG(mean_median_depth_weight,
     EN("Average-to-solid depth agreement"), JA("平均深度と最密深度の一致"),
@@ -5121,6 +5058,35 @@ SS_MSG(median_warmup_help,
        "полную силу."),
     TR("En dolu derinlikle ilgili dört cezanın tam güce ulaşması için gereken "
        "adım sayısı."));
+
+SS_MSG(median_warmup_schedule,
+    EN("Solid-depth warm-up curve"),
+    JA("最密深度ペナルティの立ち上がり方"),
+    ZH_HANS("最实深度惩罚预热曲线"),
+    ZH_HANT("最實深度懲罰預熱曲線"),
+    KO("최밀 깊이 페널티 워밍업 곡선"),
+    DE("Anlaufkurve der Strafen an der dichtesten Tiefe"),
+    FR("Courbe de montée des pénalités à la profondeur pleine"),
+    ES("Curva de arranque de la profundidad sólida"),
+    PT("Curva de aquecimento da profundidade sólida"),
+    IT("Curva di avvio delle penalità alla profondità piena"),
+    NL("Opbouwcurve van de straffen op de dichtste diepte"),
+    RU("Кривая разгона штрафов на плотной глубине"),
+    TR("En dolu derinlik cezaları ısınma eğrisi"));
+SS_MSG(median_warmup_schedule_help,
+    EN("`cosine` eases into full strength; `quadratic` and `quartic` start slow and end steep; `step` waits, then switches on."),
+    JA("`cosine` は最後になめらかに最大へ、`quadratic` と `quartic` は始めがゆっくりで終わりが急、`step` は待ってから一度に効かせます。"),
+    ZH_HANS("`cosine` 在末尾平滑地达到最大；`quadratic` 和 `quartic` 开始慢、结尾快；`step` 先等待，再一次开启。"),
+    ZH_HANT("`cosine` 在末尾平滑地達到最大；`quadratic` 和 `quartic` 開始慢、結尾快；`step` 先等待，再一次開啟。"),
+    KO("`cosine`은 끝에서 부드럽게 최대에 이르고, `quadratic`과 `quartic`은 처음엔 느리고 끝이 가파르며, `step`은 기다렸다가 한 번에 켜집니다."),
+    DE("`cosine` läuft sanft in die volle Stärke, `quadratic` und `quartic` beginnen langsam und enden steil, `step` wartet und schaltet dann ein."),
+    FR("`cosine` atteint la pleine force en douceur ; `quadratic` et `quartic` démarrent lentement et finissent raides ; `step` attend puis s'active."),
+    ES("`cosine` llega con suavidad a toda su fuerza; `quadratic` y `quartic` empiezan lento y acaban rápido; `step` espera y luego se activa."),
+    PT("`cosine` chega suavemente à força total; `quadratic` e `quartic` começam devagar e terminam íngremes; `step` espera e então liga."),
+    IT("`cosine` arriva dolcemente alla piena forza; `quadratic` e `quartic` partono lenti e finiscono ripidi; `step` attende e poi si attiva."),
+    NL("`cosine` loopt zacht op naar volle sterkte; `quadratic` en `quartic` beginnen langzaam en eindigen steil; `step` wacht en schakelt dan in."),
+    RU("`cosine` плавно выходит на полную силу; `quadratic` и `quartic` начинают медленно и заканчивают круто; `step` ждёт, затем включается сразу."),
+    TR("`cosine` tam güce yumuşakça ulaşır; `quadratic` ve `quartic` yavaş başlar, dik biter; `step` bekler, sonra birden devreye girer."));
 
 SS_MSG(pca_reg_neighbors,
     EN("Local-PCA neighbours"),
@@ -5523,19 +5489,19 @@ SS_MSG(pca_reg_erank_weight,
     IT("Peso del rango della covarianza locale"), NL("Gewicht lokale covariantierang"),
     RU("Вес ранга локальной ковариации"), TR("Yerel kovaryans rank ağırlığı"));
 SS_MSG(pca_reg_erank_weight_help,
-    EN("Weight of max(erank(C)-2, 0)², using covariance eigenvalue entropy independently of scene scale. Starts at pca_reg_start_iter; 0 disables."),
-    JA("シーン尺度に依存しない共分散固有値エントロピーによる max(erank(C)-2, 0)² の重み。pca_reg_start_iter から有効。0で無効です。"),
-    ZH_HANS("max(erank(C)-2, 0)² 的权重，使用与场景尺度无关的协方差特征值熵。从 pca_reg_start_iter 启用；0 关闭。"),
-    ZH_HANT("max(erank(C)-2, 0)² 的權重，使用與場景尺度無關的共變異數特徵值熵。從 pca_reg_start_iter 啟用；0 關閉。"),
-    KO("장면 배율과 무관한 공분산 고윳값 엔트로피 기반 max(erank(C)-2, 0)²의 가중치입니다. pca_reg_start_iter부터 적용하며 0은 끄기입니다."),
-    DE("Gewicht von max(erank(C)-2, 0)² über Kovarianz-Eigenwertentropie, unabhängig vom Szenenmaßstab. Ab pca_reg_start_iter; 0 schaltet ab."),
-    FR("Poids de max(erank(C)-2, 0)² via l’entropie des valeurs propres, sans effet d’échelle. Actif dès pca_reg_start_iter ; 0 désactive."),
-    ES("Peso de max(erank(C)-2, 0)² mediante entropía de autovalores, independiente de escala. Desde pca_reg_start_iter; 0 desactiva."),
-    PT("Peso de max(erank(C)-2, 0)² por entropia dos autovalores, independente da escala. A partir de pca_reg_start_iter; 0 desativa."),
-    IT("Peso di max(erank(C)-2, 0)² tramite entropia degli autovalori, indipendente dalla scala. Da pca_reg_start_iter; 0 disattiva."),
-    NL("Gewicht van max(erank(C)-2, 0)² via entropie van eigenwaarden, onafhankelijk van schaal. Vanaf pca_reg_start_iter; 0 schakelt uit."),
-    RU("Вес max(erank(C)-2, 0)² по энтропии собственных значений ковариации, без влияния масштаба. С pca_reg_start_iter; 0 отключает."),
-    TR("Ölçekten bağımsız kovaryans özdeğer entropisiyle max(erank(C)-2, 0)² ağırlığı. pca_reg_start_iter’de başlar; 0 kapatır."));
+    EN("Weight on the squared share of the smallest local covariance eigenvalue, flattening neighborhoods into planes. Scale-independent. Starts at pca_reg_start_iter; 0 disables."),
+    JA("局所共分散の最小固有値の割合の二乗に対する重み。近傍を平面に近づけます。シーン尺度に依存しません。pca_reg_start_iter から有効。0で無効です。"),
+    ZH_HANS("局部协方差最小特征值占比平方的权重，使邻域趋于平面。与场景尺度无关。从 pca_reg_start_iter 启用；0 关闭。"),
+    ZH_HANT("局部共變異數最小特徵值占比平方的權重，使鄰域趨於平面。與場景尺度無關。從 pca_reg_start_iter 啟用；0 關閉。"),
+    KO("로컬 공분산의 최소 고윳값 비율 제곱에 대한 가중치로, 이웃을 평면으로 만듭니다. 장면 배율과 무관합니다. pca_reg_start_iter부터 적용하며 0은 끄기입니다."),
+    DE("Gewicht des quadrierten Anteils des kleinsten lokalen Kovarianz-Eigenwerts; flacht Nachbarschaften zu Ebenen ab. Maßstabsunabhängig. Ab pca_reg_start_iter; 0 schaltet ab."),
+    FR("Poids du carré de la part de la plus petite valeur propre de la covariance locale ; aplatit les voisinages en plans. Sans effet d’échelle. Actif dès pca_reg_start_iter ; 0 désactive."),
+    ES("Peso del cuadrado de la fracción del menor autovalor de la covarianza local; aplana los vecindarios. Independiente de escala. Desde pca_reg_start_iter; 0 desactiva."),
+    PT("Peso do quadrado da fração do menor autovalor da covariância local; achata as vizinhanças em planos. Independente da escala. A partir de pca_reg_start_iter; 0 desativa."),
+    IT("Peso del quadrato della quota del minimo autovalore della covarianza locale; appiattisce gli intorni. Indipendente dalla scala. Da pca_reg_start_iter; 0 disattiva."),
+    NL("Gewicht op het kwadraat van het aandeel van de kleinste lokale eigenwaarde; vlakt buurten af. Schaalonafhankelijk. Vanaf pca_reg_start_iter; 0 schakelt uit."),
+    RU("Вес квадрата доли наименьшего собственного значения локальной ковариации; сплющивает окрестности в плоскости. Не зависит от масштаба. С pca_reg_start_iter; 0 отключает."),
+    TR("Yerel kovaryansın en küçük özdeğer payının karesine verilen ağırlık; komşulukları düzleme yassılaştırır. Ölçekten bağımsızdır. pca_reg_start_iter’de başlar; 0 kapatır."));
 SS_MSG(pca_reg_transparency_weight,
     EN("Normal transparency weight"), JA("法線方向の透明度の重み"),
     ZH_HANS("法线方向透明度权重"), ZH_HANT("法線方向透明度權重"), KO("법선 방향 투명도 가중치"),
@@ -5859,6 +5825,63 @@ SS_MSG(erank_reg_help,
     TR("İğne gibi splat'ları caydırıp daha yuvarlak olanları destekler. Sivri "
        "bozulmaları ve kamera hareket ederken oluşan titremeyi azaltır."));
 
+SS_MSG(erank_reg_warmup,
+    EN("Roundness warm-up"),
+    JA("丸さペナルティの立ち上がり"),
+    ZH_HANS("圆度惩罚预热"),
+    ZH_HANT("圓度懲罰預熱"),
+    KO("둥글기 페널티 워밍업"),
+    DE("Anlauf der Rundheitsstrafe"),
+    FR("Montée de la pénalité de rondeur"),
+    ES("Arranque de la penalización de redondez"),
+    PT("Aquecimento da penalidade de arredondamento"),
+    IT("Avvio della penalità di rotondità"),
+    NL("Opbouw van de rondheidsstraf"),
+    RU("Разгон штрафа за округлость"),
+    TR("Yuvarlaklık cezasının ısınması"));
+SS_MSG(erank_reg_warmup_help,
+    EN("How many steps the roundness penalty takes to reach full strength. 0 applies it from the first step."),
+    JA("丸さのペナルティが最大になるまでのステップ数です。0 なら最初から効かせます。"),
+    ZH_HANS("圆度惩罚达到最大强度所需的步数。0 表示从第一步起就施加。"),
+    ZH_HANT("圓度懲罰達到最大強度所需的步數。0 表示從第一步起就施加。"),
+    KO("둥글기 페널티가 최대 강도에 이르기까지의 스텝 수입니다. 0이면 처음부터 적용합니다."),
+    DE("Wie viele Schritte die Rundheitsstrafe braucht, um volle Stärke zu erreichen. 0 wendet sie ab dem ersten Schritt an."),
+    FR("Combien d'étapes la pénalité de rondeur met à atteindre sa pleine force. 0 l'applique dès la première étape."),
+    ES("Cuántos pasos tarda la penalización de redondez en alcanzar toda su fuerza. 0 la aplica desde el primer paso."),
+    PT("Quantos passos a penalidade de arredondamento leva para atingir força total. 0 a aplica desde o primeiro passo."),
+    IT("Quanti passi impiega la penalità di rotondità a raggiungere la piena forza. 0 la applica dal primo passo."),
+    NL("Hoeveel stappen de rondheidsstraf nodig heeft om op volle sterkte te komen. 0 past hem vanaf de eerste stap toe."),
+    RU("За сколько шагов штраф за округлость набирает полную силу. 0 — действует с первого шага."),
+    TR("Yuvarlaklık cezasının tam güce ulaşması için gereken adım sayısı. 0 ilk adımdan uygular."));
+SS_MSG(erank_reg_warmup_schedule,
+    EN("Roundness warm-up curve"),
+    JA("丸さペナルティの立ち上がり方"),
+    ZH_HANS("圆度惩罚预热曲线"),
+    ZH_HANT("圓度懲罰預熱曲線"),
+    KO("둥글기 페널티 워밍업 곡선"),
+    DE("Anlaufkurve der Rundheitsstrafe"),
+    FR("Courbe de montée de la pénalité de rondeur"),
+    ES("Curva de arranque de la penalización de redondez"),
+    PT("Curva de aquecimento da penalidade de arredondamento"),
+    IT("Curva di avvio della penalità di rotondità"),
+    NL("Opbouwcurve van de rondheidsstraf"),
+    RU("Кривая разгона штрафа за округлость"),
+    TR("Yuvarlaklık cezası ısınma eğrisi"));
+SS_MSG(erank_reg_warmup_schedule_help,
+    EN("`cosine` eases into full strength; `quadratic` and `quartic` start slow and end steep; `step` waits, then switches on."),
+    JA("`cosine` は最後になめらかに最大へ、`quadratic` と `quartic` は始めがゆっくりで終わりが急、`step` は待ってから一度に効かせます。"),
+    ZH_HANS("`cosine` 在末尾平滑地达到最大；`quadratic` 和 `quartic` 开始慢、结尾快；`step` 先等待，再一次开启。"),
+    ZH_HANT("`cosine` 在末尾平滑地達到最大；`quadratic` 和 `quartic` 開始慢、結尾快；`step` 先等待，再一次開啟。"),
+    KO("`cosine`은 끝에서 부드럽게 최대에 이르고, `quadratic`과 `quartic`은 처음엔 느리고 끝이 가파르며, `step`은 기다렸다가 한 번에 켜집니다."),
+    DE("`cosine` läuft sanft in die volle Stärke, `quadratic` und `quartic` beginnen langsam und enden steil, `step` wartet und schaltet dann ein."),
+    FR("`cosine` atteint la pleine force en douceur ; `quadratic` et `quartic` démarrent lentement et finissent raides ; `step` attend puis s'active."),
+    ES("`cosine` llega con suavidad a toda su fuerza; `quadratic` y `quartic` empiezan lento y acaban rápido; `step` espera y luego se activa."),
+    PT("`cosine` chega suavemente à força total; `quadratic` e `quartic` começam devagar e terminam íngremes; `step` espera e então liga."),
+    IT("`cosine` arriva dolcemente alla piena forza; `quadratic` e `quartic` partono lenti e finiscono ripidi; `step` attende e poi si attiva."),
+    NL("`cosine` loopt zacht op naar volle sterkte; `quadratic` en `quartic` beginnen langzaam en eindigen steil; `step` wacht en schakelt dan in."),
+    RU("`cosine` плавно выходит на полную силу; `quadratic` и `quartic` начинают медленно и заканчивают круто; `step` ждёт, затем включается сразу."),
+    TR("`cosine` tam güce yumuşakça ulaşır; `quadratic` ve `quartic` yavaş başlar, dik biter; `step` bekler, sonra birden devreye girer."));
+
 SS_MSG(erank_reg_s3,
     EN("Flatness (erank)"), JA("平坦さ（erank）"), ZH_HANS("扁平度（erank）"),
     ZH_HANT("扁平度（erank）"), KO("납작함(erank)"), DE("Flachheit (erank)"),
@@ -5890,6 +5913,63 @@ SS_MSG(erank_reg_s3_help,
        "ложились на поверхности."),
     TR("Splat'ları düz levhalara çökmeye özendirir, böylece yüzeylere daha "
        "iyi otururlar."));
+
+SS_MSG(erank_reg_s3_warmup,
+    EN("Flatness warm-up"),
+    JA("平坦さペナルティの立ち上がり"),
+    ZH_HANS("扁平度惩罚预热"),
+    ZH_HANT("扁平度懲罰預熱"),
+    KO("납작함 페널티 워밍업"),
+    DE("Anlauf der Flachheitsstrafe"),
+    FR("Montée de la pénalité d'aplatissement"),
+    ES("Arranque de la penalización de aplanamiento"),
+    PT("Aquecimento da penalidade de achatamento"),
+    IT("Avvio della penalità di appiattimento"),
+    NL("Opbouw van de vlakheidsstraf"),
+    RU("Разгон штрафа за плоскостность"),
+    TR("Yassılık cezasının ısınması"));
+SS_MSG(erank_reg_s3_warmup_help,
+    EN("How many steps the flatness penalty takes to reach full strength. 0 applies it from the first step."),
+    JA("平坦さのペナルティが最大になるまでのステップ数です。0 なら最初から効かせます。"),
+    ZH_HANS("扁平度惩罚达到最大强度所需的步数。0 表示从第一步起就施加。"),
+    ZH_HANT("扁平度懲罰達到最大強度所需的步數。0 表示從第一步起就施加。"),
+    KO("납작함 페널티가 최대 강도에 이르기까지의 스텝 수입니다. 0이면 처음부터 적용합니다."),
+    DE("Wie viele Schritte die Flachheitsstrafe braucht, um volle Stärke zu erreichen. 0 wendet sie ab dem ersten Schritt an."),
+    FR("Combien d'étapes la pénalité d'aplatissement met à atteindre sa pleine force. 0 l'applique dès la première étape."),
+    ES("Cuántos pasos tarda la penalización de aplanamiento en alcanzar toda su fuerza. 0 la aplica desde el primer paso."),
+    PT("Quantos passos a penalidade de achatamento leva para atingir força total. 0 a aplica desde o primeiro passo."),
+    IT("Quanti passi impiega la penalità di appiattimento a raggiungere la piena forza. 0 la applica dal primo passo."),
+    NL("Hoeveel stappen de vlakheidsstraf nodig heeft om op volle sterkte te komen. 0 past hem vanaf de eerste stap toe."),
+    RU("За сколько шагов штраф за плоскостность набирает полную силу. 0 — действует с первого шага."),
+    TR("Yassılık cezasının tam güce ulaşması için gereken adım sayısı. 0 ilk adımdan uygular."));
+SS_MSG(erank_reg_s3_warmup_schedule,
+    EN("Flatness warm-up curve"),
+    JA("平坦さペナルティの立ち上がり方"),
+    ZH_HANS("扁平度惩罚预热曲线"),
+    ZH_HANT("扁平度懲罰預熱曲線"),
+    KO("납작함 페널티 워밍업 곡선"),
+    DE("Anlaufkurve der Flachheitsstrafe"),
+    FR("Courbe de montée de la pénalité d'aplatissement"),
+    ES("Curva de arranque de la penalización de aplanamiento"),
+    PT("Curva de aquecimento da penalidade de achatamento"),
+    IT("Curva di avvio della penalità di appiattimento"),
+    NL("Opbouwcurve van de vlakheidsstraf"),
+    RU("Кривая разгона штрафа за плоскостность"),
+    TR("Yassılık cezası ısınma eğrisi"));
+SS_MSG(erank_reg_s3_warmup_schedule_help,
+    EN("`cosine` eases into full strength; `quadratic` and `quartic` start slow and end steep; `step` waits, then switches on."),
+    JA("`cosine` は最後になめらかに最大へ、`quadratic` と `quartic` は始めがゆっくりで終わりが急、`step` は待ってから一度に効かせます。"),
+    ZH_HANS("`cosine` 在末尾平滑地达到最大；`quadratic` 和 `quartic` 开始慢、结尾快；`step` 先等待，再一次开启。"),
+    ZH_HANT("`cosine` 在末尾平滑地達到最大；`quadratic` 和 `quartic` 開始慢、結尾快；`step` 先等待，再一次開啟。"),
+    KO("`cosine`은 끝에서 부드럽게 최대에 이르고, `quadratic`과 `quartic`은 처음엔 느리고 끝이 가파르며, `step`은 기다렸다가 한 번에 켜집니다."),
+    DE("`cosine` läuft sanft in die volle Stärke, `quadratic` und `quartic` beginnen langsam und enden steil, `step` wartet und schaltet dann ein."),
+    FR("`cosine` atteint la pleine force en douceur ; `quadratic` et `quartic` démarrent lentement et finissent raides ; `step` attend puis s'active."),
+    ES("`cosine` llega con suavidad a toda su fuerza; `quadratic` y `quartic` empiezan lento y acaban rápido; `step` espera y luego se activa."),
+    PT("`cosine` chega suavemente à força total; `quadratic` e `quartic` começam devagar e terminam íngremes; `step` espera e então liga."),
+    IT("`cosine` arriva dolcemente alla piena forza; `quadratic` e `quartic` partono lenti e finiscono ripidi; `step` attende e poi si attiva."),
+    NL("`cosine` loopt zacht op naar volle sterkte; `quadratic` en `quartic` beginnen langzaam en eindigen steil; `step` wacht en schakelt dan in."),
+    RU("`cosine` плавно выходит на полную силу; `quadratic` и `quartic` начинают медленно и заканчивают круто; `step` ждёт, затем включается сразу."),
+    TR("`cosine` tam güce yumuşakça ulaşır; `quadratic` ve `quartic` yavaş başlar, dik biter; `step` bekler, sonra birden devreye girer."));
 
 SS_MSG(scale_regularization_weight,
     EN("Stretched splat penalty"), JA("細長いスプラットのペナルティ"),

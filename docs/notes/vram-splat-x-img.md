@@ -87,7 +87,7 @@ Per element, after the 2026-08-30 pass:
 | `raster_bwd.v_screen` | 40 x `nnz` | its gradient, fp32 for the atomics |
 | `proj.aabb` | 8 x `nnz` | 16-bit fixed point, shaders/aabb16.h |
 | `proj.depths` / `camera_ids` / `gaussian_ids` | 4 x `nnz` each | |
-| `isect.tiles_per_splat`, `isect.cum_tiles` | 4 x `nnz` each | arena |
+| `isect.tiles_per_splat`, `isect.cum_tiles` | 4 x `nnz` each | arena; the counts are scanned in place, `cum_tiles` holds exact footprints' tile masks |
 | `isect.ids_a/b` | 8 x one band each | sort key `(tile_id << 32) \| depth`, arena |
 | `isect.flat_b` | 4 x one band | the sort's alternate payload, arena |
 | `isect.flat_a` | 4 x `n_isects` | the sorted list the raster reads |

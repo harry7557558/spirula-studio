@@ -206,6 +206,44 @@ static void queue_roundtrip(const fs::path& root) {
     }
 }
 
+static void queue_save_denial() {
+    const auto file = fs::path(app::config_dir()) / "batch.json";
+    fs::remove(file);
+    fs::create_directory(file);
+    const auto previous = file / "previous";
+    std::ofstream(previous) << "keep";
+    gui::BatchRow row;
+    row.dataset = "updated-dataset";
+    bool reported_failure = false;
+    try {
+        gui::save_batch_list({row});
+    } catch (const std::exception&) {
+        reported_failure = true;
+    }
+    SS_CHECK(reported_failure);
+    SS_CHECK(fs::is_regular_file(previous));
+
+    const std::vector<gui::BatchRow> rows{row};
+    gui::BatchSaveState save;
+    SS_CHECK(!save.dirty() && !save.needs_autosave() && !save.failed());
+    save.edited();
+    SS_CHECK(save.dirty() && save.needs_autosave());
+    SS_CHECK(!save.save(rows));
+    SS_CHECK(save.dirty() && !save.needs_autosave() && save.failed());
+    const std::string detail = save.error();
+    SS_CHECK(detail.find(file.string()) != std::string::npos);
+    SS_CHECK(detail.find("not a regular file") != std::string::npos);
+    save.edited();
+    SS_CHECK(save.dirty() && save.needs_autosave() && !save.failed());
+    SS_CHECK(!save.save(rows));
+    SS_CHECK(save.dirty() && !save.needs_autosave() && save.failed());
+    fs::remove_all(file);
+    SS_CHECK(save.save(rows));  // Explicit retry bypasses the latched failure.
+    SS_CHECK(!save.dirty() && !save.needs_autosave() && !save.failed());
+    const auto loaded = gui::load_batch_list();
+    SS_CHECK(loaded.size() == 1 && loaded.front().dataset == row.dataset);
+}
+
 int main() {
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
     const fs::path root = fs::temp_directory_path() /
@@ -220,6 +258,7 @@ int main() {
     finish_command_not_loaded(root);
     region_per_run(root);
     queue_roundtrip(root);
+    queue_save_denial();
     fs::remove_all(root);
     std::printf("batch_process_test: %d failures\n", failures);
     return failures ? 1 : 0;

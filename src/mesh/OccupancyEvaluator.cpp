@@ -14,11 +14,14 @@
  */
 
 #include "mesh/Meshing.h"
+#include "mesh/Delaunay3D.h"
 #include "mesh/MeshLog.h"
 #include "mesh/MeshingDevice.h"
 #include "mesh/MeshingRaster.h"
 
 #include "core/CameraModel.h"     // kCameraDistortionParams (portable spelling)
+#include "core/Env.h"
+#include "core/HostMemory.h"
 #include "core/SubmitBudget.h"
 
 #include "backend/api/BackendRuntime.h"
@@ -193,6 +196,15 @@ std::vector<float> select_cameras_kmeans(
 
 }  // namespace
 
+// Probes per loop over the cameras; more go in further loops, each rendering
+// the cameras again. 43M at once were bicycle's VRAM peak: 1.4 GB of 1.9.
+constexpr int kProbesPerLoop = 1 << 24;
+
+// The density term joins the cameras' field only for Gaussians with volume: a
+// disc's density is solid at its centre sample alone, an island on the mesh
+// (docs/notes/mesh-field.md). Thinnest over widest sigma; full weight from here.
+constexpr float kSolidThickness = 0.05f;
+
 // ---------------------------------------------------------------------------
 // Impl
 // ---------------------------------------------------------------------------
@@ -202,6 +214,7 @@ struct OccupancyEvaluator::Impl {
 
     DBuf<float3> mean, ax0, ax1, ax2, invs2, gcol;
     DBuf<float> opac, radius, k2;
+    DBuf<float> opac_solid;   // opacity scaled down for flat Gaussians (kSolidThickness)
     DBuf<int> valid;
 
     DBuf<int> kept;
@@ -224,6 +237,7 @@ struct OccupancyEvaluator::Impl {
     std::vector<int> cam_widths;      // [C] per-camera image width
     std::vector<int> cam_heights;     // [C] per-camera image height
     bool use_render = false;          // cams.valid() && cameras present
+    bool fuse_tsdf = false;           // the render path's field is a signed distance
     RenderContext* rctx = nullptr;    // built when use_render
     std::vector<int> render_cam_indices;  // camera subset rendered per batch
 
@@ -258,7 +272,9 @@ struct OccupancyEvaluator::Impl {
 
     // d_occ = combine(d_occ, static density term) over [0, n).
     void combine_static_occupancy(const float* d_xyz, int n, float* d_occ) const {
-        const GpuScene s = make_scene();
+        if (fuse_tsdf) return;   // a distance, not an occupancy
+        GpuScene s = make_scene();
+        s.opac = opac_solid;
         DBuf<float> d_s((size_t)std::min(n, kPointsPerLaunch));
         for_ranges(n, kPointsPerLaunch, "occupancy", [&](int i, int m) {
             launch_occ(s, d_xyz + 3 * (size_t)i, m, d_s, 0);
@@ -302,6 +318,20 @@ OccupancyEvaluator::OccupancyEvaluator(
             impl_->mean, impl_->ax0, impl_->ax1, impl_->ax2, impl_->invs2,
             impl_->opac, impl_->radius, impl_->k2, impl_->valid, impl_->gcol);
         sync_checked("activation");
+
+        if (cams.valid() && num_cameras > 0) {
+            std::vector<float> solid((size_t)N);
+            #pragma omp parallel for schedule(static)
+            for (int i = 0; i < N; ++i) {
+                const float* ls = log_scales + 3 * (size_t)i;
+                const float thick = std::exp(std::min({ls[0], ls[1], ls[2]}) -
+                                             std::max({ls[0], ls[1], ls[2]}));
+                solid[i] = std::min(thick / kSolidThickness, 1.0f) /
+                           (1.0f + std::exp(-logit_opac[i]));
+            }
+            impl_->opac_solid.alloc(N);
+            upload(impl_->opac_solid.get(), solid.data(), (size_t)N);
+        }
     }
 
     // ---- kept list + scene bbox (host) ----
@@ -322,11 +352,26 @@ OccupancyEvaluator::OccupancyEvaluator(
             csum[a] += m;
         }
     }
+    const int spg = cfg.samples_per_gaussian <= 1 ? 1 : 7;
     impl_->num_kept = (int)kept.size();
     num_kept_ = impl_->num_kept;
-    num_points_ = impl_->num_kept * 7;
+    num_points_ = (int64_t)impl_->num_kept * spg;
     if (impl_->num_kept == 0)
         throw std::runtime_error("meshing: no Gaussians above the opacity threshold");
+
+    // 85% of free commit (RAM plus swap on Linux), up to the 32-bit tet-ID cap.
+    {
+        size_t budget = spirula::availableCommitBytes();
+        if (budget == 0) budget = spirula::physicalRamBytes();
+        budget += spirula::availableSwapBytes();
+        if (budget == 0) {
+            max_points_ = 150000000;
+        } else {
+            const int64_t by_ram =
+                (int64_t)(0.85 * (double)budget / delaunay3d::kHostBytesPerPoint);
+            max_points_ = std::clamp<int64_t>(by_ram, 4, delaunay3d::kMaxPoints);
+        }
+    }
 
     // rel_scale ~ RMS spread of centroids (core scene scale for the remap)
     double cmean[3] = {csum[0]/impl_->num_kept, csum[1]/impl_->num_kept, csum[2]/impl_->num_kept};
@@ -337,11 +382,19 @@ OccupancyEvaluator::OccupancyEvaluator(
     }
     float rel_scale = (float)std::max(1e-6, std::sqrt(var / (3.0 * impl_->num_kept)));
 
-    impl_->kept.alloc(impl_->num_kept);
-    upload(impl_->kept.get(), kept.data(), (size_t)impl_->num_kept);
     if (cfg.verbose)
         mlog::out(mlog::Stage::Loading, mmsg::gaussians_kept,
-                  {impl_->num_kept, N, num_points_, (double)rel_scale});
+                  {impl_->num_kept, N, (long long)num_points_, (double)rel_scale});
+
+    const bool grid = cfg.method == MeshMethod::Tsdf && cfg.tsdf_voxel > 0.0f;
+    const int cloud_cams = cam_pos ? num_cameras : 0;
+    if (!grid && !spirula::env("MESH_DEBUG_RENDER") &&
+        num_points_ + cloud_cams > max_points_) {
+        return;
+    }
+
+    impl_->kept.alloc(impl_->num_kept);
+    upload(impl_->kept.get(), kept.data(), (size_t)impl_->num_kept);
 
     // ---- LBVH build ----
     const int n = impl_->num_kept;
@@ -428,12 +481,19 @@ OccupancyEvaluator::OccupancyEvaluator(
         impl_->cam_widths.assign(cams.widths, cams.widths + num_cameras);
         impl_->cam_heights.assign(cams.heights, cams.heights + num_cameras);
         impl_->use_render = true;
+        OccFusion fusion;
+        fusion.tsdf = cfg.method == MeshMethod::Tsdf && cfg.tsdf_voxel <= 0.0f;
+        fusion.iso = cfg.iso;
+        fusion.band_px = fusion.tsdf ? std::max(cfg.tsdf_trunc, 1.0f) : cfg.occ_band_px;
+        fusion.deep_weight = cfg.occ_deep_weight;
+        fusion.clean = cfg.occ_clean;
+        impl_->fuse_tsdf = fusion.tsdf != 0;
         impl_->rctx = render_context_create(
             means, quats, log_scales, logit_opac, features_dc, N,
             impl_->cam_viewmats.data(), impl_->cam_intrins.data(),
             impl_->cam_dist.empty() ? nullptr : impl_->cam_dist.data(),
             num_cameras, impl_->cam_widths.data(), impl_->cam_heights.data(),
-            cams.camera_models, cams.distortions, cfg.carve_k, cfg.verbose);
+            cams.camera_models, cams.distortions, fusion, cfg.verbose);
         if (cfg.verbose) {
             int w0 = impl_->cam_widths[0], h0 = impl_->cam_heights[0];
             bool uniform = true;
@@ -468,13 +528,14 @@ bool OccupancyEvaluator::render_moments(
 }
 
 void OccupancyEvaluator::generate_point_cloud(std::vector<float>& xyz_out) {
-    size_t n = (size_t)impl_->num_kept * 7;
+    const int spg = impl_->cfg.samples_per_gaussian <= 1 ? 1 : 7;
+    size_t n = (size_t)impl_->num_kept * spg;
     xyz_out.resize(n * 3);
     DBuf<float> d_out(n * 3);
     launch_pointcloud(
         impl_->num_kept, impl_->kept,
         impl_->mean, impl_->ax0, impl_->ax1, impl_->ax2, impl_->invs2,
-        impl_->k2, kSampleMinAxisRatio, d_out);
+        impl_->k2, kSampleMinAxisRatio, spg, d_out);
     sync_checked("point cloud");
     download(xyz_out.data(), d_out.get(), n * 3);
 }
@@ -487,7 +548,6 @@ void OccupancyEvaluator::evaluate(const float* xyz, int n, float* occ_out) {
     if (impl_->render_path()) {
         render_evaluate_occupancy(impl_->rctx, impl_->render_cam_indices.data(),
             (int)impl_->render_cam_indices.size(), d_xyz, n, d_occ);
-        // protect surfaces with the static density term (BVH-equivalent field)
         impl_->combine_static_occupancy(d_xyz, n, d_occ);
     } else {
         impl_->occupancy_ranges(d_xyz, n, d_occ);
@@ -496,7 +556,7 @@ void OccupancyEvaluator::evaluate(const float* xyz, int n, float* occ_out) {
 }
 
 void OccupancyEvaluator::bisect_edges(
-    const float* cloud_xyz,
+    const float* cloud_xyz, int cloud_points,
     const int32_t* edge_a, const int32_t* edge_b,
     const float* occ_a, const float* occ_b,
     int n_edges, float* xyz_out
@@ -551,7 +611,7 @@ void OccupancyEvaluator::bisect_edges(
         return;
     }
 
-    size_t ncloud = (size_t)num_points_;
+    size_t ncloud = (size_t)cloud_points;
     DBuf<float> d_cloud(ncloud*3);
     upload(d_cloud.get(), cloud_xyz, ncloud*3);
     DBuf<int> d_ea((size_t)n_edges), d_eb((size_t)n_edges);
@@ -606,8 +666,48 @@ void OccupancyEvaluator::view_texel_density(const float* verts, int n, float* de
     download(dens_out, d_d.get(), (size_t)n);
 }
 
+void OccupancyEvaluator::merge_fields(const float* verts, int nv, float* dens_out,
+                                      float* rgb_out, const float* probes, int np,
+                                      float* occ_out) {
+    if (!impl_->render_path()) {
+        if (nv > 0) std::fill(dens_out, dens_out + nv, 0.0f);
+        if (rgb_out) colorize(verts, nv, rgb_out);
+        evaluate(probes, np, occ_out);
+        return;
+    }
+    DBuf<float> d_v((size_t)std::max(nv, 1) * 3), d_d((size_t)std::max(nv, 1));
+    DBuf<float> d_c(rgb_out ? (size_t)nv * 3 : 0);
+    if (nv > 0) upload(d_v.get(), verts, (size_t)nv * 3);
+    const int chunk = std::min(std::max(np, 1), kProbesPerLoop);
+    DBuf<float> d_p((size_t)chunk * 3), d_o((size_t)chunk);
+    for (int first = 0; first == 0 || first < np; first += chunk) {
+        const int m = std::max(0, std::min(chunk, np - first));
+        if (m > 0) upload(d_p.get(), probes + 3 * (size_t)first, (size_t)m * 3);
+        // the vertices ride with the first loop
+        render_evaluate_merge(impl_->rctx, impl_->render_cam_indices.data(),
+                              (int)impl_->render_cam_indices.size(), d_v, first == 0 ? nv : 0,
+                              d_d, first == 0 && rgb_out ? d_c.get() : nullptr, d_p, m, d_o);
+        if (m > 0) {
+            impl_->combine_static_occupancy(d_p, m, d_o);
+            download(occ_out + first, d_o.get(), (size_t)m);
+        }
+    }
+    if (nv > 0) download(dens_out, d_d.get(), (size_t)nv);
+    if (rgb_out && nv > 0) {
+        GpuScene s = impl_->make_scene();
+        for_ranges(nv, kPointsPerLaunch, "color", [&](int i, int m) {
+            launch_colorize_fallback(s, d_v + 3 * (size_t)i, m, d_c + 3 * (size_t)i);
+        });
+        download(rgb_out, d_c.get(), (size_t)nv * 3);
+    }
+}
+
 bool OccupancyEvaluator::has_render_cameras() const {
     return impl_->use_render && impl_->rctx != nullptr;
+}
+
+const std::vector<int>& OccupancyEvaluator::selected_cameras() const {
+    return impl_->render_cam_indices;
 }
 
 void OccupancyEvaluator::cull_unseen_vertices(
@@ -619,7 +719,10 @@ void OccupancyEvaluator::cull_unseen_vertices(
         std::fill(visible_out, visible_out + n, (unsigned char)1);
         return;
     }
-    render_cull_unseen_vertices(impl_->rctx, verts, n, faces, n_faces, visible_out);
+    const auto& sel = impl_->render_cam_indices;
+    render_cull_unseen_vertices(
+        impl_->rctx, sel.empty() ? nullptr : sel.data(), (int)sel.size(),
+        verts, n, faces, n_faces, visible_out);
 }
 
 } // namespace meshing

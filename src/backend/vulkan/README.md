@@ -61,6 +61,7 @@ for A/B testing):
   the 148 ".int8" ones (ppl_fwd, ppl_bwd, fused_adam_qq, ...) crash its
   compiler in amdvlk64.dll, and the gindex_t loads index before they cast,
   the shape the float CAS was miscompiled in.
+  On an RDNA4 R9700 (driver 26.10.44) the plain CAS blobs run correctly.
 - `shaderInt64` — 64-bit sort keys, morton codes, large-buffer indexing.
   Entries in an int64_compat-including source get a `.noint64` variant
   compiled with `-DSS_EMULATE_INT64` (`backend/vulkan/shaders/int64_compat.slang`),
@@ -473,7 +474,10 @@ Vulkan.
   "Sorting in bands"). The sort starts in the payload buffer that leaves its
   result in the caller's list: one swap per 8 key bits.
   Ellipse-vs-AABB mode is a runtime null-check on proj_conic (the CUDA
-  template bool only folds that check).
+  template bool only folds that check). The eval3d primitives take a third
+  mode, `kFootprint`, with a `FootprintView` of the splats and cameras: an
+  exact ellipse sweep for undistorted pinhole and orthographic views, a ray
+  test against `tile_quad_rays` otherwise (docs/notes/footprint.md).
 - `kernels/RasterizeFwd.cpp` + `backend/vulkan/shaders/rasterize_fwd.slang`: closely
   follows RasterizationEval3DFwd_kernel.cuh (the CUDA source of both the 2D
   and eval3D kernels). Two entries (2D shared by 3DGS/MIP; 3DGUT eval3d
@@ -550,7 +554,7 @@ the engine level.
   fallback (the identity distortion tier reads nothing at all: a large
   camera index would run past the 4 KB fallback);
   "null selects a mode" moved to specialization constants
-  (intersect_tile kEllipse/kHasXy/kPacked, rasterize_fwd kRasterPacked —
+  (intersect_tile kEllipse/kHasXy/kPacked/kFootprint, rasterize_fwd kRasterPacked —
   spec-folding removes the dead load entirely) or explicit flag fields
   (blit has_lss/has_tri, thumbnails has_alpha, optimizer has_steps/
   grad_quant, densify use_opacs/use_w2). Guarded STORES are fine (never

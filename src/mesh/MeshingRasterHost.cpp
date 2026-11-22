@@ -124,7 +124,7 @@ struct RenderContext {
 
     DeviceVector<float> radii;   // pool-backed scratch, size N
 
-    int carve_k = 1;
+    OccFusion fusion;
     bool verbose = false;
 
     // in_splats in the projection's WorldBuffer layout (6 entries). f_sh is a
@@ -153,7 +153,7 @@ RenderContext* render_context_create(
     const float* viewmats, const float* intrins, const float* dist,
     int num_cameras, const int* widths, const int* heights,
     const int* camera_models, const int* distortions,
-    int carve_k, bool verbose
+    const OccFusion& fusion, bool verbose
 ) {
     RenderContext* ctx = new RenderContext();
     ctx->verbose = verbose;
@@ -168,7 +168,7 @@ RenderContext* render_context_create(
     ctx->models.assign(camera_models, camera_models + num_cameras);
     ctx->dists.assign(num_cameras, (int)CameraDistortionType::None);
     if (distortions) ctx->dists.assign(distortions, distortions + num_cameras);
-    ctx->carve_k = (carve_k < 1) ? 1 : carve_k;
+    ctx->fusion = fusion;
 
     const size_t N = (size_t)num_splats;
     ctx->d_means.alloc_copy(means, N * 3);
@@ -219,13 +219,14 @@ static void render_one(RenderContext* ctx, int cam_idx,
         std::nullopt, std::nullopt, /*num_sh_buffer=*/0, /*sh_value_bits=*/32,
         /*sh_bounds_stride=*/0);
 
-    // --- tile intersection (ellipse mode; center falls back to the AABB) ---
+    // --- tile intersection (exact footprints) ---
     DeviceTensorFloatND depths_nd(depths_2d);
     ProjEllipseView ellipse =
         proj_ellipse_view(splats_s[0].data_ptr(), /*eval3d=*/true);
     int macro_log2 = kMacroLog2Default;
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
         aabb_2d, depths_nd, ellipse,
+        footprint_view(in_splats, nullptr, viewmats, dist, model, distortion, false),
         /*I=*/1, intrins, W, H, nullptr, /*tile_active=*/nullptr,
         macro_log2);
 
@@ -249,21 +250,17 @@ int render_context_num_cameras(const RenderContext* ctx) { return ctx->C; }
 
 
 // ---------------------------------------------------------------------------
-// Occupancy sampling (k-th-smallest over the cameras that see the point)
+// Occupancy: every camera's view of each point, fused (launch_sample_occ)
 // ---------------------------------------------------------------------------
 void render_evaluate_occupancy(
     RenderContext* ctx, const int* cam_indices, int num_cams,
     const float* d_xyz, int n, float* d_occ
 ) {
     if (n <= 0) return;
-    const int k = ctx->carve_k;
     const size_t npix = (size_t)ctx->Wmax * ctx->Hmax;
     DBuf<float3> d_moments(npix);
-    DBuf<float> d_occ_kmin((size_t)n * k);
-    DBuf<int> d_cnt((size_t)n);
-    // 0x7f7f7f7f is 3.4e38, the "+inf" padding; finalize never reads it back.
-    backend::memset_sync(d_occ_kmin.get(), 0x7f, (size_t)n * k * sizeof(float));
-    backend::memset_sync(d_cnt.get(), 0, (size_t)n * sizeof(int));
+    DBuf<float4> d_acc((size_t)n);
+    backend::memset_sync(d_acc.get(), 0, (size_t)n * sizeof(float4));
 
     for (int ci = 0; ci < num_cams; ++ci) {
         int cam = cam_indices[ci];
@@ -275,10 +272,9 @@ void render_evaluate_occupancy(
             ctx->d_intrins.get() + (size_t)cam * 4,
             ctx->d_dist.get() + (size_t)cam * kCameraDistortionParams,
             ctx->models[cam], ctx->dists[cam],
-            d_moments, ctx->Ws[cam], ctx->Hs[cam], k,
-            d_occ_kmin, d_cnt);
+            d_moments, ctx->Ws[cam], ctx->Hs[cam], ctx->fusion, d_acc);
     }
-    launch_finalize_occ(n, d_occ_kmin, d_cnt, k, d_occ);
+    launch_finalize_occ(n, d_acc, ctx->fusion, d_occ);
     sync_checked("occupancy");
 }
 
@@ -348,6 +344,49 @@ void render_evaluate_view_density(
 }
 
 
+void render_evaluate_merge(
+    RenderContext* ctx, const int* cam_indices, int num_cams,
+    const float* d_verts, int nv, float* d_dens, float* d_rgb,
+    const float* d_probes, int np, float* d_occ
+) {
+    const size_t npix = (size_t)ctx->Wmax * ctx->Hmax;
+    DBuf<float3> d_moments(npix);
+    DBuf<float3> d_rgbimg(d_rgb ? npix : 0);
+    DBuf<float3> d_num(d_rgb ? (size_t)nv : 0);
+    DBuf<float> d_den(d_rgb ? (size_t)nv : 0);
+    DBuf<float4> d_acc((size_t)np);
+    if (nv > 0) backend::memset_sync(d_dens, 0, (size_t)nv * sizeof(float));
+    if (d_rgb && nv > 0) {
+        backend::memset_sync(d_num.get(), 0, (size_t)nv * sizeof(float3));
+        backend::memset_sync(d_den.get(), 0, (size_t)nv * sizeof(float));
+    }
+    if (np > 0) backend::memset_sync(d_acc.get(), 0, (size_t)np * sizeof(float4));
+    for (int ci = 0; ci < num_cams; ++ci) {
+        const int cam = cam_indices[ci];
+        render_one(ctx, cam, d_moments, d_rgb ? d_rgbimg.get() : nullptr);
+        report_cameras(ctx->verbose, mlog::Stage::TexelDensity, ci + 1, num_cams);
+        const float* vm = ctx->d_viewmats.get() + (size_t)cam * 16;
+        const float* in = ctx->d_intrins.get() + (size_t)cam * 4;
+        const float* di = ctx->d_dist.get() + (size_t)cam * kCameraDistortionParams;
+        const int W = ctx->Ws[cam], H = ctx->Hs[cam];
+        if (nv > 0) {
+            launch_sample_view_density(d_verts, nv, vm, in, di, ctx->models[cam],
+                                       ctx->dists[cam], d_moments, W, H, d_dens);
+            if (d_rgb)
+                launch_sample_color(d_verts, nv, vm, in, di, ctx->models[cam],
+                                    ctx->dists[cam], d_moments, d_rgbimg, W, H,
+                                    d_num, d_den);
+        }
+        if (np > 0)
+            launch_sample_occ(d_probes, np, vm, in, di, ctx->models[cam], ctx->dists[cam],
+                              d_moments, W, H, ctx->fusion, d_acc);
+    }
+    if (np > 0) launch_finalize_occ(np, d_acc, ctx->fusion, d_occ);
+    if (d_rgb && nv > 0) launch_finalize_color(nv, d_num, d_den, d_rgb);
+    sync_checked("merge fields");
+}
+
+
 // ---------------------------------------------------------------------------
 // Visibility cull: drop mesh vertices seen by no camera.
 //
@@ -358,8 +397,8 @@ void render_evaluate_view_density(
 // Gaussian LBVH uses (launch_lbvh_*), over triangle leaves.
 // ---------------------------------------------------------------------------
 void render_cull_unseen_vertices(
-    RenderContext* ctx, const float* verts, int nv,
-    const int* faces, int nf, unsigned char* visible
+    RenderContext* ctx, const int* cam_indices, int num_cams,
+    const float* verts, int nv, const int* faces, int nf, unsigned char* visible
 ) {
     if (nv <= 0) return;
 
@@ -416,8 +455,17 @@ void render_cull_unseen_vertices(
 
     // The kernel is specialized on (model, tier), so cameras go in groups.
     std::map<std::pair<int, int>, std::vector<int>> groups;
-    for (int c = 0; c < ctx->C; ++c)
-        groups[{ctx->models[c], ctx->dists[c]}].push_back(c);
+    if (cam_indices && num_cams > 0) {
+        for (int ci = 0; ci < num_cams; ++ci) {
+            const int c = cam_indices[ci];
+            if (c < 0 || c >= ctx->C)
+                throw std::runtime_error("render_cull_unseen_vertices: cam_idx out of range");
+            groups[{ctx->models[c], ctx->dists[c]}].push_back(c);
+        }
+    } else {
+        for (int c = 0; c < ctx->C; ++c)
+            groups[{ctx->models[c], ctx->dists[c]}].push_back(c);
+    }
     constexpr int kD = kCameraDistortionParams;
     spirula::SubmitBudget budget;
     for (const auto& [key, cams] : groups) {
