@@ -286,20 +286,55 @@ bool frame_ids_from_stems(const std::vector<fs::path>& files,
 }
 
 #ifdef SS_BUILD_SAM
-bool valid_retained_mask(const fs::path& path, uint64_t size, int width, int height,
-                         uint64_t budget, std::unique_ptr<char[]>& buffer) {
+class HostBytes {
+public:
+    explicit HostBytes(uint64_t total) : _total(total), _free(total) {}
+    uint64_t total() const { return _total; }
+    void acquire(uint64_t bytes) {
+        std::unique_lock<std::mutex> lock(_mutex);
+        _ready.wait(lock, [&] { return _free >= bytes; });
+        _free -= bytes;
+    }
+    void release(uint64_t bytes) {
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            _free += bytes;
+        }
+        _ready.notify_all();
+    }
+
+private:
+    const uint64_t _total;
+    uint64_t _free;
+    std::mutex _mutex;
+    std::condition_variable _ready;
+};
+
+bool valid_retained_mask(const fs::path& path, uint64_t size, int width, int height, HostBytes& host) {
+    // Allow for the read buffer, grayscale plane, PNG expansion/filter/conversion and IDAT storage.
     constexpr uint64_t overhead = spirula::kFileBufferBytes + 4096;
-    if (budget < overhead)
-        throw std::runtime_error("Mask image exceeds shared host-memory budget");
+    const uint64_t pixels = uint64_t(width) * height;
+    const uint64_t room = host.total() > overhead ? host.total() - overhead : 0;
+    const bool fits = pixels <= room / 64 && size <= (room - pixels * 64) / 3;
+    const uint64_t need = fits ? overhead + pixels * 64 + size * 3 : 0;
+    if (fits) host.acquire(need);
+    struct Lease {
+        HostBytes& host;
+        uint64_t bytes;
+        ~Lease() { if (bytes) host.release(bytes); }
+    } lease{host, need};
 #ifdef _WIN32
     std::unique_ptr<std::FILE, decltype(&std::fclose)> file(_wfopen(path.c_str(), L"rb"), std::fclose);
 #else
     std::unique_ptr<std::FILE, decltype(&std::fclose)> file(std::fopen(path.c_str(), "rb"), std::fclose);
 #endif
     if (!file) return false;
-    if (!buffer) buffer.reset(new char[spirula::kFileBufferBytes]);
     std::FILE* f = file.get();
-    if (std::setvbuf(f, buffer.get(), _IOFBF, spirula::kFileBufferBytes) != 0) return false;
+    std::unique_ptr<char[]> buffer;
+    if (fits) {
+        buffer.reset(new char[spirula::kFileBufferBytes]);
+        if (std::setvbuf(f, buffer.get(), _IOFBF, spirula::kFileBufferBytes) != 0) return false;
+    }
 
     constexpr unsigned char ihdr[] = {137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 'I', 'H', 'D', 'R'};
     unsigned char header[sizeof ihdr + 8];
@@ -317,12 +352,7 @@ bool valid_retained_mask(const fs::path& path, uint64_t size, int width, int hei
         std::fread(tail, 1, sizeof tail, f) != sizeof tail ||
         std::memcmp(tail, iend, sizeof iend) != 0 || std::fseek(f, 0, SEEK_SET) != 0)
         return false;
-
-    // Allow for the grayscale plane, PNG expansion/filter/conversion and IDAT storage.
-    const uint64_t available = budget - overhead;
-    const uint64_t pixels = uint64_t(width) * height;
-    if (pixels > available / 64 || size > (available - pixels * 64) / 3)
-        throw std::runtime_error("Mask image exceeds shared host-memory budget");
+    if (!fits) throw std::runtime_error("Mask image exceeds shared host-memory budget");
     int w = 0, h = 0, channels = 0;
     unsigned char* data = stbi_load_from_file(f, &w, &h, &channels, 1);
     const bool valid = data && w == width && h == height && std::fgetc(f) == EOF && !std::ferror(f);
@@ -3884,33 +3914,61 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
     bool pending = false;
     int done = 0;
     try {
-        MaskOutputOwners owners;
-        std::unique_ptr<char[]> retained_buffer;
-        for (size_t i = 0; i < files.size(); ++i) {
-            if (isolated && _cancel.load()) { error = lmsg::err_cancelled.get(); return false; }
-            int width = 0, height = 0;
-            const fs::path rel = under_root(files[i], image_root);
-            auto wanted = [&](bool on, const fs::path& root) {
-                Dst d;
-                if (!on) return d;
-                d.path = root / rel.parent_path() / (rel.stem().string() + ".png");
-                if (isolated) owners.claim(d.path);
-                d.write = true;
-                if (resume && !isolated) {
-                    d.write = !fs::exists(d.path, ec);
-                } else if (resume && fs::is_regular_file(d.path, ec)) {
-                    const auto size = fs::file_size(d.path, ec);
-                    if (!ec && size >= 45) {  // Signature, IHDR and IEND alone.
-                        if (width == 0 && !probe_size(files[i], width, height))
-                            throw std::runtime_error("Cannot size required mask input");
-                        d.write = !valid_retained_mask(d.path, size, width, height, budget, retained_buffer);
+        std::vector<Dst> dsts(files.size()), fdsts(files.size());
+        {
+            MaskOutputOwners owners;
+            for (size_t i = 0; i < files.size(); ++i) {
+                if (isolated && _cancel.load()) { error = lmsg::err_cancelled.get(); return false; }
+                const fs::path rel = under_root(files[i], image_root);
+                auto wanted = [&](bool on, const fs::path& root, Dst& d) {
+                    if (!on) return;
+                    d.path = root / rel.parent_path() / (rel.stem().string() + ".png");
+                    if (isolated) owners.claim(d.path);
+                    d.write = !(resume && !isolated && fs::exists(d.path, ec));
+                };
+                wanted(write_train, mask_root, dsts[i]);
+                wanted(write_features, feature_root, fdsts[i]);
+            }
+        }
+        if (isolated && resume) {
+            HostBytes host(budget);
+            std::atomic<size_t> next{0};
+            std::atomic<bool> failed{false};
+            std::mutex failure_mutex;
+            std::string failure;
+            auto worker = [&] {
+                try {
+                    for (size_t i = 0; !failed.load() && !_cancel.load() && (i = next++) < files.size();) {
+                        int width = 0, height = 0;
+                        for (Dst* d : {&dsts[i], &fdsts[i]}) {
+                            std::error_code fec;
+                            if (d->path.empty() || !fs::is_regular_file(d->path, fec)) continue;
+                            const auto size = fs::file_size(d->path, fec);
+                            if (fec || size < 45) continue;  // Signature, IHDR and IEND alone.
+                            if (width == 0 && !probe_size(files[i], width, height))
+                                throw std::runtime_error("Cannot size required mask input");
+                            d->write = !valid_retained_mask(d->path, size, width, height, host);
+                        }
                     }
+                } catch (const std::exception& e) {
+                    std::lock_guard<std::mutex> lock(failure_mutex);
+                    if (!failed.exchange(true)) failure = e.what();
                 }
-                if (d.write) fs::create_directories(d.path.parent_path(), ec);
-                return d;
             };
-            Dst dst = wanted(write_train, mask_root);
-            Dst fdst = wanted(write_features, feature_root);
+            const size_t threads = std::min<size_t>(files.size(),
+                std::clamp(spirula::hardware_threads(), 1u, 16u));
+            std::vector<std::thread> pool;
+            for (size_t t = 1; t < threads; ++t) pool.emplace_back(worker);
+            worker();
+            for (auto& t : pool) t.join();
+            if (failed.load()) throw std::runtime_error(failure);
+            if (_cancel.load()) { error = lmsg::err_cancelled.get(); return false; }
+        }
+        for (size_t i = 0; i < files.size(); ++i) {
+            Dst& dst = dsts[i];
+            Dst& fdst = fdsts[i];
+            for (const Dst* d : {&dst, &fdst})
+                if (d->write) fs::create_directories(d->path.parent_path(), ec);
             if (dst.write || fdst.write) pending = true;
             else if (!(isolated && mo.video)) {
                 ++done;
