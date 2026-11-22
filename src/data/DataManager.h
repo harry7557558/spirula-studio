@@ -48,9 +48,15 @@ enum class CacheMode {
 struct DataManagerConfig {
     CacheMode cache_mode = CacheMode::CPU;
 
+    // Decoded mask bytes are flags: bit 0 = RGB supervised, bit 1 = segment
+    // (alpha target 0, background_mode drawn there). 0 ignore, 1 keep.
     bool load_masks   = true;
     // Interpret grayscale masks as 0-127 ignore, 128-250 segment, 251-255 keep.
     bool segment_and_ignore_masks = false;
+    // A binary mask's 0 is a segment rather than an ignored pixel.
+    bool segment_masks = false;
+    // Segment pixels keep their RGB loss (preserve_background).
+    bool segment_rgb = false;
     bool load_depths  = true;
     bool load_normals = true;
 

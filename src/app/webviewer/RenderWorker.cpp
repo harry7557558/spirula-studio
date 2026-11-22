@@ -22,6 +22,18 @@
 
 namespace {
 
+// A viewer frame's background: grey or the base fill for the transparency
+// draw, or the draw itself.
+struct BackgroundView {
+    BackgroundView(bool show_draw, bool show_base) {
+        engine_background_view(true, show_draw, show_base);
+    }
+    ~BackgroundView() { engine_background_view(false, false); }
+    BackgroundView(const BackgroundView&) = delete;
+    BackgroundView& operator=(const BackgroundView&) = delete;
+};
+
+
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
@@ -241,6 +253,7 @@ struct RenderWorker::Impl {
                 ~After() { if (f) f(); }
             } after{q.after_render};
             if (q.before_render) q.before_render();
+            BackgroundView view(false, cfg.background_base_view);
             set_camera_params(W, H, q.model, q.distortion,
                               tvp(vm, 4, {1, 4, 4}),
                               tvp(intr, 4, {1, 4}),
@@ -628,6 +641,8 @@ struct RenderWorker::Impl {
                 mix(&step, sizeof step);
                 engine_arm_stochastic(cfg.scene_slot + 1, key);
             }
+            BackgroundView view(cfg.background_draw_on && q.key == "rgb_raw",
+                                cfg.background_base_view);
             forward_3dgs(primitive, sh_deg, cfg.packed,
                          want_median, want_dist ? 2 : 0,
                          q.key == "render_normal");
@@ -719,7 +734,7 @@ std::vector<std::string> viewer_buffer_keys(const ViewerRenderConfig& cfg,
     // no median or distortion.
     const bool stochastic = engine_stochastic_enabled();
     std::vector<std::string> keys = {"rgb"};
-    if (cfg.color_space_on) keys.push_back("rgb_raw");
+    if (cfg.color_space_on || cfg.background_draw_on) keys.push_back("rgb_raw");
     keys.push_back("depth");
     keys.push_back("alpha");
     if (!stochastic) keys.push_back("depth_normal");

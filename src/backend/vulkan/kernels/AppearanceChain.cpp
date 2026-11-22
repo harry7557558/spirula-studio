@@ -14,7 +14,7 @@ namespace {
 struct AppParams {
     uint64_t rgb, transmittance, out_rgb, fwd_out, raw16, v_transmittance,
         bg_image, v_bg_image, exponent_by_cam, cam_indices, cs_matrix,
-        ppisp_params, v_ppisp_params, intrins;
+        ppisp_params, v_ppisp_params, intrins, bg_mask;
     float bg_r, bg_g, bg_b;
     float randomize_weight;
     uint32_t seed, blocky, block_px;
@@ -22,9 +22,11 @@ struct AppParams {
     int32_t B, H, W;
     int32_t has_cam_indices;
     uint32_t wgs_per_row;
-    uint32_t rgb_fmt, out_fmt, raw16_on, _pad0;
+    uint32_t rgb_fmt, out_fmt, raw16_on;
+    int32_t mask_h, mask_w;
+    uint32_t _pad0;
 };
-static_assert(sizeof(AppParams) == 14 * 8 + 17 * 4 + 4, "layout");
+static_assert(sizeof(AppParams) == 15 * 8 + 19 * 4 + 4, "layout");
 
 // In appearance_chain.slang declaration order.
 backend::vk::SpecList spec_list(const AppearanceChainParams& c) {
@@ -37,9 +39,11 @@ backend::vk::SpecList spec_list(const AppearanceChainParams& c) {
         c.cs_enabled ? 1u : 0u,
         c.cs_enabled ? (uint32_t)c.cs_transfer : 0u,
         c.cs_enabled && c.cs_is_linear ? 1u : 0u,
-        c.bg == AppearanceBg::Noise ? (uint32_t)c.bg_transfer : 0u,
-        c.bg == AppearanceBg::Noise && c.bg_is_linear ? 1u : 0u,
-        c.bg == AppearanceBg::Noise && c.bg_exponent_by_cam ? 1u : 0u};
+        c.bg_noise ? (uint32_t)c.bg_transfer : 0u,
+        c.bg_noise && c.bg_is_linear ? 1u : 0u,
+        c.bg_noise && c.bg_exponent_by_cam ? 1u : 0u,
+        c.bg_noise ? 1u : 0u,
+        c.bg_noise && c.bg_mask ? 1u : 0u};
 }
 
 AppParams make_params(const AppearanceChainParams& c, const TorchTensorView& rgb,
@@ -58,6 +62,9 @@ AppParams make_params(const AppearanceChainParams& c, const TorchTensorView& rgb
     p.ppisp_params = vkk::or_fallback(c.ppisp_params);
     p.v_ppisp_params = vkk::or_fallback(c.v_ppisp_params);
     p.intrins = vkk::or_fallback(c.intrins);
+    p.bg_mask = vkk::or_fallback(c.bg_mask);
+    p.mask_h = c.bg_mask_h;
+    p.mask_w = c.bg_mask_w;
     p.bg_r = c.bg_color[0];
     p.bg_g = c.bg_color[1];
     p.bg_b = c.bg_color[2];

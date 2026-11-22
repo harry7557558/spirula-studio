@@ -153,8 +153,49 @@ static void mask_mode_resolution() {
           "invalid mask_mode is rejected");
 }
 
+static void background_options() {
+    TrainConfig cfg;
+    check(cfg.background_mode == "black" && cfg.background_transparency_suppression == "none",
+          "background defaults to black, no draw");
+    const struct { const char* old_mode; const char* mode; const char* draw; } legacy[] = {
+        {"sh", "skybox", "none"},       {"noise", "black", "noise"},
+        {"pseudorandom", "black", "pseudorandom"}, {"random", "black", "random"},
+        {"color", "color", "none"}};
+    for (const auto& l : legacy) {
+        TrainConfig c;
+        train_config_from_json(
+            json_parse(std::string("{\"background_mode\": \"") + l.old_mode + "\"}"), c);
+        check(c.background_mode == l.mode && c.background_transparency_suppression == l.draw &&
+                  spirula::train_config_error(c).empty(),
+              "a saved background_mode from before the split still loads");
+    }
+
+    cfg.mask_mode = "ignore";
+    cfg.preserve_background = true;
+    check(!train_mask_preserves_background(cfg), "preserve_background: no effect in ignore mode");
+    cfg.preserve_background.reset();
+    cfg.mask_mode = "segment";
+    check(!train_mask_preserves_background(cfg), "preserve_background: segment defaults off");
+    cfg.background_mode = "skybox";
+    cfg.background_transparency_suppression = "noise";
+    check(train_mask_preserves_background(cfg),
+          "preserve_background: segment defaults on for a skybox under a transparency draw");
+    cfg.background_transparency_suppression = "none";
+    check(!train_mask_preserves_background(cfg),
+          "preserve_background: a skybox without a transparency draw stays off");
+    cfg.mask_mode = "segment_and_ignore";
+    check(train_mask_preserves_background(cfg),
+          "preserve_background: segment_and_ignore defaults on");
+    cfg.preserve_background = false;
+    check(!train_mask_preserves_background(cfg), "preserve_background: explicit false wins");
+    cfg.mask_mode = "segment";
+    cfg.preserve_background = true;
+    check(train_mask_preserves_background(cfg), "preserve_background: explicit true wins");
+}
+
 int main() {
     presets();
+    background_options();
     saved_config();
     test_suppress_initial_scales();
     background_export_height();

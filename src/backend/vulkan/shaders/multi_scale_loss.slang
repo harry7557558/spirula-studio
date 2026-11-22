@@ -300,7 +300,7 @@ void _ms_load_pixel(PplParams p, int batch_idx, gindex_t idx, int x_dst,
                     out float3 rgb_dist, out float depth_dist,
                     out float3 normal_dist, out float median_depth,
                     out float3 median_normal, out bool ref_alpha_v,
-                    out bool alpha_mask_v) {
+                    out bool rgb_mask_v, out bool alpha_mask_v) {
     render_rgb = (p.in_flags & kInRenderRgb) != 0
         ? rgb_load3(p.render_rgb, idx, (p.in_flags >> kInRenderRgbFmtShift) & 3u)
         : float3(0.0f);
@@ -328,12 +328,14 @@ void _ms_load_pixel(PplParams p, int batch_idx, gindex_t idx, int x_dst,
     median_normal = (p.in_flags & kInMedianNormal) != 0 ? _ms_load_f3(p.median_normal, idx) : float3(0.0f);
     bool seg_ign = (p.in_flags & kInSegIgnMask) != 0u;
     ref_alpha_v = false;
+    rgb_mask_v = false;
     alpha_mask_v = (p.has_mask != 0) && !seg_ign;
     if ((p.in_flags & kInRefAlpha) != 0) {
         uint m = _ms_nearest_u8(p.ref_alpha, batch_idx, x_dst, y_dst,
                                 p.W_render, p.H_render, p.W_ref_alpha,
                                 p.H_ref_alpha);
         ref_alpha_v = (m == 1u);
+        rgb_mask_v = (m & 1u) != 0u;
         if (seg_ign) alpha_mask_v = (p.has_mask != 0) && (m != 0u);
     }
 }
@@ -363,17 +365,17 @@ void ppl_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         float3 render_rgb, ref_rgb, render_normal, depth_normal, ref_normal_v;
         float3 rgb_dist, normal_dist, median_normal;
         float render_depth, ref_depth_v, render_Ts, depth_dist, median_depth;
-        bool ref_alpha_v, alpha_mask_v;
+        bool ref_alpha_v, rgb_mask_v, alpha_mask_v;
         _ms_load_pixel(p, int(batch_idx), idx, x_dst, y_dst, render_rgb,
                        ref_rgb, render_depth, ref_depth_v, render_normal,
                        depth_normal, ref_normal_v, render_Ts, rgb_dist,
                        depth_dist, normal_dist, median_depth, median_normal,
-                       ref_alpha_v, alpha_mask_v);
+                       ref_alpha_v, rgb_mask_v, alpha_mask_v);
 
         losses = per_pixel_losses(
             render_rgb, ref_rgb, render_depth, ref_depth_v, render_normal,
             depth_normal, ref_normal_v, render_Ts, rgb_dist, depth_dist,
-            normal_dist, median_depth, median_normal, ref_alpha_v,
+            normal_dist, median_depth, median_normal, ref_alpha_v, rgb_mask_v,
             p.has_mask != 0, alpha_mask_v, p.saturation_threshold, p.weights);
 
         if ((p.in_flags & kInLossMap) != 0) {
@@ -454,11 +456,12 @@ void ppl_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float3 render_rgb, ref_rgb, render_normal, depth_normal, ref_normal_v;
     float3 rgb_dist, normal_dist, median_normal;
     float render_depth, ref_depth_v, render_Ts, depth_dist, median_depth;
-    bool ref_alpha_v, alpha_mask_v;
+    bool ref_alpha_v, rgb_mask_v, alpha_mask_v;
     _ms_load_pixel(p, int(batch_idx), idx, x_dst, y_dst, render_rgb, ref_rgb,
                    render_depth, ref_depth_v, render_normal, depth_normal,
                    ref_normal_v, render_Ts, rgb_dist, depth_dist, normal_dist,
-                   median_depth, median_normal, ref_alpha_v, alpha_mask_v);
+                   median_depth, median_normal, ref_alpha_v, rgb_mask_v,
+                   alpha_mask_v);
 
     float3 v_render_rgb, v_ref_rgb, v_render_normal, v_depth_normal;
     float3 v_ref_normal, v_rgb_dist, v_normal_dist, v_median_normal;
@@ -467,7 +470,7 @@ void ppl_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     per_pixel_losses_bwd(
         render_rgb, ref_rgb, render_depth, ref_depth_v, render_normal,
         depth_normal, ref_normal_v, render_Ts, rgb_dist, depth_dist,
-        normal_dist, median_depth, median_normal, ref_alpha_v,
+        normal_dist, median_depth, median_normal, ref_alpha_v, rgb_mask_v,
         p.has_mask != 0, alpha_mask_v, p.saturation_threshold, p.weights, v_losses,
         v_render_rgb, v_ref_rgb,
         v_render_depth, v_ref_depth, v_render_normal, v_depth_normal,
@@ -759,7 +762,7 @@ struct MsZeroMaskedParams {
     float* grad;
     uint* mask;
     int B, C, H, W;
-    int ignore_only;  // zero only class 0, leaving segment (2) its alpha grad
+    int ignore_only;  // zero only class 0, leaving a segment its alpha grad
 };
 
 [shader("compute")]
@@ -772,7 +775,7 @@ void ms_zero_masked_grad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (yid >= uint(p.H) || xid >= uint(p.W)) return;
     gindex_t i = ((gindex_t)bid * p.H + yid) * (gindex_t)p.W + xid;
     uint m = u8_load(p.mask, (uint)i);
-    if (p.ignore_only != 0 ? m != 0u : m == 1u) return;
+    if (p.ignore_only != 0 ? m != 0u : (m & 1u) != 0u) return;
     for (int c = 0; c < p.C; c++)
         p.grad[i * p.C + c] = 0.0f;
 }
@@ -841,8 +844,11 @@ void ms_downsample_b(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         uint c2 = _ms_load_u8(p.src, plane + y1 * uint(p.hsW) + x0);
         uint c3 = _ms_load_u8(p.src, plane + y1 * uint(p.hsW) + x1);
         uint n_keep = uint(c0 == 1u) + uint(c1 == 1u) + uint(c2 == 1u) + uint(c3 == 1u);
-        uint n_seg  = uint(c0 == 2u) + uint(c1 == 2u) + uint(c2 == 2u) + uint(c3 == 2u);
-        uint out_c = n_keep >= 2u ? 1u : (n_seg >= 2u ? 2u : 0u);
+        uint n_seg  = ((c0 >> 1u) & 1u) + ((c1 >> 1u) & 1u) + ((c2 >> 1u) & 1u) +
+                      ((c3 >> 1u) & 1u);
+        // One run's segments are all 2 or all 3.
+        uint seg = max(max(c0, c1), max(c2, c3)) >= 3u ? 3u : 2u;
+        uint out_c = n_keep >= 2u ? 1u : (n_seg >= 2u ? seg : 0u);
         out_w |= out_c << (8u * k);
     }
     if (covered == 0xffffffffu) {

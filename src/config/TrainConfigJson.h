@@ -44,6 +44,7 @@ inline void train_config_from_json(const JsonValue& root, TrainConfig& out) {
         json_field::assign(out.member, *v);
     SS_CONFIG_FIELDS(SS_JSON_LOAD)
 #undef SS_JSON_LOAD
+    train_upgrade_background_mode(out);
 }
 
 // Does this object name any training flag at all? The probe that tells a

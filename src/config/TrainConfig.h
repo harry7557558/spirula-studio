@@ -130,6 +130,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(std::string, mask_mode, "auto", "dataset", "basic", "auto|ignore|segment|segment_and_ignore|off") \
     X(bool, load_masks, true, "dataset", "basic", "")                        \
     X(std::optional<bool>, apply_loss_for_mask, std::nullopt, "dataset", "basic", "") \
+    X(std::optional<bool>, preserve_background, std::nullopt, "dataset", "basic", "") \
     X(bool, flip_mask, false, "dataset", "basic", "")                        \
     X(float, mask_boundary_offset, 0.0f, "dataset", "advanced", "")          \
     X(std::string, depth_dir, "depths", "dataset", "basic", "<data>/<folder>") \
@@ -186,9 +187,10 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(int, sh_degree, 3, "splats", "basic", "")                              \
     X(int, sb_lobes, 0, "splats", "basic", "")                               \
     X(int, sh_degree_warmup_every, 0, "splats", "expert", "")             \
-    X(std::string, background_mode, "color", "splats", "basic", "color|noise|pseudorandom|random|sh") \
+    X(std::string, background_mode, "black", "splats", "basic", "black|color|skybox") \
     X(TrainVec3f, background_color, train_v3f(0.0f, 0.0f, 0.0f), "splats", "basic", "") \
-    X(int, background_sh_degree, 4, "splats", "basic", "")                   \
+    X(std::string, background_transparency_suppression, "none", "splats", "basic", "none|noise|pseudorandom|random") \
+    X(int, background_sh_degree, 4, "splats", "advanced", "")                \
     X(int, background_export_height, 512, "splats", "basic", "")          \
     X(int, background_noise_warmup, 2000, "splats", "expert", "")            \
     X(float, background_noise_pre_warmup, 0.25f, "splats", "expert", "")     \
@@ -510,7 +512,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.cap_max = 200000;
         c.apply_loss_for_mask = true;
         c.center_method = "focus";
-        c.background_mode = "sh";
+        c.background_mode = "skybox";
         c.depth_distortion_reg = 0.01f;
         // c.rgb_distortion_reg = 0.01f;
         c.erank_reg = 0.05f;
@@ -525,7 +527,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         // c.apply_ppisp_before_color_space = true;
         // c.ppisp_adagrad_lr = 0.25f;
         c.ppisp_exposure_from_exif = true;
-        c.background_mode = "random";
+        c.background_transparency_suppression = "random";
         c.background_match_luminance = true;
         // c.depth_distortion_reg = 0.01f;
         c.loss_saturation_threshold = 0.98f;
@@ -554,7 +556,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.dc_reg = 10.0f;
         // c.sh_reg = 10.0f;
         c.overexposure_reg = 10.0f;
-        c.background_mode = "noise";
+        c.background_transparency_suppression = "noise";
         // c.depth_distortion_reg = 0.01f;
         c.floater_suppression = "strong";
         c.normal_distortion_reg = 0.01f;
@@ -573,7 +575,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.sh_degree = 0;
         c.dc_reg = 10.0f;
         c.overexposure_reg = 10.0f;
-        c.background_mode = "noise";
+        c.background_transparency_suppression = "noise";
         c.depth_distortion_reg = 0.1f;
         c.normal_distortion_reg = 0.01f;
         c.normal_reg_weight = 0.04f;
@@ -796,4 +798,28 @@ inline bool train_mask_applies_alpha_loss(const TrainConfig& c) {
 
 inline bool train_mask_is_segment_and_ignore(const TrainConfig& c) {
     return resolve_train_mask_mode(c) == ResolvedMaskMode::SegmentAndIgnore;
+}
+
+// Whether segmented pixels keep their RGB loss, so the background trains there.
+// A skybox under a transparency draw shows only on segments: without this it
+// would never train, so `segment` defaults on for it.
+inline bool train_mask_preserves_background(const TrainConfig& c) {
+    switch (resolve_train_mask_mode(c)) {
+    case ResolvedMaskMode::Segment:
+        return c.preserve_background.value_or(c.background_mode == "skybox" &&
+                                              c.background_transparency_suppression != "none");
+    case ResolvedMaskMode::SegmentAndIgnore: return c.preserve_background.value_or(true);
+    default: return false;
+    }
+}
+
+// background_mode once also held the suppression draws, and `sh` for skybox.
+inline void train_upgrade_background_mode(TrainConfig& c) {
+    std::string& m = c.background_mode;
+    if (m == "sh") m = "skybox";
+    if (m == "noise" || m == "pseudorandom" || m == "random") {
+        if (c.background_transparency_suppression == "none")
+            c.background_transparency_suppression = m;
+        m = "black";
+    }
 }

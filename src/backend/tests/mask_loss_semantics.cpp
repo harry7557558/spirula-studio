@@ -613,6 +613,25 @@ int main() {
                           : "segment_and_ignore (multiscale): keep pixels get rgb grad");
     }
 
+    // preserve_background: a segment (3) is still pushed empty, but keeps its
+    // colour gradient so the background trains behind it; GT depth does not.
+    for (int scales : {1, 3}) {
+        std::vector<uint8_t> tri((size_t)NP, 1);
+        for (int64_t y = 0; y < H; ++y)
+            for (int64_t x = 0; x < W / 2; ++x) tri[(size_t)(y * W + x)] = 3;
+        Outcome out = run(tri, false, 1.0f, H, W, 0.2f, nullptr, 1.0f, -1.0f, nullptr,
+                          0, (int)DensifyLossMapMode::None, true, 0.5f, scales);
+        bool seg_empty = true, seg_rgb = true;
+        for (int64_t y = 0; y < H; ++y)
+            for (int64_t x = 0; x < W / 2; ++x) {
+                seg_empty &= out.v_render_Ts[(size_t)(y * W + x)] <= 0.0f;
+                seg_rgb &= out.v_render_rgb[(size_t)(y * W + x) * 3] != 0.0f;
+            }
+        check(seg_empty && seg_rgb,
+              scales == 1 ? "preserved segment: alpha pushed empty, rgb still trained"
+                          : "preserved segment (multiscale): rgb still trained");
+    }
+
     std::printf("%s\n", g_failures ? "FAILED" : "all ok");
     return g_failures ? 1 : 0;
 }

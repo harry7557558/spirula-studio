@@ -259,10 +259,6 @@
       "reason": "Covers explicit coordinate choice, saved scene_transform.json, auto far-origin criterion, none behavior, and georeferenced precision risk. Decide which coordinate-frame details remain on-screen.",
       "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"
     },
-    "TrainFields.h:background_mode_help": {
-      "reason": "Compares fixed color, three distinct stochastic patch scales, and learned skybox behavior. Decide whether patch-scale differences should move to individual-choice help rather than vanish from the summary.",
-      "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"
-    },
     "TrainFields.h:seed_pointcloud_help": {
       "reason": "Includes dense/sparse selection, source coordinate frame, relative paths, seed-versus-trained-PLY distinction, and random/init/resume precedence. These setup interactions need deliberate grouping.",
       "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"

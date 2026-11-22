@@ -342,6 +342,13 @@ struct BilagridStepConfig {
 
 // Background blending step config. When mode=Noise, only `randomize_weight`
 // Adam over the per-band SH coefficients (index 0 = DC color, 1+ = bands).
+enum class BackgroundSuppression : int {
+    None = 0,
+    Noise = 1,         // a color per pixel
+    Pseudorandom = 2,  // an RGB cube corner per tile, which SSIM cannot average away
+    Random = 3,        // one color for the whole frame
+};
+
 struct BackgroundStepConfig {
     float    lr_dc           = 0.0f;
     float    lr_sh           = 0.0f;

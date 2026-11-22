@@ -1109,6 +1109,11 @@ private:
     void draw_dense_options();
     void draw_dense_advanced();
     void draw_train_mask_mode(float width);
+    void draw_background_warning();
+    // Whether a few of the dataset's masks hold a segment; keyed by what
+    // decides it, so a frame redraw does not decode them again.
+    std::string _bg_segment_probe_key;
+    bool _bg_segment_probe_found = true;
     void draw_seed_cloud(TrainRunner::Phase ph);
     void edit_dense_cloud(const DatasetFolders& folders);
     void refresh_dense_versions(const std::string& dataset, bool force = false);

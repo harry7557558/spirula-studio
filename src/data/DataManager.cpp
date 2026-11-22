@@ -1069,6 +1069,7 @@ private:
     // Image i's mask at dst_h x dst_w, from whichever of mask_present's
     // sources it has.
     void decode_mask_of(int64_t i, int dst_h, int dst_w, uint8_t* dst) const;
+    void decode_mask_classes(int64_t i, int dst_h, int dst_w, uint8_t* dst) const;
     // Image i's colour at dst_h x dst_w, through the downscale cache when the
     // run has one.
     void decode_rgb_of(int64_t i, int dst_h, int dst_w, PixelDType dt, uint8_t* dst,
@@ -1450,6 +1451,16 @@ void DataManagerImpl::decode_rgb_of(int64_t i, int dst_h, int dst_w, PixelDType 
 
 void DataManagerImpl::decode_mask_of(int64_t i, int dst_h, int dst_w,
                                      uint8_t* dst) const {
+    decode_mask_classes(i, dst_h, dst_w, dst);
+    const size_t n = (size_t)dst_h * dst_w;
+    if (_cfg.segment_masks && !_cfg.segment_and_ignore_masks)
+        for (size_t k = 0; k < n; ++k) dst[k] = dst[k] ? 1 : 2;
+    if (_cfg.segment_rgb)
+        for (size_t k = 0; k < n; ++k) dst[k] |= (uint8_t)(dst[k] >> 1);
+}
+
+void DataManagerImpl::decode_mask_classes(int64_t i, int dst_h, int dst_w,
+                                          uint8_t* dst) const {
     const std::string& file = _mask_filenames[(size_t)i];
     const int turns = turns_of(i);
     const bool seg_ign = _cfg.segment_and_ignore_masks;
@@ -1930,8 +1941,7 @@ void DataManagerImpl::fill_batch_from_cache(DecodedBatch& b) {
             uint8_t* dst_row = b.mask_buffer.data() + (size_t)j * mask_row;
             int32_t  ih = _mask_h_per[i], iw = _mask_w_per[i];
             if (ih == 1 && iw == 1) {
-                uint8_t v = _mask_cache[i][0];
-                std::memset(dst_row, _cfg.segment_and_ignore_masks ? v : (v ? 1 : 0), mask_row);
+                std::memset(dst_row, _mask_cache[i][0], mask_row);
             } else if (ih == b.mask_height && iw == b.mask_width) {
                 std::memcpy(dst_row, _mask_cache[i].data(), mask_row);
             } else {

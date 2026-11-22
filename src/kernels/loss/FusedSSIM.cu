@@ -124,7 +124,7 @@ __device__ __forceinline__ bool get_pix_value(
         xs = max(0, min(W_mask - 1, (int)floorf(u + 0.5f)));
         ys = max(0, min(H_mask - 1, (int)floorf(v + 0.5f)));
     }
-    return img[b * H_mask * W_mask + ys * W_mask + xs] == 1;
+    return (img[b * H_mask * W_mask + ys * W_mask + xs] & 1) != 0;
 }
 
 // An image the memory-efficient kernel reads, in the form it is stored in.

@@ -334,6 +334,7 @@ void engine_scene_activate(int slot) {
     }
     if (s.has_bg_sh && s.bg_sh_coeffs.size() > 0) {
         engine().background.mode = EngineBackground::Mode::Sh;
+        engine().background.suppress = BackgroundSuppression::None;
         engine().background.enabled = true;
         engine().background.splat_transfer = s.bg_transfer;
         engine().background.splat_is_linear = s.bg_is_linear;
@@ -342,6 +343,7 @@ void engine_scene_activate(int slot) {
     } else {
         engine().background.enabled = false;
         engine().background.mode = EngineBackground::Mode::None;
+        engine().background.suppress = BackgroundSuppression::None;
         engine().background.sh_coeffs = DeviceVector<float3>{};
     }
 }
@@ -366,6 +368,7 @@ void engine_scene_free(int slot) {
         engine().background.sh_coeffs.data_ptr() == s.bg_sh_coeffs.data_ptr()) {
         engine().background.enabled = false;
         engine().background.mode = EngineBackground::Mode::None;
+        engine().background.suppress = BackgroundSuppression::None;
         engine().background.sh_coeffs = DeviceVector<float3>{};
     }
     DevicePool::global().free_dynamic_prefix(slot_prefix(slot));

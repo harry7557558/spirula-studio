@@ -343,6 +343,7 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
     out.step = s.cur_step.load();
 
     const int sh_deg = out.step / std::max(s.cfg.sh_degree_warmup_every, 1);
+    out.mark_segments = !train_mask_is_segment_and_ignore(s.cfg);
     // Members, not locals: a 4K pair is ~200 MB of readback, and freshly
     // mapped scratch is faulted in and zeroed by the kernel on every job.
     std::vector<float>& gt = _wgt;
@@ -480,7 +481,7 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
                     if (q.mh > 0) {
                         const int64_t my = q.mh == H ? y : y * q.mh / H;
                         const int64_t mx = q.mw == W ? x : x * q.mw / W;
-                        if (alpha[q.mask + (size_t)((b * q.mh + my) * q.mw + mx)] != 1)
+                        if (!(alpha[q.mask + (size_t)((b * q.mh + my) * q.mw + mx)] & 1))
                             continue;
                     }
                     const size_t pix = q.rgb + (size_t)(((b * H + y) * W + x) * C);
@@ -688,7 +689,8 @@ void ImageCompare::rebuild_textures() {
             const int my = (h == ph) ? y : (int)((int64_t)y * ph / h);
             for (int x = 0; x < w; x++) {
                 const int mx = (w == pw) ? x : (int)((int64_t)x * pw / w);
-                if (_shot.mask[(size_t)my * pw + mx] == 1) continue;
+                const uint8_t m = _shot.mask[(size_t)my * pw + mx];
+                if (m == 1 || (m != 0 && !_shot.mark_segments)) continue;
                 uint8_t* p = out.data() + ((size_t)y * w + x) * 3;
                 if (_mask_show == MaskShow::Hide) p[0] = p[1] = p[2] = 0;
                 else for (int c = 0; c < 3; c++) p[c] = (uint8_t)(p[c] / 4);

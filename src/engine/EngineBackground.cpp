@@ -1,12 +1,10 @@
-// Engine background blending (none / constant color / random noise / SH skybox).
-//
-// Forward runs inside forward_3dgs (so viewer renders blend too), out of place
-// on fwd.renders.rgb, keeping the pre-blend buffer for the backward.
-// Backward order is PPISP -> bilagrid -> background -> raster; the hook here
-// rewrites v_render_rgb (post-blend -> pre-blend), ADDS into v_render_Ts, and
-// folds in overexposure_reg. SH mode also accumulates per-camera gradient into
-// the SH coefficient table; the rotation gradient is dropped (cameras are
-// fixed here).
+// Engine background blending: a base fill (black / color / SH skybox) and an
+// optional randomized draw, both through the appearance chain kernel. The
+// fused path runs it with PPISP and the encode; the per-stage path runs it
+// alone, out of place on fwd.renders.rgb, keeping the pre-blend buffer for a
+// backward that rewrites v_render_rgb and ADDS into v_render_Ts. SH mode also
+// accumulates per-camera gradient into the coefficient table; the rotation
+// gradient is dropped (cameras are fixed here).
 
 #include "engine/Engine.h"
 #include "engine/EngineCommon.h"
@@ -27,28 +25,25 @@
 // Init / setters
 // ============================================================================
 
-void engine_init_background_noise(int splat_transfer, bool splat_is_linear) {
+static void _bg_refresh_enabled(EngineBackground& bg) {
+    bg.enabled = bg.mode != EngineBackground::Mode::None ||
+                 bg.suppress != BackgroundSuppression::None;
+}
+
+void engine_init_background_suppression(BackgroundSuppression kind,
+                                        int splat_transfer, bool splat_is_linear) {
     auto& bg = engine().background;
-    bg.mode    = EngineBackground::Mode::Noise;
-    bg.enabled = true;
+    bg.suppress = kind;
     bg.splat_transfer = splat_transfer;
     bg.splat_is_linear = splat_is_linear;
+    _bg_refresh_enabled(bg);
 }
 
-void engine_init_background_pseudorandom(int splat_transfer, bool splat_is_linear) {
+void engine_background_view(bool active, bool show_draw, bool show_base) {
     auto& bg = engine().background;
-    bg.mode    = EngineBackground::Mode::Pseudorandom;
-    bg.enabled = true;
-    bg.splat_transfer  = splat_transfer;
-    bg.splat_is_linear = splat_is_linear;
-}
-
-void engine_init_background_random(int splat_transfer, bool splat_is_linear) {
-    auto& bg = engine().background;
-    bg.mode    = EngineBackground::Mode::Random;
-    bg.enabled = true;
-    bg.splat_transfer  = splat_transfer;
-    bg.splat_is_linear = splat_is_linear;
+    bg.view_active = active;
+    bg.view_draw = active && show_draw;
+    bg.view_base = active && show_base && !show_draw;
 }
 
 // `color` is display-referred (what the user picked); the blend needs it in
@@ -56,18 +51,16 @@ void engine_init_background_random(int splat_transfer, bool splat_is_linear) {
 void engine_init_background_color(const float color[3], int splat_transfer,
                                   bool splat_is_linear) {
     auto& bg = engine().background;
-    // Black is this blend's no-op, so leave the background OFF rather than
-    // add zero per pixel: that saves the post-blend [C,H,W,3] buffer and two
-    // kernels. (Filmic's 0.004 decode lift is what this rounds away.)
-    if (color[0] == 0.0f && color[1] == 0.0f && color[2] == 0.0f) {
-        bg.mode    = EngineBackground::Mode::None;
-        bg.enabled = false;
-        return;
-    }
-    bg.mode    = EngineBackground::Mode::Color;
-    bg.enabled = true;
     bg.splat_transfer  = splat_transfer;
     bg.splat_is_linear = splat_is_linear;
+    // Black is this blend's no-op, so leave the base OFF rather than add zero
+    // per pixel: without a draw that saves the post-blend [C,H,W,3] buffer and
+    // two kernels. (Filmic's 0.004 decode lift is what this rounds away.)
+    bg.mode = color[0] == 0.0f && color[1] == 0.0f && color[2] == 0.0f
+                  ? EngineBackground::Mode::None
+                  : EngineBackground::Mode::Color;
+    _bg_refresh_enabled(bg);
+    if (bg.mode == EngineBackground::Mode::None) return;
     const auto t = (colorspace::Transfer)splat_transfer;
     bg.color = {colorspace::display_to_working(color[0], t, splat_is_linear),
                 colorspace::display_to_working(color[1], t, splat_is_linear),
@@ -112,11 +105,11 @@ static constexpr unsigned kBgBlockPx = 64u;
 // scaled by a power of two drawn uniformly over the loss pyramid's levels, so
 // whatever one level averages away still costs at the next. 0 = whole image.
 static unsigned _bg_block_px(const EngineBackground& bg, int H, int W) {
-    if (bg.mode == EngineBackground::Mode::Random) return 0u;
+    if (bg.suppress == BackgroundSuppression::Random) return 0u;
     const unsigned levels = (unsigned)std::max(engine_resolve_num_loss_scales(
         bg.cur_num_loss_scales, bg.cur_loss_scale_min_pixels, H, W), 1);
     const unsigned base =
-        bg.mode == EngineBackground::Mode::Pseudorandom ? kBgBlockPx : 1u;
+        bg.suppress == BackgroundSuppression::Pseudorandom ? kBgBlockPx : 1u;
     // Seeded rather than hashed by hand: the step seed is sequential, and
     // walking the levels in order is not the uniform draw this wants.
     return base << (std::mt19937(bg.cur_seed)() % levels);
@@ -202,91 +195,21 @@ void engine_set_background_step_params(uint32_t seed, float randomize_weight,
 
 
 // ============================================================================
-// Forward: blend background into engine().fwd.renders.rgb.
-// Called from forward_3dgs so both training and viewer renders see the blend.
-// Reads (seed, randomize_weight) from state.
-// ============================================================================
-void _engine_background_forward() {
-    auto& bg = engine().background;
-    if (!bg.enabled || bg.mode == EngineBackground::Mode::None) return;
-    StepTimingScope timing(StepPart::Background, StepScale::Pixels);
-
-    int C_batch = (int)engine().camera.num;
-    int H       = engine().camera.height;
-    int W       = engine().camera.width;
-    if (C_batch <= 0) return;
-
-    // One-shot, so a viewer render between steps keeps the plain draw.
-    bg.cur_match_luma = bg.match_luma_pending &&
-                        bg.exponent_by_cam.size() > 0 &&
-                        engine().bilagrid_cur_cam_indices.size() >= C_batch;
-    bg.match_luma_pending = false;
-
-    auto& fwd_rgb_tensor = std::get<0>(engine().fwd.renders);
-    auto& fwd_Ts_tensor  = engine().fwd.render_Ts;
-    if (fwd_rgb_tensor.data_ptr() == nullptr || fwd_Ts_tensor.data_ptr() == nullptr)
-        throw std::runtime_error("engine_background_forward: forward_3dgs must run first");
-
-    DeviceTensor3D<float>  Ts_in(fwd_Ts_tensor);            // [C, H, W]
-
-    // Every mode blends out-of-place: pre-blend rgb is a pointer alias of the
-    // current renders.rgb (no copy), post goes to a fresh buffer.
-    bg.fwd_pre_blend_rgb = fwd_rgb_tensor;
-    DeviceTensor3D<float3> post_rgb;
-    post_rgb.resize(PoolSlot::EngBgSkyRgbPost, C_batch, H, W);
-
-    if (bg.mode == EngineBackground::Mode::Color) {
-        blend_background_color_forward(bg.fwd_pre_blend_rgb, Ts_in, bg.color,
-                                       post_rgb);
-        fwd_rgb_tensor = post_rgb;
-        return;
-    }
-
-    if (bg.mode != EngineBackground::Mode::Sh) {
-        bg.cur_block_px = _bg_block_px(bg, H, W);
-        const BgLumaViews lv = _bg_luma_views(bg);
-        blend_background_noise_forward(
-            bg.splat_transfer, bg.splat_is_linear,
-            bg.mode == EngineBackground::Mode::Pseudorandom,
-            bg.cur_block_px,
-            bg.fwd_pre_blend_rgb, Ts_in,
-            bg.cur_randomize_weight, bg.cur_seed,
-            lv.exponent, lv.cams,
-            post_rgb);
-        fwd_rgb_tensor = post_rgb;
-        return;
-    }
-
-    // ---- SH mode ----
-    // Skybox SH into a per-batch image from engine state buffers directly (no
-    // R_wc / dist_coeffs gather); the kernel does the cam_indices indirection.
-    bg.fwd_background.resize(PoolSlot::EngBgSkyImage, C_batch, H, W);
-    TorchTensorView bg_image_tv = _dt3d_tv(bg.fwd_background);
-    BgShViews vs = _engine_bg_sh_views(C_batch);
-    render_background_sh_forward(
-        W, H, engine().camera.model_str,
-        engine().camera.distortion_str, bg.sh_degree,
-        vs.viewmats, vs.intrins, vs.dist_coeffs,
-        vs.sh_coeffs, bg_image_tv);
-
-    DeviceTensor3D<float3> bg_image(bg_image_tv);
-    blend_background_forward(bg.fwd_pre_blend_rgb, Ts_in, bg_image, post_rgb);
-    fwd_rgb_tensor = post_rgb;
-}
-
-
-// ============================================================================
-// The background's share of the fused appearance chain
+// The background's share of the appearance chain: the base, the draw, and the
+// batch's mask when a training or eval batch is bound.
 // ============================================================================
 void _engine_background_chain_params(AppearanceChainParams& p) {
     auto& bg = engine().background;
     p.bg = AppearanceBg::None;
-    if (!bg.enabled || bg.mode == EngineBackground::Mode::None) return;
+    p.bg_noise = 0;
+    p.bg_mask = nullptr;
+    if (!bg.enabled) return;
 
     const int C_batch = (int)engine().camera.num;
     const int H = engine().camera.height;
     const int W = engine().camera.width;
-    bg.cur_match_luma = bg.match_luma_pending &&
+    // One-shot, so a viewer render between steps keeps the plain draw.
+    bg.cur_match_luma = bg.match_luma_pending && !bg.view_active &&
                         bg.exponent_by_cam.size() > 0 &&
                         engine().bilagrid_cur_cam_indices.size() >= C_batch;
     bg.match_luma_pending = false;
@@ -296,9 +219,7 @@ void _engine_background_chain_params(AppearanceChainParams& p) {
         p.bg_color[0] = bg.color.x;
         p.bg_color[1] = bg.color.y;
         p.bg_color[2] = bg.color.z;
-        return;
-    }
-    if (bg.mode == EngineBackground::Mode::Sh) {
+    } else if (bg.mode == EngineBackground::Mode::Sh) {
         bg.fwd_background.resize(PoolSlot::EngBgSkyImage, C_batch, H, W);
         BgShViews vs = _engine_bg_sh_views(C_batch);
         render_background_sh_forward(
@@ -307,17 +228,62 @@ void _engine_background_chain_params(AppearanceChainParams& p) {
             vs.sh_coeffs, _dt3d_tv(bg.fwd_background));
         p.bg = AppearanceBg::Image;
         p.bg_image = (const float*)bg.fwd_background.data_ptr();
-        return;
     }
+    if (bg.suppress == BackgroundSuppression::None || bg.view_base) return;
+
     bg.cur_block_px = _bg_block_px(bg, H, W);
-    p.bg = AppearanceBg::Noise;
+    p.bg_noise = 1;
     p.bg_transfer = bg.splat_transfer;
     p.bg_is_linear = bg.splat_is_linear ? 1 : 0;
-    p.bg_blocky = bg.mode == EngineBackground::Mode::Pseudorandom ? 1 : 0;
+    p.bg_blocky = bg.suppress == BackgroundSuppression::Pseudorandom ? 1 : 0;
     p.bg_block_px = bg.cur_block_px;
     p.bg_seed = bg.cur_seed;
-    p.bg_randomize_weight = bg.cur_randomize_weight;
+    // A viewer frame shows the draw's mean, grey, rather than a new pattern
+    // every step that reads as a rendering fault.
+    p.bg_randomize_weight =
+        bg.view_active && !bg.view_draw ? 0.0f : bg.cur_randomize_weight;
     p.bg_exponent_by_cam = _bg_luma_views(bg).exponent;
+    const auto& mask = engine().gt.alpha;
+    if (!bg.view_active && engine().gt.has_mask && mask.data_ptr() != nullptr &&
+        mask.size<0>() == C_batch) {
+        p.bg_mask = mask.data_ptr();
+        p.bg_mask_h = (int)mask.size<1>();
+        p.bg_mask_w = (int)mask.size<2>();
+    }
+}
+
+
+// ============================================================================
+// Per-stage forward: blend into engine().fwd.renders.rgb, out of place. Runs
+// inside forward_3dgs, so viewer renders blend too.
+// ============================================================================
+void _engine_background_forward() {
+    auto& bg = engine().background;
+    if (!bg.enabled) return;
+    StepTimingScope timing(StepPart::Background, StepScale::Pixels);
+
+    const int C_batch = (int)engine().camera.num;
+    const int H = engine().camera.height;
+    const int W = engine().camera.width;
+    if (C_batch <= 0) return;
+
+    auto& fwd_rgb_tensor = std::get<0>(engine().fwd.renders);
+    if (fwd_rgb_tensor.data_ptr() == nullptr || engine().fwd.render_Ts.data_ptr() == nullptr)
+        throw std::runtime_error("engine_background_forward: forward_3dgs must run first");
+
+    AppearanceChainParams p;
+    p.cam_indices = engine().bilagrid_cur_cam_indices.data_ptr();
+    _engine_background_chain_params(p);
+    bg.fwd_params = p;
+
+    // Pre-blend rgb is a pointer alias of the current renders.rgb (no copy).
+    bg.fwd_pre_blend_rgb = fwd_rgb_tensor;
+    DeviceTensor3D<float3> post_rgb;
+    post_rgb.resize(PoolSlot::EngBgSkyRgbPost, C_batch, H, W);
+    appearance_chain_forward(p, _engine_image_view(bg.fwd_pre_blend_rgb, PixelFormat::F32),
+                             engine().fwd.render_Ts,
+                             _engine_image_view(post_rgb, PixelFormat::F32), _tv_null());
+    fwd_rgb_tensor = post_rgb;
 }
 
 void _engine_background_sh_backward(const float* v_background) {
@@ -342,112 +308,39 @@ void _engine_background_sh_backward(const float* v_background) {
 
 
 // ============================================================================
-// Backward hook
+// Per-stage backward: v_render_rgb post-blend -> pre-blend, the blend's v_T
+// added into v_render_Ts, overexposure_reg folded in on the composite.
 // ============================================================================
 void _engine_background_backward_hook(
     TorchTensorView v_render_rgb,   // [C, H, W, 3] in/out (post-blend in; pre-blend out)
     TorchTensorView v_render_Ts,    // [C, H, W, 1] in/out (accumulate blend's v_T)
-    float overexposure_reg_weight   // fused here: needs the blend composite
+    float overexposure_reg_weight
 ) {
     auto& bg = engine().background;
-    if (!bg.enabled || bg.mode == EngineBackground::Mode::None) return;
+    if (!bg.enabled) return;
     if (std::get<0>(v_render_rgb) == 0 || std::get<0>(v_render_Ts) == 0) return;
-
-    int C_batch = (int)engine().camera.num;
-    int H       = engine().camera.height;
-    int W       = engine().camera.width;
+    const int C_batch = (int)engine().camera.num;
+    const int H = engine().camera.height;
+    const int W = engine().camera.width;
     if (C_batch <= 0) return;
 
-    auto& fwd_rgb_tensor = std::get<0>(engine().fwd.renders);
-    auto& fwd_Ts_tensor  = engine().fwd.render_Ts;
-
-    // Defensive: the forward hook must have run earlier this step. Skip if the
-    // expected per-iter buffers aren't populated (e.g. caller invoked
-    // engine_compute_loss_backward directly without going through engine_train_step).
+    // The forward hook must have run earlier this step; skip if it did not
+    // (engine_compute_loss_backward called outside engine_train_step).
     if (bg.fwd_pre_blend_rgb.data_ptr() == nullptr) return;
-    if (fwd_rgb_tensor.data_ptr() == nullptr || fwd_Ts_tensor.data_ptr() == nullptr) return;
+    if (engine().fwd.render_Ts.data_ptr() == nullptr) return;
 
-    // Scratch v_Ts; blend backward writes here, then we accumulate into the
-    // existing v_render_Ts (already populated by the per-pixel loss).
-    float* v_Ts_scratch = DevicePool::global().acquire<float>(
-        PoolSlot::EngBgSkyVTsScratch, (size_t)C_batch * H * W);
-    TorchTensorView v_Ts_scratch_tv((uint64_t)v_Ts_scratch, 4,
-        {(int64_t)C_batch, H, W, 1LL});
-
-    DeviceTensor3D<float3> v_rgb(v_render_rgb);
-    DeviceTensor3D<float>  v_Ts_scratch_dt(v_Ts_scratch_tv);
-
-    if (bg.mode != EngineBackground::Mode::Sh) {
-        // Pre-blend, not post: the overexposure term needs the unclamped
-        // composite, which the blend output cannot recover. Passing post-blend
-        // was harmless only while the affine derivative was the sole reader.
-        DeviceTensor3D<float>  Ts_in(fwd_Ts_tensor);
-        DeviceTensor3D<float3> v_out(v_render_rgb);
-        if (bg.mode == EngineBackground::Mode::Color) {
-            blend_background_color_backward(
-                bg.fwd_pre_blend_rgb, Ts_in, bg.color,
-                overexposure_reg_weight,
-                v_out, v_rgb, v_Ts_scratch_dt);
-        } else {
-            const BgLumaViews lv = _bg_luma_views(bg);
-            blend_background_noise_backward(
-                bg.splat_transfer, bg.splat_is_linear,
-                bg.mode == EngineBackground::Mode::Pseudorandom,
-                bg.cur_block_px,
-                bg.fwd_pre_blend_rgb, Ts_in,
-                bg.cur_randomize_weight, bg.cur_seed,
-                lv.exponent, lv.cams,
-                overexposure_reg_weight,
-                v_out, v_rgb, v_Ts_scratch_dt);
-        }
-    } else {
-        // SH mode: full blend backward gives v_background; propagate to v_sh.
-        DeviceTensor3D<float3> rgb_pre (bg.fwd_pre_blend_rgb);
-        DeviceTensor3D<float>  Ts_in   (fwd_Ts_tensor);
-        DeviceTensor3D<float3> bg_image(bg.fwd_background);
-        DeviceTensor3D<float3> v_out   (v_render_rgb);
-
-        // v_background scratch.
-        float* v_bg_dev = DevicePool::global().acquire<float>(
+    AppearanceChainParams p = bg.fwd_params;
+    p.overexposure_weight = overexposure_reg_weight;
+    float* v_bg = nullptr;
+    if (p.bg == AppearanceBg::Image) {
+        v_bg = DevicePool::global().acquire<float>(
             PoolSlot::EngBgSkyVBg, (size_t)C_batch * H * W * 3);
-        TorchTensorView v_bg_tv((uint64_t)v_bg_dev, 4,
-            {(int64_t)C_batch, H, W, 3LL});
-        DeviceTensor3D<float3> v_bg(v_bg_tv);
-
-        blend_background_backward(
-            rgb_pre, Ts_in, bg_image, overexposure_reg_weight,
-            v_out, v_rgb, v_Ts_scratch_dt, v_bg);
-
-        // v_sh_coeffs: zero per-iter, persists past hook for the optim step.
-        int64_t sh_n = bg.sh_coeffs.size();
-        float* v_sh_dev = DevicePool::global().acquire<float>(
-            PoolSlot::EngBgSkyVSh, (size_t)sh_n * 3);
-        backend::memset_async(v_sh_dev, 0, sh_n * 3 * sizeof(float),
-                              backend::kDefaultStream);
-        TorchTensorView v_sh_tv((uint64_t)v_sh_dev, 4, {sh_n, 3LL});
-
-        TorchTensorView bg_image_tv = _dt3d_tv(bg.fwd_background);
-        TorchTensorView v_bg_tv2    = _dt3d_tv(v_bg);
-        BgShViews vs = _engine_bg_sh_views(C_batch);
-
-        render_background_sh_backward(
-            W, H, engine().camera.model_str,
-        engine().camera.distortion_str, bg.sh_degree,
-            vs.viewmats, vs.intrins, vs.dist_coeffs,
-            vs.sh_coeffs,
-            bg_image_tv, v_bg_tv2,
-            v_sh_tv);
+        p.v_bg_image = v_bg;
     }
-
-    // v_render_Ts += v_Ts_scratch
-    {
-        int64_t numel = (int64_t)C_batch * H * W;
-        DeviceVector<float> dst(TorchTensorView(std::get<0>(v_render_Ts), 4,
-                                                {numel, 1LL}));
-        DeviceVector<float> src(TorchTensorView((uint64_t)v_Ts_scratch, 4,
-                                                {numel, 1LL}));
-        float_add_into(dst, src, numel);
-    }
+    appearance_chain_backward(p, _engine_image_view(bg.fwd_pre_blend_rgb, PixelFormat::F32),
+                              engine().fwd.render_Ts, DeviceTensor3D<float3>(v_render_rgb),
+                              DeviceTensor3D<float>(v_render_Ts));
+    if (v_bg) _engine_background_sh_backward(v_bg);
 }
 
 
@@ -503,7 +396,7 @@ void engine_background_optim_step(int step, const BackgroundStepConfig& cfg) {
 // ============================================================================
 int engine_copy_background_to_host(TorchTensorView out_image) {
     auto& bg = engine().background;
-    if (!bg.enabled || bg.mode == EngineBackground::Mode::None) return 0;
+    if (!bg.enabled) return 0;
 
     int C_batch = (int)engine().camera.num;
     int H       = engine().camera.height;
@@ -556,9 +449,7 @@ int engine_copy_background_to_host(TorchTensorView out_image) {
         return 1;
     }
 
-    // The randomized modes: pre-fill the host buffer with the mean blend color.
-    // When the color space is configured we still return a uniform mid-gray;
-    // the host value here is what shows up under regions blended toward noise.
+    // Black under a draw: the draw's mean, a uniform mid-grey.
     float fill = colorspace::display_to_working(
         0.5f, (colorspace::Transfer)bg.splat_transfer, bg.splat_is_linear);
     for (int64_t i = 0; i < n; ++i) h[i] = fill;

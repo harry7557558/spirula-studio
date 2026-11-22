@@ -168,13 +168,13 @@ file's -- with the alpha area-resampled before the gate, and
 aspect ratio differs from its image's is stretched onto it with a warning.
 `load_masks` off ignores both.
 
-Against a constant background (`background_mode` `color`), a cut-out image's
+Against a constant background (`background_mode` `black` or `color`), a cut-out image's
 colour is also composited onto `background_color` by its alpha as it is
 decoded (an EXR's colour is premultiplied, so the background fills only what
 its alpha leaves): a transparent pixel's ground truth is the background it is
 rendered on, which is what eval scores a render against over the whole frame,
-what the Images tab shows, and what a soft edge renders as. The other background modes
-have no one colour to composite onto and keep the stored one.
+what the Images tab shows, and what a soft edge renders as. A `skybox` has no
+one colour to composite onto, and the image keeps the stored one.
 
 What a masked-out pixel means is `apply_loss_for_mask` (the GUI's Mask mode):
 ignored ("Ignore distractors") or trained as empty space ("Cut out
@@ -196,6 +196,25 @@ matching drop the 128 band whatever else they keep; `spirula sfm
 --mask-segment-only` drops nothing else. Training reads 128 as keep, and so
 still learns the sky, unless `--mask-mode segment_and_ignore` trains it as
 empty space. Older datasets may carry a `feature_masks/` that nothing reads.
+
+A segment is trained as empty space, and what shows through it is the
+background (`background_mode`: `black`, `color` or `skybox`).
+`preserve_background` decides whether its colour is supervised too, which is
+what trains a skybox on the sky; left unset it is on for `segment_and_ignore`,
+and for `segment` only with a skybox under a transparency draw (where the
+skybox shows nowhere else). It does nothing in `ignore` mode. Ground-truth depth
+and normals are never read on a segment.
+`background_transparency_suppression` (`noise`, `pseudorandom`, `random`) draws
+a background that changes every step behind everything else -- kept and
+ignored pixels -- so half-transparent splats cost more; a segment keeps
+`background_mode`. `pseudorandom` suppresses harder than `noise`, `random`
+more gently. The viewer has no mask: `rgb` shows the draw as flat grey, or
+`background_mode` when the run trains segments, and `rgb_raw` the step's draw.
+
+The decoded mask is a byte of flags per pixel: bit 0 says the colour is
+supervised, bit 1 that the pixel is a segment. So 0 is ignored, 1 kept, 2 a
+segment and 3 a segment whose background trains. In `segment` mode a binary
+mask's 0 decodes as 2.
 
 ## Seed points
 
@@ -1347,7 +1366,7 @@ like any other photo folder.
 - **The sky.** An upward face is sky with no points behind it. With the default
   black background the trainer paints it with bright splats close to the
   station, which then hang in front of every other face of that station;
-  `background_mode sh` (a learned skybox) is the setting for outdoor scans, and
+  `background_mode skybox` (a learned skybox) is the setting for outdoor scans, and
   by far the larger gain on held-out faces.
 - **Viewpoints.** A station is one centre of projection for all of its faces,
   so a tripod scan has as many viewpoints as stations -- far fewer than a

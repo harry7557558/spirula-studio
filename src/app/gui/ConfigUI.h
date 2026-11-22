@@ -5,6 +5,7 @@
 
 #include "config/TrainConfig.h"
 
+#include <array>
 #include <set>
 #include <string>
 #include <vector>
@@ -55,6 +56,9 @@ struct ConfigUIState {
 // reader sees it alone, the two being the same word. Shared with the Basic
 // Options panel, which draws the macro options by hand.
 std::string choice_display(const char* flag, const std::string& value);
+
+// An RGB colour flag's control: a swatch, then a slider per channel.
+bool draw_color_field(std::array<float, 3>& v);
 
 // Draw the full generated editor. `defaults` is the preset-applied baseline
 // used for modified-highlighting and reset. Returns true when any field

@@ -253,7 +253,7 @@ __global__ void canny_edge_filter_kernel(
             int xi = min(max((int)(blockIdx.x * BLOCK) + x - HALO, 0), W-1);
             shared_pixels[y][x] = dot(img_in.load3(bid, yi, xi), float3{0.299f, 0.587f, 0.114f});
             shared_valid[y][x] = (mask_in == nullptr ||
-                mask_in[(&img_in.at(bid, yi, xi, 0) - img_in.data)/3] == 1) ? 1.0f : 0.0f;
+                (mask_in[(&img_in.at(bid, yi, xi, 0) - img_in.data)/3] & 1)) ? 1.0f : 0.0f;
         }
     }
     __syncthreads();
@@ -321,7 +321,7 @@ __global__ void canny_edge_filter_kernel(
             mag = 0.0f;
     }
     if (yid < H && xid < W) {
-        if (mask_in && mask_in[(&img_in.at(bid, yid, xid, 0) - img_in.data)/3] != 1)
+        if (mask_in && !(mask_in[(&img_in.at(bid, yid, xid, 0) - img_in.data)/3] & 1))
             mag = 0.0f;
         img_out.store1(bid, yid, xid, mag);
     }
@@ -379,7 +379,7 @@ __global__ void _robust_residual_luma_kernel(
     // Infinity, not zero: the quantile below counts only strictly positive
     // finite values, so a masked residual is dropped instead of dragging the
     // Tukey cutoff around. The Tukey pass turns it into a real zero.
-    if (mask_in != nullptr && mask_in[idx] != 1) {
+    if (mask_in != nullptr && !(mask_in[idx] & 1)) {
         out[idx] = INFINITY;
         return;
     }
@@ -448,7 +448,7 @@ __global__ void canny_edge_filter_kernel_scalar(
             int xi = min(max((int)(blockIdx.x * BLOCK) + x - HALO, 0), W-1);
             shared_pixels[y][x] = img_in.load1(bid, yi, xi);
             shared_valid[y][x] = (mask_in == nullptr ||
-                mask_in[&img_in.at(bid, yi, xi, 0) - img_in.data] == 1) ? 1.0f : 0.0f;
+                (mask_in[&img_in.at(bid, yi, xi, 0) - img_in.data] & 1)) ? 1.0f : 0.0f;
         }
     }
     __syncthreads();
@@ -511,7 +511,7 @@ __global__ void canny_edge_filter_kernel_scalar(
             mag = 0.0f;
     }
     if (yid < H && xid < W) {
-        if (mask_in && mask_in[(&img_in.at(bid, yid, xid, 0) - img_in.data)] != 1)
+        if (mask_in && !(mask_in[(&img_in.at(bid, yid, xid, 0) - img_in.data)] & 1))
             mag = 0.0f;
         img_out.store1(bid, yid, xid, mag);
     }

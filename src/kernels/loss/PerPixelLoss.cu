@@ -160,13 +160,14 @@ __global__ void per_pixel_losses_forward_kernel(
                 ref_normal, (int)batch_idx, x_dst, y_dst,
                 W_render, H_render, W_ref_normal, H_ref_normal);
         }
-        bool ref_alpha_v = false;
+        bool ref_alpha_v = false, rgb_mask_v = false;
         bool alpha_mask_v = has_mask && !segment_and_ignore_mask;
         if (ref_alpha) {
             uint8_t m = nearest_sample_u8(
                 ref_alpha, (int)batch_idx, x_dst, y_dst,
                 W_render, H_render, W_ref_alpha, H_ref_alpha);
             ref_alpha_v = (m == 1);
+            rgb_mask_v = (m & 1) != 0;
             if (segment_and_ignore_mask) alpha_mask_v = has_mask && (m != 0);
         }
 
@@ -185,6 +186,7 @@ __global__ void per_pixel_losses_forward_kernel(
             median_depth ? median_depth[idx] : 0.f,
             median_normal ? median_normal[idx] : make_float3(0),
             ref_alpha_v,
+            rgb_mask_v,
             has_mask,
             alpha_mask_v,
             saturation_threshold,
@@ -326,7 +328,7 @@ __global__ void per_pixel_losses_backward_kernel(
     // GT scatter must use the same samples as the forward pass.
     float  ref_depth_v  = 0.f;
     float3 ref_normal_v = make_float3(0);
-    bool   ref_alpha_v  = false;
+    bool   ref_alpha_v  = false, rgb_mask_v = false;
     bool   alpha_mask_v = has_mask && !segment_and_ignore_mask;
     if (ref_depth) {
         ref_depth_v = bilinear_sample_gt_depth(
@@ -343,6 +345,7 @@ __global__ void per_pixel_losses_backward_kernel(
             ref_alpha, (int)batch_idx, x_dst, y_dst,
             W_render, H_render, W_ref_alpha, H_ref_alpha);
         ref_alpha_v = (m == 1);
+        rgb_mask_v = (m & 1) != 0;
         if (segment_and_ignore_mask) alpha_mask_v = has_mask && (m != 0);
     }
 
@@ -361,6 +364,7 @@ __global__ void per_pixel_losses_backward_kernel(
         median_depth ? median_depth[idx] : 0.f,
         median_normal ? median_normal[idx] : make_float3(0),
         ref_alpha_v,
+        rgb_mask_v,
         has_mask,
         alpha_mask_v,
         saturation_threshold,
@@ -803,13 +807,14 @@ __global__ void avg_pool_downsample_bool_kernel(
         return;
     for (int c = 0; c < image_ls.shape[3]; ++c) {
         int n_keep = 0, n_seg = 0;
+        uint8_t seg = 2;  // one run's segments are all 2 or all 3
         for (int dy = 0; dy < 2; ++dy)
             for (int dx = 0; dx < 2; ++dx) {
                 uint8_t m = image_hs.at(bid, 2*yid+dy, 2*xid+dx, c);
                 if (m == 1) ++n_keep;
-                else if (m == 2) ++n_seg;
+                else if (m & 2) { ++n_seg; seg = m; }
             }
-        image_ls.at(bid, yid, xid, c) = (uint8_t)(n_keep >= 2 ? 1 : (n_seg >= 2 ? 2 : 0));
+        image_ls.at(bid, yid, xid, c) = (uint8_t)(n_keep >= 2 ? 1 : (n_seg >= 2 ? seg : 0));
     }
 }
 
@@ -841,7 +846,7 @@ static void _avg_pool_downsample_gt_geometry(const TorchTensorView& src,
 __global__ void zero_masked_grad_kernel(
     TensorView<float, 4> grad,
     const TensorView<uint8_t, 4> mask,
-    bool ignore_only  // zero only class 0, leaving segment (2) its alpha grad
+    bool ignore_only  // zero only class 0, leaving a segment its alpha grad
 ) {
     uint32_t xid = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t yid = blockIdx.y * blockDim.y + threadIdx.y;
@@ -849,7 +854,7 @@ __global__ void zero_masked_grad_kernel(
     if (yid >= grad.shape[1] || xid >= grad.shape[2])
         return;
     const uint8_t m = mask.at(bid, yid, xid, 0);
-    if (ignore_only ? m != 0 : m == 1)
+    if (ignore_only ? m != 0 : (m & 1) != 0)
         return;
     for (int c = 0; c < grad.shape[3]; ++c)
         grad.at(bid, yid, xid, c) = 0.0f;

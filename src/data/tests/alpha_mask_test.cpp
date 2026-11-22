@@ -119,11 +119,13 @@ CacheMode g_mode = CacheMode::CPU;
 
 Fetched fetch(const std::string& image, const std::string& mask, bool alpha,
               bool flip, const float* over = nullptr, bool load_masks = true,
-              bool seg_ign = false) {
+              bool seg_ign = false, bool segment = false, bool segment_rgb = false) {
     DataManagerConfig cfg;
     cfg.cache_mode = g_mode;
     cfg.load_masks = load_masks;
     cfg.segment_and_ignore_masks = seg_ign;
+    cfg.segment_masks = segment;
+    cfg.segment_rgb = segment_rgb;
     cfg.load_depths = cfg.load_normals = false;
     cfg.flip_mask = flip;
     if (alpha) cfg.alpha_masks = {1};
@@ -289,6 +291,24 @@ int main() {
                     ok &= m.at(x, y) == want;
                 }
             check(ok, "segment_and_ignore: alpha merges transparent as segment");
+        }
+        {
+            const Fetched m = fetch(rgb, tri_mask, false, false, nullptr, true, false, true);
+            bool ok = m.w == W && m.h == H;
+            for (int y = 0; y < H && ok; y++)
+                for (int x = 0; x < W; x++)
+                    ok &= m.at(x, y) == (kBands[x % 6] != 0 ? 1 : 2);
+            check(ok, "segment: a binary mask's 0 is a segment (2)");
+        }
+        {
+            const Fetched m = fetch(rgb, tri_mask, false, false, nullptr, true, true, true, true);
+            bool ok = m.w == W && m.h == H;
+            for (int y = 0; y < H && ok; y++)
+                for (int x = 0; x < W; x++) {
+                    const uint8_t raw = kBands[x % 6];
+                    ok &= m.at(x, y) == (raw >= 251 ? 1 : (raw >= 128 ? 3 : 0));
+                }
+            check(ok, "preserve_background: a segment keeps its RGB bit (3)");
         }
     }
 

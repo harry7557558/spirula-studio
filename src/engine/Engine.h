@@ -277,17 +277,11 @@ void engine_calib_warp_align_to_gt(const float* est, const float* src, float* ou
                                    bool use_mask);
 
 // --- Background blending (applied BEFORE bilagrid/PPISP) ---
-// Exactly one of these init calls activates it; `--background-mode` picks.
+// A base fill (black, a color or an SH skybox) plus an optional randomized draw
+// against translucency, which a bound batch mask keeps off its segments.
 
-// Random color per pixel, warmup-weighted via cfg.background.randomize_weight.
-void engine_init_background_noise(int splat_transfer, bool splat_is_linear);
-// Same blend, but the draw is one of the 8 RGB cube corners per tile instead
-// of per-pixel noise: the extremes cost residual transparency the most, and a
-// tile survives the SSIM window that averages per-pixel noise back to grey.
-void engine_init_background_pseudorandom(int splat_transfer, bool splat_is_linear);
-// Same blend again over one cell covering the whole frame: a flat color that
-// changes every step, warmup-weighted like the other two.
-void engine_init_background_random(int splat_transfer, bool splat_is_linear);
+void engine_init_background_suppression(BackgroundSuppression kind,
+                                        int splat_transfer, bool splat_is_linear);
 // `color` is display-referred RGB in [0, 1]; the engine converts it once, and
 // all-black turns the background OFF instead of blending a no-op.
 void engine_init_background_color(const float color[3], int splat_transfer,
@@ -304,6 +298,10 @@ bool engine_has_background_sh(int* out_degree = nullptr);
 void engine_set_background_step_params(uint32_t seed, float randomize_weight,
                                        int num_loss_scales,
                                        int loss_scale_min_pixels);
+// Viewer renders between engine_background_view(true, ...) and (false, ...)
+// bind no mask and draw grey, or the base fill with `show_base`, or this
+// step's draw with `show_draw`.
+void engine_background_view(bool active, bool show_draw, bool show_base = false);
 
 // Adam step over the SH coefficient table. No-op for Noise mode or when SH
 // training was not enabled at init.

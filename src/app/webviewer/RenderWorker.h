@@ -43,6 +43,10 @@ struct ViewerRenderConfig {
     // Splat colours are stored in a linear and/or wide-gamut space, so the
     // render is converted to sRGB before display and `rgb_raw` is offered.
     bool  color_space_on = false;
+    // A transparency-suppression draw: `rgb` shows its grey mean, or the base
+    // background when background_base_view, and `rgb_raw` the draw itself.
+    bool  background_draw_on = false;
+    bool  background_base_view = false;
     // The model's SH degree (< 0 unknown) and spherical-beta lobes: with
     // neither, the view-dependent `sh` buffer would be black.
     int   sh_degree = -1;

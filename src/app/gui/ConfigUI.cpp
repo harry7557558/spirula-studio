@@ -421,12 +421,14 @@ const Msg& tier_label(int rank) {
 }
 constexpr int kNumTierChoices = 3;
 
-// Fields owned by dedicated GUI controls; hidden from the generated list.
-// The dataset path has the folder picker next to it, and the macro options
-// (train_resolve_macros()) are the top of Basic Options -- listing them again
-// here would offer the user two places to set the same thing.
+// Fields with a control of their own (the dataset picker; the macro options and
+// the background in Basic Options), so the list never offers two places to set
+// the same thing.
 bool gui_managed(const char* cli_key) {
     return !std::strcmp(cli_key, "data") ||
+           !std::strcmp(cli_key, "background_mode") ||
+           !std::strcmp(cli_key, "background_color") ||
+           !std::strcmp(cli_key, "background_transparency_suppression") ||
            !std::strcmp(cli_key, "quality") ||
            !std::strcmp(cli_key, "floater_suppression") ||
            !std::strcmp(cli_key, "distraction_robustness");
@@ -434,6 +436,8 @@ bool gui_managed(const char* cli_key) {
 
 }  // namespace
 
+
+bool draw_color_field(std::array<float, 3>& v) { return draw_color3(v); }
 
 std::string choice_display(const char* flag, const std::string& value) {
     const Msg* m = fld::choice_label(flag, value.c_str());

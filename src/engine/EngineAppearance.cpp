@@ -74,7 +74,7 @@ bool _engine_appearance_forward(AppearancePpisp ppisp) {
     engine().background.fwd_pre_blend_rgb = DeviceTensor3D<float3>();
     cs.fwd_pre = DeviceTensor3D<float3>();
     pp.fwd_pre = DeviceTensor3D<float3>();
-    if (p.bg == AppearanceBg::None && !p.cs_enabled &&
+    if (!appearance_has_bg(p) && !p.cs_enabled &&
         p.ppisp == AppearancePpisp::Off)
         return true;
 

@@ -677,7 +677,7 @@ __global__ void tile_active_kernel(
             const int x = (int)tx * bt.ix + dx;
             if (x >= width) break;
             if (x < 0) continue;
-            if (nearest_sample_u8(mask, b, x, y, width, height, W_mask, H_mask) == 1) {
+            if (nearest_sample_u8(mask, b, x, y, width, height, W_mask, H_mask) & 1) {
                 live = true;
                 break;
             }

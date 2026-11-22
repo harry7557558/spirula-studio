@@ -158,6 +158,7 @@ bool set_config_field(TrainConfig& c, const std::string& key,
 #define SS_TRY_SET(type, member, default_, section, tier, choices)            \
     if (key == #member) {                                                      \
         consume(c.member, key, argc, argv, i);                                 \
+        train_upgrade_background_mode(c);                                      \
         check_choices(c.member, key, choices);                                 \
         seen.insert(#member);                                                  \
         return true;                                                           \

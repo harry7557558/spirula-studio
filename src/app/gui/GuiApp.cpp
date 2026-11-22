@@ -12019,6 +12019,68 @@ void GuiApp::draw_train_mask_mode(float width) {
     ui::help_on_hover_disabled(msg::opt_mask_mode_help);
 }
 
+// Under a transparency draw, background_mode shows on segments only: say so
+// when the dataset and the mask mode leave none. Decodes at most three masks.
+void GuiApp::draw_background_warning() {
+    if (_cfg.background_mode == "black" || _cfg.background_transparency_suppression == "none")
+        return;
+    const TrainRunner::Phase ph = _runner.phase();
+    auto* s = _runner.session();
+    if (!s || ph == TrainRunner::Phase::Loading || ph == TrainRunner::Phase::LoadError ||
+        s->cfg.data != _cfg.data)
+        return;
+    std::vector<const std::string*> files;
+    for (const std::string& f : s->ds.mask_filenames)
+        if (!f.empty()) files.push_back(&f);
+    const bool alpha = std::count(s->alpha_images.begin(), s->alpha_images.end(), 1) > 0;
+    const std::string& bg = _cfg.background_mode;
+    if (files.empty() && !alpha) {
+        ui::TextColoredWrapped(kWarn, msg::bg_unused_no_masks, {bg});
+        return;
+    }
+    // As TrainerCore resolves auto: cut out when the only masks are alpha.
+    ResolvedMaskMode m = resolve_train_mask_mode(_cfg);
+    if (_cfg.mask_mode == "auto" && _cfg.load_masks && !_cfg.apply_loss_for_mask.has_value())
+        m = alpha && files.empty() ? ResolvedMaskMode::Segment : ResolvedMaskMode::Ignore;
+    if (m == ResolvedMaskMode::Off || m == ResolvedMaskMode::Ignore) {
+        const Msg& mode = m == ResolvedMaskMode::Off ? msg::opt_mask_mode_off
+                                                     : msg::opt_mask_mode_exclude;
+        ui::TextColoredWrapped(kWarn, msg::bg_unused_mask_mode, {mode.get(), bg});
+        return;
+    }
+    const bool seg_ign = m == ResolvedMaskMode::SegmentAndIgnore;
+    if (!alpha) {
+        const std::string key = _cfg.data + '\n' + _cfg.mask_dir + '\n' +
+            std::to_string((int)seg_ign) + std::to_string((int)_cfg.flip_mask) + '\n' +
+            std::to_string(files.size());
+        if (key != _bg_segment_probe_key) {
+            _bg_segment_probe_key = key;
+            _bg_segment_probe_found = false;
+            const size_t num_picks = std::min(files.size(), (size_t)10);
+            for (size_t k = 0; k < num_picks && !_bg_segment_probe_found; k++) {
+                int w = 0, h = 0, ch = 0;
+                size_t file_idx = std::min(files.size() * k / num_picks, files.size() - 1);
+                stbi_uc* px = stbi_load(files[file_idx]->c_str(), &w, &h, &ch, 1);
+                if (!px) { _bg_segment_probe_found = true; break; }  // unknown: say nothing
+                for (size_t i = 0; i < (size_t)w * h && !_bg_segment_probe_found; i++) {
+                    const uint8_t v = px[i];
+                    _bg_segment_probe_found = seg_ign ? (v >= 128 && v <= 250)
+                                                      : ((v != 0) == _cfg.flip_mask);
+                }
+                stbi_image_free(px);
+            }
+        }
+        if (!_bg_segment_probe_found) {
+            ui::TextColoredWrapped(kWarn, seg_ign ? msg::bg_unused_no_grey
+                                                  : msg::bg_unused_no_masked, {bg});
+            return;
+        }
+    }
+    // As train_mask_preserves_background: unset is on for a skybox here.
+    if (bg == "skybox" && !_cfg.preserve_background.value_or(true))
+        ui::TextColoredWrapped(kWarn, msg::bg_skybox_untrained, {fld::preserve_background.get()});
+}
+
 bool GuiApp::dense_cloud_present() {
     // Polled, not cached for good: a dense run in another window can land.
     const double now = ImGui::GetTime();
@@ -12205,13 +12267,13 @@ void GuiApp::draw_seed_cloud(TrainRunner::Phase ph) {
         else if (ids[at] == Dense || choice != Other) _cfg.seed_pointcloud.clear();
         _cfg_ui.touched.insert("seed_pointcloud");
     }
-    ui::help_on_hover(msg::seed_choice_help);
+    ui::help_on_hover_disabled(msg::seed_choice_help);
     if (ids[at] == Other) {
         ImGui::Indent();
         ImGui::SetNextItemWidth(px(-70.0f));
         if (ui::InputTextRaw("##seed_pointcloud", &_cfg.seed_pointcloud))
             _cfg_ui.touched.insert("seed_pointcloud");
-        ui::help_on_hover(fld::seed_pointcloud_help);
+        ui::help_on_hover_disabled(fld::seed_pointcloud_help);
         ImGui::SameLine();
         if (ui::ButtonRaw("...##seed_pointcloud_pick", ImVec2(60, 0))) {
             _seed_other = true;
@@ -12264,7 +12326,7 @@ void GuiApp::draw_dataset_aux(float width) {
             _cfg_ui.touched.insert("load_depths");
             _cfg_ui.touched.insert("depth_supervision_weight");
         }
-        ui::help_on_hover(msg::opt_dataset_depths_help);
+        ui::help_on_hover_disabled(msg::opt_dataset_depths_help);
     }
     if (!s->ds.normal_filenames.empty()) {
         bool on = _cfg.load_normals && (_cfg.normal_supervision_weight > 0.0f ||
@@ -12279,7 +12341,7 @@ void GuiApp::draw_dataset_aux(float width) {
             _cfg_ui.touched.insert("normal_supervision_weight");
             _cfg_ui.touched.insert("median_normal_supervision_weight");
         }
-        ui::help_on_hover(msg::opt_dataset_normals_help);
+        ui::help_on_hover_disabled(msg::opt_dataset_normals_help);
     }
 }
 
@@ -12288,16 +12350,15 @@ void GuiApp::draw_basic_options() {
     // scaled: at 200% the labels are twice the size and the box is not.
     const float w = px(170.0f);
 
-    // A macro option: one dropdown standing for the several flags
-    // train_resolve_macros() fills in behind it. The value written is the
-    // token the flag takes; what the user picks is the word for it.
+    // A dropdown over a flag's choices, the macro options among them. The value
+    // written is the token the flag takes; what the user picks is the word for it.
     auto macro_option = [&](const char* key, std::string& value,
                             const Msg& label, const Msg& help,
                             std::initializer_list<const char*> values) {
         ImGui::SetNextItemWidth(w);
         const bool open = ui::BeginComboRaw(ui::detail::label(label),
                                             gui::choice_display(key, value).c_str());
-        if (!open) { ui::help_on_hover(help); return; }
+        if (!open) { ui::help_on_hover_disabled(help); return; }
         for (const char* v : values) {
             bool sel = value == v;
             if (ui::SelectableRaw(gui::choice_display(key, v), sel)) {
@@ -12320,12 +12381,12 @@ void GuiApp::draw_basic_options() {
     }
     ImGui::SameLine();
     ui::Text(msg::opt_output_folder);
-    ui::help_on_hover(msg::opt_output_folder_help);
+    ui::help_on_hover_disabled(msg::opt_output_folder_help);
     ImGui::SetNextItemWidth(w);
     if (ui::InputTextWithHint(msg::opt_run_name, msg::opt_run_name_hint,
                               &_cfg.output_dir_name))
         _cfg_ui.touched.insert("output_dir_name");
-    ui::help_on_hover(msg::opt_run_name_help);
+    ui::help_on_hover_disabled(msg::opt_run_name_help);
     {
         std::string run = _cfg.output_dir_name.empty()
             ? fs::path(_cfg.data).stem().string() + "_<time>"
@@ -12345,12 +12406,12 @@ void GuiApp::draw_basic_options() {
     ImGui::SetNextItemWidth(w);
     if (ui::InputInt(msg::opt_steps, &_cfg.num_iterations))
         _cfg_ui.touched.insert("num_iterations");
-    ui::help_on_hover(msg::opt_steps_help);
+    ui::help_on_hover_disabled(msg::opt_steps_help);
 
     ImGui::SetNextItemWidth(w);
     if (ui::InputInt(msg::opt_max_splats, &_cfg.cap_max))
         _cfg_ui.touched.insert("cap_max");
-    ui::help_on_hover(msg::opt_max_splats_help);
+    ui::help_on_hover_disabled(msg::opt_max_splats_help);
 
     {
         // Primitive names are the config's own values, written into
@@ -12364,7 +12425,7 @@ void GuiApp::draw_basic_options() {
             _cfg.primitive = prims[pi];
             _cfg_ui.touched.insert("primitive");
         }
-        ui::help_on_hover(spirula::i18n::msg::field::primitive_help);
+        ui::help_on_hover_disabled(spirula::i18n::msg::field::primitive_help);
         // if (_cfg.primitive == "3dgut")
         //     ui::TextColoredWrapped(kWarn, msg::opt_primitive_3dgut_warn);
     }
@@ -12382,20 +12443,20 @@ void GuiApp::draw_basic_options() {
             _cfg_ui.touched.insert("train_resolution_divisor");
         }
     }
-    ui::help_on_hover(msg::opt_resolution_help);
+    ui::help_on_hover_disabled(msg::opt_resolution_help);
 #if 0
     ImGui::SetNextItemWidth(w);
     if (ui::InputInt(fld::max_resolution, &_cfg.max_resolution)) {
         _cfg.max_resolution = std::clamp(_cfg.max_resolution, 0, 32768);
         _cfg_ui.touched.insert("max_resolution");
     }
-    ui::help_on_hover(fld::max_resolution_help);
+    ui::help_on_hover_disabled(fld::max_resolution_help);
 #endif
 
 #if 0
     if (ui::Checkbox(fld::progressive_resolution, &_cfg.progressive_resolution))
         _cfg_ui.touched.insert("progressive_resolution");
-    ui::help_on_hover(fld::progressive_resolution_help);
+    ui::help_on_hover_disabled(fld::progressive_resolution_help);
     if (_cfg.progressive_resolution) {
         ImGui::Indent();
         // A manual schedule replaces the automatic stages these two shape.
@@ -12416,11 +12477,11 @@ void GuiApp::draw_basic_options() {
         ImGui::SetNextItemWidth(w);
         if (ui::InputText(fld::progressive_resolution_schedule, &_cfg.progressive_resolution_schedule))
             _cfg_ui.touched.insert("progressive_resolution_schedule");
-        ui::help_on_hover(fld::progressive_resolution_schedule_help);
+        ui::help_on_hover_disabled(fld::progressive_resolution_schedule_help);
 
         if (ui::Checkbox(fld::progressive_splat_budget, &_cfg.progressive_splat_budget))
             _cfg_ui.touched.insert("progressive_splat_budget");
-        ui::help_on_hover(fld::progressive_splat_budget_help);
+        ui::help_on_hover_disabled(fld::progressive_splat_budget_help);
         if (_cfg.progressive_splat_budget) draw_splat_budget(w);
         ImGui::Unindent();
     }
@@ -12429,7 +12490,7 @@ void GuiApp::draw_basic_options() {
     ImGui::SetNextItemWidth(w);
     if (ui::SliderInt(msg::opt_sh_degree, &_cfg.sh_degree, 0, 4))
         _cfg_ui.touched.insert("sh_degree");
-    ui::help_on_hover(msg::opt_sh_degree_help);
+    ui::help_on_hover_disabled(msg::opt_sh_degree_help);
 
 // #ifdef SS_BACKEND_VULKAN
 #if 0
@@ -12442,16 +12503,16 @@ void GuiApp::draw_basic_options() {
         if (!_cfg_ui.touched.count("sh_degree"))
             _cfg.sh_degree = _cfg.sb_lobes > 0 ? 0 : _defaults.sh_degree;
     }
-    ui::help_on_hover(fld::sb_lobes_help);
+    ui::help_on_hover_disabled(fld::sb_lobes_help);
 #endif
 
     if (ui::Checkbox(msg::opt_bilateral_grid, &_cfg.use_bilateral_grid))
         _cfg_ui.touched.insert("use_bilateral_grid");
-    ui::help_on_hover(msg::opt_bilateral_grid_help);
+    ui::help_on_hover_disabled(msg::opt_bilateral_grid_help);
 
     if (ui::Checkbox(msg::opt_ppisp, &_cfg.use_ppisp))
         _cfg_ui.touched.insert("use_ppisp");
-    ui::help_on_hover(msg::opt_ppisp_help);
+    ui::help_on_hover_disabled(msg::opt_ppisp_help);
 
     macro_option("calib_correction", _cfg.calib_correction, fld::calib_correction,
                  fld::calib_correction_help, {"off", "basic", "accurate"});
@@ -12471,6 +12532,26 @@ void GuiApp::draw_basic_options() {
     if (_cfg.distraction_robustness != "off")
         ui::TextColoredWrapped(kWarn, msg::opt_distraction_warn);
 #endif
+
+    ImGui::Spacing();
+
+    macro_option("background_mode", _cfg.background_mode, fld::background_mode,
+                 fld::background_mode_help, {"black", "color", "skybox"});
+    if (_cfg.background_mode == "color") {
+        ImGui::Indent();
+        ImGui::PushID("background_color");
+        if (gui::draw_color_field(_cfg.background_color))
+            _cfg_ui.touched.insert("background_color");
+        ImGui::PopID();
+        ui::help_on_hover_disabled(fld::background_color_help);
+        ImGui::Unindent();
+    }
+    macro_option("background_transparency_suppression",
+                 _cfg.background_transparency_suppression,
+                 fld::background_transparency_suppression,
+                 fld::background_transparency_suppression_help,
+                 {"none", "noise", "pseudorandom", "random"});
+    draw_background_warning();
 
     draw_dataset_aux(w);
 }

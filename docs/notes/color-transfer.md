@@ -110,7 +110,7 @@ the only place the curves are not exact inverses of each other.
   through the splat side; the tone round trip is skipped when the two
   transfers match, because the clipped curves do not invert. An `--init-ply`
   DC goes through the same conversion.
-- **The noise background.** `--background-mode noise` draws in display space
+- **The noise background.** `--background-transparency-suppression noise` draws in display space
   and inverts both halves per pixel, so mid-grey stays mid-grey on screen.
   `--background-match-luminance` first raises the draw to a per-image power,
   computed on the host each step from the photo's mean luma and its current

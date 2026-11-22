@@ -20,6 +20,7 @@
 #include "kernels/loss/PerSplatLoss.cuh"
 #include "kernels/pixelwise/PixelWise.cuh"
 #include "primitives/Primitive.cuh"
+#include "engine/EngineConfig.h"
 
 // Explicit primitive -> rendered channel set. The only place the engine encodes
 // what each primitive renders; update here when adding a primitive. 3DGUT
@@ -460,14 +461,24 @@ struct BilagridNormal {
 // are the same stateless blend over a different draw; Sh is a trained skybox,
 // SH(world ray dir) + DC color, and carries the only persistent state here.
 struct EngineBackground {
-    enum class Mode { None = 0, Noise = 1, Sh = 2, Pseudorandom = 3,
-                      Color = 4, Random = 5 };
+    // The base fill; `suppress` draws over it outside a bound mask's segments.
+    enum class Mode { None = 0, Color = 1, Sh = 2 };
     Mode mode    = Mode::None;
-    bool enabled = false;
+    BackgroundSuppression suppress = BackgroundSuppression::None;
+    bool enabled = false;               // mode != None || suppress != None
 
     // Common config (set at init time)
-    int  splat_transfer = 0;             // noise mode: display -> working space
+    int  splat_transfer = 0;             // the draw: display -> working space
     bool splat_is_linear = false;
+
+    // engine_background_view: a viewer render binds no mask, and draws grey
+    // unless view_draw (the draw) or view_base (no draw, the base fill).
+    bool view_active = false;
+    bool view_draw   = false;
+    bool view_base   = false;
+
+    // What the last forward blended with, replayed by the per-stage backward.
+    AppearanceChainParams fwd_params;
 
     // Color mode: the user's colour. `color` is what the blend wants (working
     // space); `color_display` is what the viewer wants back, kept rather than

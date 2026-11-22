@@ -1,6 +1,7 @@
 // Parity tool for the fused appearance chain (appearance_chain_forward /
 // _backward): background blend, PPISP either side of the display encode, and
-// the encode itself, against the same stages run one kernel at a time.
+// the encode itself, against the same stages run one kernel at a time. A
+// masked draw is checked against both blends picked per pixel on the host.
 //
 //   ./appearance_parity check            fused vs per-stage, this backend
 //   ./appearance_parity dump ref.bin     CUDA build
@@ -28,6 +29,7 @@ namespace {
 
 constexpr int64_t B = 2, H = 37, W = 70, N_CAM = 4;
 constexpr int64_t PIX = B * H * W;
+constexpr int MH = 19, MW = 35;  // the mask is nearest-sampled up
 
 template <typename T>
 T* upload(const std::vector<T>& host) {
@@ -73,6 +75,8 @@ struct Rng {
 
 struct Case {
     AppearanceBg bg;
+    bool noise;
+    bool masked;
     int blocky;
     unsigned block_px;
     bool match_luma;
@@ -85,6 +89,8 @@ struct Case {
 
 struct Inputs {
     float *raw, *T, *bg_image, *v_out, *cs_matrix, *intrins, *exponent;
+    uint8_t* mask;
+    std::vector<uint8_t> mask_host;
     int32_t* cams;
     float* params[6];
     int n_params[6];
@@ -104,6 +110,12 @@ AppearanceChainParams params_for(const Case& c, const Inputs& in) {
     p.cam_indices = in.cams;
     p.bg = c.bg;
     p.bg_color[0] = 0.2f; p.bg_color[1] = 0.65f; p.bg_color[2] = 0.9f;
+    p.bg_noise = c.noise ? 1 : 0;
+    if (c.masked) {
+        p.bg_mask = in.mask;
+        p.bg_mask_h = MH;
+        p.bg_mask_w = MW;
+    }
     p.bg_transfer = c.cs_transfer < 0 ? 0 : c.cs_transfer;
     p.bg_is_linear = c.cs_linear;
     p.bg_blocky = c.blocky;
@@ -166,19 +178,47 @@ Result run_stages(const Case& c, const Inputs& in) {
     const int xf = c.cs_transfer < 0 ? 0 : c.cs_transfer;
     const bool lin = c.cs_linear != 0;
 
+    // Per pixel: the draw, or the base (black when it is None).
+    const bool has_bg = c.noise || c.bg != AppearanceBg::None;
+    const float3 base_color = c.bg == AppearanceBg::Color
+        ? make_float3(0.2f, 0.65f, 0.9f) : make_float3(0.0f, 0.0f, 0.0f);
+    std::vector<uint8_t> drawn(PIX, 0);
+    for (int64_t b = 0; b < B; b++)
+        for (int64_t y = 0; y < H; y++)
+            for (int64_t x = 0; x < W; x++) {
+                const float u = ((float)x + 0.5f) * MW / W - 0.5f;
+                const float v = ((float)y + 0.5f) * MH / H - 0.5f;
+                const int mx = std::max(0, std::min(MW - 1, (int)std::floor(u + 0.5f)));
+                const int my = std::max(0, std::min(MH - 1, (int)std::floor(v + 0.5f)));
+                const bool seg = c.masked && (in.mask_host[(b * MH + my) * MW + mx] & 2);
+                drawn[(b * H + y) * W + x] = c.noise && !seg;
+            }
+    auto pick = [&](const std::vector<float>& base, const std::vector<float>& draw,
+                    int ch) {
+        std::vector<float> out = base;
+        for (int64_t i = 0; i < PIX; i++)
+            if (drawn[i])
+                for (int k = 0; k < ch; k++) out[i * ch + k] = draw[i * ch + k];
+        return out;
+    };
+
     float* s_bg = zeros(PIX * 3);
-    if (c.bg == AppearanceBg::Color)
-        blend_background_color_forward(t3(in.raw), t1(in.T),
-                                       make_float3(0.2f, 0.65f, 0.9f), t3(s_bg));
-    else if (c.bg == AppearanceBg::Noise)
+    if (c.bg == AppearanceBg::Image)
+        blend_background_forward(t3(in.raw), t1(in.T), t3(in.bg_image), t3(s_bg));
+    else if (has_bg)
+        blend_background_color_forward(t3(in.raw), t1(in.T), base_color, t3(s_bg));
+    else
+        backend::memcpy_sync(s_bg, in.raw, PIX * 12, MemcpyKind::DeviceToDevice);
+    if (c.noise) {
+        float* s_draw = zeros(PIX * 3);
         blend_background_noise_forward(xf, lin, c.blocky != 0, c.block_px,
                                        t3(in.raw), t1(in.T), 0.7f, 4242u,
                                        c.match_luma ? in.exponent : nullptr,
-                                       in.cams, t3(s_bg));
-    else if (c.bg == AppearanceBg::Image)
-        blend_background_forward(t3(in.raw), t1(in.T), t3(in.bg_image), t3(s_bg));
-    else
-        backend::memcpy_sync(s_bg, in.raw, PIX * 12, MemcpyKind::DeviceToDevice);
+                                       in.cams, t3(s_draw));
+        const std::vector<float> sel = pick(read(s_bg, PIX * 3), read(s_draw, PIX * 3), 3);
+        backend::memcpy_sync(s_bg, sel.data(), PIX * 12, MemcpyKind::HostToDevice);
+        backend::device_free(s_draw);
+    }
     float* s_p1 = s_bg;
     if (c.ppisp == AppearancePpisp::BeforeEncode) {
         s_p1 = zeros(PIX * 3);
@@ -209,27 +249,41 @@ Result run_stages(const Case& c, const Inputs& in) {
                        c.ppisp_type, cams, t3(v), ttv(v_params, {N_CAM, np}));
     float* v_T = upload(read(in.T, PIX));
     float* v_bg = zeros(PIX * 3);
-    if (c.bg != AppearanceBg::None) {
-        float* v_T_scratch = zeros(PIX);
-        if (c.bg == AppearanceBg::Color)
-            blend_background_color_backward(t3(in.raw), t1(in.T),
-                                            make_float3(0.2f, 0.65f, 0.9f),
-                                            c.overexposure, t3(v), t3(v),
-                                            t1(v_T_scratch));
-        else if (c.bg == AppearanceBg::Noise)
+    if (has_bg) {
+        const std::vector<float> v_in = read(v, PIX * 3);
+        float* v_T_base = zeros(PIX);
+        float* v_base = upload(v_in);
+        if (c.bg == AppearanceBg::Image)
+            blend_background_backward(t3(in.raw), t1(in.T), t3(in.bg_image),
+                                      c.overexposure, t3(v_base), t3(v_base),
+                                      t1(v_T_base), t3(v_bg));
+        else
+            blend_background_color_backward(t3(in.raw), t1(in.T), base_color,
+                                            c.overexposure, t3(v_base), t3(v_base),
+                                            t1(v_T_base));
+        std::vector<float> vr = read(v_base, PIX * 3), vt = read(v_T_base, PIX);
+        if (c.noise) {
+            float* v_draw = upload(v_in);
+            float* v_T_draw = zeros(PIX);
             blend_background_noise_backward(xf, lin, c.blocky != 0, c.block_px,
                                             t3(in.raw), t1(in.T), 0.7f, 4242u,
                                             c.match_luma ? in.exponent : nullptr,
-                                            in.cams, c.overexposure, t3(v),
-                                            t3(v), t1(v_T_scratch));
-        else
-            blend_background_backward(t3(in.raw), t1(in.T), t3(in.bg_image),
-                                      c.overexposure, t3(v), t3(v),
-                                      t1(v_T_scratch), t3(v_bg));
-        std::vector<float> a = read(v_T, PIX), b = read(v_T_scratch, PIX);
-        for (int64_t i = 0; i < PIX; i++) a[i] += b[i];
+                                            in.cams, c.overexposure, t3(v_draw),
+                                            t3(v_draw), t1(v_T_draw));
+            vr = pick(vr, read(v_draw, PIX * 3), 3);
+            vt = pick(vt, read(v_T_draw, PIX), 1);
+            std::vector<float> vb = read(v_bg, PIX * 3);
+            vb = pick(vb, std::vector<float>(PIX * 3, 0.0f), 3);
+            backend::memcpy_sync(v_bg, vb.data(), PIX * 12, MemcpyKind::HostToDevice);
+            backend::device_free(v_draw);
+            backend::device_free(v_T_draw);
+        }
+        backend::memcpy_sync(v, vr.data(), PIX * 12, MemcpyKind::HostToDevice);
+        std::vector<float> a = read(v_T, PIX);
+        for (int64_t i = 0; i < PIX; i++) a[i] += vt[i];
         backend::memcpy_sync(v_T, a.data(), PIX * 4, MemcpyKind::HostToDevice);
-        backend::device_free(v_T_scratch);
+        backend::device_free(v_T_base);
+        backend::device_free(v_base);
     } else if (c.overexposure != 0.0f) {
         overexposure_grad_add(ttv(in.raw, {B, H, W, 3}), c.overexposure, t3(v));
     }
@@ -249,20 +303,23 @@ std::vector<Case> cases() {
     const AppearancePpisp pos[3] = {AppearancePpisp::Off,
                                     AppearancePpisp::BeforeEncode,
                                     AppearancePpisp::AfterEncode};
-    struct Bg { AppearanceBg bg; int blocky; unsigned px; bool luma; };
-    const Bg bgs[6] = {{AppearanceBg::None, 0, 0, false},
-                       {AppearanceBg::Color, 0, 0, false},
-                       {AppearanceBg::Noise, 0, 0, true},
-                       {AppearanceBg::Noise, 0, 1, false},
-                       {AppearanceBg::Noise, 1, 64, true},
-                       {AppearanceBg::Image, 0, 0, false}};
+    struct Bg { AppearanceBg bg; bool noise, masked; int blocky; unsigned px; bool luma; };
+    const Bg bgs[9] = {{AppearanceBg::None, false, false, 0, 0, false},
+                       {AppearanceBg::Color, false, false, 0, 0, false},
+                       {AppearanceBg::None, true, false, 0, 0, true},
+                       {AppearanceBg::None, true, false, 0, 1, false},
+                       {AppearanceBg::None, true, false, 1, 64, true},
+                       {AppearanceBg::Image, false, false, 0, 0, false},
+                       {AppearanceBg::None, true, true, 0, 1, false},
+                       {AppearanceBg::Color, true, true, 1, 8, true},
+                       {AppearanceBg::Image, true, true, 0, 0, false}};
     const int xfs[4][2] = {{-1, 0}, {0, 1}, {2, 0}, {4, 1}};
     int k = 0;
     for (const Bg& b : bgs)
         for (AppearancePpisp pp : pos)
             for (const auto& xf : xfs) {
-                Case c{b.bg, b.blocky, b.px, b.luma, pp, kPpispTypes[k % 6],
-                       xf[0], xf[1], (k % 3 == 0) ? 3.0f : 0.0f};
+                Case c{b.bg, b.noise, b.masked, b.blocky, b.px, b.luma, pp,
+                       kPpispTypes[k % 6], xf[0], xf[1], (k % 3 == 0) ? 3.0f : 0.0f};
                 cs.push_back(c);
                 k++;
             }
@@ -285,6 +342,9 @@ int main(int argc, char** argv) {
     in.raw = upload(r.vec(PIX * 3, -0.1f, 1.6f));
     in.T = upload(r.vec(PIX, 0.0f, 1.0f));
     in.bg_image = upload(r.vec(PIX * 3, 0.0f, 1.0f));
+    in.mask_host.resize((size_t)B * MH * MW);
+    for (auto& m : in.mask_host) m = (uint8_t)(r.rng() & 3u);
+    in.mask = upload(in.mask_host);
     std::vector<float> v_out = r.vec(PIX * 3, -1.0f, 1.0f);
     for (int64_t i = 0; i < PIX; i += 7)   // masked pixels: zero gradient
         v_out[3 * i] = v_out[3 * i + 1] = v_out[3 * i + 2] = 0.0f;
@@ -318,9 +378,10 @@ int main(int argc, char** argv) {
                 if (m > 1.0) {
                     fails++;
                     std::fprintf(stderr,
-                                 "FAIL %s: bg=%d px=%u ppisp=%d (%s) xf=%d lin=%d "
-                                 "oe=%g -- %.3g of tolerance\n",
-                                 what, (int)c.bg, c.block_px, (int)c.ppisp,
+                                 "FAIL %s: bg=%d draw=%d mask=%d px=%u ppisp=%d (%s) "
+                                 "xf=%d lin=%d oe=%g -- %.3g of tolerance\n",
+                                 what, (int)c.bg, (int)c.noise, (int)c.masked,
+                                 c.block_px, (int)c.ppisp,
                                  c.ppisp_type, c.cs_transfer, c.cs_linear,
                                  c.overexposure, m);
                 }
