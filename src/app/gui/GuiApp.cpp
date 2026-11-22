@@ -229,10 +229,14 @@ std::vector<std::string> video_dialog_filters() {
 // ===========================================================================
 
 static ModelContent classify_recent_model(const std::string& path);
+static void set_ss_env(const char* suffix, const std::string& value);
 
 GuiApp::GuiApp() {
     init_dense();
     load_settings();
+#ifdef SS_BUILD_SAM
+    _workers_per_gpu = app::workers_per_gpu();
+#endif
     // Before the first frame, so an entry that is gone is never drawn.
     _recent.start_probe(classify_recent_model);
     _recent_probed_at = 0.0;
@@ -458,6 +462,10 @@ void GuiApp::load_settings() {
                                                             : Engine::BuiltIn;
         else if (k == "batch_command") _batch_cmd = unescape_setting(v);
         else if (k == "additional_gpus") _additional_gpus = unescape_setting(v);
+#ifdef SS_BUILD_SAM
+        else if (k == "workers_per_gpu")
+            set_ss_env("WORKERS_PER_GPU", std::to_string(std::clamp(atoi(v.c_str()), 1, 4)));
+#endif
         // accepted_license= is read from the file on demand (license_accepted).
         else if (k == "lang" && !v.empty()) saved_lang = v;
         else if (k == "ui_scale") _scale.set_user(std::clamp((float)atof(v.c_str()),
@@ -512,6 +520,9 @@ void GuiApp::save_settings() {
                  _engine == Engine::Colmap ? "colmap" : "builtin");
     std::fprintf(f, "batch_command=%s\n", escape_setting(_batch_cmd).c_str());
     std::fprintf(f, "additional_gpus=%s\n", escape_setting(_additional_gpus).c_str());
+#ifdef SS_BUILD_SAM
+    std::fprintf(f, "workers_per_gpu=%u\n", _workers_per_gpu);
+#endif
     std::fprintf(f, "lang=%s\n", spirula::i18n::code(spirula::i18n::current()));
     std::fprintf(f, "ui_scale=%.3f\n", _scale.user());
     std::fprintf(f, "panel_w=%.1f\n", _panel_w);
@@ -704,6 +715,7 @@ void GuiApp::write_run_settings(std::ofstream& f) {
 #endif
 #ifdef SS_BUILD_SAM
     line("additional_gpus", _additional_gpus);
+    line("workers_per_gpu", std::to_string(_workers_per_gpu));
     line("worker_devices", resolved_worker_devices());
 #endif
 #ifndef SS_BACKEND_VULKAN
@@ -6344,6 +6356,24 @@ void GuiApp::draw_additional_gpus() {
     }
     ui::help_on_hover(msg::additional_gpus_help);
 }
+
+void GuiApp::draw_workers_per_gpu() {
+    ImGui::SetNextItemWidth(px(80.0f));
+    if (ui::BeginCombo(msg::workers_per_gpu, std::to_string(_workers_per_gpu).c_str())) {
+        for (unsigned count = 1; count <= 4; ++count) {
+            const bool selected = count == _workers_per_gpu;
+            if (ui::SelectableRaw(std::to_string(count), selected) && !selected) {
+                // ponytail: Process env; use explicit job fields if the variable is retired.
+                set_ss_env("WORKERS_PER_GPU", std::to_string(count));
+                _workers_per_gpu = count;
+                save_settings();
+            }
+            if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    ui::help_on_hover(msg::workers_per_gpu_help);
+}
 #endif
 
 void GuiApp::draw_masking_options(const MaskingPanel& p) {
@@ -9060,6 +9090,9 @@ void GuiApp::draw_dataset_form(float height, bool running) {
 #ifdef SS_BUILD_SAM
     ImGui::BeginDisabled(running);
     draw_additional_gpus();
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(native_work_busy());
+    draw_workers_per_gpu();
     ImGui::EndDisabled();
 #endif
     ImGui::Spacing();
