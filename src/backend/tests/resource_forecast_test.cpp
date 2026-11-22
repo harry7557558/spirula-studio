@@ -92,13 +92,14 @@ static void report_round_trips() {
     RunReport r;
     r.sequence = 7; r.phase = "match"; r.work = 0.25;
     r.host_process = 3ull << 30; r.host_total = (1ull << 45) + 3; r.host_commit_free = 5ull << 30;
+    r.host_swap_free = 4ull << 30;
     r.host_peak = {6.5 * GiB, 0.5 * GiB, true};
     r.device_known = true; r.device_ours = 1ull << 30; r.device_others = 2ull << 30; r.device_capacity = 8ull << 30;
     r.device_peak = {2 * GiB, 0.25 * GiB};
     write_run_report(dir, r);
     CHECK(read_run_report(dir, read), "report round trip failed");
     CHECK(read.sequence == 7 && read.phase == "match" && read.work == 0.25 && read.host_total == r.host_total &&
-              read.host_commit_free == r.host_commit_free && read.host_peak.mean == r.host_peak.mean &&
+              read.host_commit_free == r.host_commit_free && read.host_swap_free == r.host_swap_free && read.host_peak.mean == r.host_peak.mean &&
               read.host_peak.sigma == r.host_peak.sigma && read.host_peak.ceiling && !read.device_peak.ceiling &&
               read.device_known && read.device_ours == r.device_ours &&
               read.device_others == r.device_others && read.device_capacity == r.device_capacity &&

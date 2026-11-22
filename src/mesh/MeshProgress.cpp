@@ -4,6 +4,7 @@
 
 #include "backend/api/BackendRuntime.h"
 #include "core/HostMemory.h"
+#include "mesh/Delaunay3D.h"
 #include "mesh/Meshing.h"
 
 #include <algorithm>
@@ -37,7 +38,7 @@ constexpr double kShrink[3] = {0.88, 0.62, 1.0};
 // Bytes above what the process held on entry, from the same run's working set
 // (processRamBytes): 0.28 GB, then 2.1 GB triangulating, 1.8 GB at the first merge
 // and 1.15 GB baking; on the device, the occupancy renders, the culling BVH, the bake.
-constexpr double kHostDelaunay = 270.0, kHostMerge = 130.0;   // per point, per raw face
+constexpr double kHostDelaunay = delaunay3d::kHostBytesPerPoint, kHostMerge = 130.0;   // per point, per raw face
 constexpr double kHostTexel = 12.0, kHostFace = 50.0;
 constexpr double kDeviceOccupancy = 45.0, kDeviceCull = 100.0, kDeviceTexel = 12.0;
 // One run measured: a third of each predicted rise either way.

@@ -23,6 +23,7 @@ void write_run_report(const std::filesystem::path& dir, const RunReport& r) {
     json.field("sequence", (long long)r.sequence).field("phase", r.phase).field("work", r.work);
     json.field("host_process", (long long)r.host_process).field("host_available", (long long)r.host_available);
     json.field("host_total", (long long)r.host_total).field("host_commit_free", (long long)r.host_commit_free);
+    json.field("host_swap_free", (long long)r.host_swap_free);
     json.field("host_peak", (long long)r.host_peak.mean).field("host_peak_sigma", (long long)r.host_peak.sigma);
     json.field("host_peak_ceiling", r.host_peak.ceiling);
     json.field("device_known", r.device_known);
@@ -63,6 +64,7 @@ bool read_run_report(const std::filesystem::path& dir, RunReport& r) {
         out.work = number("work", -1.0);
         out.host_process = bytes("host_process"); out.host_available = bytes("host_available");
         out.host_total = bytes("host_total"); out.host_commit_free = bytes("host_commit_free");
+        out.host_swap_free = bytes("host_swap_free");
         auto flag = [&](const char* key) { const auto* v = json.find(key); return v && v->as_bool(); };
         out.host_peak = {number("host_peak", 0.0), number("host_peak_sigma", 0.0), flag("host_peak_ceiling")};
         if (const auto* known = json.find("device_known")) out.device_known = known->as_bool();
@@ -128,6 +130,7 @@ void RunReporter::run() {
         _r.host_available = availableRamBytes();
         _r.host_total = physicalRamBytes();
         _r.host_commit_free = availableCommitBytes();
+        _r.host_swap_free = availableSwapBytes();
         if (_device) {
             Device d;
             lock.unlock();

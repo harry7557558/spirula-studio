@@ -491,12 +491,12 @@ void mesh_pointcloud(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float3 o1 = ld3(p.ax1, g) * (k * max(s.y, lo));
     float3 o2 = ld3(p.ax2, g) * (k * max(s.z, lo));
     float3 pts[7] = { m, m + o0, m - o0, m + o1, m - o1, m + o2, m - o2 };
-    int base = i * 21;
+    gindex_t base = gindex_t(gid) * 21;
     [ForceUnroll]
     for (int j = 0; j < 7; ++j) {
-        p.out_xyz[base + 3 * j + 0] = pts[j].x;
-        p.out_xyz[base + 3 * j + 1] = pts[j].y;
-        p.out_xyz[base + 3 * j + 2] = pts[j].z;
+        elem_at(p.out_xyz, base + gindex_t(3 * j + 0))[0] = pts[j].x;
+        elem_at(p.out_xyz, base + gindex_t(3 * j + 1))[0] = pts[j].y;
+        elem_at(p.out_xyz, base + gindex_t(3 * j + 2))[0] = pts[j].z;
     }
 }
 
