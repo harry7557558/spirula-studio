@@ -145,7 +145,7 @@ first reported) drops it, leaving a 1.16 km path where the raw numbers said
 the file from being usable; both say the DOP is not enough of a gate on its
 own.
 
-### 2.3 DJI Osmo 360 and Avata 360 (`.OSV`)
+### 2.3 DJI Osmo 360, Osmo 360 II and Avata 360 (`.OSV`)
 
 | stream | rate | notes |
 |---|---|---|
@@ -162,6 +162,17 @@ camera's own fusion output. Rotating the per-frame accelerometer by the
 quaternion gives a world vector steady to 2.8 degrees over a 146 s handheld
 clip, so the quaternion maps sensor to world and the accelerometer shares its
 frame. No GPS.
+
+**Osmo 360 II** (`dvtm_OQ102.proto`) stores the six-axis IMU in the original
+`.OSV`'s `djmd` track. The header gives the rate at `1.8.1` (1000 Hz)
+and sensor fps at `1.9.1`. The current batch at `3.3.5` starts with
+a timestamp in microseconds on the video clock (field 1). Each repeated
+field 2 has six floats: angular velocity in rad/s, then acceleration in g.
+The latter's norm and the former's agreement with the quaternion derivative
+were checked on a 121 s clip. The current quaternion batch at `3.3.2.1` has
+one quaternion per IMU sample on that clip, so both use the same times.
+The same clip's 29.97 fps `.LRF` retains alternate batches, leaving gaps
+of up to 18.5 ms; use the original for SfM.
 
 **DJI Avata 360** (`dvtm_AVATA360`) writes the same message tree with its own
 field numbers; `read_dji` picks the numbers from the clip header's proto name.
