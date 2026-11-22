@@ -487,6 +487,10 @@ set_property(TARGET subprocess_lifecycle_test PROPERTY CXX_STANDARD 17)
 target_compile_options(subprocess_lifecycle_test PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
 enable_testing()
+add_test(NAME data_manager_validation_test COMMAND data_manager_validation_test)
+set_tests_properties(data_manager_validation_test PROPERTIES
+    LABELS "cpu;headless" TIMEOUT 15)
+
 add_test(NAME subprocess_lifecycle_test COMMAND subprocess_lifecycle_test)
 set_tests_properties(subprocess_lifecycle_test PROPERTIES
     LABELS "cpu;headless" TIMEOUT 600)
