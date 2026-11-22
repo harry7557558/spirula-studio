@@ -27,6 +27,10 @@ namespace delaunay3d {
     // 32-bit tet IDs with headroom for cavity overflow (arrays index in size_t).
     constexpr int kMaxPoints = 500000000;
 
+    // Peak host bytes per point while triangulating: 24 input, 112 + 112 cell
+    // arrays, 28 free list, 7 status. More if the 7 tets/point preallocation overflows.
+    constexpr double kHostBytesPerPoint = 300.0;
+
     /**
      * \brief Result of a 3D Delaunay triangulation.
      */

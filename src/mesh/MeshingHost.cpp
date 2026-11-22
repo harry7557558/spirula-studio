@@ -564,7 +564,8 @@ bool generate_mesh(
 
     // Each long phase announces itself BEFORE it runs: one that prints only on
     // completion looks like a hang and leaves a progress display nothing to show.
-    MeshProgress prog(cfg, cfg.on_progress, (double)ev.num_points(), want_vertex, want_texture);
+    MeshProgress prog(cfg, cfg.on_progress, (double)(ev.num_points() + cloud_cams), want_vertex,
+                      want_texture);
     Mesh mesh;
     if (grid) {
         const std::vector<int>& sel = ev.selected_cameras();

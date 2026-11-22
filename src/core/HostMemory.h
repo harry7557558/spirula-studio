@@ -29,6 +29,23 @@ inline size_t physicalRamBytes() {
     return 0;
 }
 
+#if defined(__linux__)
+// One /proc/meminfo field, e.g. "SwapFree: %llu kB"; 0 when absent.
+inline size_t meminfoBytes(const char* format) {
+    size_t bytes = 0;
+    if (FILE* file = std::fopen("/proc/meminfo", "r")) {
+        char line[128];
+        unsigned long long kb = 0;
+        bool found = false;
+        while (!found && std::fgets(line, sizeof line, file))
+            found = std::sscanf(line, format, &kb) == 1;
+        std::fclose(file);
+        if (found) bytes = (size_t)kb * 1024;
+    }
+    return bytes;
+}
+#endif
+
 inline size_t availableRamBytes() {
 #if defined(_WIN32)
     MEMORYSTATUSEX st{};
@@ -36,15 +53,7 @@ inline size_t availableRamBytes() {
     if (GlobalMemoryStatusEx(&st)) return (size_t)st.ullAvailPhys;
 #elif defined(__linux__)
     // Not sysconf(_SC_AVPHYS_PAGES): glibc answers MemFree, which leaves out the page cache.
-    if (FILE* file = std::fopen("/proc/meminfo", "r")) {
-        char line[128];
-        unsigned long long kb = 0;
-        bool found = false;
-        while (!found && std::fgets(line, sizeof line, file))
-            found = std::sscanf(line, "MemAvailable: %llu kB", &kb) == 1;
-        std::fclose(file);
-        if (found) return (size_t)kb * 1024;
-    }
+    return meminfoBytes("MemAvailable: %llu kB");
 #elif defined(_SC_AVPHYS_PAGES) && defined(_SC_PAGESIZE)
     long pages = sysconf(_SC_AVPHYS_PAGES), page = sysconf(_SC_PAGESIZE);
     if (pages > 0 && page > 0) return (size_t)pages * (size_t)page;
@@ -62,6 +71,15 @@ inline size_t availableCommitBytes() {
     return 0;
 #else
     return availableRamBytes();
+#endif
+}
+
+// Free swap on Linux. 0 elsewhere: Windows already counts the page file in availableCommitBytes.
+inline size_t availableSwapBytes() {
+#if defined(__linux__)
+    return meminfoBytes("SwapFree: %llu kB");
+#else
+    return 0;
 #endif
 }
 

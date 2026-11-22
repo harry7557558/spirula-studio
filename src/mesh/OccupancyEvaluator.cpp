@@ -358,16 +358,16 @@ OccupancyEvaluator::OccupancyEvaluator(
     if (impl_->num_kept == 0)
         throw std::runtime_error("meshing: no Gaussians above the opacity threshold");
 
-    // ~287 B/point peak in Delaunay3D; budget 85% of free commit/RAM up to the
-    // 32-bit tet-ID cap so large servers scale while smaller hosts avoid OOM.
+    // 85% of free commit (RAM plus swap on Linux), up to the 32-bit tet-ID cap.
     {
-        constexpr size_t kBytesPerPoint = 300;
         size_t budget = spirula::availableCommitBytes();
         if (budget == 0) budget = spirula::physicalRamBytes();
+        budget += spirula::availableSwapBytes();
         if (budget == 0) {
             max_points_ = 150000000;
         } else {
-            const int64_t by_ram = (int64_t)((budget / 100) * 85 / kBytesPerPoint);
+            const int64_t by_ram =
+                (int64_t)(0.85 * (double)budget / delaunay3d::kHostBytesPerPoint);
             max_points_ = std::clamp<int64_t>(by_ram, 4, delaunay3d::kMaxPoints);
         }
     }
