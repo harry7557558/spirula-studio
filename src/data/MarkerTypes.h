@@ -7,7 +7,7 @@
 
 namespace spirula {
 
-enum class MarkerFamily { Auto = -1, Tag36h10 = 0, Tag36h11, Aruco4x4, Aruco5x5, Aruco6x6, Aruco7x7, ArucoOriginal };
+enum class MarkerFamily { Auto = -1, Tag36h10 = 0, Tag36h11, TagStandard41h12, TagStandard52h13, Aruco4x4, Aruco5x5, Aruco6x6, Aruco7x7, ArucoOriginal };
 
 const char* marker_family_name(MarkerFamily family);
 bool parse_marker_family(const std::string& name, MarkerFamily& family);

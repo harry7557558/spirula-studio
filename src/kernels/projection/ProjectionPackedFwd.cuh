@@ -10,6 +10,7 @@
 
 #include "primitives/Primitive3DGS.cuh"
 #include "primitives/Primitive3DGUT.cuh"
+#include "primitives/Primitive2DGS.cuh"
 #include "shaders/packed_mask.h"
 
 #include <stdexcept>
@@ -82,6 +83,29 @@ std::tuple<
     DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
     DeviceVector<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgut_packed_forward(
+    const int64_t num_splats,
+    const ColorBasis color,
+    const std::vector<DeviceTensorFloatND> &in_splats,
+    TorchTensorView viewmats,
+    TorchTensorView intrins,
+    const uint32_t image_width,
+    const uint32_t image_height,
+    const std::string camera_model,
+    const std::string distortion,
+    const TorchTensorView dist_coeffs,
+    DeviceVector<float> radii,
+    const std::optional<TorchTensorView> sh_value_packed,
+    const std::optional<TorchTensorView> sh_value_bounds,
+    const uint32_t num_sh_buffer,
+    const int sh_value_bits,
+    const int64_t sh_bounds_stride
+);
+
+
+std::tuple<
+    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
+    DeviceVector<float>, std::vector<DeviceTensorFloatND>
+> projection_2dgs_packed_forward(
     const int64_t num_splats,
     const ColorBasis color,
     const std::vector<DeviceTensorFloatND> &in_splats,

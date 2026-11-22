@@ -81,11 +81,11 @@ static_assert(sizeof(EfraimidisParams) == 6 * 8 + 10 * 4,
 struct RelocMaskParams {
     uint64_t means, quats, scales, opacs, features_dc, mask, count,
         dst_indices, visit_counters, max_weight;
-    float min_opacity;
+    float min_opacity, min_weight;
     uint32_t num_splats, wgs_per_row, dead_after_steps, dead_by_opacity,
-        has_max_weight;
+        has_max_weight, pad0;
 };
-static_assert(sizeof(RelocMaskParams) == 10 * 8 + 6 * 4,
+static_assert(sizeof(RelocMaskParams) == 10 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 // Mirrors RelocLasParams.
@@ -784,6 +784,7 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     DeviceVector<uint32_t> visit_counters,
     uint32_t dead_after_steps,
     DeviceVector<float> max_weight,
+    float min_weight,
     bool dead_by_opacity,
     int sh_optim_bits,
     int num_sh,
@@ -831,6 +832,7 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     mp.has_max_weight = max_weight.data_ptr() ? 1u : 0u;
     mp.dead_by_opacity = dead_by_opacity ? 1u : 0u;
     mp.min_opacity = min_opacity;
+    mp.min_weight = min_weight;
     mp.num_splats = (uint32_t)cur_num_splats;
     vkk::dispatch_flat("densify.densify_reloc_mask", {}, cur_num_splats, 256,
                        &mp, sizeof(mp), &mp.wgs_per_row);

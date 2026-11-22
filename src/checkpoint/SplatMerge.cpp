@@ -3,14 +3,17 @@
 #include "checkpoint/SplatMerge.h"
 
 #include "checkpoint/Resume.h"
+#include "checkpoint/RegionCameras.h"
 #include "checkpoint/SplatTransform.h"
 #include "core/SphericalBeta.h"
+#include "core/BufferedFile.h"
+#include "core/AtomicFile.h"
 #include "data/RegionProgram.h"
 #include "data/SceneTransform.h"
 
 #include <algorithm>
-#include <cmath>
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
 
 namespace fs = std::filesystem;
@@ -24,6 +27,8 @@ namespace {
 void pad_color(SplatCloud& c, const ColorBasis& to) {
     if (c.basis() == to) return;
     const ColorBasis from = c.basis();
+    if (from.sh_degree > to.sh_degree || from.sb_lobes > to.sb_lobes)
+        throw std::runtime_error("partition inputs changed during merge");
     const int64_t old_k = from.coeffs(), new_k = to.coeffs();
     std::vector<float> rows((size_t)(c.num * new_k * 3), 0.0f);
     for (int64_t i = 0; i < c.num; i++) {
@@ -56,71 +61,106 @@ void append(SplatCloud& out, const SplatCloud& in, const std::vector<uint8_t>& k
     for (uint8_t k : keep) out.num += k;
 }
 
-}  // namespace
+struct PartFrame {
+    Sim3 dataset_from_train;
+    std::optional<RegionCameras> cameras;
+};
 
-SplatCloud merge_partition_splats(const ScenePartition& p, const std::vector<std::string>& part_paths,
-                                  MergeStats& stats,
-                                  const std::function<void(const std::string&)>& log) {
+PartFrame part_frame(const std::string& ply, const std::string& run_dir, const std::string& hash) {
+    PartFrame frame;
+    SceneTransform transform;
+    if (!hash.empty()) {
+        frame.cameras = read_region_cameras(ply, hash);
+        transform = frame.cameras->train_from_dataset;
+    } else if (!run_dir.empty()) {
+        SceneTransform parsed;
+        if (read_scene_transform_json((fs::path(run_dir) / "scene_transform.json").string(), parsed))
+            transform = parsed;
+    }
+    const SceneTransform inverse = transform.inverse();
+    frame.dataset_from_train.s = inverse.scale;
+    std::copy(inverse.R, inverse.R + 9, frame.dataset_from_train.R);
+    std::copy(inverse.t, inverse.t + 3, frame.dataset_from_train.t);
+    return frame;
+}
+
+bool same_camera_metadata(const MergeStats& a, const MergeStats& b) {
+    return a.parts.size() == b.parts.size() && std::equal(a.parts.begin(), a.parts.end(), b.parts.begin(),
+        [](const MergePartStats& x, const MergePartStats& y) { return x.region_camera_hash == y.region_camera_hash; });
+}
+
+using MergeRows = std::function<void(SplatCloud&, const std::vector<uint8_t>&)>;
+
+void visit_partition_splats(const ScenePartition& p, const std::vector<std::string>& paths,
+                            MergeStats& stats, const MergeRows& rows,
+                            const std::function<void(const std::string&)>& log) {
     stats = MergeStats{};
     stats.parts.resize((size_t)p.num_parts);
-    std::vector<SplatCloud> clouds((size_t)p.num_parts);
-    std::vector<std::vector<uint8_t>> keeps((size_t)p.num_parts);
-    ColorBasis basis;
+    std::optional<bool> mip;
     for (int k = 0; k < p.num_parts; k++) {
-        if (k >= (int)part_paths.size() || part_paths[(size_t)k].empty()) continue;
-        auto [ply, run_dir] = find_splat_ply(part_paths[(size_t)k]);
-        SplatCloud& c = clouds[(size_t)k];
-        c = read_splat_ply(ply);
-        MergePartStats& st = stats.parts[(size_t)k];
+        if (k >= (int)paths.size() || paths[(size_t)k].empty()) continue;
+        auto [ply, run_dir] = find_splat_ply(paths[(size_t)k]);
+        auto& st = stats.parts[(size_t)k];
         st.ply = ply;
-        st.read = c.num;
-        st.sh_degree = c.sh_degree;
-        // Back into the dataset's frame, which is the frame the partition's
-        // regions are in.
-        SceneTransform T;
-        if (!run_dir.empty() &&
-            read_scene_transform_json((fs::path(run_dir) / "scene_transform.json").string(), T)) {
-            const SceneTransform W = T.inverse();
-            Sim3 S;
-            S.s = W.scale;
-            for (int i = 0; i < 9; i++) S.R[i] = W.R[i];
-            for (int i = 0; i < 3; i++) S.t[i] = W.t[i];
+        const auto shape = splat_ply_shape(ply);
+        st.read = shape.num;
+        st.sh_degree = shape.sh_degree;
+        stats.sh_degree = std::max(stats.sh_degree, shape.sh_degree);
+        stats.sb_lobes = std::max(stats.sb_lobes, shape.sb_lobes);
+        st.region_camera_hash = shape.region_camera_hash;
+        const auto frame = part_frame(ply, run_dir, shape.region_camera_hash);
+        const Sim3& S = frame.dataset_from_train;
+        LabelField fallback_cameras;
+        if (!frame.cameras) {
+            std::vector<float> cameras;
+            for (int32_t f : p.frames_of(k))
+                cameras.insert(cameras.end(), p.frame_centers.begin() + (size_t)f * 3,
+                               p.frame_centers.begin() + (size_t)f * 3 + 3);
+            const std::vector<int32_t> labels(cameras.size() / 3, 0);
+            fallback_cameras = LabelField::build(cameras.data(), labels.data(), nullptr, (int64_t)labels.size(), 4);
+        }
+        const LabelField& camera_field = frame.cameras ? frame.cameras->field : fallback_cameras;
+        SplatCloud c;
+        std::vector<uint8_t> keep;
+        read_splat_ply_chunks(ply, 65536, [&](const SplatCloud& input, int64_t, int64_t total) {
+            if (total != shape.num || input.basis() != shape.basis() || input.primitive != shape.primitive ||
+                input.region_camera_hash != shape.region_camera_hash)
+                throw std::runtime_error("partition inputs changed during merge: " + ply);
+            c = input;
             if (!S.is_identity()) transform_splats(c, S);
-        }
-        // Each splat's short axis, pointed at the nearest of the cameras that
-        // trained it, decides which side of a surface it is: the wall's back,
-        // seen only from the next room, stays with that room's model.
-        std::vector<float> cam_xyz;
-        std::vector<int32_t> cam_idx;
-        for (int32_t f : p.frames_of(k)) {
-            cam_xyz.insert(cam_xyz.end(), p.frame_centers.begin() + (size_t)f * 3,
-                           p.frame_centers.begin() + (size_t)f * 3 + 3);
-            cam_idx.push_back((int32_t)cam_idx.size());
-        }
-        LabelField cams;
-        if (!cam_xyz.empty())
-            cams = LabelField::build(cam_xyz.data(), cam_idx.data(), nullptr, (int64_t)cam_idx.size(), 4);
-        std::vector<uint8_t>& keep = keeps[(size_t)k];
-        keep.resize((size_t)c.num);
+            keep.resize((size_t)c.num);
 #pragma omp parallel for schedule(static)
-        for (int64_t i = 0; i < c.num; i++) {
-            const double q[3] = {c.means[(size_t)i * 3], c.means[(size_t)i * 3 + 1], c.means[(size_t)i * 3 + 2]};
-            double n[3];
-            const double* np = nullptr;
-            if (!cams.empty()) {
-                const int cam = cams.label(q);
-                if (cam >= 0 && cam < (int)cam_idx.size()) {
-                    const float* cc = &cams.seeds[(size_t)cam * 4];
+            for (int64_t i = 0; i < c.num; i++) {
+                const float* qf = c.means.data() + (size_t)i * 3;
+                const double q[3] = {qf[0], qf[1], qf[2]};
+                double normal[3];
+                const double* np = nullptr;
+                const float* query_point = frame.cameras ? input.means.data() + (size_t)i * 3 : qf;
+                const double query[3] = {query_point[0], query_point[1], query_point[2]};
+                const int64_t camera = p.field && !p.field->euclidean ? camera_field.nearest_seed(query) : -1;
+                if (camera >= 0) {
+                    const float* seed = camera_field.seeds.data() + (size_t)camera * 4;
+                    const double point[3] = {seed[0], seed[1], seed[2]};
+                    double cc[3];
+                    if (frame.cameras) S.apply(point, cc);
+                    else std::copy(point, point + 3, cc);
                     const double to[3] = {cc[0] - q[0], cc[1] - q[1], cc[2] - q[2]};
-                    splat_normal(&c.quats[(size_t)i * 4], &c.scales[(size_t)i * 3], to, n);
-                    np = n;
+                    splat_normal(&c.quats[(size_t)i * 4], &c.scales[(size_t)i * 3], to, normal);
+                    np = normal;
                 }
+                keep[(size_t)i] = p.field && p.field->label(q, np) == k;
             }
-            keep[(size_t)i] = p.field && p.field->label(q, np) == k;
-        }
-        st.kept = std::count(keep.begin(), keep.end(), (uint8_t)1);
-        basis.sh_degree = std::max(basis.sh_degree, c.sh_degree);
-        basis.sb_lobes = std::max(basis.sb_lobes, c.sb_lobes);
+            const int64_t kept = std::count(keep.begin(), keep.end(), (uint8_t)1);
+            st.kept += kept;
+            stats.total += kept;
+            if (kept) {
+                const bool part_mip = c.primitive == "mip";
+                if (mip && *mip != part_mip)
+                    throw std::runtime_error("cannot merge Mip-trained and classic or untagged splats in one PLY: " + ply);
+                mip = part_mip;
+                if (rows) rows(c, keep);
+            }
+        });
         if (log) {
             char buf[256];
             std::snprintf(buf, sizeof buf, "part %d: %lld splats read, %lld inside its region (%s)", k,
@@ -128,21 +168,72 @@ SplatCloud merge_partition_splats(const ScenePartition& p, const std::vector<std
             log(buf);
         }
     }
+    if (mip.value_or(false)) stats.primitive = "mip";
+}
+
+}  // namespace
+
+SplatCloud merge_partition_splats(const ScenePartition& p, const std::vector<std::string>& paths,
+                                  MergeStats& stats,
+                                  const std::function<void(const std::string&)>& log) {
+    visit_partition_splats(p, paths, stats, {}, log);
     SplatCloud out;
-    out.num = 0;
-    out.sh_degree = basis.sh_degree;
-    out.sb_lobes = basis.sb_lobes;
-    for (int k = 0; k < p.num_parts; k++) {
-        if (clouds[(size_t)k].num == 0 && keeps[(size_t)k].empty()) continue;
-        if (clouds[(size_t)k].primitive == "mip") out.primitive = "mip";
-        pad_color(clouds[(size_t)k], basis);
-        append(out, clouds[(size_t)k], keeps[(size_t)k]);
-        clouds[(size_t)k] = SplatCloud{};
-    }
-    stats.total = out.num;
-    stats.sh_degree = basis.sh_degree;
-    stats.sb_lobes = basis.sb_lobes;
+    out.sh_degree = stats.sh_degree;
+    out.sb_lobes = stats.sb_lobes;
+    out.primitive = stats.primitive;
+    out.means.reserve((size_t)stats.total * 3);
+    out.quats.reserve((size_t)stats.total * 4);
+    out.scales.reserve((size_t)stats.total * 3);
+    out.opacities.reserve((size_t)stats.total);
+    out.features_dc.reserve((size_t)stats.total * 3);
+    out.features_sh.reserve((size_t)stats.total * out.coeffs() * 3);
+    MergeStats checked;
+    visit_partition_splats(p, paths, checked, [&](SplatCloud& c, const std::vector<uint8_t>& keep) {
+        pad_color(c, out.basis());
+        append(out, c, keep);
+    }, {});
+    if (out.num != stats.total || checked.sh_degree != stats.sh_degree || checked.sb_lobes != stats.sb_lobes ||
+        checked.primitive != stats.primitive || !same_camera_metadata(checked, stats))
+        throw std::runtime_error("partition inputs changed during merge");
     return out;
+}
+
+void merge_partition_splats_file(const ScenePartition& p, const std::vector<std::string>& paths,
+                                 const std::string& output, MergeStats& stats,
+                                 const std::function<void(const std::string&)>& log) {
+    visit_partition_splats(p, paths, stats, {}, log);
+    std::error_code ec;
+    for (const auto& part : stats.parts) {
+        if (part.ply.empty()) continue;
+        if (fs::weakly_canonical(part.ply) == fs::weakly_canonical(output))
+            throw std::runtime_error("partition merge requires a separate output");
+    }
+    fs::create_directories(fs::path(output).parent_path(), ec);
+    const auto directory = reserve_file_directory(output);
+    const auto temporary = directory / "model.ply";
+    try {
+        BufferedOutputFile file(temporary, std::ios::binary);
+        if (!file) throw std::runtime_error("cannot open for writing: " + temporary.string());
+        const ColorBasis basis{stats.sh_degree, stats.sb_lobes};
+        file << splat_ply_header(stats.total, basis, stats.primitive);
+        MergeStats checked;
+        std::vector<float> buffer;
+        visit_partition_splats(p, paths, checked, [&](SplatCloud& c, const std::vector<uint8_t>& keep) {
+            pad_color(c, basis);
+            write_splat_ply_rows(c, file, buffer, keep.data());
+        }, {});
+        file.close();
+        if (!file) throw std::runtime_error("write failed: " + temporary.string());
+        if (checked.total != stats.total || checked.sh_degree != stats.sh_degree || checked.sb_lobes != stats.sb_lobes ||
+            checked.primitive != stats.primitive || !same_camera_metadata(checked, stats))
+            throw std::runtime_error("partition inputs changed during merge");
+        replace_file(temporary, output);
+        fs::remove(directory, ec);
+    } catch (...) {
+        fs::remove(temporary, ec);
+        fs::remove(directory, ec);
+        throw;
+    }
 }
 
 std::vector<std::string> find_partition_runs(const std::string& outputs_dir,

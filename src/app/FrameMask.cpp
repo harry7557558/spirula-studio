@@ -1,5 +1,6 @@
 // FrameMask.cpp -- see FrameMask.h.
 
+#include "data/ImageDiscovery.h"
 #include "app/FrameMask.h"
 
 #include "app/FrameLook.h"
@@ -1027,6 +1028,7 @@ namespace {
 namespace fs = std::filesystem;
 
 bool is_image_file(const fs::path& p) {
+    if (image_discovery::generated_cache(p)) return false;
     std::string e = p.extension().string();
     for (char& c : e) c = (char)std::tolower((unsigned char)c);
     return e == ".png" || e == ".jpg" || e == ".jpeg" || e == ".bmp" ||
@@ -1071,6 +1073,7 @@ std::map<std::string, std::vector<std::string>> group_frames_by_camera(
              root, fs::directory_options::skip_permission_denied |
                        fs::directory_options::follow_directory_symlink, ec), end;
          !ec && it != end; it.increment(ec)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (!it->is_regular_file(ec) || !is_image_file(it->path())) continue;
         const std::string at = it->path().lexically_normal().generic_string();
         if (std::any_of(skips.begin(), skips.end(),

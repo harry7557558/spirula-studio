@@ -187,8 +187,7 @@ bool load_background_sh(const fs::path& ckpt_dir,
                         int& out_transfer,
                         bool& out_is_linear,
                         std::vector<float>* out_color_matrix) try {
-    const fs::path tarpath = ckpt_dir.filename() == "state.tar" ? ckpt_dir
-        : resolve_checkpoint(ckpt_dir).ckpt_dir / "state.tar";
+    const fs::path tarpath = resolve_checkpoint(ckpt_dir).tar_path;
 
     std::ifstream in(tarpath, std::ios::binary);
     if (!in) return false;

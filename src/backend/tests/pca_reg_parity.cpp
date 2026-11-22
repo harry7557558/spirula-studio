@@ -712,12 +712,7 @@ MathLoss math_loss(const MathCloud& c, int covariance, bool sa, const MathLoss* 
     const double inv = sa ? 1 / (frozen ? frozen->trace : out.trace) : 1;
     out.value[0] = ev[0] * inv;
     out.value[1] = (ev[2] - ev[1]) * inv;
-    double entropy = 0;
-    for (double l : ev) {
-        const double p = (std::max(l, 0.0) / out.trace + 1e-8) / (1 + 3e-8);
-        entropy -= p * std::log(p);
-    }
-    out.value[4] = std::pow(std::max(std::exp(entropy) - 2, 0.0), 2);
+    out.value[4] = std::pow(std::max(ev[0], 0.0) / out.trace, 2);
     for (int i = 0; i < n; i++) {
         int axis = 0;
         for (int a = 1; a < 3; a++) if (c.scales[3 * i + a] < c.scales[3 * i + axis]) axis = a;
@@ -848,7 +843,7 @@ void test_covariance_limits() {
         scan((const float*)m.data(), 3*n); scan((const float*)q.data(), 4*n);
         scan((const float*)s.data(), 3*n); scan(a.data(), n); scan(l.data(), 5);
         check(finite, "degenerate/saturated covariance case " + std::to_string(shape) + " is finite");
-        if (shape < 2) check(l[3] < 1e-10, "effective rank hinge is inactive on rank <= 2");
+        if (shape < 2) check(l[3] < 1e-10, "smallest-eigenvalue share vanishes on rank <= 2");
         if (shape == 0) check(l[2] == 0 && l[4] == 0, "undefined PCA normal disables directional terms");
         vm.zero(); sums.zero();
         pca_reg_neighborhood_tensor(n, (int)PcaRegMode::List, k, 0, d.means.v(), d.quats.v(),

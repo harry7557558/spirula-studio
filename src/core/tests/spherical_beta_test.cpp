@@ -181,6 +181,22 @@ int main() {
     const spirula::SplatCloud back_mip = spirula::read_splat_ply((dir / "mip.ply").string());
     check(back_mip.primitive == "mip", "mip tag roundtrips through PLY header");
 
+    const auto import_mode = [&](const std::string& comments) {
+        const fs::path path = dir / "external.ply";
+        std::string header = spirula::splat_ply_header(0, {});
+        header.insert(header.find("element vertex"), comments);
+        std::ofstream(path, std::ios::binary) << header;
+        return spirula::read_splat_ply(path.string()).primitive;
+    };
+    check(import_mode("comment postshot.anti_aliasing=1\n") == "mip",
+          "Postshot's current header enables Mip");
+    check(import_mode("comment antialiased 1\n") == "mip",
+          "Postshot's legacy header enables Mip");
+    check(import_mode("comment note: SplatRenderMode: mip\n").empty(),
+          "unrelated header comments do not set the render mode");
+    check(import_mode("comment postshot.anti_aliasing=1\ncomment SPLATRENDERMODE: default\n").empty(),
+          "the last recognized render-mode comment wins");
+
     // ---- a placement baked on save turns the lobes ----
     spirula::Sim3 T;
     random_rotation(rng, T.R);

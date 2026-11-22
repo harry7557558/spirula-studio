@@ -190,6 +190,7 @@ __global__ void compute_relocation_mask_kernel(
     uint32_t dead_after_steps,
     bool dead_by_opacity,
     const float* __restrict__ max_weight,
+    float min_weight,
     bool* __restrict__ masks,
     int32_t* __restrict__ num_relocate,
     int32_t* __restrict__ relocate_indices
@@ -207,7 +208,7 @@ __global__ void compute_relocation_mask_kernel(
         float3 feature_dc = features_dc[idx];
 
         bool is_low_opac = (dead_by_opacity && sigmoid(opac) <= min_opacity)
-            || (max_weight != nullptr && max_weight[idx] <= min_opacity);
+            || (max_weight != nullptr && max_weight[idx] <= min_weight);
 
         bool is_finite = isfinite(
             dot(mean, mean) / dot(quat, quat) + dot(scale, feature_dc) * opac
@@ -250,8 +251,9 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     DeviceVector<uint32_t> visit_counters,
     uint32_t dead_after_steps,
     // Peak alpha * T per splat; when given it is a second dead test against
-    // min_opacity and is carried src -> dst. dead_by_opacity keeps the first.
+    // min_weight and is carried src -> dst. dead_by_opacity keeps the first.
     DeviceVector<float> max_weight,
+    float min_weight,
     bool dead_by_opacity,
     int sh_optim_bits,
     int num_sh,
@@ -304,6 +306,7 @@ int64_t relocate_splats_with_long_axis_split_tensor(
         dead_after_steps,
         dead_by_opacity,
         max_weight.data_ptr(),
+        min_weight,
         mask,
         num_relocate_ptr,
         dst_indices

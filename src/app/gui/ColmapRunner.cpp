@@ -2,6 +2,7 @@
 // reference/scripts/run_colmap.bash (COLMAP >= 4.x; use_gpu-style flags are
 // gone).
 
+#include "data/ImageDiscovery.h"
 #include "app/gui/ColmapRunner.h"
 
 
@@ -173,6 +174,7 @@ void write_unregistered_list(const fs::path& ws, const std::string& images_dir) 
     std::error_code ec;
     for (fs::recursive_directory_iterator it(images_dir, ec), end;
          !ec && it != end; it.increment(ec)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (!it->is_regular_file()) continue;
         std::string ext = it->path().extension().string();
         for (char& c : ext) c = char(std::tolower((unsigned char)c));

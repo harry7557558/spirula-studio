@@ -1,5 +1,6 @@
 // PreviewFrames.cpp -- see PreviewFrames.h.
 
+#include "data/ImageDiscovery.h"
 #include "app/gui/PreviewFrames.h"
 
 #include "app/CubeLut.h"
@@ -257,9 +258,11 @@ void collect_preview_frames(PreviewSource& src, int offers,
     for (fs::recursive_directory_iterator it(
              src.input, fs::directory_options::skip_permission_denied |
                             fs::directory_options::follow_directory_symlink, ec), end;
-         !cancel.load() && !ec && it != end; it.increment(ec))
+         !cancel.load() && !ec && it != end; it.increment(ec)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (it->is_regular_file(ec) && is_image_file(it->path()))
             all_files.push_back(it->path().string());
+    }
     if (cancel.load()) return;
     std::sort(all_files.begin(), all_files.end());
 

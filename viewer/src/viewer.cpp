@@ -28,6 +28,7 @@
 // or ascii PLY.
 #include "data/FastFloat.h"
 #include "data/SceneCenter.h"
+#include "checkpoint/SplatPlyMetadata.h"
 
 #define KEEP EMSCRIPTEN_KEEPALIVE extern "C"
 
@@ -90,6 +91,7 @@ static inline int8_t q8(float v, float inv_scale) {
 
 struct SplatData {
     uint32_t count = 0;
+    bool mip = false;
     int sh_degree = 0;            // 0..4
     int sh_rest = 0;              // rest coeffs per channel K (0,3,8,15,24)
     std::vector<float> posop;     // count*4 : x,y,z, opacity(sigmoid) — f32
@@ -104,7 +106,7 @@ struct SplatData {
     int sb_lobes = 0;
     std::vector<uint16_t> sb;     // count*sb_lobes*8
     void clear() {
-        count = 0; sh_degree = 0; sh_rest = 0; sb_lobes = 0;
+        count = 0; sh_degree = 0; sh_rest = 0; sb_lobes = 0; mip = false;
         posop.clear(); quat.clear(); scale.clear(); fdc.clear(); sh.clear();
         sb.clear();
         posop.shrink_to_fit(); quat.shrink_to_fit(); scale.shrink_to_fit();
@@ -182,6 +184,7 @@ struct PlyElem {
 
 struct PlyHeader {
     int format = 0;             // 0 ascii, 1 binary_le, 2 binary_be
+    bool mip = false;
     std::vector<PlyElem> elems;
     size_t data_offset = 0;
 };
@@ -263,6 +266,8 @@ static bool parse_ply_header(const uint8_t* data, size_t len, PlyHeader& h) {
             h.elems.back().props.push_back(pr);
         } else if (line.rfind("end_header", 0) == 0) {
             break;
+        } else if (const auto mode = spirula::mip_from_ply_comment(line)) {
+            h.mip = *mode;
         }
     }
     return !h.elems.empty();
@@ -418,6 +423,7 @@ static bool parse_splat_ply(const uint8_t* data, size_t len, const PlyHeader& h,
                             const PlyElem& ve) {
     uint64_t N = ve.count;
     g_splat.clear();
+    g_splat.mip = h.mip;
     g_splat.count = (uint32_t)N;
     g_splat.posop.resize(N*4);
     g_splat.quat.resize(N*4);
@@ -1061,6 +1067,7 @@ KEEP int ssv_stream_begin(uint8_t* hdr, uint32_t hlen) {
     if (looks_splat && !fe) {
         g_splat.clear();
         if (!splat_ctx_init(sctx, *ve)) return 0;
+        g_splat.mip = h.mip;
         fcount = 0;
         kind = 1;
     } else if (!fe && !looks_splat) {
@@ -1172,6 +1179,7 @@ KEEP int ssv_reduce_sh(int new_degree){
 KEEP int ssv_kind(){ return g_last_kind; }
 
 KEEP uint32_t ssv_splat_count(){ return g_splat.count; }
+KEEP int ssv_splat_mip(){ return g_splat.mip; }
 KEEP int ssv_splat_sh_degree(){ return g_splat.sh_degree; }
 KEEP int ssv_splat_sh_rest(){ return g_splat.sh_rest; }
 KEEP float* ssv_splat_posop(){ return g_splat.posop.data(); }

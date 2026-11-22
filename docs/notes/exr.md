@@ -35,10 +35,13 @@ image scales across cores.
 - **Broken offset tables** — an all-zero chunk table (an interrupted write) is
   reconstructed by walking the chunks. Individual zero entries are skipped.
 
-Correctness is checked against OpenEXR itself: 77 generated cases across that
-matrix decode **bit-exactly**, single- and multi-threaded, as do the two
-6000x4000 production captures and eight frames spread across a 3840x2160
-`DWAA` shot.
+Correctness is checked against OpenEXR itself with 77 generated cases, on one
+and multiple threads. Non-DWA cases require bit equality, including NaN
+payloads. DWA comparisons allow two half-float relative steps plus 1e-6 in its
+nonlinear domain for DCT and LUT rounding. Thread counts must give identical
+bytes for every codec. The CPU-dependent inverse DCT is described below. The
+SSE2 reference also matched two 6000x4000 production captures and eight
+frames spread across a 3840x2160 `DWAA` shot bit-exactly.
 
 ## What it refuses, and what to do about it
 

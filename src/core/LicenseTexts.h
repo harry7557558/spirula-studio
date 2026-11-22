@@ -1,6 +1,6 @@
 #pragma once
-// The licence texts shown before a download, generated from LICENSES/ by
-// tools/gen_license_texts.py. Byte for byte what the licensors published.
+// Verbatim download terms and bundled library notices, embedded by
+// tools/gen_license_texts.py.
 
 namespace spirula::license {
 
@@ -11,5 +11,7 @@ extern const char* const kBirefnetMit;       // ZhengPeng, MIT (BiRefNet)
 extern const char* const kRomaMit;           // Johan Edstedt, MIT (RoMa v2)
 extern const char* const kDinov3License;     // Meta, "DINOv3 License", Last Updated: August 19, 2025
 extern const char* const kFlexGlueMit;       // Computer Vision and Geometry Lab, MIT (FlexGlue)
+extern const char* const kAprilTagBsd;
+extern const char* const kAprilTagOpenCvApache;
 
 }  // namespace spirula::license

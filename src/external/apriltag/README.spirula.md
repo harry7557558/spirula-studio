@@ -2,6 +2,13 @@ AprilTag is vendored from https://github.com/AprilRobotics/apriltag .
 The ArUco 4x4, 5x5, 6x6 and 7x7 tables are unmodified files from
 `b7c0ebe9aa20f82ec7a828579004f9e706bfecd9` (`aruco/`). Their first 50, 100 and 250
 entries also cover those smaller OpenCV dictionaries, with the same IDs.
+The `tagStandard41h12` and `tagStandard52h13` tables are unmodified files from
+the same commit.
+
+`apriltag_quad_thresh.c` has one functional local change: a quad's minimum size
+comes from the families with its border polarity. Without it, `tagStandard41h12`
+(border width 5) lets the detector accept smaller quads for every family in auto
+mode.
 
 The detector is BSD-2-Clause (`LICENSE.md`). The ArUco tables additionally
 carry OpenCV's Apache-2.0 notice (`LICENSE-OpenCV.txt`). No OpenCV runtime

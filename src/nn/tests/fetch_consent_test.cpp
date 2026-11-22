@@ -8,6 +8,8 @@
 #include "app/gui/FetchSource.h"
 #include "core/LicenseConsent.h"
 #include "core/ModelMirror.h"
+#include "i18n/Message.h"
+#include "i18n/catalog/Cli.h"
 #include "nn/core/Error.h"
 #include "nn/io/Fetch.h"
 
@@ -55,6 +57,12 @@ std::string message_of(const std::function<void()>& fn) {
 
 bool has(const std::string& hay, const std::string& needle) {
     return hay.find(needle) != std::string::npos;
+}
+
+bool refuses_family(const std::string& message, const char* family) {
+    const auto* terms = lic::terms_for(family);
+    return terms && has(message, spirula::i18n::format(
+        spirula::i18n::msg::cli::license_no_terminal, {terms->title, terms->url, family}));
 }
 
 std::string slurp(const fs::path& p) {
@@ -122,7 +130,7 @@ void test_refusal() {
     reset_dirs();
     const nn::FetchFile f = never_file("sam3,gdino");
     const std::string m = message_of([&] { nn::ensure_file(f, "test"); });
-    check(has(m, "has not been accepted") && has(m, "--accept-license sam3"),
+    check(refuses_family(m, "sam3") && has(m, "--accept-license sam3"),
           "unaccepted family: ensure_file REFUSES, naming the family and the flag");
     check(!fs::exists(g_root / "cache" / "spirula-studio" / "models" / "consent-test.bin.part") &&
               !fs::exists(g_root / "cache" / "spirula-studio" / "models" / "consent-test.bin"),
@@ -140,7 +148,7 @@ void test_refusal() {
           "a cached, hash-correct copy loads with no consent recorded");
     fs::remove(dst);
     const std::string m2 = message_of([&] { nn::ensure_file(cached, "test"); });
-    check(has(m2, "has not been accepted"), "the same file, absent: the DOWNLOAD is refused");
+    check(refuses_family(m2, "sam3"), "the same file, absent: the DOWNLOAD is refused");
 
     // Positive control: with consent, the same call gets as far as the download.
     // Without it the refusals above could be any failure at all.
@@ -149,12 +157,12 @@ void test_refusal() {
     io.out = cap.f;
     app::accept_licenses("sam3=yes", io);
     const std::string m3 = message_of([&] { nn::ensure_file(cached, "test"); });
-    check(has(m3, "has not been accepted") && has(m3, "--accept-license gdino") &&
+    check(refuses_family(m3, "gdino") && has(m3, "--accept-license gdino") &&
               !has(m3, "--accept-license sam3"),
           "accepting sam3 alone still refuses a file that also needs gdino, naming gdino");
     app::accept_licenses("gdino=yes", io);
     const std::string m4 = message_of([&] { nn::ensure_file(f, "test"); });
-    check(!has(m4, "has not been accepted") && m4 != "<did not throw>" &&
+    check(!refuses_family(m4, "sam3") && !refuses_family(m4, "gdino") && m4 != "<did not throw>" &&
               has(m4, "never-downloaded.bin"),
           "accepted but absent: it proceeds to the download, which fails on its own terms");
 }
@@ -187,7 +195,7 @@ void test_require_prompt() {
     const std::string shown = cap.text();
     check(has(m, "was not accepted") && !lic::accepted("sam3") && asked == 1,
           "TTY, 'no': refused after one question, nothing recorded");
-    check(has(shown, lic::terms_for("sam3")->text),
+    check(has(shown, spirula::i18n::ascii_copy(lic::terms_for("sam3")->text)),
           "TTY: the whole SAM license is printed before the question");
     check(has(shown, "read and accept the terms of SAM License (Meta)"),
           "TTY: the question says the user has read and accepts, naming the licence");
@@ -217,7 +225,7 @@ void test_require_prompt() {
     script.out = cap2.f;
     script.read_line = [] { return std::string("yes"); };   // present, but tty is false
     m = message_of([&] { app::require_license("gdino", script); });
-    check(has(m, "--accept-license gdino=yes") && has(m, "no terminal") && !lic::accepted("gdino"),
+    check(refuses_family(m, "gdino") && has(m, "--accept-license gdino=yes") && !lic::accepted("gdino"),
           "no terminal: refused, naming --accept-license gdino=yes, even with an input present");
     check(cap2.text().empty(), "no terminal: nothing is printed to a script's stdout");
     check(message_of([&] { app::require_license(nullptr, script); }) == "<did not throw>" &&
@@ -234,7 +242,7 @@ void test_no_family_unaffected() {
     SS_SETENV("SS_NO_AUTO_FETCH", "1");   // the mirror is a real host; do not call it
     const std::string m = message_of([&] { nn::ensure_file(f, "test"); });
     SS_UNSETENV("SS_NO_AUTO_FETCH");
-    check(has(m, "may not download") && !has(m, "has not been accepted"),
+    check(has(m, "may not download") && !refuses_family(m, "sam3"),
           "a file with no license_family is never gated");
     check(has(m, "modelscope.cn"), "control: an ordinary file's refusal names the project mirror");
     check(!nn::mirror_url(f).empty(), "default FetchFile keeps its project mirror");
@@ -310,12 +318,17 @@ void test_terms_shown() {
     const lic::Terms* d = lic::terms_for("sam3");
     const lic::Terms* r = lic::terms_for("birefnet");
     check(d && r, "both families have terms");
-    check(has(shown, d->text), "the SAM License is printed in full, verbatim");
-    check(has(shown, r->text), "the BiRefNet MIT text is printed in full, verbatim");
+    if (!d || !r) return;
+    const std::string sam = spirula::i18n::ascii_copy(d->text);
+    const std::string birefnet = spirula::i18n::ascii_copy(r->text);
+    check(has(shown, sam), "the full SAM License uses terminal punctuation");
+    check(has(shown, birefnet), "the full BiRefNet MIT text uses terminal punctuation");
     // Everything printed besides the two texts is ours; it must add no term.
     std::string ours = shown;
-    for (const std::string& t : {std::string(d->text), std::string(r->text)})
-        ours.erase(ours.find(t), t.size());
+    for (const std::string& t : {sam, birefnet}) {
+        const size_t at = ours.find(t);
+        if (at != std::string::npos) ours.erase(at, t.size());
+    }
     check(!has(lower(ours), "commercial") && !has(lower(ours), "redistribut"),
           "our framing adds no commercial-use or redistribution wording");
 
@@ -396,7 +409,7 @@ void test_gate_installation() {
     std::vector<std::string> asked;
     nn::set_license_gate([&](const char* families) { asked.push_back(families); });
     m = message_of([&] { nn::ensure_file(f, "test"); });
-    check(asked == std::vector<std::string>{"gdino,sam2"} && !has(m, "has not been accepted"),
+    check(asked == std::vector<std::string>{"gdino,sam2"} && !refuses_family(m, "gdino") && !refuses_family(m, "sam2"),
           "the gate is handed the family list as written, and its silence lets the file through");
     nn::set_license_gate([](const char*) { nn::fail("declined by the test gate"); });
     m = message_of([&] { nn::ensure_file(f, "test"); });

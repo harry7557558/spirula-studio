@@ -389,7 +389,7 @@ int main() {
         check(std::fabs(map_sum / NP / w - ign.flip) <= 1e-4 * ign.flip,
               "flip: the reported mean is the mean of its map");
 
-        // An all-kept mask takes the coverage kernel's float16 path; it must
+        // An all-kept mask takes the coverage kernel's path; it must
         // land where the closed form does, border detectors included.
         Outcome open = run(std::vector<uint8_t>((size_t)NP, 1), false, 0.0f, H, W, w,
                            &rgb, 0.0f, -1.0f, &ref, kFl, (int)DensifyLossMapMode::Flip);

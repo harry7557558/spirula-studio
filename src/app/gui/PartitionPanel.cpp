@@ -156,7 +156,9 @@ void PartitionPanel::run_compute() {
         opt = _compute_opt;
     }
     const bool reuse = _cov_valid && _cov_opt.source == opt.source &&
+                       (opt.method == spirula::PartitionMethod::Voronoi || _cov.camera_graph_built) &&
                        _cov_opt.max_projected_points == opt.max_projected_points &&
+                       _cov_opt.projection_depth_slack == opt.projection_depth_slack &&
                        _cov_opt.proximity_neighbours == opt.proximity_neighbours;
     if (!reuse) {
         spirula::Covisibility cov = spirula::build_covisibility(_ds, &_tracks, opt, log, &_cancel);
@@ -193,11 +195,10 @@ void PartitionPanel::run_merge() {
         saved = _saved_path;
     }
     spirula::MergeStats stats;
-    const spirula::SplatCloud merged = spirula::merge_partition_splats(_part, runs, stats);
-    spirula::write_splat_ply(merged, out);
+    spirula::merge_partition_splats_file(_part, runs, out, stats);
     std::lock_guard<std::mutex> lk(_mu);
     _merged_path = out;
-    _merge_status = format(pmsg::merge_done, {out, (long long)merged.num});
+    _merge_status = format(pmsg::merge_done, {out, (long long)stats.total});
 }
 
 void PartitionPanel::poll() {
@@ -259,6 +260,9 @@ bool PartitionPanel::options_changed() const {
            a.ring_fraction != b.ring_fraction || a.ring_min_points != b.ring_min_points ||
            a.method != b.method || a.outside_seed_fraction != b.outside_seed_fraction ||
            a.max_seeds != b.max_seeds ||
+           a.max_projected_points != b.max_projected_points ||
+           a.projection_depth_slack != b.projection_depth_slack ||
+           a.proximity_neighbours != b.proximity_neighbours ||
            a.source != b.source;
 }
 
@@ -410,10 +414,10 @@ void PartitionPanel::draw_controls() {
     ImGui::BeginDisabled(busy || !_loaded);
     // ---- options ----
     {
-        int m = _opt.method == spirula::PartitionMethod::ViewGraph ? 1 : 0;
+        int m = (int)_opt.method;
         ImGui::SetNextItemWidth(px(-80.0f));
-        if (ui::Combo(pmsg::lbl_method, &m, {&pmsg::meth_graph, &pmsg::meth_viewgraph}))
-            _opt.method = m == 1 ? spirula::PartitionMethod::ViewGraph : spirula::PartitionMethod::Graph;
+        if (ui::Combo(pmsg::lbl_method, &m, {&pmsg::meth_graph, &pmsg::meth_viewgraph, &pmsg::meth_voronoi}))
+            _opt.method = (spirula::PartitionMethod)m;
         ui::help_on_hover(pmsg::opt_method);
     }
     ImGui::SetNextItemWidth(px(-80.0f));

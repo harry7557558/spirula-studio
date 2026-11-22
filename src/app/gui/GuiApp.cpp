@@ -80,6 +80,7 @@
 #endif
 
 #include <algorithm>
+#include <cerrno>
 #include <cfloat>
 #include <chrono>
 #include <cmath>
@@ -346,7 +347,15 @@ GuiApp::~GuiApp() = default;
 void GuiApp::shutdown() {
     if (_dense_delete.valid()) _dense_delete.wait();
     save_settings();
-    save_batch_list(_batch);
+    if (!_batch_save.save(_batch)) {
+        try {
+            const std::string message = i18n::format(emsg::save_failed.terminal(), {_batch_save.error()});
+            std::fprintf(stderr, "%s\n", message.c_str());
+        } catch (...) {
+            std::fprintf(stderr, "batch.json: %s\n", std::strerror(EIO));
+        }
+        std::fflush(stderr);
+    }
     _batch_active = false;
     detach_session_views();
     _viewport.destroy_gl();
@@ -1548,8 +1557,12 @@ void GuiApp::add_batch_mesh_row(const std::string& model) {
 }
 
 void GuiApp::batch_edited() {
-    _batch_dirty = true;
+    _batch_save.edited();
     _batch_checked = false;
+}
+
+void GuiApp::save_batch() {
+    if (!_batch_save.save(_batch)) log(i18n::format(emsg::save_failed, {_batch_save.error()}));
 }
 
 BatchCapabilities GuiApp::batch_capabilities() const {
@@ -1746,8 +1759,7 @@ void GuiApp::start_batch(bool skip_invalid) {
     for (BatchTask& t : _batch_tasks)
         if (batch_has_error(_batch[(size_t)t.row].issues))
             t.status = BatchStatus::Skipped;
-    _batch_dirty = false;
-    save_batch_list(_batch);
+    save_batch();
 
     _batch_active = true;
     _batch_launched = false;
@@ -1821,7 +1833,7 @@ void GuiApp::record_batch_task() {
                 // row remembers it even for a re-run started later.
                 if (t.row < (int)_batch.size() && _batch[(size_t)t.row].dataset.empty()) {
                     _batch[(size_t)t.row].dataset = t.result;
-                    _batch_dirty = true;
+                    _batch_save.edited();
                 }
             }
             break;
@@ -2066,7 +2078,7 @@ void GuiApp::finish_batch() {
         if (_batch[(size_t)i].enabled && batch_row_done(i)) {
             _batch[(size_t)i].enabled = false;
             _batch[(size_t)i].done = true;
-            _batch_dirty = true;
+            _batch_save.edited();
         }
     _batch_active = false;
     _batch_launched = false;
@@ -2078,10 +2090,7 @@ void GuiApp::finish_batch() {
                                (long long)other});
     _batch_msg_err = failed > 0;
     log(_batch_msg);
-    if (_batch_dirty) {
-        _batch_dirty = false;
-        save_batch_list(_batch);
-    }
+    if (_batch_save.dirty()) save_batch();
     run_batch_command(i18n::format(msg::batch_cmd_message,
                                    {(long long)done, (long long)failed,
                                     (long long)other}));
@@ -2160,16 +2169,12 @@ static bool is_image_ext(const fs::path& p) {
 // Is this folder a finished model rather than a dataset -- a run directory, or
 // one of its checkpoints? Then it belongs in the viewer.
 static bool looks_like_model(const fs::path& p) {
-    std::error_code ec;
-    if (fs::is_regular_file(p / "splat.ply", ec)) return true;
-    for (fs::directory_iterator it(p, ec), end; !ec && it != end; it.increment(ec)) {
-        const std::string b = it->path().filename().string();
-        if (it->is_directory(ec) &&
-            (b.rfind("step-", 0) == 0 || b.find(".ckpt") != std::string::npos) &&
-            fs::is_regular_file(it->path() / "splat.ply", ec))
-            return true;
+    try {
+        spirula::find_splat_ply(p.string());
+        return true;
+    } catch (const std::exception&) {
+        return false;
     }
-    return false;
 }
 
 // What the viewer will find in a recent model, asked of the file the way the
@@ -2906,11 +2911,12 @@ void GuiApp::draw_stencil_rows(const MaskingPanel& p) {
         auto open_panel = [&] {
             if (scan) {
                 _mask_try_scan = (int)t.scans[row.input - t.inputs];
-                open_scan_mask_preview((size_t)_mask_try_scan);
+                open_scan_mask_preview((size_t)_mask_try_scan, row.camera);
             } else {
                 _mask_try_scan = -1;
                 *p.preview_input = (int)row.input;
                 p.open_preview();
+                if (_segment.is_open()) _segment.edit_camera(row.camera);
             }
         };
         ImGui::TableNextRow();
@@ -3027,12 +3033,13 @@ bool GuiApp::scan_photos_busy() const {
            _scan_photos.wait_for(std::chrono::seconds(0)) != std::future_status::ready;
 }
 
-void GuiApp::open_scan_mask_preview(size_t scan) {
+void GuiApp::open_scan_mask_preview(size_t scan, std::optional<std::string> camera) {
     if (native_work_busy() || scan >= _lidar.size() || _workspace.empty()) return;
     std::vector<std::string> clouds;
     for (const LidarInput& l : _lidar) clouds.push_back(l.path);
     const std::string ws = _workspace;
     _scan_photos_for = scan;
+    _scan_camera = std::move(camera);
     log(i18n::format(ldmsg::scan_photos_extracting, {_lidar[scan].path}));
     _scan_photos = std::async(std::launch::async, [clouds, scan, ws] {
         std::string dir, err;
@@ -3045,6 +3052,7 @@ void GuiApp::pump_scan_photos() {
     if (!_scan_photos.valid() || scan_photos_busy()) return;
     const auto [dir, err] = _scan_photos.get();
     const std::optional<SegmentPanel::EditRequest> edit = std::exchange(_scan_edit, std::nullopt);
+    const std::optional<std::string> camera = std::exchange(_scan_camera, std::nullopt);
     const size_t scan = _scan_photos_for;
     if (scan >= _lidar.size()) return;   // removed meanwhile (forget_scan)
     if (!err.empty()) {
@@ -3059,6 +3067,7 @@ void GuiApp::pump_scan_photos() {
     PrepInput photos;
     photos.path = dir;
     open_segment(preview_source_for(photos, ""));
+    if (camera) _segment.edit_camera(*camera);
     if (edit) _segment.edit_saved(*edit);
 }
 
@@ -3632,10 +3641,7 @@ void GuiApp::frame() {
 
     // The queue survives a restart, so it is written back once the widget
     // being edited is idle -- the same deferral the dataset options use.
-    if (_batch_dirty && !ImGui::IsAnyItemActive()) {
-        _batch_dirty = false;
-        save_batch_list(_batch);
-    }
+    if (_batch_save.needs_autosave() && !ImGui::IsAnyItemActive()) save_batch();
     // Same deferral for a dragged splitter: the file would otherwise be
     // rewritten on every frame of the drag.
     if (_layout_dirty && !ImGui::IsAnyItemActive()) {
@@ -3828,7 +3834,8 @@ void GuiApp::draw_menu_bar() {
                       FileDialog::Mode::Folder);
         }
         if (ui::MenuItem(msg::resume_training, nullptr, false, !native_work_busy() && !training_busy()))
-            open_pick(PickAction::ResumeRun, msg::resume_training.get(), FileDialog::Mode::Folder);
+            open_pick(PickAction::ResumeRun, msg::resume_training.get(),
+                      FileDialog::Mode::FileOrFolder, {".tar", ".ply"});
         ui::help_on_hover_disabled(msg::resume_training_help);
         if (ui::MenuItem(msg::menu_new_dataset) && !native_work_busy()) {
             close_splat();
@@ -4115,7 +4122,8 @@ void GuiApp::draw_home() {
     if (_keep_full_ckpt) {
         ImGui::BeginDisabled(native_work_busy() || training_busy());
         if (ui::Button(msg::resume_training, ImVec2(-1, bh)))
-            open_pick(PickAction::ResumeRun, msg::resume_training.get(), FileDialog::Mode::Folder);
+            open_pick(PickAction::ResumeRun, msg::resume_training.get(),
+                      FileDialog::Mode::FileOrFolder, {".tar", ".ply"});
         ImGui::EndDisabled();
         ui::help_on_hover_disabled(msg::resume_training_help);
     }
@@ -9823,6 +9831,11 @@ void GuiApp::draw_mesh_options() {
         ui::InputInt(msg::mesh_max_cameras, &_mesh_job.max_cameras);
         _mesh_job.max_cameras = std::max(0, _mesh_job.max_cameras);
         ui::help_on_hover(msg::mesh_max_cameras_help);
+        int method = _mesh_job.tsdf ? 1 : 0;
+        ImGui::SetNextItemWidth(px(220.0f));
+        if (ui::Combo(msg::mesh_method, &method, {&msg::mesh_method_opacity, &msg::mesh_method_tsdf}))
+            _mesh_job.tsdf = method == 1;
+        ui::help_on_hover(msg::mesh_method_help);
         ImGui::Unindent();
     }
 
@@ -10331,6 +10344,8 @@ void GuiApp::draw_batch() {
 
     if (!_batch_msg.empty())
         ui::TextColoredWrappedRaw(_batch_msg_err ? kErr : kOk, _batch_msg);
+    if (_batch_save.failed())
+        ui::TextColoredWrapped(kErr, emsg::save_failed, {_batch_save.error()});
 
     draw_batch_issues();
     draw_batch_command();
@@ -10442,7 +10457,6 @@ bool GuiApp::launch_batch_merge(BatchTask& task, const BatchRow& row) {
             for (const std::string& r : runs) found += !r.empty();
             if (found == 0) throw std::runtime_error(pmsg::err_nothing_to_merge.get());
             spirula::MergeStats st;
-            const spirula::SplatCloud merged = spirula::merge_partition_splats(p, runs, st);
             char stamp[32];
             const std::time_t now = std::time(nullptr);
             std::strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", std::localtime(&now));
@@ -10450,7 +10464,7 @@ bool GuiApp::launch_batch_merge(BatchTask& task, const BatchRow& row) {
             std::error_code ec;
             fs::create_directories(outputs, ec);
             const std::string out = (fs::path(outputs) / (stem + "_merged_" + stamp + ".ply")).string();
-            spirula::write_splat_ply(merged, out);
+            spirula::merge_partition_splats_file(p, runs, out, st);
             _merge_result = out;
         } catch (const std::exception& e) {
             _merge_error = e.what();
@@ -12332,16 +12346,18 @@ void GuiApp::draw_basic_options() {
     {
         // Primitive names are the config's own values, written into
         // config.json and accepted by `--primitive`; they are not translated.
-        static const char* prims[] = {"3dgs", "mip", "3dgut"};
-        int pi = _cfg.primitive == "mip" ? 1 : _cfg.primitive == "3dgut" ? 2 : 0;
+        static const char* prims[] = {"3dgs", "mip", "3dgut", "2dgs"};
+        int pi = 0;
+        for (int k = 0; k < 4; k++)
+            if (_cfg.primitive == prims[k]) pi = k;
         ImGui::SetNextItemWidth(w);
-        if (ui::ComboRaw(ui::detail::label(msg::opt_primitive), &pi, prims, 3)) {
+        if (ui::ComboRaw(ui::detail::label(msg::opt_primitive), &pi, prims, 4)) {
             _cfg.primitive = prims[pi];
             _cfg_ui.touched.insert("primitive");
         }
-        ui::help_on_hover(msg::opt_primitive_help);
-        if (_cfg.primitive == "3dgut")
-            ui::TextColoredWrapped(kWarn, msg::opt_primitive_3dgut_warn);
+        ui::help_on_hover(spirula::i18n::msg::field::primitive_help);
+        // if (_cfg.primitive == "3dgut")
+        //     ui::TextColoredWrapped(kWarn, msg::opt_primitive_3dgut_warn);
     }
 
     int ds_idx = _cfg.train_resolution_divisor == 2.0f ? 1
@@ -12358,12 +12374,14 @@ void GuiApp::draw_basic_options() {
         }
     }
     ui::help_on_hover(msg::opt_resolution_help);
+#if 0
     ImGui::SetNextItemWidth(w);
     if (ui::InputInt(fld::max_resolution, &_cfg.max_resolution)) {
         _cfg.max_resolution = std::clamp(_cfg.max_resolution, 0, 32768);
         _cfg_ui.touched.insert("max_resolution");
     }
     ui::help_on_hover(fld::max_resolution_help);
+#endif
 
 #if 0
     if (ui::Checkbox(fld::progressive_resolution, &_cfg.progressive_resolution))

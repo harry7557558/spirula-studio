@@ -30,7 +30,7 @@ static void _alloc_grad_buffers() {
     // FragmentBwd::atomicStore), so those three slots must remain allocated;
     // opacity/dc/sh still go via the screen buffer or the fused optim path.
     if (engine().optim.use_fused_proj_bwd_optim) {
-        bool need_world_geom = (engine().primitive == "3dgut");
+        bool need_world_geom = engine_primitive_eval3d(engine().primitive);
         if (need_world_geom) {
             engine().grad.means.resize(PoolSlot::EngVMeans, N);
             engine().grad.quats.resize(PoolSlot::EngVQuats, N);
@@ -53,7 +53,7 @@ static void _alloc_grad_buffers() {
     // fp32_geometry keep means/quats/scales fp32. Only the first sub-batch zeroes
     // (skip_grad_zero); the projection backward decode-accumulates the rest.
     if (engine().grad.quantize_grad) {
-        const bool fp32_geometry = engine().grad.fp32_geometry || engine().primitive == "3dgut";
+        const bool fp32_geometry = engine().grad.fp32_geometry || engine_primitive_eval3d(engine().primitive);
         const int64_t n_bounds = (N + 255) / 256;
         const bool skip_zero = engine().optim.skip_grad_zero;
 
@@ -142,7 +142,8 @@ static void _engine_raster_proj_backward(
     TorchTensorView v_rgb_dist = _tv_null(),
     TorchTensorView v_depth_dist = _tv_null(),
     TorchTensorView v_normal_dist = _tv_null(),
-    float v_dist_rgb_per_depth = 0.0f
+    float v_dist_rgb_per_depth = 0.0f,
+    TorchTensorView v_render_normal = _tv_null()
 ) {
     SplatStageTimer stage_timer;
     StepTimingScope timing(StepPart::Backward, StepScale::SplatsPixels);
@@ -150,7 +151,8 @@ static void _engine_raster_proj_backward(
         DeviceTensor3D<float3>(v_render_rgb),
         _tv_valid(v_render_depth) ? DeviceTensor3D<float>(v_render_depth)
                                   : DeviceTensor3D<float>(),
-        DeviceTensor3D<float3>()  // no normal gradient yet
+        _tv_valid(v_render_normal) ? DeviceTensor3D<float3>(v_render_normal)
+                                   : DeviceTensor3D<float3>()
     );
     DeviceTensor3D<float> v_render_Ts(v_render_Ts_tv);
 
@@ -195,7 +197,7 @@ static void _engine_raster_proj_backward(
             DeviceTensorFloatND(engine().grad.features_dc),   // [N, 3]
             DeviceTensorFloatND(engine().grad.features_sh),   // [N, K, 3]
         };
-    } else if (engine().primitive == "3dgut" || (grad_q && engine().grad.fp32_geometry)) {
+    } else if (engine_primitive_eval3d(engine().primitive) || (grad_q && engine().grad.fp32_geometry)) {
         v_splats_w = {
             DeviceTensorFloatND(engine().grad.means),         // [N, 3]
             DeviceTensorFloatND(engine().grad.quats),         // [N, 4]
@@ -252,8 +254,12 @@ static void _engine_raster_proj_backward(
             engine().fwd.accum_weight = DeviceVector<float>();
             engine().fwd.accum_mode = DensifyAccumMode::None;
         }
-    } else if (engine().primitive == "3dgut") {
-        auto [vw, vs, vviewmats, accum_weight] = rasterize_to_pixels_3dgut_bwd(
+    } else if (engine_primitive_eval3d(engine().primitive)) {
+        const bool rendered_normal = std::get<2>(engine().fwd.renders).data_ptr() != nullptr;
+        auto bwd = engine().primitive == "2dgs" ? rasterize_to_pixels_2dgs_bwd
+                   : rendered_normal            ? rasterize_to_pixels_3dgut_normal_bwd
+                                                : rasterize_to_pixels_3dgut_bwd;
+        auto [vw, vs, vviewmats, accum_weight] = bwd(
             engine().cur_num_splats,
             engine().fwd.splats_w,
             engine().fwd.splats_s,
@@ -369,7 +375,7 @@ static void _engine_raster_proj_backward(
             };
             if (engine().primitive == "3dgs")       call_qg(projection_3dgs_backward_quantgrad);
             else if (engine().primitive == "mip")   call_qg(projection_mip_backward_quantgrad);
-            else if (engine().primitive == "3dgut") call_qg(projection_3dgut_backward_quantgrad);
+            else if (engine_primitive_eval3d(engine().primitive)) call_qg(projection_3dgut_backward_quantgrad);
             else throw std::runtime_error("grad-quant projection backward: unknown primitive: " + engine().primitive);
         } else if (engine().primitive == "3dgs") {
             projection_3dgs_backward(
@@ -391,7 +397,7 @@ static void _engine_raster_proj_backward(
                 engine().fwd.camera_ids, engine().fwd.gaussian_ids,
                 engine().fwd.aabb, v_splats_s_out, v_splats_w_out, nullptr,
                 vp_opt, vb_opt, num_sh_buffer, sh_value_bits, sh_bounds_stride);
-        } else if (engine().primitive == "3dgut") {
+        } else if (engine_primitive_eval3d(engine().primitive)) {
             projection_3dgut_backward(
                 engine().cur_num_splats, engine_color(), engine().fwd.splats_w,
                 _dt2d_tv(engine().camera.viewmats), _dv_tv(engine().camera.intrins),
@@ -533,9 +539,12 @@ static std::map<std::string, float> _engine_loss(
     TorchTensorView render_Ts = TorchTensorView(
         (uint64_t)engine().fwd.render_Ts.data_ptr(), 4, {C, H, W, 1});
 
-    // Render normal: not yet available from forward (needs a normal-rendering
-    // primitive); render_normal/depth_normal stay null / derived below.
-    TorchTensorView render_normal = _tv_null();
+    // Camera-space render normal (2DGS, or 3DGUT when asked); depth_normal is
+    // derived below.
+    TorchTensorView render_normal =
+        std::get<2>(engine().fwd.renders).data_ptr() == nullptr ? _tv_null()
+        : TorchTensorView((uint64_t)std::get<2>(engine().fwd.renders).data_ptr(),
+                          4, {C, H, W, 3});
     TorchTensorView depth_normal = _tv_null();
 
     // Distortion image D = W*S - C^2 from the forward, only the channels the
@@ -567,7 +576,8 @@ static std::map<std::string, float> _engine_loss(
     // median-vs-depth-normal regularizer, which compares the median normal
     // against this depth normal.
     bool compute_depth_normal = (engine().gt.normal.data_ptr() != nullptr) ||
-        loss_weights[(int)LossWeightIndex::MedianDepthNormalReg] > 0.0f;
+        loss_weights[(int)LossWeightIndex::MedianDepthNormalReg] > 0.0f ||
+        (_tv_valid(render_normal) && loss_weights[(int)LossWeightIndex::NormalReg] > 0.0f);
     // bool is_ray_depth = (engine().primitive != "3dgs" && engine().primitive != "mip");
     bool is_ray_depth = true;
     if (compute_depth_normal) {
@@ -652,6 +662,8 @@ static std::map<std::string, float> _engine_loss(
     if (compute_depth_normal) {
         pixel_grads.v_depth_normal = _pool_tv(PoolSlot::EngVDepthNormal, C, H, W, 3);
     }
+    if (_tv_valid(render_normal))
+        pixel_grads.v_render_normal = _pool_tv(PoolSlot::EngVRenderNormal, C, H, W, 3);
     if (has_median) {
         pixel_grads.v_median_depth = _pool_tv(PoolSlot::EngVMedianDepth, C, H, W, 1);
         if (median_normal_active)
@@ -920,7 +932,8 @@ static std::map<std::string, float> _engine_loss(
         pixel_grads.v_rgb_dist,
         pixel_grads.v_depth_dist,
         pixel_grads.v_normal_dist,
-        v_dist_rgb_per_depth);
+        v_dist_rgb_per_depth,
+        pixel_grads.v_render_normal);
 
     // --- Build loss dict for display ---
     auto sdiv = [](float x, float y) -> float { return y != 0.0f ? x / y : 0.0f; };

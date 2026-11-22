@@ -134,42 +134,112 @@ bool occ_bilinear(float* img, int W, int H, float u, float v, float z,
 }
 
 // ===========================================================================
-// Occupancy sampling (k-th-smallest over the cameras that see the point)
+// Occupancy fusion (docs/notes/mesh-field.md)
 // ===========================================================================
-struct MeshSampleOccParams {  // 56 bytes: pushed directly
+
+// A camera carves alone only if at least 1/kCarveResolution as sharp at the
+// point as the sharpest camera that sees matter there.
+static const float kCarveResolution = 2.0f;
+
+[ForceInline]
+float4 ld4(float* p, int i) {
+    return float4(p[4 * i], p[4 * i + 1], p[4 * i + 2], p[4 * i + 3]);
+}
+[ForceInline]
+void st4(float* p, int i, float4 v) {
+    p[4 * i] = v.x;
+    p[4 * i + 1] = v.y;
+    p[4 * i + 2] = v.z;
+    p[4 * i + 3] = v.w;
+}
+
+// One camera's view of a point at ray depth z, over the pixel corners that saw
+// anything: its occupancy, the largest corner's, and the depth behind the
+// camera's surface (where its fit reaches `iso`). False when no corner did.
+[ForceInline]
+bool view_of_point(float* img, int W, int H, float u, float v, float z, float iso,
+                   out float occ, out float occ_max, out float behind) {
+    occ = 0.0f; occ_max = 0.0f; behind = 0.0f;
+    float level = sqrt(-log(1.0f - iso));
+    float sx = u - 0.5f, sy = v - 0.5f;
+    int j0 = int(floor(sx)), i0 = int(floor(sy));
+    float fx = sx - float(j0), fy = sy - float(i0);
+    int j1 = j0 + 1, i1 = i0 + 1;
+    j0 = min(max(j0, 0), W - 1); j1 = min(max(j1, 0), W - 1);
+    i0 = min(max(i0, 0), H - 1); i1 = min(max(i1, 0), H - 1);
+    float3 m[4] = { ld3(img, i0 * W + j0), ld3(img, i0 * W + j1),
+                    ld3(img, i1 * W + j0), ld3(img, i1 * W + j1) };
+    float w[4] = { (1 - fx) * (1 - fy), fx * (1 - fy),
+                   (1 - fx) * fy,       fx * fy };
+    float acc = 0.0f, bacc = 0.0f, wsum = 0.0f;
+    [ForceUnroll]
+    for (int t = 0; t < 4; ++t) {
+        float m0 = m[t].x, c0 = m[t].y, c1 = m[t].z;
+        if (!(m0 > 0.0f) || !(w[t] > 0.0f)) continue;
+        float e = max(c0 + c1 * z, 0.0f);
+        float o = min(m0, 1.0f - exp(-e * e));
+        // a ray that never reaches the level has its surface at infinity
+        float b = -z;
+        if (m0 >= iso && c1 > 0.0f) b = min(max((c0 + c1 * z - level) / c1, -z), z);
+        acc += w[t] * o; bacc += w[t] * b; wsum += w[t];
+        occ_max = max(occ_max, o);
+    }
+    if (wsum <= 0.0f) return false;
+    occ = clamp(acc / wsum, 0.0f, 1.0f);
+    behind = bacc / wsum;
+    return true;
+}
+
+struct MeshSampleOccParams {  // 88 bytes: pushed directly
     float* xyz;
     float* viewmat;
     float* intrin;
     float* dist;
     float* moments;
-    float* occ_kmin;
-    int* cnt;
+    float* acc;
     uint32_t n;
     uint32_t W;
     uint32_t H;
-    uint32_t k;
+    uint32_t tsdf;
+    float iso;
+    float band_px;
+    float deep_weight;
+    float clean;
     uint32_t wgs_per_row;
     uint32_t _pad0;
 };
 
+// acc[i] = (sharpest clear sight, weight, weighted occupancy, sharpest camera
+// voting matter); under p.tsdf (seen, weight, weighted distance in bands, -).
 [ForceInline]
 void _ms_occ<D : ICameraDistortion>(MeshSampleOccParams p, int i) {
     float u, v, z;
     if (!project_point<D>(p.viewmat, p.intrin, p.dist, int(p.W), int(p.H),
                           ld3(p.xyz, i), u, v, z))
         return;
-    float occ;
-    if (!occ_bilinear(p.moments, int(p.W), int(p.H), u, v, z, occ))
+    // the nearest pixel: a blend would invent depths across an edge
+    if (p.tsdf != 0) { u = floor(u) + 0.5f; v = floor(v) + 0.5f; }
+    float vote, occ_max, behind;
+    if (!view_of_point(p.moments, int(p.W), int(p.H), u, v, z, p.iso, vote,
+                       occ_max, behind))
         return;  // abstain
-    // insert occ into the k smallest seen so far (ascending, +inf padded)
-    int k = int(p.k);
-    float* arr = p.occ_kmin + i * k;
-    if (occ < arr[k - 1]) {
-        int q = k - 1;
-        while (q > 0 && arr[q - 1] > occ) { arr[q] = arr[q - 1]; --q; }
-        arr[q] = occ;
+    // pixels per world unit at the point: how sharply this camera sees it
+    float nu = sqrt(max(p.intrin[0] * p.intrin[1], 1e-12f)) / max(z, 1e-9f);
+    float band = p.band_px / nu;
+    float4 a = ld4(p.acc, i);
+    if (p.tsdf != 0) {
+        float d = -behind / band;
+        a.x = 1.0f;
+        if (d >= -1.0f) { a.y += nu; a.z += nu * min(d, 1.0f); }
+    } else {
+        float deep = clamp(behind / band - 1.0f, 0.0f, 1.0f);
+        float w = nu * (1.0f + (p.deep_weight - 1.0f) * deep);
+        a.x = max(a.x, nu * max(1.0f - occ_max / p.clean, 0.0f));
+        a.y += w;
+        a.z += w * vote;
+        if (vote >= p.iso) a.w = max(a.w, nu * (1.0f - deep));
     }
-    p.cnt[i] += 1;
+    st4(p.acc, i, a);
 }
 
 #define _ms_occ_call(D) _ms_occ<D>(p, int(gid))
@@ -184,12 +254,13 @@ void mesh_sample_occ(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 }
 #undef _ms_occ_call
 
-struct MeshFinalizeOccParams {  // 32 bytes: pushed directly
-    float* occ_kmin;
-    int* cnt;
+struct MeshFinalizeOccParams {  // 40 bytes: pushed directly
+    float* acc;
     float* occ;
     uint32_t n;
-    uint32_t k;
+    uint32_t tsdf;
+    float iso;
+    float clean;
     uint32_t wgs_per_row;
     uint32_t _pad0;
 };
@@ -201,11 +272,20 @@ void mesh_finalize_occ(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint gid = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
     if (gid >= p.n) return;
     int i = int(gid);
-    int c = p.cnt[i];
-    if (c <= 0) { p.occ[i] = 0.0f; return; }   // unseen -> free space
-    int k = int(p.k);
-    int idx = min(k, c) - 1;                   // k-th smallest (or all if fewer)
-    p.occ[i] = p.occ_kmin[i * k + idx];
+    float4 a = ld4(p.acc, i);
+    if (p.tsdf != 0) {
+        // in no camera's band: inside when some camera saw it deeper, else free
+        float o = a.x > 0.0f ? 1.0f : 0.0f;
+        if (a.y > 0.0f) {
+            float d = a.z / a.y;
+            o = d >= 0.0f ? p.iso * (1.0f - d) : p.iso - (1.0f - p.iso) * d;
+        }
+        p.occ[i] = o;
+        return;
+    }
+    if (!(a.y > 0.0f)) { p.occ[i] = 0.0f; return; }   // unseen -> free space
+    float carved = a.x > 0.0f ? min(p.iso * a.w / (kCarveResolution * a.x), 1.0f) : 1.0f;
+    p.occ[i] = min(carved, a.z / a.y);
 }
 
 // ===========================================================================

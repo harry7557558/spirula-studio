@@ -34,6 +34,14 @@ gradient against its regularizers at the scale of one batch's mean loss).
 `backend/vulkan/tests/` adds 3 Vulkan-only smoke tests (runtime, pipeline,
 sort/scan).
 
+`footprint_exact` is self-checking on both backends: every camera model
+renders random 3DGUT and 2DGS splats twice through the real forward
+rasterizer, binned and culled as the engine does and with every splat in every
+tile, and the two images must agree to one 8-bit level (they are bit-identical
+on Vulkan). The reference takes its visible set from the host, so a splat the
+projection wrongly culls fails it too; `noslab` and `nobox` say which bound a
+failure comes from (docs/notes/footprint.md).
+
 `missing_depth_supervision` is self-checking on both backends: missing and
 all-zero reference depth must give zero depth loss and gradients, while valid
 depth must retain finite supervision. It covers masks, multiple scales and

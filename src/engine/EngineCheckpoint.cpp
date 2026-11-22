@@ -1,12 +1,4 @@
-// Engine checkpoint save.
-//   * splat.ply -- inference artifact (filtered, dequantized Gaussians).
-//   * state.tar -- resume payload: a zero-dep ustar of state.json + one flat
-//     typed .npy per saved pool buffer, selected by SaveClass metadata:
-//       full_dump=false -> Always slots (appearance/inference params)
-//       full_dump=true  -> Always + Resume (world raw + all optimizer state)
-//     The dump is metadata-driven (DevicePool::saved) so it can never fall out
-//     of sync with the buffer set, and it copies device->host in chunks with no
-//     extra device memory.
+// Streamed PLY export and native training-state archives; docs/training-resume.md.
 
 #include "engine/Engine.h"
 #include "engine/EngineInternal.h"
@@ -14,6 +6,10 @@
 
 #include "checkpoint/BackgroundExport.h"
 #include "checkpoint/SplatPly.h"
+#include "checkpoint/SplatYUp.h"
+#include "checkpoint/Resume.h"
+#include "core/BufferedFile.h"
+#include <future>
 #include "core/AtomicFile.h"
 #include "core/CheckpointIO.h"
 #include "external/npy.hpp"
@@ -72,10 +68,7 @@ static npy::shape_t _ckpt_shape_5d(const DeviceTensor5D<T>& t) {
     };
 }
 
-// Runtime + validation manifest embedded in state.tar. JSON. Holds only what
-// the loader needs that config.json cannot supply (cur_num_splats, active SH
-// bands, allocated appearance dims) plus fields to fail-fast on a config /
-// checkpoint mismatch. Deliberately NOT a config duplicate.
+// Runtime scalars and layout validation; run configuration lives in config.json.
 static std::string _build_state_json(EngineState& s, int step, bool full) {
     std::ostringstream j;
     auto b = [](bool v) { return v ? 1 : 0; };
@@ -196,7 +189,10 @@ void engine_save_checkpoint(
     std::string output_dir,
     bool full_dump,
     int step,
-    int background_export_height
+    int background_export_height,
+    std::string basename,
+    bool y_up,
+    std::string region_camera_hash
 ) {
     if (background_export_height < 1 || background_export_height > 8192)
         throw std::runtime_error("background_export_height must be in [1, 8192]");
@@ -209,189 +205,130 @@ void engine_save_checkpoint(
 
     const int64_t N = s.cur_num_splats;
     const int K = s.num_sh;
-
-    auto h_means        = _ckpt_d2h<float3>(s.world.means.data_ptr(),        (size_t)N);
-    auto h_quats        = _ckpt_d2h<float4>(s.world.quats.data_ptr(),        (size_t)N);
-    auto h_scales       = _ckpt_d2h<float3>(s.world.scales.data_ptr(),       (size_t)N);
-    auto h_opacities    = _ckpt_d2h<float >(s.world.opacities.data_ptr(),    (size_t)N);
-    auto h_features_dc  = _ckpt_d2h<float3>(s.world.features_dc.data_ptr(),  (size_t)N);
-    // Decode packed SH into output chunks to avoid an N*K*12-byte fp32 copy.
-    const bool quant_sh_value = (K > 0) && s.world.sh_value_quantize_enabled();
-    const int  sh_value_bits  = s.world.sh_value_bits;
-
-    std::vector<float3> h_features_sh;            // fp32 path only
-    std::vector<uint8_t> h_value_packed;          // quant path only
-    std::vector<float2>  h_value_bounds;          // quant path only
-    ShQuantAddr sh_addr{256, 0, 3 * (int64_t)K};  // quant path: cell-block vs fpbo
-    if (K > 0 && !quant_sh_value) {
-        h_features_sh = _ckpt_d2h<float3>(s.world.features_sh.data_ptr(), (size_t)(N * K));
-    } else if (quant_sh_value) {
-        // Pick the populated layout. FPBO (per-splat-block) takes precedence
-        // since that's what `_ensure_optim_state` allocates when FPBO is on.
-        bool fpbo_layout = false;
-        const uint8_t* dev_packed = nullptr;
-        const float2*  dev_bounds = nullptr;
-        int64_t        dev_n_bounds = 0;
-        if (sh_value_bits == 8) {
-            if (s.world.features_sh_quant8_fpbo.initialized()) {
-                dev_packed = s.world.features_sh_quant8_fpbo.packed.data_ptr();
-                dev_bounds = s.world.features_sh_quant8_fpbo.bounds.data_ptr();
-                dev_n_bounds = s.world.features_sh_quant8_fpbo.n_bounds;
-                fpbo_layout = true;
-            } else if (s.world.features_sh_quant8.initialized()) {
-                dev_packed = s.world.features_sh_quant8.packed.data_ptr();
-                dev_bounds = s.world.features_sh_quant8.bounds.data_ptr();
-                dev_n_bounds = s.world.features_sh_quant8.n_bounds;
-            }
-        } else /* sh_value_bits == 16 */ {
-            if (s.world.features_sh_quant16_fpbo.initialized()) {
-                dev_packed = s.world.features_sh_quant16_fpbo.packed.data_ptr();
-                dev_bounds = s.world.features_sh_quant16_fpbo.bounds.data_ptr();
-                dev_n_bounds = s.world.features_sh_quant16_fpbo.n_bounds;
-                fpbo_layout = true;
-            } else if (s.world.features_sh_quant16.initialized()) {
-                dev_packed = s.world.features_sh_quant16.packed.data_ptr();
-                dev_bounds = s.world.features_sh_quant16.bounds.data_ptr();
-                dev_n_bounds = s.world.features_sh_quant16.n_bounds;
-            }
-        }
-        if (dev_packed != nullptr && dev_bounds != nullptr) {
-            // Copy only the bytes needed for the first N splats (skip the
-            // tail of the over-allocated max_N buffer).
-            const int64_t cells_needed =
-                fpbo_layout ? sh_fpbo_cells(N, (uint32_t)K) : (int64_t)N * 3 * K;
-            const int bytes_per_cell = (sh_value_bits == 8) ? 1 : 2;
-            h_value_packed.resize((size_t)(cells_needed * bytes_per_cell));
-            backend::memcpy_sync(h_value_packed.data(), dev_packed,
-                       (size_t)(cells_needed * bytes_per_cell),
-                       backend::MemcpyKind::DeviceToHost);
-            sh_addr = sh_quant_addr((uint32_t)K, fpbo_layout ? 0 : 256);
-            int64_t n_bounds_needed;
-            if (fpbo_layout) {
-                n_bounds_needed = (N + 255) / 256;
-            } else {
-                n_bounds_needed = (cells_needed + 255) / 256;
-            }
-            n_bounds_needed = std::min(n_bounds_needed, dev_n_bounds);
-            h_value_bounds.resize((size_t)n_bounds_needed);
-            backend::memcpy_sync(h_value_bounds.data(), dev_bounds,
-                       (size_t)n_bounds_needed * sizeof(float2),
-                       backend::MemcpyKind::DeviceToHost);
-        }
-    }
-
-    auto decode_sh = [&](int64_t base_cell, int64_t splat_i, int c) -> float {
-        if (h_value_packed.empty() || h_value_bounds.empty()) return 0.0f;
-        const int64_t cell = sh_addr.cell(base_cell, c);
-        // Both layouts use 256-wide blocks: splats for FPBO, cells otherwise.
-        const int64_t b_idx = sh_addr.pair_pitch > 0 ? splat_i >> 8 : cell >> 8;
-        if (b_idx >= (int64_t)h_value_bounds.size()) return 0.0f;
-        const float2 mm = h_value_bounds[(size_t)b_idx];
-        if (sh_value_bits == 8) {
-            const uint8_t q = h_value_packed[(size_t)cell];
-            return mm.x + (mm.y - mm.x) * ((float)q * (1.0f / 255.0f));
-        } else {
-            const uint16_t* p16 = reinterpret_cast<const uint16_t*>(h_value_packed.data());
-            const uint16_t q = p16[(size_t)cell];
-            return mm.x + (mm.y - mm.x) * ((float)q * (1.0f / 65535.0f));
-        }
-    };
-
-    // --- Filter mask: NaN/Inf + low-opacity (logit < logit(1/255) ~= -5.5373)
-    // + dead scale (densify recycles those, but it stops before the run ends)
-    const float OPA_MIN = -5.5373f;
-    const float SCALE_MIN = -40.0f;  // == kDeadLogScale, shaders/densify.slang
-    auto fin1 = [](float v) { return std::isfinite(v); };
-    auto fin3 = [&](const float3& v) { return fin1(v.x) && fin1(v.y) && fin1(v.z); };
-    auto fin4 = [&](const float4& v) { return fin1(v.x) && fin1(v.y) && fin1(v.z) && fin1(v.w); };
-
-    std::vector<char> keep((size_t)N, 1);
-    int64_t kept = 0, nan_dropped = 0, lowopa_dropped = 0, deadscale_dropped = 0;
-    for (int64_t i = 0; i < N; i++) {
-        bool ok = fin3(h_means[i]) && fin4(h_quats[i]) && fin3(h_scales[i])
-                  && fin1(h_opacities[i]) && fin3(h_features_dc[i]);
-        // Quant-decoded SH values are finite by construction (byte to fp32
-        // linear interp from finite bounds), so skip the NaN check on that
-        // path. The fp32 path still validates each coef.
-        if (ok && K > 0 && !quant_sh_value) {
-            for (int j = 0; j < K; j++) {
-                if (!fin3(h_features_sh[i*K + j])) { ok = false; break; }
-            }
-        }
-        if (!ok) { keep[i] = 0; nan_dropped++; continue; }
-        if (h_opacities[i] < OPA_MIN) { keep[i] = 0; lowopa_dropped++; continue; }
-        const float3& sc = h_scales[i];
-        if (std::max(std::max(sc.x, sc.y), sc.z) <= SCALE_MIN) {
-            keep[i] = 0; deadscale_dropped++; continue;
-        }
-        kept++;
-    }
-
-    // --- PLY (binary little-endian), checkpoint/SplatPly.h's layout ---
     ColorBasis basis{0, s.sb_lobes};
     while (ColorBasis::sh_coeffs_of(basis.sh_degree + 1) <= K - basis.sb_coeffs())
         basis.sh_degree++;
-    if (basis.coeffs() != K)
-        throw std::runtime_error("engine_save_checkpoint: " + std::to_string(K) +
-                                 " colour coefficients are no whole SH degree "
-                                 "plus " + std::to_string(s.sb_lobes) + " lobes");
-    const int vertex_floats = spirula::splat_ply_row_floats(basis);
+    if (basis.coeffs() != K || basis.sh_degree > spirula::ShRotation::kMaxDegree)
+        throw std::runtime_error("engine_save_checkpoint: invalid colour basis");
+    const bool quant = K > 0 && s.world.sh_value_quantize_enabled();
+    const int bits = s.world.sh_value_bits;
+    const uint8_t* packed = nullptr;
+    const float2* bounds = nullptr;
+    bool fpbo = false;
+    auto use_quant = [&](const auto& q, bool fused) {
+        if (!q.initialized()) return;
+        packed = q.packed.data_ptr();
+        bounds = q.bounds.data_ptr();
+        fpbo = fused;
+    };
+    if (quant) {
+        if (bits == 8) {
+            use_quant(s.world.features_sh_quant8, false);
+            use_quant(s.world.features_sh_quant8_fpbo, true);
+        } else {
+            use_quant(s.world.features_sh_quant16, false);
+            use_quant(s.world.features_sh_quant16_fpbo, true);
+        }
+        if (!packed || !bounds) throw std::runtime_error("checkpoint: missing quantized colour buffers");
+    }
+    const ShQuantAddr addr = sh_quant_addr((uint32_t)K, fpbo ? 0 : 256);
+    const int row_floats = spirula::splat_ply_row_floats(basis);
+    // Both quantization layouts restart on a 256-splat boundary.
+    const int64_t chunk_rows = std::max<size_t>(256,
+        spirula::kFileBufferBytes / (row_floats * sizeof(float)) / 256 * 256);
     StagedFiles staged;
-    const fs::path ply_path = staged.add(out_root / "splat.ply");
+    const fs::path ply_path = staged.add(out_root / (basename.empty() ? "splat.ply" : basename + ".ply"));
     {
-        std::ofstream ply(ply_path, std::ios::binary);
+        spirula::BufferedOutputFile ply(ply_path, std::ios::binary);
         if (!ply) throw std::runtime_error("Failed to open PLY for write: " + ply_path.string());
-        ply << spirula::splat_ply_header(kept, basis, s.primitive);
-
-        constexpr size_t chunk_bytes = 32 << 20;
-        const int chunk_rows = (int)std::min<int64_t>(kept,
-            std::max<size_t>(1, chunk_bytes / (vertex_floats * sizeof(float))));
-        std::vector<float> buf((size_t)vertex_floats * chunk_rows);
+        ply << spirula::splat_ply_header(0, basis, s.primitive, y_up, region_camera_hash);
+        const spirula::SplatYUp turn;
+        std::vector<float3> means, scales, dc, sh;
+        std::vector<float4> quats;
+        std::vector<float> opacity, buf(chunk_rows * row_floats), writing(buf.size());
+        std::vector<uint8_t> values;
+        std::vector<float2> limits;
         std::vector<int64_t> indices(chunk_rows);
-        int pack_threads = 1;
-#ifdef _OPENMP
-        pack_threads = std::min(8, omp_get_max_threads());
-#endif
-        for (int64_t next = 0; next < N && chunk_rows > 0;) {
-            int rows = 0;
-            while (next < N && rows < chunk_rows) {
-                if (keep[next]) indices[rows++] = next;
-                ++next;
+        std::future<void> pending;
+        int64_t kept = 0;
+        auto copy = [](auto& host, const auto* device, size_t count) {
+            host.resize(count);
+            if (count) backend::memcpy_sync(host.data(), device, count * sizeof(*device),
+                                           backend::MemcpyKind::DeviceToHost);
+        };
+        for (int64_t first = 0; first < N; first += chunk_rows) {
+            const int64_t n = std::min(chunk_rows, N-first);
+            copy(means, s.world.means.data_ptr()+first, n);
+            copy(quats, s.world.quats.data_ptr()+first, n);
+            copy(scales, s.world.scales.data_ptr()+first, n);
+            copy(opacity, s.world.opacities.data_ptr()+first, n);
+            copy(dc, s.world.features_dc.data_ptr()+first, n);
+            if (quant) {
+                const int64_t cells = fpbo ? sh_fpbo_cells(n, K) : n*3*K;
+                const int64_t start = fpbo ? sh_fpbo_cells(first, K) : first*3*K;
+                copy(values, packed+start*(bits/8), cells*(bits/8));
+                copy(limits, bounds+(fpbo ? first : start)/256,
+                     ((fpbo ? n : cells)+255)/256);
+            } else if (K > 0) {
+                copy(sh, s.world.features_sh.data_ptr()+first*K, n*K);
             }
-            if (!rows) continue;
-#pragma omp parallel num_threads(pack_threads) if(rows >= 4096)
+            auto finite3 = [](const float3& v) {
+                return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+            };
+            int rows = 0;
+            for (int64_t i = 0; i < n; ++i) {
+                const auto& q = quats[i];
+                bool valid = finite3(means[i]) && finite3(scales[i]) && finite3(dc[i]) &&
+                    std::isfinite(opacity[i]) && std::isfinite(q.x) && std::isfinite(q.y) &&
+                    std::isfinite(q.z) && std::isfinite(q.w);
+                if (!quant)
+                    for (int j = 0; valid && j < K; ++j) valid = finite3(sh[i*K+j]);
+                if (valid && opacity[i] >= -5.5373f &&
+                    std::max({scales[i].x, scales[i].y, scales[i].z}) > -40.0f)
+                    indices[rows++] = i;
+            }
+#pragma omp parallel num_threads(8) if(rows >= 4096)
             {
-                std::vector<float> rest_row((size_t)std::max(K, 1) * 3);
+                std::vector<float> rest(3*K);
 #pragma omp for schedule(static)
                 for (int r = 0; r < rows; ++r) {
                     const int64_t i = indices[r];
-                    float* row = buf.data() + (size_t)r * vertex_floats;
-                    int p = 0;
-                    row[p++] = h_means[i].x; row[p++] = h_means[i].y; row[p++] = h_means[i].z;
-                    row[p++] = 0.f; row[p++] = 0.f; row[p++] = 0.f;  // nx, ny, nz
-                    row[p++] = h_features_dc[i].x; row[p++] = h_features_dc[i].y; row[p++] = h_features_dc[i].z;
-                    if (K > 0) {
-                        const float* rest = rest_row.data();
-                        if (quant_sh_value) {
-                            const int64_t base_cell = sh_addr.base(i);
-                            for (int j = 0; j < K; ++j)
-                                for (int ch = 0; ch < 3; ++ch)
-                                    rest_row[j * 3 + ch] = decode_sh(base_cell, i, j * 3 + ch);
-                        } else {
-                            rest = &h_features_sh[(size_t)(i * K)].x;
-                        }
-                        spirula::splat_ply_put_rest(rest, basis, row + p);
-                        p += 3 * K;
+                    for (int j = 0; j < 3*K; ++j) {
+                        if (quant) {
+                            const int64_t cell = addr.cell(addr.base(i), j);
+                            const auto mm = limits[fpbo ? i/256 : cell/256];
+                            uint16_t q = values[cell];
+                            if (bits == 16) std::memcpy(&q, values.data()+2*cell, 2);
+                            rest[j] = mm.x + (mm.y-mm.x) * (float(q) / (bits == 8 ? 255.f : 65535.f));
+                        } else rest[j] = (&sh[i*K].x)[j];
                     }
-                    row[p++] = h_opacities[i];
-                    row[p++] = h_scales[i].x; row[p++] = h_scales[i].y; row[p++] = h_scales[i].z;
-                    row[p++] = h_quats[i].x; row[p++] = h_quats[i].y; row[p++] = h_quats[i].z; row[p++] = h_quats[i].w;
+                    float mean[3] = {means[i].x, means[i].y, means[i].z};
+                    float quat[4] = {quats[i].x, quats[i].y, quats[i].z, quats[i].w};
+                    if (y_up) turn.apply(mean, quat, K ? rest.data() : nullptr, basis);
+                    float* row = buf.data() + size_t(r)*row_floats;
+                    std::copy(mean, mean+3, row);
+                    std::fill(row+3, row+6, 0.f);
+                    row[6] = dc[i].x; row[7] = dc[i].y; row[8] = dc[i].z;
+                    if (K) spirula::splat_ply_put_rest(rest.data(), basis, row+9);
+                    int p = 9+3*K;
+                    row[p++] = opacity[i];
+                    row[p++] = scales[i].x; row[p++] = scales[i].y; row[p++] = scales[i].z;
+                    std::copy(quat, quat+4, row+p);
                 }
             }
-            ply.write(reinterpret_cast<const char*>(buf.data()),
-                      (std::streamsize)rows * vertex_floats * sizeof(float));
-            if (!ply) throw std::runtime_error("Failed to write " + ply_path.string());
+            if (pending.valid()) pending.get();
+            buf.swap(writing);
+            pending = std::async(std::launch::async, [&, rows] {
+                ply.write(reinterpret_cast<const char*>(writing.data()),
+                          std::streamsize(rows)*row_floats*sizeof(float));
+                if (!ply) throw std::runtime_error("Failed to write " + ply_path.string());
+            });
+            kept += rows;
         }
+        if (pending.valid()) pending.get();
+        // The fixed-width vertex count lets filtering finish in a single pass.
+        ply.seekp(0);
+        ply << spirula::splat_ply_header(kept, basis, s.primitive, y_up, region_camera_hash);
         ply.close();
         if (!ply) throw std::runtime_error("Failed to write " + ply_path.string());
     }
@@ -399,8 +336,8 @@ void engine_save_checkpoint(
     // --- state.tar: metadata-driven resume payload (see file header) ---------
     const SaveClass save_min = full_dump ? SaveClass::Resume : SaveClass::Always;
 
-    const fs::path tar_path = staged.add(out_root / "state.tar");
-    std::ofstream tar(tar_path, std::ios::binary);
+    const fs::path tar_path = staged.add(out_root / (basename.empty() ? "state.tar" : basename + ".tar"));
+    spirula::BufferedOutputFile tar(tar_path, std::ios::binary);
     if (!tar)
         throw std::runtime_error("Failed to open state.tar for write: " + tar_path.string());
 
@@ -441,7 +378,7 @@ void engine_save_checkpoint(
 int engine_load_checkpoint(std::string input_dir, bool restore_projective_depth) {
     EngineState& s = engine();
 
-    fs::path tarpath = fs::path(input_dir) / "state.tar";
+    fs::path tarpath = ckpt::resolve_checkpoint(input_dir).tar_path;
     std::ifstream in(tarpath.string(), std::ios::binary);
     if (!in)
         throw std::runtime_error("engine_load_checkpoint: cannot open " + tarpath.string());

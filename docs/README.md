@@ -15,6 +15,11 @@ the detail.
 | [notes/rename-and-i18n-plan.md](notes/rename-and-i18n-plan.md) | the Spirula Studio rename, 13-locale localization, and retiring the Python client |
 | [notes/pose-normalization.md](notes/pose-normalization.md) | orientation/centering: what the native parser implements, and the kept reference for what it doesn't |
 | [notes/compare-view.md](notes/compare-view.md) | showing several models at once: engine scene slots, the shared navigation frame |
+| [notes/2dgs.md](notes/2dgs.md) | the 2DGS surfel primitive: how it rides the eval3d path and 3DGS storage, the fragment, the preset weights and the measurements behind them |
+| [notes/mesh-field.md](notes/mesh-field.md) | the meshing field: the per-pixel depth profile, how the cameras' views are fused, the density term, sealing free space no camera connects to; what was tried |
+| [notes/tsdf.md](notes/tsdf.md) | TSDF meshing: adaptive fusion over the splat samples, the uniform-grid volume of the 2DGS paper, and how each compares with the opacity field |
+| [notes/mesh-merge.md](notes/mesh-merge.md) | the mesh merge: edge collapse under footprint, thickness and colour limits, its block-parallel queue, results |
+| [notes/mesh-check.md](notes/mesh-check.md) | `spirula mesh --check`: what counts as a bad mesh, where the mesher made them (crossings, duplicates, slivers, holes) and the cleanup that removes them, results |
 | [notes/spherical-beta.md](notes/spherical-beta.md) | spherical-beta lobes: the colour row they share with SH, training, rotation, the PLY layout, results |
 | [notes/s-cielab.md](notes/s-cielab.md) | the S-CIELAB alternative to SSIM: colour pipeline, blur radii, the `auto` densification map |
 | [notes/pca-reg.md](notes/pca-reg.md) | the local-PCA surface regularizer (PCAsplat): its terms, the six ways of finding neighbours, and what each costs |

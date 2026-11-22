@@ -38,11 +38,13 @@ public:
     // A splat .ply, a step-*.ckpt directory, or a run directory (whose newest
     // checkpoint is used). Asynchronous; watch state(). `engine_mutex` is
     // shared by every open model -- one scene is bound at a time.
-    void open(const std::string& path, int scene_slot, std::mutex* engine_mutex);
+    void open(const std::string& path, int scene_slot, std::mutex* engine_mutex, int hardware = -1);
     // Give the slot back. Safe to call when nothing is open.
     void close();
 
     State state() const { return _state.load(); }
+    bool hardware() const { return _hardware; }
+    bool hardware_supported() const { return _hardware_supported; }
     bool ready() const { return _state.load() == State::Ready; }
     Kind kind() const { return _kind.load(); }
 
@@ -107,6 +109,9 @@ public:
 
 private:
     void run(std::string path);
+    bool _hardware = false;
+    bool _hardware_supported = true;
+    bool _hardware_fallback = true;
     void log(const std::string& s);
 
     std::thread _worker;

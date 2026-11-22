@@ -1,6 +1,7 @@
 // TrainerCore.cpp -- see TrainerCore.h.
 
 #include "app/TrainerCore.h"
+#include "checkpoint/RegionCameras.h"
 #include "app/ForecastTrace.h"
 #include "backend/api/BackendRuntime.h"
 #include "core/Env.h"
@@ -14,6 +15,8 @@
 #include "data/ResolutionSchedule.h"
 #include "core/HostMemory.h"
 #include "checkpoint/SplatPly.h"
+#include "core/AtomicFile.h"
+#include "core/Similarity.h"
 #include "config/TrainConfigJson.h"
 #include "core/ColorSpace.h"
 #include "core/ImageFile.h"
@@ -29,6 +32,7 @@
 #include "dense/Artifact.h"
 #include "data/Knn.h"
 #include "kernels/loss/PcaReg.cuh"
+#include "primitives/Primitive2DGS.cuh"
 #include "sfm/core/Exif.h"
 
 #ifndef _WIN32
@@ -625,16 +629,28 @@ std::string parser_seed(const std::string& seed) {
     return seed == spirula::dense::kSparseSeed ? std::string() : seed;
 }
 
+// 0 -> 1 over `steps`, full weight throughout when steps <= 0.
+float warmup_ramp(int step, int steps, const std::string& schedule) {
+    if (steps <= 0) return 1.0f;
+    const float t = std::min((float)step / (float)steps, 1.0f);
+    if (schedule == "linear")    return t;
+    if (schedule == "cosine")    return 0.5f * (1.0f - std::cos(3.14159265f * t));
+    if (schedule == "quadratic") return t * t;
+    if (schedule == "quartic")   return (t * t) * (t * t);
+    if (schedule == "step")      return t >= 1.0f ? 1.0f : 0.0f;
+    throw std::runtime_error("unknown warm-up schedule: " + schedule);
+}
+
 }  // namespace
 
 std::array<float, (int)LossWeightIndex::length>
 build_loss_weights(const TrainConfig& c, int step) {
-    float dist_factor = std::min((float)step / std::max(c.distortion_reg_warmup, 1), 1.0f);
-    float reg_active  = step >= c.reg_warmup_length ? 1.0f : 0.0f;
-    float sup_active  = step > c.supervision_warmup ? 1.0f : 0.0f;
-    float median_factor = std::min((float)step / std::max(c.median_warmup, 1), 1.0f);
-    float alpha_reg_factor = c.alpha_reg_weight *
-        std::min((float)step / std::max(c.alpha_reg_warmup, 1), 1.0f);
+    const float dist_factor =
+        warmup_ramp(step, c.distortion_reg_warmup, c.distortion_reg_warmup_schedule);
+    const float median_factor =
+        warmup_ramp(step, c.median_warmup, c.median_warmup_schedule);
+    const float alpha_reg_factor =
+        warmup_ramp(step, c.alpha_reg_warmup, c.alpha_reg_warmup_schedule);
     float mask = c.apply_loss_for_mask.value_or(false) ? 1.0f : 0.0f;
 
     float w_rgb_l1 = std::max(0.0f, c.l1_weight);
@@ -653,15 +669,15 @@ build_loss_weights(const TrainConfig& c, int step) {
     w[(int)LossWeightIndex::YSupL2]        = w_y_l2 * scale;
     w[(int)LossWeightIndex::USupL2]        = w_u_l2 * scale;
     w[(int)LossWeightIndex::VSupL2]        = w_v_l2 * scale;
-    w[(int)LossWeightIndex::DepthSup]      = sup_active * c.depth_supervision_weight;
-    w[(int)LossWeightIndex::NormalSup]     = sup_active * c.normal_supervision_weight;
+    w[(int)LossWeightIndex::DepthSup]      = c.depth_supervision_weight;
+    w[(int)LossWeightIndex::NormalSup]     = c.normal_supervision_weight;
     w[(int)LossWeightIndex::AlphaSup]      = mask * c.alpha_loss_weight;
     w[(int)LossWeightIndex::AlphaSupUnder] = mask * c.alpha_loss_weight_under;
-    w[(int)LossWeightIndex::NormalReg]     = reg_active * c.normal_reg_weight * dist_factor;
-    w[(int)LossWeightIndex::AlphaReg]      = reg_active * alpha_reg_factor;
-    w[(int)LossWeightIndex::RgbDistReg]    = reg_active * c.rgb_distortion_reg * dist_factor;
-    w[(int)LossWeightIndex::DepthDistReg]  = reg_active * c.depth_distortion_reg * dist_factor;
-    w[(int)LossWeightIndex::NormalDistReg] = reg_active * c.normal_distortion_reg * dist_factor;
+    w[(int)LossWeightIndex::NormalReg]     = c.normal_reg_weight * dist_factor;
+    w[(int)LossWeightIndex::AlphaReg]      = c.alpha_reg_weight * alpha_reg_factor;
+    w[(int)LossWeightIndex::RgbDistReg]    = c.rgb_distortion_reg * dist_factor;
+    w[(int)LossWeightIndex::DepthDistReg]  = c.depth_distortion_reg * dist_factor;
+    w[(int)LossWeightIndex::NormalDistReg] = c.normal_distortion_reg * dist_factor;
     w[(int)LossWeightIndex::MeanMedianDepthSup]    = median_factor * c.mean_median_depth_weight;
     w[(int)LossWeightIndex::MedianDepthNormalReg]  = median_factor * c.median_depth_normal_reg_weight;
     w[(int)LossWeightIndex::MedianNormalSup]       = median_factor * c.median_normal_supervision_weight;
@@ -739,8 +755,10 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
         c.opacity_reg * reg_decay(c.opacity_reg_decay_power);
     cfg.optim.mcmc_scale_reg_weight       =
         c.scale_reg * reg_decay(c.scale_reg_decay_power) / alpha;
-    cfg.optim.erank_reg_weight            = c.erank_reg;
-    cfg.optim.erank_reg_weight_s3         = c.erank_reg_s3;
+    cfg.optim.erank_reg_weight            = c.erank_reg *
+        warmup_ramp(step, c.erank_reg_warmup, c.erank_reg_warmup_schedule);
+    cfg.optim.erank_reg_weight_s3         = c.erank_reg_s3 *
+        warmup_ramp(step, c.erank_reg_s3_warmup, c.erank_reg_s3_warmup_schedule);
     cfg.optim.quat_norm_reg_weight        = c.quat_norm_reg;
     cfg.optim.dc_reg_weight               = c.dc_reg;
     cfg.optim.sh_reg_weight               = c.sh_reg;
@@ -774,6 +792,8 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.densify.min_opacity                   = c.min_opacity;
     cfg.densify.dead_criterion = dead_criterion_enum(c.dead_criterion);
     cfg.densify.max_weight_half_life = (float)std::max(c.max_batch_per_epoch, 1);
+    cfg.densify.min_weight                    = c.min_weight;
+    cfg.densify.max_dead_fraction             = c.max_dead_fraction;
     cfg.densify.max_screen_size               = c.max_screen_size;
     cfg.densify.max_screen_size_clip_hardness = c.max_screen_size_clip_hardness;
     cfg.densify.clip_screen_size_at_refine    = c.max_screen_size_penalty > 0.0f;
@@ -1046,7 +1066,21 @@ void TrainerSession::load_region() {
     }
 }
 
+RegionCameras TrainerSession::build_region_cameras() const {
+    std::vector<int32_t> idx((size_t)ds.num_cameras, 0);
+    std::vector<float> centers((size_t)ds.num_cameras * 3);
+    for (int64_t i = 0; i < ds.num_cameras; i++)
+        for (int r = 0; r < 3; r++) centers[(size_t)i * 3 + r] = ds.c2w[(size_t)i * 12 + r * 4 + 3];
+    RegionCameras cameras;
+    cameras.field = LabelField::build(centers.data(), idx.data(), nullptr, ds.num_cameras, 4);
+    cameras.train_from_dataset.scale = cfg.relative_scale.value_or(1.0f);
+    for (int k = 0; k < 3; k++)
+        cameras.train_from_dataset.t[k] = -cameras.train_from_dataset.scale * ds.center[k];
+    return cameras;
+}
+
 void TrainerSession::setup_region() {
+    roi_cameras.reset();
     if (!roi) {
         engine_set_region({}, {}, {}, {}, {}, {}, 1.0f);
         return;
@@ -1057,14 +1091,8 @@ void TrainerSession::setup_region() {
     RegionProgram prog;
     std::string err;
     if (!compile_region(*roi, prog, err, rs, shift)) throw std::runtime_error(err);
-    // The training cameras, indexed, orient each splat's normal on the device.
-    std::vector<int32_t> idx((size_t)ds.num_cameras);
-    std::vector<float> centers((size_t)ds.num_cameras * 3);
-    for (int64_t i = 0; i < ds.num_cameras; i++) {
-        idx[(size_t)i] = (int32_t)std::min<int64_t>(i, 254);
-        for (int r = 0; r < 3; r++) centers[(size_t)i * 3 + r] = ds.c2w[(size_t)i * 12 + r * 4 + 3];
-    }
-    const LabelField cams = LabelField::build(centers.data(), idx.data(), nullptr, ds.num_cameras, 4);
+    roi_cameras = std::make_shared<RegionCameras>(build_region_cameras());
+    const LabelField& cams = roi_cameras->field;
     static const std::vector<float> none;
     auto tv = [](const std::vector<float>& v) -> TorchTensorView {
         if (v.empty()) return {};
@@ -1116,10 +1144,11 @@ void TrainerSession::set_alpha_config(DataManagerConfig& dm,
 }
 
 void TrainerSession::set_downscale_cache(DataManagerConfig& dm) const {
+    dm.cache_progressive_images = cfg.cache_downscaled_images && cfg.progressive_resolution;
+    dm.image_dir = (fs::path(cfg.data) / cfg.image_dir).lexically_normal().string();
     const float d = cfg.train_resolution_divisor;
     if (!cfg.cache_downscaled_images || !(d >= 2.0f) || d != std::floor(d)) return;
     dm.downscale_cache_divisor = (int)d;
-    dm.image_dir = (fs::path(cfg.data) / cfg.image_dir).lexically_normal().string();
     dm.downscale_rounding_mode = cfg.downscale_rounding_mode;
 }
 
@@ -1475,6 +1504,8 @@ void TrainerSession::setup_engine() {
     ColorResolution color = resolve_color(cfg);
     SeedSplats seed = seed_world(color);
     int64_t cap = (int64_t)seed.opacities.size();
+    if (cfg.primitive == "2dgs")
+        for (int64_t i = 0; i < cap; i++) seed.scales[(size_t)i * 3 + 2] = kSurfelLogScaleZ;
     const int64_t K = ColorBasis{cfg.sh_degree, cfg.sb_lobes}.coeffs();
     auto tv = [](std::vector<float>& v, std::vector<int64_t> shape) -> TorchTensorView {
         return {(uint64_t)(uintptr_t)v.data(), (uint32_t)sizeof(float), std::move(shape)};
@@ -1612,7 +1643,7 @@ void TrainerSession::setup_engine() {
             _resolution_stages.emplace_back((int)std::min<int64_t>(from, INT_MAX), divisor);
         if (!cfg.resume.empty()) {
             try {
-                const JsonValue state = ckpt::read_state_json(ckpt::resolve_checkpoint(cfg.resume).ckpt_dir);
+                const JsonValue state = ckpt::read_state_json(ckpt::resolve_checkpoint(cfg.resume).tar_path);
                 if (const JsonValue* saved = state.find("step")) dm.first_step = saved->as_int();
             } catch (const std::exception&) {}   // restore_checkpoint reports it
         }
@@ -1691,7 +1722,6 @@ void TrainerSession::setup_engine() {
         st.bilagrid_rgb_init = true;
     }
     if (cfg.use_bilateral_grid_for_geometry && has_depth &&
-        cfg.depth_supervision_weight > 0.0f &&
         (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_depth_lr
                                         : cfg.bilagrid_depth_lr) > 0.0f) {
         engine_init_bilagrid_depth(n_grids,
@@ -1703,7 +1733,6 @@ void TrainerSession::setup_engine() {
         st.bilagrid_depth_init = true;
     }
     if (cfg.use_bilateral_grid_for_geometry && has_normal &&
-        cfg.normal_supervision_weight > 0.0f &&
         (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_normal_lr
                                         : cfg.bilagrid_normal_lr) > 0.0f) {
         engine_init_bilagrid_normal(n_grids,
@@ -1774,7 +1803,7 @@ SeedSplats TrainerSession::seed_world(const ColorResolution& color) {
 // splats, different SH degree, bilagrid/PPISP added or dropped).
 void TrainerSession::restore_checkpoint() {
     ckpt::ResolvedCheckpoint r = ckpt::resolve_checkpoint(cfg.resume);
-    ckpt::check_resumable(r.ckpt_dir);
+    ckpt::check_resumable(r.tar_path);
 
     // The target is what the engine ACTUALLY holds, not what the config asks
     // for: a depth/normal grid also needs the dataset to carry those maps,
@@ -1794,15 +1823,15 @@ void TrainerSession::restore_checkpoint() {
     if (cfg.use_calib_warp)
         target.calib_warp = std::array<int, 2>{cfg.calib_warp_grid, cfg.calib_warp_parallax ? 4 : 2};
 
-    fs::path load_from = r.ckpt_dir;
+    fs::path load_from = r.tar_path;
     fs::path tmp;
     bool adapted = false;
     {
-        JsonValue state = ckpt::read_state_json(r.ckpt_dir);
+        JsonValue state = ckpt::read_state_json(r.tar_path);
         if (ckpt::needs_adapt(state, target)) {
             tmp = out_dir / ".resume_adapt";
             log(lmsg::ckpt_adapting.get());
-            adapted = ckpt::adapt_checkpoint(r.ckpt_dir, target, tmp);
+            adapted = ckpt::adapt_checkpoint(r.tar_path, target, tmp);
             if (adapted) load_from = tmp;
         }
     }
@@ -1812,7 +1841,7 @@ void TrainerSession::restore_checkpoint() {
     } catch (const std::exception& e) {
         if (adapted) remove_tree(tmp);
         throw std::runtime_error(
-            std::string("cannot resume from ") + r.ckpt_dir.string() + ": " +
+            std::string("cannot resume from ") + r.tar_path.string() + ": " +
             e.what());
     }
     if (adapted) remove_tree(tmp);
@@ -1821,26 +1850,30 @@ void TrainerSession::restore_checkpoint() {
         cfg.background_mode = "sh";
         cfg.background_sh_degree = bg_deg;
     }
-    log(lfmt(lmsg::resumed_from, {r.ckpt_dir.string(), (long long)start_step}));
+    log(lfmt(lmsg::resumed_from, {r.tar_path.string(), (long long)start_step}));
 }
 
 void TrainerSession::save_checkpoint(int step, bool full) {
-    char name[32];
-    std::snprintf(name, sizeof name, "step-%09d.ckpt", step);
-    fs::path ckpt = out_dir / name;
-    fs::create_directories(ckpt);
-    engine_save_checkpoint(ckpt.string(), full, step, cfg.background_export_height);
-    std::error_code bg_ec;
-    if (fs::is_regular_file(ckpt / "background.webp", bg_ec)) {
-        fs::copy_file(ckpt / "background.webp", out_dir / "background.webp",
-                      fs::copy_options::overwrite_existing, bg_ec);
+    fs::path run_path = fs::absolute(out_dir).lexically_normal();
+    if (run_path.filename().empty()) run_path = run_path.parent_path();
+    const std::string run_name = run_path.filename().string();
+    std::string basename = run_name;
+    if (!cfg.save_only_latest_checkpoint) {
+        char suffix[32];
+        std::snprintf(suffix, sizeof suffix, "_step-%09d", step);
+        basename += suffix;
     }
+    const std::string camera_hash = roi_cameras ? save_region_cameras(out_dir.string(), *roi_cameras) : "";
+    engine_save_checkpoint(out_dir.string(), full, step, cfg.background_export_height,
+                           basename, cfg.export_y_up, camera_hash);
     if (cfg.save_only_latest_checkpoint) {
         std::vector<fs::path> stale;
         for (const auto& e : fs::directory_iterator(out_dir)) {
-            std::string b = e.path().filename().string();
-            if (b.rfind("step-", 0) == 0 &&
-                b.find(".ckpt") != std::string::npos && e.path() != ckpt)
+            const std::string b = e.path().filename().string();
+            if (e.is_directory() && b.rfind("step-", 0) == 0 && e.path().extension() == ".ckpt")
+                stale.push_back(e.path());
+            if (e.is_regular_file() && b.rfind(run_name + "_step-", 0) == 0 &&
+                (e.path().extension() == ".ply" || e.path().extension() == ".tar"))
                 stale.push_back(e.path());
         }
         for (const auto& p : stale) remove_tree(p);
@@ -1941,6 +1974,7 @@ TimeBreakdown TrainerSession::time_breakdown(bool whole_run) const {
 
 void TrainerSession::observe_memory(int step, int64_t splats_ran) {
     MemorySample m;
+    m.resolution_divisor = engine_train_resolution_divisor();
     m.step = step;
     m.splats_ran = splats_ran;
     m.splats_next = _live_splats.load();
@@ -2126,7 +2160,9 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         const bool probe_step = cfg.pca_reg_neighbors > 0 && step < cfg.pca_reg_start_iter &&
                                 step % kPcaRegProbeEvery == 10;
         if (probe_step) sample.gpu.at(StepPart::Regularizer, StepScale::Splats) = 0.0;
-        else _forecast.add_step(step, latency - save_s, splats_ran, splat_gpu_s);
+        sample.resolution_divisor = engine_train_resolution_divisor();
+        if (!probe_step) _forecast.add_step(step, latency - save_s, splats_ran, splat_gpu_s,
+                                           sample.resolution_divisor);
         sample.step = step;
         sample.wall_s = latency;
         sample.save_s = save_s;
@@ -2287,6 +2323,9 @@ ViewerRenderConfig TrainerSession::make_viewer_config() const {
     vc.primitive = cfg.primitive;
     vc.packed = cfg.packed;
     vc.sh_degree_warmup_every = cfg.sh_degree_warmup_every;
+    vc.sh_degree = cfg.sh_degree;
+    vc.sb_lobes = cfg.sb_lobes;
+    vc.refinement_score = true;
     vc.relative_scale = cfg.relative_scale;
     vc.output_median = cfg.mean_median_depth_weight > 0.0f ||
                        cfg.median_depth_normal_reg_weight > 0.0f ||

@@ -8,10 +8,12 @@
 // splat drops ~lr a step until the kMinLogScale floor stops it. -inf, which
 // mcmc_relocation used to manufacture, is covered too.
 //
-// Self-checking. Drives the shared backward through fused_optim_3dgs_geometry.
+// Drives the shared backward through fused_optim_3dgs_geometry. In the 2DGS
+// cases the unused third scale stays put unless the disc sinks below it.
 
 #include <kernels/optim/Optimizer.cuh>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -62,6 +64,7 @@ struct Case {
     float erank, erank_s3, scale_reg_w, anisotropy;
     bool neg_inf;      // seed every axis at -inf instead of sweeping
     bool check_floor;  // mcmc_scale_reg must not push a splat below the floor
+    bool surfel = false;
 };
 
 static bool run_case(const Case& c) {
@@ -115,7 +118,7 @@ static bool run_case(const Case& c) {
             1.6e-4f, 1e-3f, 5e-3f, 5e-2f, 2.5e-3f,
             /*max_gauss_ratio=*/10.f, c.scale_reg_w,
             /*mcmc_op=*/0.01f, /*mcmc_scale=*/0.01f,
-            c.erank, c.erank_s3, /*quat_norm=*/0.01f,
+            c.erank, c.erank_s3, /*quat_norm=*/0.01f, c.surfel,
             /*dc_reg=*/0.001f, /*sh_reg=*/0.001f,
             /*max_screen_size=*/0.3f, /*max_screen_size_penalty=*/0.f,
             /*scale_agnostic_mean=*/false, ColorTrustState{}, nq, SplatVisitState{}, gq, {},
@@ -147,6 +150,17 @@ static bool run_case(const Case& c) {
                               (long long)sank);
         total += sank;
     }
+    if (c.surfel && !c.neg_inf) {
+        std::vector<float> now = download(d_scales, 3 * N);
+        int64_t moved = 0;
+        for (int64_t i = 0; i < N; i++) {
+            const float disc = std::max(now[3 * i], now[3 * i + 1]);
+            moved += now[3 * i + 2] != std::min(start[3 * i + 2], disc);
+        }
+        if (moved) std::printf("  scales: %lld surfels' third axis off the rule\n",
+                               (long long)moved);
+        total += moved;
+    }
     std::printf("%s %s\n", total ? "FAIL" : "ok  ", c.label);
 
     backend::device_free(d_means);  backend::device_free(d_quats);
@@ -168,6 +182,9 @@ int main() {
         {"both on, anisotropic",                      0.1f, 0.05f, 0.1f, 25.f, false, false},
         {"defaults, extreme anisotropy",              0.f, 0.f, 0.f, 90.f, false, false},
         {"-inf log scale (mcmc_relocation underflow)", 0.1f, 0.05f, 0.1f, 0.f, true, false},
+        {"2dgs, shipping defaults",                   0.f, 0.f, 0.f, 0.f, false, true, true},
+        {"2dgs, both on, anisotropic",                0.1f, 0.05f, 0.1f, 25.f, false, false, true},
+        {"2dgs, -inf log scale",                      0.1f, 0.05f, 0.1f, 0.f, true, false, true},
     };
     bool ok = true;
     for (const Case& c : cases) ok &= run_case(c);

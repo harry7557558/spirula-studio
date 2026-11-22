@@ -910,6 +910,12 @@ small default buffer is not enough for these bulk paths.
   own, and the saved coordinates the grid, the pivot and the alignment helpers
   live in. docs/notes/scene-transform.md has the algebra; get a composition
   order wrong and the model moves the right amount about the wrong point.
+- **A 3DGUT or 2DGS splat is bounded three times, and only one bound may be
+  loose.** The projection writes a box and a slab, the tile intersector tests
+  the footprint itself, the rasterizers cull on box and slab again; each pixel
+  then tests its own alpha, so a bound that keeps too much costs time and one
+  that keeps too little is a hole a tile wide. `footprint_exact` renders every
+  camera model against brute force. docs/notes/footprint.md.
 - **Orthographic uses camera model 4**, with focal pixels per world unit and
   axial depth. The GUI scales its FOV by orbit distance; model placements must
   scale the focal values too. Pixel rays have distinct origins and parallel

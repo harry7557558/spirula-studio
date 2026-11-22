@@ -3,22 +3,12 @@
 /*
  * RasterizationMomentsFwd.cuh
  *
- * Occupancy-moment rasterization for the meshing pipeline. Mimics the 3DGUT
- * forward rasterizer (RasterizationEval3DFwd) over the SAME projected
- * splats_w/splats_s + tile intersection, but instead of compositing color it
- * accumulates, per pixel, the first three moments of the alpha*T weight over
- * the per-Gaussian ray depth:
- *
- *     m0 = sum_i alpha_i T_i           ( = 1 - T_final, the accumulated alpha )
- *     mean = (1/m0) sum_i alpha_i T_i z_i
- *     var  = (1/m0) sum_i alpha_i T_i z_i^2 - mean^2
- *
- * where z_i is the Gaussian's ray depth (FragmentFwd::evaluate_color().depth).
- * The occupancy 1 - T(z) at depth z is then modeled as m0 * Phi((z-mean)/std).
- *
- * Only 3DGUT (Vanilla3DGUT<0>) with no distortion output is instantiated, over
- * the compiled (camera model, distortion tier) pairs -- all in this translation
- * unit, so no generated ins/ entry is needed.
+ * Occupancy-moment rasterization for meshing: the 3DGUT forward rasterizer's
+ * walk over the same projected splats, writing per pixel (m0, c0, c1) -- the
+ * accumulated alpha and a line c0 + c1 z for sqrt(-log T) at ray depth z,
+ * fitted to the middle half of the light the ray loses: through its mean
+ * depth, with the slope its spread gives (docs/notes/mesh-field.md). Only
+ * Vanilla3DGUT<0>, over the compiled (camera model, distortion tier) pairs.
  */
 
 #include <cstdint>
@@ -27,8 +17,8 @@
 
 #include <core/Tensor.h>
 
-// Per-pixel moments [I*image_height*image_width], packed as
-// (m0, mean_depth, std_depth). Caller allocates the device buffer.
+// Per-pixel moments [I*image_height*image_width] as (m0, c0, c1). Caller
+// allocates the device buffer.
 void rasterize_moments_3dgut_fwd(
     int64_t num_splats,
     std::vector<DeviceTensorFloatND> splats_w,

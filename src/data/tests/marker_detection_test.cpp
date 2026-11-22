@@ -49,12 +49,15 @@ static std::vector<uint8_t> render(const Pattern& p, int rotation) {
 
 int main(int argc, char** argv) {
     // ID 42 bytes from OpenCV's predefined dictionaries, independent of AprilTag's bit layout.
+    // The tagStandard rows are the cells of the official apriltag-imgs PNGs for ID 42.
     const Pattern patterns[] = {
         {MarkerFamily::Aruco4x4, 4, {50, 140}},
         {MarkerFamily::Aruco5x5, 5, {108, 36, 251, 1}},
         {MarkerFamily::Aruco6x6, 6, {97, 89, 6, 155, 10}},
         {MarkerFamily::Aruco7x7, 7, {53, 233, 63, 158, 54, 124, 0}},
-        {MarkerFamily::ArucoOriginal, 5, {132, 18, 148, 1}}
+        {MarkerFamily::ArucoOriginal, 5, {132, 18, 148, 1}},
+        {MarkerFamily::TagStandard41h12, 9, {229, 192, 15, 180, 82, 97, 48, 250, 1, 123, 0}},
+        {MarkerFamily::TagStandard52h13, 10, {64, 96, 11, 246, 236, 51, 110, 91, 146, 252, 0, 98, 7}}
     };
     MarkerDetector automatic(MarkerFamily::Auto, 1);
     for (const auto& p : patterns) {
@@ -70,6 +73,10 @@ int main(int argc, char** argv) {
             }), "auto detects correct dictionary and ID after rotation");
         }
     }
+    MarkerFamily parsed = MarkerFamily::Auto;
+    check(parse_marker_family("tagStandard41h12", parsed) && parsed == MarkerFamily::TagStandard41h12 &&
+          parse_marker_family("tagStandard52h13", parsed) && parsed == MarkerFamily::TagStandard52h13,
+          "parse standard family names");
     const auto base = fs::temp_directory_path() / ("spirula-marker-test-" + std::to_string(
         std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directories(base / "sparse/0");

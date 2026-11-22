@@ -3,7 +3,11 @@
 #include "core/BufferedFile.h"
 #include "checkpoint/SplatPly.h"
 
+#include "checkpoint/SplatPlyMetadata.h"
 #include "checkpoint/SplatTransform.h"
+#include "checkpoint/SplatYUp.h"
+#include "checkpoint/RegionCameras.h"
+#include "checkpoint/Resume.h"
 #include "core/SphericalBeta.h"
 
 #include <algorithm>
@@ -11,6 +15,8 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <future>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 
@@ -36,8 +42,10 @@ struct PlyHeader {
     bool ok = false;
     bool binary_le = false;
     bool ascii = false;
+    bool y_up = false;
     int64_t num_vertex = 0;
     std::string primitive;
+    std::string region_camera_hash;
     std::vector<PlyProp> props;
     size_t row_bytes = 0;
     std::streampos data_start = 0;
@@ -85,12 +93,17 @@ PlyHeader read_header(std::istream& f) {
             h.binary_le = tok == "binary_little_endian";
             h.ascii = tok == "ascii";
         } else if (tok == "comment") {
-            std::string rem;
-            std::getline(ss, rem);
-            if (rem.find("SplatRenderMode: mip") != std::string::npos ||
-                rem.find("antialiased 1") != std::string::npos) {
-                h.primitive = "mip";
+            std::string tag;
+            ss >> tag;
+            if (tag == "spirula_roi_cameras") {
+                std::string hash, extra;
+                ss >> hash >> extra;
+                if (!h.region_camera_hash.empty() || hash.empty() || !extra.empty()) hash = "invalid";
+                h.region_camera_hash = std::move(hash);
             }
+            if (line == "comment spirula_coordinate_system supersplat_y_up") h.y_up = true;
+            if (const auto mode = mip_from_ply_comment(line))
+                h.primitive = *mode ? "mip" : "";
         } else if (tok == "element") {
             std::string name;
             int64_t count = 0;
@@ -184,12 +197,17 @@ int sb_lobes_from_params(int n_params, const std::string& path) {
 
 
 std::string splat_ply_header(int64_t vertices, const ColorBasis& basis,
-                             const std::string& primitive) {
+                             const std::string& primitive, bool y_up, const std::string& region_camera_hash) {
     std::ostringstream h;
     h << "ply\n";
     h << "format binary_little_endian 1.0\n";
+    if (!region_camera_hash.empty()) {
+        if (!valid_region_camera_hash(region_camera_hash)) throw std::runtime_error("invalid partition camera metadata reference");
+        h << "comment spirula_roi_cameras " << region_camera_hash << "\n";
+    }
     if (primitive == "mip") h << "comment SplatRenderMode: mip\n";
-    h << "element vertex " << vertices << "\n";
+    if (y_up) h << "comment spirula_coordinate_system supersplat_y_up\n";
+    h << "element vertex " << std::setfill('0') << std::setw(20) << vertices << "\n";
     h << "property float x\nproperty float y\nproperty float z\n";
     h << "property float nx\nproperty float ny\nproperty float nz\n";
     h << "property float f_dc_0\nproperty float f_dc_1\nproperty float f_dc_2\n";
@@ -269,6 +287,7 @@ public:
             }
         }
         _shape.primitive = _h.primitive;
+        _shape.region_camera_hash = _h.region_camera_hash;
         _shape.sh_degree = sh_degree_from_rest((int)_crest.size(), path);
         _shape.sb_lobes = sb_lobes_from_params((int)_csb.size(), path);
         _shape.num = _h.num_vertex;
@@ -305,17 +324,31 @@ public:
             return;
         }
         // Row-blocked: one read() per vertex is most of a large model's load time.
-        const int64_t kRows = std::max<size_t>(1, kFileBufferBytes / _h.row_bytes);
+        const int64_t kRows = std::max<int64_t>(1, std::min<int64_t>(nr, kFileBufferBytes / _h.row_bytes));
         _raw.resize((size_t)_h.row_bytes * kRows);
+        _next.resize(_raw.size());
+        auto read_next = [&](int64_t m) {
+            _f.read((char*)_next.data(), (std::streamsize)(m * (int64_t)_h.row_bytes));
+            if (!_f) throw std::runtime_error(_path + ": truncated vertex data");
+        };
+        read_next(std::min(kRows, nr));
+        std::future<void> pending;
         for (int64_t done = 0; done < nr; done += kRows) {
             const int64_t m = std::min(kRows, nr - done);
-            _f.read((char*)_raw.data(), (std::streamsize)(m * (int64_t)_h.row_bytes));
-            if (!_f) throw std::runtime_error(_path + ": truncated vertex data");
-            for (int64_t i = 0; i < m; i++) {
-                const uint8_t* r = _raw.data() + (size_t)i * _h.row_bytes;
-                for (size_t k = 0; k < _h.props.size(); k++)
-                    _vals[k] = read_scalar(r, _h.props[k]);
-                take(dst, at + done + i, _vals.data());
+            if (pending.valid()) pending.get();
+            _raw.swap(_next);
+            if (done + m < nr)
+                pending = std::async(std::launch::async, read_next, std::min(kRows, nr-done-m));
+#pragma omp parallel if(m >= 4096) num_threads(8)
+            {
+                std::vector<float> vals(_h.props.size());
+#pragma omp for schedule(static)
+                for (int64_t i = 0; i < m; i++) {
+                    const uint8_t* r = _raw.data() + (size_t)i * _h.row_bytes;
+                    for (size_t k = 0; k < _h.props.size(); k++)
+                        vals[k] = read_scalar(r, _h.props[k]);
+                    take(dst, at + done + i, vals.data());
+                }
             }
         }
     }
@@ -337,8 +370,12 @@ private:
         for (int f = 0; f < sb::kLobeFloats && L > 0; f++)
             for (int l = 0; l < L; l++)
                 lobes[l * sb::kLobeFloats + f] = v[_csb[(size_t)(f * L + l)]];
+        if (_h.y_up)
+            _y_up.apply(&out.means[i*3], &out.quats[i*4],
+                        K > 0 ? &out.features_sh[i*K*3] : nullptr, out.basis(), true);
     }
 
+    SplatYUp _y_up;
     std::string _path;
     std::ifstream _f;
     PlyHeader _h;
@@ -347,10 +384,14 @@ private:
     std::vector<int> _crest, _csb;
     int64_t _K_sh = 0, _K = 0, _K_file = 0;
     std::vector<float> _vals;
-    std::vector<uint8_t> _raw;
+    std::vector<uint8_t> _raw, _next;
 };
 
 }  // namespace
+
+SplatCloud splat_ply_shape(const std::string& path) {
+    return SplatRowReader(path, true).shape();
+}
 
 SplatCloud read_splat_ply(const std::string& path, bool want_sh) {
     SplatRowReader r(path, want_sh);
@@ -376,24 +417,13 @@ void read_splat_ply_chunks(
 }
 
 
-void write_splat_ply(const SplatCloud& c, const std::string& path,
-                     const uint8_t* keep, const SplatTransform* moved) {
+void write_splat_ply_rows(const SplatCloud& c, std::ostream& ply, std::vector<float>& buf,
+                              const uint8_t* keep, const SplatTransform* moved) {
     const ColorBasis basis = c.basis();
     const int64_t K = c.coeffs();
-    int64_t kept = c.num;
-    if (keep) {
-        kept = 0;
-        for (int64_t i = 0; i < c.num; i++) kept += keep[i] ? 1 : 0;
-    }
-    std::error_code ec;
-    fs::create_directories(fs::path(path).parent_path(), ec);
-    std::ofstream ply(path, std::ios::binary);
-    if (!ply) throw std::runtime_error("cannot open for writing: " + path);
-    ply << splat_ply_header(kept, basis, c.primitive);
-
     const int row_floats = splat_ply_row_floats(basis);
     const int kRowsPerFlush = (int)std::max<size_t>(1, kFileBufferBytes / (row_floats * sizeof(float)));
-    std::vector<float> buf((size_t)row_floats * kRowsPerFlush);
+    buf.resize((size_t)row_floats * kRowsPerFlush);
     int rows = 0;
     auto flush = [&] {
         if (!rows) return;
@@ -428,18 +458,84 @@ void write_splat_ply(const SplatCloud& c, const std::string& path,
         if (++rows == kRowsPerFlush) flush();
     }
     flush();
-    ply.flush();
+    if (!ply) throw std::runtime_error("failed to write splat PLY rows");
+}
+
+void write_splat_ply(const SplatCloud& c, const std::string& path,
+                     const uint8_t* keep, const SplatTransform* moved) {
+    int64_t kept = c.num;
+    if (keep) {
+        kept = 0;
+        for (int64_t i = 0; i < c.num; i++) kept += keep[i] ? 1 : 0;
+    }
+    std::error_code ec;
+    fs::create_directories(fs::path(path).parent_path(), ec);
+    BufferedOutputFile ply(path, std::ios::binary);
+    if (!ply) throw std::runtime_error("cannot open for writing: " + path);
+    ply << splat_ply_header(kept, c.basis(), c.primitive);
+    std::vector<float> buffer;
+    write_splat_ply_rows(c, ply, buffer, keep, moved);
+    ply.close();
     if (!ply) throw std::runtime_error("write failed: " + path);
+}
+
+void transform_splat_ply(const std::string& source, const std::string& destination,
+                          const Sim3& transform) {
+    std::error_code ec;
+    if (fs::equivalent(source, destination, ec))
+        throw std::runtime_error("splat PLY transform requires a separate output");
+    SplatRowReader reader(source, true);
+    SplatCloud chunk = reader.shape();
+    const int64_t total = chunk.num;
+    const int64_t chunk_rows = 65536;
+    const SplatTransform moved(transform, chunk.basis());
+    BufferedOutputFile ply(destination, std::ios::binary);
+    std::vector<float> buffer;
+    if (!ply) throw std::runtime_error("cannot open for writing: " + destination);
+    ply << splat_ply_header(total, chunk.basis(), chunk.primitive);
+    for (int64_t first = 0; first < total; first += chunk_rows) {
+        chunk.num = std::min(chunk_rows, total - first);
+        reader.size(chunk, chunk.num);
+        reader.read(chunk, 0, chunk.num);
+        write_splat_ply_rows(chunk, ply, buffer, nullptr, &moved);
+    }
+    ply.close();
+    if (!ply) throw std::runtime_error("write failed: " + destination);
 }
 
 
 std::pair<std::string, std::string> find_splat_ply(const std::string& path) {
     const fs::path p(path);
     std::error_code ec;
-    if (fs::is_regular_file(p, ec) && p.extension() == ".ply")
-        return {p.string(), p.parent_path().parent_path().string()};
+    if (fs::is_regular_file(p, ec) && p.extension() == ".ply") {
+        const fs::path parent = p.parent_path();
+        return {p.string(), parent.extension() == ".ckpt"
+                                ? parent.parent_path().string() : parent.string()};
+    }
+    auto ply_in = [&](const fs::path& dir) -> fs::path {
+        if (fs::is_regular_file(dir / "splat.ply", ec)) return dir / "splat.ply";
+        fs::path candidate;
+        for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->is_regular_file(ec) && it->path().extension() == ".ply" &&
+                is_splat_ply(it->path().string())) {
+                if (!candidate.empty()) return {};
+                candidate = it->path();
+            }
+        }
+        return ec ? fs::path{} : candidate;
+    };
+    if (p.extension() == ".tar" || fs::is_directory(p, ec)) {
+        try {
+            const auto checkpoint = ckpt::resolve_checkpoint(p);
+            fs::path ply = checkpoint.tar_path;
+            ply.replace_extension(".ply");
+            if (!fs::is_regular_file(ply, ec)) ply = checkpoint.ckpt_dir / "splat.ply";
+            if (fs::is_regular_file(ply, ec)) return {ply.string(), checkpoint.run_dir.string()};
+        } catch (const std::exception&) {}
+    }
     if (fs::is_regular_file(p / "splat.ply", ec))
-        return {(p / "splat.ply").string(), p.parent_path().string()};
+        return {(p / "splat.ply").string(), p.extension() == ".ckpt"
+                                                ? p.parent_path().string() : p.string()};
     if (fs::is_directory(p, ec)) {
         // A run directory: the newest checkpoint under it that has one.
         std::vector<fs::path> ckpts;
@@ -451,8 +547,14 @@ std::pair<std::string, std::string> find_splat_ply(const std::string& path) {
         }
         std::sort(ckpts.begin(), ckpts.end());
         for (auto it = ckpts.rbegin(); it != ckpts.rend(); ++it)
-            if (fs::is_regular_file(*it / "splat.ply", ec))
-                return {(*it / "splat.ply").string(), p.string()};
+            if (const fs::path ply = ply_in(*it); !ply.empty())
+                return {ply.string(), p.string()};
+        const fs::path named = p / (p.filename().string() + ".ply");
+        if (fs::is_regular_file(named, ec) && is_splat_ply(named.string()))
+            return {named.string(), p.string()};
+        if (const fs::path ply = ply_in(p); !ply.empty())
+            return {ply.string(), p.extension() == ".ckpt"
+                                      ? p.parent_path().string() : p.string()};
     }
     throw std::runtime_error("no splat.ply found under " + path);
 }

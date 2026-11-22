@@ -234,6 +234,7 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
     const float erank_reg_weight,
     const float erank_reg_weight_s3,
     const float quat_norm_reg_weight,
+    const bool surfel,
     const float dc_reg_weight,
     const float sh_reg_weight,
     const float max_screen_size,
@@ -379,7 +380,8 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
         scale_regularization_weight,
         erank_reg_weight,
         erank_reg_weight_s3,
-        quat_norm_reg_weight
+        quat_norm_reg_weight,
+        surfel
     );
     if (regularize) {
         v_splat_world.scale += v_scale_t;
@@ -441,6 +443,8 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
         g1_scale = beta1 * g1_scale + (1.f - beta1) * v_splat_world.scale;
         g2_scale = beta2 * g2_scale + (1.f - beta2) * v_splat_world.scale*v_splat_world.scale;
         float3 new_scale = splat_world.scale - lr_scales * inv_bias_correction1 * g1_scale / (sqrtf(g2_scale * inv_bias_correction2) + eps);
+        // 2DGS: z stays at or below the disc, so a collapsed disc reads as dead.
+        if (surfel) new_scale.z = fminf(new_scale.z, fmaxf(new_scale.x, new_scale.y));
         splats_world.scales(gid) = new_scale;
         if constexpr (NON_SH_QUANT) {
             if (non_sh.enabled) {
@@ -1061,6 +1065,7 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
     const float erank_reg_weight,
     const float erank_reg_weight_s3,
     const float quat_norm_reg_weight,
+    const bool surfel,
     const float dc_reg_weight,
     const float sh_reg_weight,
     const float max_screen_size,
@@ -1106,6 +1111,7 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
         erank_reg_weight / (float)N,
         erank_reg_weight_s3 / (float)N,
         quat_norm_reg_weight / (float)N,
+        surfel,
         2.0f * dc_reg_weight / 3.0f,
         2.0f * sh_reg_weight / (float)(3*N),
         max_screen_size, max_screen_size_penalty,

@@ -1,6 +1,7 @@
 // Adapt.cpp -- see Adapt.h.
 
 #include "checkpoint/Adapt.h"
+#include "checkpoint/Resume.h"
 
 #include "core/CheckpointIO.h"
 #include "core/SphericalBeta.h"
@@ -9,12 +10,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <fstream>
 #include <map>
 #include <numeric>
-#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -68,21 +68,18 @@ Buffer from_u32(const std::vector<uint32_t>& v) {
     return make_buffer("<u4", v.data(), v.size() * sizeof(uint32_t));
 }
 
-std::map<std::string, Buffer> read_tar_npy(const fs::path& ckpt_dir) {
-    std::ifstream in((ckpt_dir / "state.tar").string(), std::ios::binary);
-    if (!in) throw std::runtime_error("cannot open " +
-                                      (ckpt_dir / "state.tar").string());
+std::map<std::string, Buffer> read_tar_npy(std::istream& in,
+                                           const std::vector<TarMember>& members) {
     std::map<std::string, Buffer> out;
-    for (const auto& m : tar_index(in)) {
+    for (const auto& m : members) {
         if (m.name.size() < 4 ||
             m.name.compare(m.name.size() - 4, 4, ".npy") != 0) continue;
         NpyInfo info = npy_locate(in, m.data_offset, m.size);
         Buffer b;
-        b.descr = info.descr;
+        b.descr = std::move(info.descr);
         b.bytes.resize((size_t)info.data_bytes);
-        in.clear();
-        in.seekg((std::streamoff)info.data_offset, std::ios::beg);
-        in.read(b.bytes.data(), (std::streamsize)info.data_bytes);
+        if (!b.bytes.empty() && !in.read(b.bytes.data(), (std::streamsize)b.bytes.size()))
+            throw std::runtime_error("truncated checkpoint TAR member " + m.name);
         out.emplace(m.name.substr(0, m.name.size() - 4), std::move(b));
     }
     return out;
@@ -521,19 +518,23 @@ bool needs_adapt(const JsonValue& state, const TargetLayout& t) {
 }
 
 
-bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
-                      const fs::path& out_dir) {
-    std::ifstream sin((ckpt_dir / "state.tar").string(), std::ios::binary);
-    if (!sin) throw std::runtime_error("cannot open " +
-                                       (ckpt_dir / "state.tar").string());
+namespace {
+
+struct AdaptedCheckpoint {
+    std::string state;
+    std::map<std::string, Buffer> arrays;
+};
+
+std::optional<AdaptedCheckpoint> prepare_adaptation(std::istream& in, const TargetLayout& t) {
+    const auto members = tar_index(in);
     std::string state_text;
-    for (const auto& m : tar_index(sin))
-        if (m.name == "state.json") { state_text = tar_read_member(sin, m); break; }
+    for (const auto& m : members)
+        if (m.name == "state.json") { state_text = tar_read_member(in, m); break; }
     if (state_text.empty())
-        throw std::runtime_error("state.json missing in " + ckpt_dir.string());
+        throw std::runtime_error("state.json missing in checkpoint TAR");
     JsonValue state = json_parse(state_text);
 
-    if (!needs_adapt(state, t)) return false;
+    if (!needs_adapt(state, t)) return std::nullopt;
 
     const int64_t max_ck = (int64_t)state.get_double("max_num_splats", 0);
     const int64_t cur_ck = (int64_t)state.get_double("cur_num_splats", 0);
@@ -546,7 +547,7 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
         throw std::runtime_error("checkpoint adapt: lobe count exceeds the colour row");
     const int64_t n_img   = t.num_images;
 
-    std::map<std::string, Buffer> arrs = read_tar_npy(ckpt_dir);
+    std::map<std::string, Buffer> arrs = read_tar_npy(in, members);
 
     // Group the ".q" / ".qb" halves of a quantized slot under one logical name.
     struct Logical { const Buffer* plain = nullptr; const Buffer* q = nullptr;
@@ -781,7 +782,7 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
     // state.json with the counts retargeted. Rewriting the numbers in place
     // keeps every other field (quant widths, FPBO flags, camera block) exactly
     // as the writer emitted it.
-    std::string st = state_text;
+    std::string& st = state_text;
     auto set_int = [&st](const char* key, int64_t v) {
         std::string pat = std::string("\"") + key + "\":";
         size_t k = st.find(pat);
@@ -800,14 +801,57 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
     }
     set_int("sb_lobes", t.sb_lobes);
 
-    fs::create_directories(out_dir);
-    std::ofstream out((out_dir / "state.tar").string(), std::ios::binary);
-    if (!out) throw std::runtime_error("cannot write " +
-                                       (out_dir / "state.tar").string());
-    tar_write_bytes(out, "state.json", st.data(), st.size());
-    for (const auto& [name, buf] : emit)
+    return AdaptedCheckpoint{std::move(st), std::move(emit)};
+}
+
+void write_adaptation(std::ostream& out, const AdaptedCheckpoint& adapted) {
+    tar_write_bytes(out, "state.json", adapted.state.data(), adapted.state.size());
+    if (!out) throw std::runtime_error("failed to write adapted state.json");
+    for (const auto& [name, buf] : adapted.arrays) {
         write_npy_member(out, name + ".npy", buf);
+        if (!out) throw std::runtime_error("failed to write adapted checkpoint array " + name);
+    }
     tar_finish(out);
+    if (!out.flush()) throw std::runtime_error("failed to flush adapted checkpoint TAR");
+}
+
+}  // namespace
+
+bool detail::adapt_checkpoint_stream(std::istream& in, const TargetLayout& t, std::ostream& out) {
+    const auto adapted = prepare_adaptation(in, t);
+    if (!adapted) return false;
+    write_adaptation(out, *adapted);
+    return true;
+}
+
+bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
+                      const fs::path& out_dir) {
+    const auto src = resolve_checkpoint(ckpt_dir).tar_path;
+    const auto adapted = [&] {
+        spirula::BufferedInputFile in(src, std::ios::binary);
+        if (!in) throw std::runtime_error("cannot open " + src.string());
+        return prepare_adaptation(in, t);
+    }();
+    if (!adapted) return false;
+
+    fs::create_directories(out_dir);
+    const auto dst = out_dir / "state.tar";
+
+    bool opened = false;
+    try {
+        spirula::BufferedOutputFile out(dst, std::ios::binary);
+        opened = out.is_open();
+        if (!out) throw std::runtime_error("cannot write " + dst.string());
+        write_adaptation(out, *adapted);
+        out.close();
+        if (!out) throw std::runtime_error("failed to close " + dst.string());
+    } catch (...) {
+        if (opened) {
+            std::error_code ec;
+            fs::remove(dst, ec);
+        }
+        throw;
+    }
     return true;
 }
 

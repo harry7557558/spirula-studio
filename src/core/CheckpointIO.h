@@ -1,25 +1,16 @@
 #pragma once
 
-// CheckpointIO -- zero-dependency writers for the resumable-checkpoint format.
-//
-// A checkpoint's resume payload is a single POSIX ustar `state.tar` bundling:
-//   * state.json         -- small runtime/validation manifest (written by the
-//                           engine; NOT config -- config lives in config.json)
-//   * <slot_name>.npy    -- one flat, typed NumPy array per saved pool buffer,
-//                           named by its DevicePool slot ("world.means.npy",
-//                           "eng.sh_quant.q.npy", ...).
-//
-// The device->host copy is chunked through a small reusable host buffer, so
-// serializing a multi-GB buffer uses bounded host RAM and ZERO extra device
-// memory (nothing is allocated on the GPU during a save).
-//
-// Phase 2 (load/resume) will add the matching tar + .npy readers here.
+// Native resume archives: state.json and flat typed NPY device buffers in ustar.
+// Two reusable chunks overlap disk I/O with device transfers.
 
+#include "core/BufferedFile.h"
+#include <future>
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <istream>
+#include <limits>
 #include <ostream>
 #include <stdexcept>
 #include <string>
@@ -91,9 +82,9 @@ inline void tar_write_bytes(std::ostream& out, const std::string& name,
 
 // --- Two zero blocks terminate the archive. ---
 inline void tar_finish(std::ostream& out) {
-    char z[512] = {0};
-    out.write(z, 512);
-    out.write(z, 512);
+    const char zero[1024]{};
+    if (!out.write(zero, sizeof(zero)))
+        throw std::runtime_error("failed to write checkpoint TAR terminator");
 }
 
 // --- Stream a device buffer as a flat typed .npy member. Chunked D->H copy
@@ -111,15 +102,23 @@ inline void tar_write_npy_device(std::ostream& out, const std::string& name,
     tar_header(out, name, member);
     out.write(hdr.data(), (std::streamsize)hdr.size());
 
-    constexpr size_t CHUNK = 32u << 20;   // 32 MiB host staging
-    if (host.size() < std::min(nbytes, CHUNK)) host.resize(std::min(nbytes, CHUNK));
+    const size_t chunk = std::min(nbytes, spirula::kFileBufferBytes);
+    if (host.size() < 2*chunk) host.resize(2*chunk);
     const char* src = (const char*)dptr;
-    for (size_t off = 0; off < nbytes; ) {
-        size_t n = std::min(CHUNK, nbytes - off);
-        backend::memcpy_sync(host.data(), src + off, n, backend::MemcpyKind::DeviceToHost);
-        out.write(host.data(), (std::streamsize)n);
-        off += n;
+    std::future<void> pending;
+    size_t slot = 0;
+    for (size_t off = 0; off < nbytes; off += chunk) {
+        const size_t n = std::min(chunk, nbytes-off);
+        char* data = host.data()+slot*chunk;
+        backend::memcpy_sync(data, src+off, n, backend::MemcpyKind::DeviceToHost);
+        if (pending.valid()) pending.get();
+        pending = std::async(std::launch::async, [&, data, n] {
+            out.write(data, (std::streamsize)n);
+            if (!out) throw std::runtime_error("failed to write checkpoint buffer " + name);
+        });
+        slot = 1-slot;
     }
+    if (pending.valid()) pending.get();
     tar_pad(out, member);
 }
 
@@ -141,32 +140,51 @@ struct TarMember {
 inline std::vector<TarMember> tar_index(std::istream& in) {
     std::vector<TarMember> members;
     in.clear();
-    in.seekg(0, std::ios::beg);
+    if (!in.seekg(0, std::ios::beg))
+        throw std::runtime_error("failed to seek to checkpoint TAR start");
     char h[512];
-    while (in.read(h, 512)) {
-        if (h[0] == '\0') break;                       // zero block -> end
+    for (;;) {
+        if (!in.read(h, sizeof(h)))
+            throw std::runtime_error("truncated checkpoint TAR header or missing terminator");
+        if (h[0] == '\0') {
+            auto zero_block = [&] {
+                return std::all_of(h, h + sizeof(h), [](char c) { return c == '\0'; });
+            };
+            if (!zero_block() || !in.read(h, sizeof(h)) || !zero_block())
+                throw std::runtime_error("invalid checkpoint TAR terminator");
+            return members;
+        }
         std::string name(h, ::strnlen(h, 100));
         uint64_t size = 0;
         if ((unsigned char)h[124] & 0x80) {            // base-256
-            for (int i = 125; i < 136; ++i) size = (size << 8) | (unsigned char)h[i];
+            if ((unsigned char)h[124] != 0x80 || h[125] != 0 || h[126] != 0 || h[127] != 0)
+                throw std::runtime_error("invalid checkpoint TAR member size");
+            for (int i = 128; i < 136; ++i) size = (size << 8) | (unsigned char)h[i];
         } else {                                       // octal
             for (int i = 124; i < 136 && h[i] >= '0' && h[i] <= '7'; ++i)
                 size = size * 8 + (uint64_t)(h[i] - '0');
         }
-        uint64_t data_off = (uint64_t)in.tellg();
-        members.push_back({ name, data_off, size });
-        uint64_t skip = (size + 511u) & ~((uint64_t)511u);   // pad to 512
-        in.seekg((std::streamoff)skip, std::ios::cur);
+        const std::streamoff data_off = in.tellg();
+        const uint64_t pad = (512 - size % 512) % 512;
+        if (data_off < 0 || size > uint64_t(std::numeric_limits<std::streamoff>::max() - data_off) ||
+            pad > uint64_t(std::numeric_limits<std::streamoff>::max() - data_off) - size ||
+            !in.seekg((std::streamoff)(size + pad), std::ios::cur))
+            throw std::runtime_error("failed to seek past checkpoint TAR member " + name);
+        members.push_back({std::move(name), (uint64_t)data_off, size});
     }
-    return members;
 }
 
 // Read a whole small member (e.g. state.json) into a string.
 inline std::string tar_read_member(std::istream& in, const TarMember& m) {
-    std::string s(m.size, '\0');
     in.clear();
-    in.seekg((std::streamoff)m.data_offset, std::ios::beg);
-    in.read(&s[0], (std::streamsize)m.size);
+    if (m.data_offset > uint64_t(std::numeric_limits<std::streamoff>::max()) ||
+        !in.seekg((std::streamoff)m.data_offset, std::ios::beg))
+        throw std::runtime_error("failed to seek to checkpoint TAR member " + m.name);
+    if (m.size > uint64_t(std::numeric_limits<std::streamsize>::max()))
+        throw std::runtime_error("invalid checkpoint TAR member size for " + m.name);
+    std::string s(m.size, '\0');
+    if (!in.read(s.data(), (std::streamsize)m.size))
+        throw std::runtime_error("truncated checkpoint TAR member " + m.name);
     return s;
 }
 
@@ -223,14 +241,24 @@ inline void read_into_device(std::istream& in, uint64_t offset,
                              void* dptr, size_t nbytes, std::vector<char>& host) {
     in.clear();
     in.seekg((std::streamoff)offset, std::ios::beg);
-    constexpr size_t CHUNK = 32u << 20;
-    if (host.size() < std::min(nbytes, CHUNK)) host.resize(std::min(nbytes, CHUNK));
+    const size_t chunk = std::min(nbytes, spirula::kFileBufferBytes);
+    if (host.size() < 2*chunk) host.resize(2*chunk);
     char* dst = (char*)dptr;
-    for (size_t off = 0; off < nbytes; ) {
-        size_t n = std::min(CHUNK, nbytes - off);
-        in.read(host.data(), (std::streamsize)n);
-        backend::memcpy_sync(dst + off, host.data(), n, backend::MemcpyKind::HostToDevice);
-        off += n;
+    auto read = [&](char* data, size_t n) {
+        in.read(data, (std::streamsize)n);
+        if (!in) throw std::runtime_error("truncated checkpoint buffer");
+    };
+    if (nbytes) read(host.data(), chunk);
+    std::future<void> pending;
+    size_t slot = 0;
+    for (size_t off = 0; off < nbytes; off += chunk) {
+        const size_t n = std::min(chunk, nbytes-off);
+        if (pending.valid()) pending.get();
+        if (off+n < nbytes)
+            pending = std::async(std::launch::async, read, host.data()+(1-slot)*chunk,
+                                 std::min(chunk, nbytes-off-n));
+        backend::memcpy_sync(dst+off, host.data()+slot*chunk, n, backend::MemcpyKind::HostToDevice);
+        slot = 1-slot;
     }
 }
 

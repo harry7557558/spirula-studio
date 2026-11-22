@@ -2,11 +2,12 @@
 //
 //   python tools/gen_exr_cases.py /tmp/exr_cases && ./build_vulkan/exr_decode /tmp/exr_cases
 //
-// Every case must decode BIT-EXACTLY to its .f32 companion, on one thread and
-// on many; a case named err_* must be refused with a non-empty message.
+// Non-DWA paths are bit-exact; DWA allows CPU-dependent DCT rounding.
+// A case named err_* must be refused with a non-empty message.
 
 #include "core/ExrImage.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -25,11 +26,24 @@ bool read_f32(const std::string& path, std::vector<float>& out) {
     return (bool)f.read((char*)out.data(), n);
 }
 
-// NaN compares unequal to itself, and PIZ round-trips NaN payloads exactly, so
-// the two are compared by bit pattern rather than by value.
-bool same(const std::vector<float>& a, const std::vector<float>& b) {
+bool same_pixel(float a, float b, bool dwa) {
+    if (std::memcmp(&a, &b, sizeof(float)) == 0) return true;
+    if (!dwa || !std::isfinite(a) || !std::isfinite(b)) return false;
+    // DCT rounding and the nonlinear LUT each round to half; SSE2 and AVX can differ.
+    auto encoded = [](float x) {
+        const double v = std::fabs((double)x);
+        return std::copysign(v <= 1 ? std::pow(v, 1 / 2.2)
+                                  : 1 + std::log(v) / std::log(9.02501329156), x);
+    };
+    const double x = encoded(a), y = encoded(b);
+    return std::fabs(x - y) <= 1e-6 + 2 * std::ldexp(std::max(std::fabs(x), std::fabs(y)), -10);
+}
+
+bool same(const std::vector<float>& a, const std::vector<float>& b, bool dwa) {
     if (a.size() != b.size()) return false;
-    return std::memcmp(a.data(), b.data(), a.size() * sizeof(float)) == 0;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (!same_pixel(a[i], b[i], dwa)) return false;
+    return true;
 }
 
 }  // namespace
@@ -61,12 +75,19 @@ int main(int argc, char** argv) {
             failed++;
             continue;
         }
+        std::vector<float> serial;
         for (int threads : {1, 8}) {
             exr::Info info;
             exr::Options opt;
             opt.threads = threads;
             std::vector<float> got;
             const std::string err = exr::decode(path, opt, info, got);
+            const bool dwa = info.compression == "DWAA" || info.compression == "DWAB";
+            if (threads == 1) serial = got;
+            else if (err.empty() && !same(got, serial, false)) {
+                std::printf("BAD  %s: decode changes with thread count\n", name.c_str());
+                failed++;
+            }
             if (want_error) {
                 if (err.empty()) {
                     std::printf("BAD  %s t%d: decoded, but should not have\n",
@@ -84,11 +105,11 @@ int main(int argc, char** argv) {
                 std::printf("BAD  %s t%d: %dx%d, expected %dx%d\n", name.c_str(),
                             threads, info.width, info.height, want_w, want_h);
                 failed++;
-            } else if (!same(got, want)) {
+            } else if (!same(got, want, dwa)) {
                 size_t at = got.size();
                 float a = 0.0f, b = 0.0f;
                 for (size_t i = 0; i < got.size() && i < want.size(); i++)
-                    if (std::memcmp(&got[i], &want[i], 4) != 0) {
+                    if (!same_pixel(got[i], want[i], dwa)) {
                         at = i; a = got[i]; b = want[i];
                         break;
                     }

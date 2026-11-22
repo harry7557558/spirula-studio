@@ -26,10 +26,12 @@ photos separately. Downsampling 1 uses the full image; larger values run faster
 but can miss small tags. Results with mean reprojection error over four
 calibrated pixels or centres behind their observing cameras are rejected.
 
-Supported types are AprilTag `tag36h10` / `tag36h11`, ArUco `4x4`, `5x5`, `6x6`,
-`7x7` (the OpenCV `_1000` dictionaries, also containing the `_50`, `_100` and
-`_250` subsets), and `aruco_original`. ArUco decoding requires an exact code
-match. Auto selects the family with the greatest support from triangulated
+Supported types are AprilTag `tag36h10` / `tag36h11` / `tagStandard41h12` /
+`tagStandard52h13`, ArUco `4x4`, `5x5`, `6x6`, `7x7` (the OpenCV `_1000`
+dictionaries, also containing the `_50`, `_100` and `_250` subsets), and
+`aruco_original`. ArUco decoding requires an exact code match. A `tagStandard`
+marker's corners are those of its inner border square, not of the whole printed
+tag. Auto selects the family with the greatest support from triangulated
 markers; it never merges numeric IDs across dictionaries. `markers.json`
 records each marker's family; older files without it remain readable.
 
@@ -60,14 +62,15 @@ images yield two valid triangulated markers, IDs 231 and 412. That confirms
 ArUco detection, but this reconstruction cannot yet define the three-marker
 coordinate frame. More registered views of a third marker are needed.
 
-The native `marker_detection_test` checks independent OpenCV bit patterns at
-all four rotations, automatic family detection, sparse-root lookup, JSON family
-round-tripping, unreadable images and cancellation. Optional dataset arguments
-run read-only scans and alignment checks:
+The native `marker_detection_test` checks independent OpenCV bit patterns and
+official AprilTag standard-tag images at all four rotations, automatic family
+detection, sparse-root lookup, JSON family round-tripping, unreadable images
+and cancellation. Optional dataset arguments run read-only scans and alignment
+checks:
 
 ```bash
 ./build_vulkan/marker_detection_test /path/to/dataset
 ```
 
-The vendored ArUco tables and license notices are documented in
+The vendored family tables and license notices are documented in
 `src/external/apriltag/README.spirula.md`. No OpenCV dependency is needed.

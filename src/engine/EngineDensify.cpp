@@ -144,7 +144,7 @@ struct RefineStats {
 // back to the host. `floor` is the split floor, or 0.25 for reference when off.
 static void _refine_stats(int64_t n, const DensifyConfig& cfg, float split_opacity_k,
                           bool dead_by_opacity, DeviceVector<float>& max_weight,
-                          RefineStats& stats) {
+                          float min_weight, RefineStats& stats) {
     auto& opt = engine().optim;
     const DeviceVector<float2>& dv_score =
         opt.densify_sample_score.data_ptr() ? opt.densify_sample_score : opt.accum_buffer;
@@ -175,7 +175,7 @@ static void _refine_stats(int64_t n, const DensifyConfig& cfg, float split_opaci
     for (size_t i = 0; i < N; ++i) {
         const float a = 1.0f / (1.0f + std::exp(-logit[i]));
         if (dead_by_opacity && a <= cfg.min_opacity) { ++stats.dead_opacity; continue; }
-        if (!weight.empty() && weight[i] <= cfg.min_opacity) { ++stats.dead_weight; continue; }
+        if (!weight.empty() && weight[i] <= min_weight) { ++stats.dead_weight; continue; }
         if (!visit.empty() && visit_unrendered_steps(visit[i]) >= (uint32_t)cfg.dead_after_steps) {
             ++stats.dead_stale;
             continue;
@@ -558,6 +558,9 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     }
     const bool dead_by_opacity = cfg.dead_criterion != DeadCriterion::MaxWeight
         || dv_max_weight.data_ptr() == nullptr;
+    const float min_weight_floor = std::min(cfg.min_opacity, cfg.min_weight);
+    if (!(mw.dead_below > 0.0f)) mw.dead_below = cfg.min_weight;
+    const float min_weight = std::clamp(mw.dead_below, min_weight_floor, cfg.min_weight);
 
     // Long-axis-split opacity split factor `k`, linearly scheduled over the
     // first `las_split_opacity_k_warmup` steps (clamped to [init, final]).
@@ -574,7 +577,8 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
 
     RefineStats stats;
     if (do_densify && use_revised && _stats_log_on())
-        _refine_stats(cur_num_splats, cfg, split_opacity_k, dead_by_opacity, dv_max_weight, stats);
+        _refine_stats(cur_num_splats, cfg, split_opacity_k, dead_by_opacity, dv_max_weight,
+                      min_weight, stats);
 
     if (do_densify && use_revised) {
         // Revised relocation (long axis split)
@@ -585,7 +589,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
             dv_g2_means, dv_g2_quats, dv_g2_scales, dv_g2_opacs, dv_g2_features_dc, dv_g2_features_sh,
             dv_accum_buf, engine().optim.densify_sample_score, dv_bias_steps,
             dv_visit, (uint32_t)std::max(cfg.dead_after_steps, 0),
-            dv_max_weight, dead_by_opacity,
+            dv_max_weight, min_weight, dead_by_opacity,
             sh_optim_bits, num_sh,
             dv_sh_quant_bounds, sh_bounds_per_splat,
             dv_sh_value_packed, dv_sh_value_bounds,
@@ -594,6 +598,14 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
             2 * step + 0,
             split_budget, &num_dead
         );
+        // Too many dead at once is a scene whose splats all weigh little, not
+        // one with many to spare: back the weight test off, lowest first.
+        if (dv_max_weight.data_ptr() != nullptr && cfg.max_dead_fraction > 0.0f) {
+            const float dead = (float)num_dead / (float)std::max<int64_t>(cur_num_splats, 1);
+            const float f = dead > cfg.max_dead_fraction
+                ? std::max(std::sqrt(cfg.max_dead_fraction / dead), 0.5f) : 1.1f;
+            mw.dead_below = std::clamp(min_weight * f, min_weight_floor, cfg.min_weight);
+        }
 
         // Add more splats
         int64_t n_target = densify_target(cfg, cur_num_splats, densify_cap_at(cfg, step, max_num_splats));

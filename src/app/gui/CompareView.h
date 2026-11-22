@@ -107,8 +107,13 @@ public:
     // Which panel is beside the panes: the editor's, the render's, or none.
     enum class Sidebar { None, Edit, Render };
     Sidebar sidebar() const;
-    // Playing back or exporting: the window keeps drawing.
-    bool animating() const { return _render.animating(); }
+    // Playing back, exporting or refining a pane: the window keeps drawing.
+    bool animating() const {
+        if (_render.animating()) return true;
+        for (const auto& m : _models)
+            if (m->panel.refining()) return true;
+        return false;
+    }
 
     // Attach panels whose loaders have finished and refresh the placements.
     // Once a frame, before draw().
@@ -140,6 +145,8 @@ private:
         uint64_t load_id = 0;       // a new one each time the file is read
         uint64_t uid = 0;           // the pane's own, for as long as it is open
         bool attached = false;
+        int after_compute_load = 0;
+        std::string action_error;
         // Placement in the shared frame. `align` puts the model in the FIRST
         // model's frame rather than in its own; the rest is the hand
         // adjustment on top of that.

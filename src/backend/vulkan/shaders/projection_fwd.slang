@@ -123,7 +123,7 @@ void run_projection<let cam: CameraModelType, D : ICameraDistortion>(
     float s_depth;
     float3 s_conic;
     float s_opac;
-    projection_3dgs<cam, D, false, false>(
+    projection_3dgs<cam, D, false, false, false>(
         kAntialiased != 0,
         mean, quat, scale, in_opacity, R, t,
         intrin.x, intrin.y, intrin.z, intrin.w, dist,
@@ -139,10 +139,10 @@ void run_projection<let cam: CameraModelType, D : ICameraDistortion>(
                                p.sb_base);
 
     // store (mirrors the kernel epilogue: clamp, degenerate cull, atomics)
-    aabb.x = clamp(aabb.x, 0.0f, float(p.width) - 1.0f);
-    aabb.y = clamp(aabb.y, 0.0f, float(p.height) - 1.0f);
-    aabb.z = clamp(aabb.z, 0.0f, float(p.width) - 1.0f);
-    aabb.w = clamp(aabb.w, 0.0f, float(p.height) - 1.0f);
+    aabb.x = clamp(aabb.x, 0.0f, float(p.width));
+    aabb.y = clamp(aabb.y, 0.0f, float(p.height));
+    aabb.z = clamp(aabb.z, 0.0f, float(p.width));
+    aabb.w = clamp(aabb.w, 0.0f, float(p.height));
     if (aabb.z - aabb.x > 1e-3f && aabb.w - aabb.y > 1e-3f) {
         if (!is_null(p.s_screen))
             scr2_store(scr2_row(p.s_screen, idx), s_xy, s_depth, s_conic,
@@ -171,9 +171,9 @@ void projection_fwd_3dgs(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 #undef _pf_call
 
 // ---------------------------------------------------------------------------
-// 3DGUT (eval3d): projection_3dgs<cam, D, false, true>, antialiased always
-// false; the projected 2D conic lands in the screen row's "scale" slot, which
-// is what the eval3d rasterizer culls with. Mirrors Primitive3DGUT::project().
+// 3DGUT and 2DGS (kEval3d == 2), never antialiased: the projected 2D conic
+// lands in the screen row's "scale" slot, which the eval3d rasterizer culls
+// with. Mirrors Primitive3DGUT::project().
 // ---------------------------------------------------------------------------
 
 struct Projection3dgutParams {
@@ -203,8 +203,8 @@ struct Projection3dgutParams {
     uint32_t sb_base;     // float3 coefficient of the first lobe in a row
 };
 
-void run_projection_3dgut<let cam: CameraModelType, D : ICameraDistortion>(
-    Projection3dgutParams p, uint idx) {
+void run_projection_3dgut<let cam: CameraModelType, D : ICameraDistortion,
+                          let surfel: bool>(Projection3dgutParams p, uint idx) {
     uint cid = (idx / p.N) % p.C;
     uint gid = idx % p.N;
 
@@ -236,8 +236,8 @@ void run_projection_3dgut<let cam: CameraModelType, D : ICameraDistortion>(
     float depth;
     float3 s_scale;
     float s_opac;
-    projection_3dgs<cam, D, false, true>(
-        false,  // antialiased: always false for 3DGUT
+    projection_3dgs<cam, D, false, true, surfel>(
+        false,  // antialiased: always false for 3DGUT and 2DGS
         mean, quat, scale, in_opacity, R, t,
         intrin.x, intrin.y, intrin.z, intrin.w, dist,
         p.width, p.height,
@@ -250,10 +250,10 @@ void run_projection_3dgut<let cam: CameraModelType, D : ICameraDistortion>(
                                p.num_sh_buffer, i64mem_get(p.sh_bounds_stride),
                                p.sb_base);
 
-    aabb.x = clamp(aabb.x, 0.0f, float(p.width) - 1.0f);
-    aabb.y = clamp(aabb.y, 0.0f, float(p.height) - 1.0f);
-    aabb.z = clamp(aabb.z, 0.0f, float(p.width) - 1.0f);
-    aabb.w = clamp(aabb.w, 0.0f, float(p.height) - 1.0f);
+    aabb.x = clamp(aabb.x, 0.0f, float(p.width));
+    aabb.y = clamp(aabb.y, 0.0f, float(p.height));
+    aabb.z = clamp(aabb.z, 0.0f, float(p.width));
+    aabb.w = clamp(aabb.w, 0.0f, float(p.height));
     if (aabb.z - aabb.x > 1e-3f && aabb.w - aabb.y > 1e-3f) {
         if (!is_null(p.s_screen))
             scrg_store(scrg_row(p.s_screen, idx), s_scale, s_opac, rgb);
@@ -266,7 +266,8 @@ void run_projection_3dgut<let cam: CameraModelType, D : ICameraDistortion>(
     }
 }
 
-#define _pg_call(M, D) run_projection_3dgut<M, D>(p, idx)
+#define _pg_call(M, D) run_projection_3dgut<M, D, false>(p, idx)
+#define _pg_call_surfel(M, D) run_projection_3dgut<M, D, true>(p, idx)
 
 [shader("compute")]
 [numthreads(128, 1, 1)]
@@ -275,18 +276,22 @@ void projection_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     Projection3dgutParams p = *pp;
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 128 + tid;
     if (idx >= p.C * p.N) return;
-    SS_DISPATCH_CAM_DIST_FWD(_pg_call)
+    if (kEval3d == 2) {
+        SS_DISPATCH_CAM_DIST_FWD(_pg_call_surfel)
+    } else {
+        SS_DISPATCH_CAM_DIST_FWD(_pg_call)
+    }
 }
 #undef _pg_call
+#undef _pg_call_surfel
 
 // ---------------------------------------------------------------------------
-// Packed projection (two-pass compaction, ProjectionPackedFwd_kernel.cuh).
-// Pass 1 writes an int32 0/1 mask (the CUDA bool mask would need 8-bit
-// stores) which the host scans with backend::inclusive_sum<int32>; pass 2
-// recomputes the projection and scatters into nnz-compacted outputs.
-// Spec constant 3 (kEval3d) selects the 3DGUT projection in the mask pass.
+// Packed projection (ProjectionPackedFwd_kernel.cuh): pass 1 writes an int32
+// 0/1 mask (CUDA's bool mask needs 8-bit stores) for the host's inclusive_sum;
+// pass 2 recomputes the projection into nnz-compacted outputs.
 // ---------------------------------------------------------------------------
 
+// The projection: 0 the 2D one, 1 3DGUT's, 2 2DGS's.
 [SpecializationConstant]
 const int kEval3d = 0;
 
@@ -310,7 +315,7 @@ struct PackedMaskParams {  // fits in the 128-byte push floor: pushed direct
 // GAUSSIAN-major, so the nnz list the prefix scan compacts comes out sorted
 // by gaussian id and the backward passes need no sort of their own.
 bool run_packed_mask<let cam: CameraModelType, D : ICameraDistortion,
-                     let eval3d: bool>(PackedMaskParams p, uint idx) {
+                     let eval3d: bool, let surfel: bool>(PackedMaskParams p, uint idx) {
     uint gid = idx / p.C;
     uint cid = idx % p.C;
 
@@ -342,22 +347,23 @@ bool run_packed_mask<let cam: CameraModelType, D : ICameraDistortion,
     float opac;
     // The mask only consumes the AABB; SH evaluation is skipped (the CUDA
     // mask kernel computes and discards it).
-    projection_3dgs<cam, D, false, eval3d>(
+    projection_3dgs<cam, D, false, eval3d, surfel>(
         !eval3d && kAntialiased != 0,
         mean, quat, scale, in_opacity, R, t,
         intrin.x, intrin.y, intrin.z, intrin.w, dist,
         p.width, p.height,
         aabb, sorting_depth, radius, xy, depth, conic, opac);
 
-    aabb.x = clamp(aabb.x, 0.0f, float(p.width) - 1.0f);
-    aabb.y = clamp(aabb.y, 0.0f, float(p.height) - 1.0f);
-    aabb.z = clamp(aabb.z, 0.0f, float(p.width) - 1.0f);
-    aabb.w = clamp(aabb.w, 0.0f, float(p.height) - 1.0f);
+    aabb.x = clamp(aabb.x, 0.0f, float(p.width));
+    aabb.y = clamp(aabb.y, 0.0f, float(p.height));
+    aabb.z = clamp(aabb.z, 0.0f, float(p.width));
+    aabb.w = clamp(aabb.w, 0.0f, float(p.height));
     return aabb.z - aabb.x > 1e-3f && aabb.w - aabb.y > 1e-3f;
 }
 
-#define _pm_call_3d(M, D) keep = run_packed_mask<M, D, true>(p, idx)
-#define _pm_call_2d(M, D) keep = run_packed_mask<M, D, false>(p, idx)
+#define _pm_call_surfel(M, D) keep = run_packed_mask<M, D, true, true>(p, idx)
+#define _pm_call_3d(M, D) keep = run_packed_mask<M, D, true, false>(p, idx)
+#define _pm_call_2d(M, D) keep = run_packed_mask<M, D, false, false>(p, idx)
 
 groupshared uint g_mask_bits[SS_PMASK_WORDS];
 
@@ -376,7 +382,9 @@ void projection_packed_mask(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint idx = blk * SS_PMASK_BLOCK + tid;
     if (idx < p.C * p.N) {
         bool keep = false;
-        if (kEval3d != 0) {
+        if (kEval3d == 2) {
+            SS_DISPATCH_CAM_DIST_FWD(_pm_call_surfel)
+        } else if (kEval3d != 0) {
             SS_DISPATCH_CAM_DIST_FWD(_pm_call_3d)
         } else {
             SS_DISPATCH_CAM_DIST_FWD(_pm_call_2d)
@@ -394,6 +402,7 @@ void projection_packed_mask(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         p.out_counts[blk] = n;
     }
 }
+#undef _pm_call_surfel
 #undef _pm_call_3d
 #undef _pm_call_2d
 
@@ -429,7 +438,7 @@ struct PackedFwdParams {
 };
 
 void run_packed_fwd<let cam: CameraModelType, D : ICameraDistortion,
-                    let eval3d: bool>(PackedFwdParams p, uint idx, int out_idx) {
+                    let eval3d: bool, let surfel: bool>(PackedFwdParams p, uint idx, int out_idx) {
     uint gid = idx / p.C;  // see run_packed_mask
     uint cid = idx % p.C;
 
@@ -461,7 +470,7 @@ void run_packed_fwd<let cam: CameraModelType, D : ICameraDistortion,
     float depth;
     float3 conic;  // eval3d: carries the culling scale (see 3DGUT notes)
     float opac;
-    projection_3dgs<cam, D, false, eval3d>(
+    projection_3dgs<cam, D, false, eval3d, surfel>(
         !eval3d && kAntialiased != 0,
         mean, quat, scale, in_opacity, R, t,
         intrin.x, intrin.y, intrin.z, intrin.w, dist,
@@ -489,8 +498,9 @@ void run_packed_fwd<let cam: CameraModelType, D : ICameraDistortion,
     InterlockedMax(p.out_radii[gid], asuint(radius));
 }
 
-#define _pk_call_3d(M, D) run_packed_fwd<M, D, true>(p, idx, out_idx)
-#define _pk_call_2d(M, D) run_packed_fwd<M, D, false>(p, idx, out_idx)
+#define _pk_call_surfel(M, D) run_packed_fwd<M, D, true, true>(p, idx, out_idx)
+#define _pk_call_3d(M, D) run_packed_fwd<M, D, true, false>(p, idx, out_idx)
+#define _pk_call_2d(M, D) run_packed_fwd<M, D, false, false>(p, idx, out_idx)
 
 groupshared uint g_fwd_bits[SS_PMASK_WORDS];
 
@@ -517,12 +527,15 @@ void projection_packed_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     out_idx += int(countbits(word & ((1u << (tid & 31)) - 1u)));
 
     uint idx = blk * SS_PMASK_BLOCK + tid;
-    if (kEval3d != 0) {
+    if (kEval3d == 2) {
+        SS_DISPATCH_CAM_DIST_FWD(_pk_call_surfel)
+    } else if (kEval3d != 0) {
         SS_DISPATCH_CAM_DIST_FWD(_pk_call_3d)
     } else {
         SS_DISPATCH_CAM_DIST_FWD(_pk_call_2d)
     }
 }
+#undef _pk_call_surfel
 #undef _pk_call_3d
 #undef _pk_call_2d
 

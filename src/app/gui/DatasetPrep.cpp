@@ -1,5 +1,6 @@
 // DatasetPrep.cpp -- see DatasetPrep.h.
 
+#include "data/ImageDiscovery.h"
 #include "app/gui/DatasetPrep.h"
 
 #include "app/CubeLut.h"
@@ -57,6 +58,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <share.h>
 #include <windows.h>
 #else
 #include <ftw.h>
@@ -101,6 +103,7 @@ const char* const kVideoExtensions[kNumVideoExtensions] = {
 };
 
 bool is_image_file(const fs::path& p) {
+    if (image_discovery::generated_cache(p)) return false;
     std::string e = p.extension().string();
     for (auto& c : e) c = (char)std::tolower((unsigned char)c);
     return e == ".jpg" || e == ".jpeg" || e == ".png" || e == ".webp" ||
@@ -186,6 +189,7 @@ std::vector<fs::path> walk_images(const fs::path& dir, const std::vector<fs::pat
         if (!s.empty() && fs::is_directory(s, ec)) guard.push_back(s);
     for (fs::recursive_directory_iterator it(dir, kWalk, ec), end; !ec && it != end;
          it.increment(ec)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (!guard.empty() && it->is_directory(ec) &&
             std::any_of(guard.begin(), guard.end(), [&](const fs::path& s) {
                 std::error_code eq;
@@ -770,6 +774,7 @@ int probe_packed_lenses(const std::string& dir) {
     std::error_code ec;
     for (fs::recursive_directory_iterator it(dir, kWalk, ec), end;
          !ec && it != end; it.increment(ec)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (!it->is_regular_file(ec) || lower_ext(it->path().string()) != ".insp")
             continue;
         int w = 0, h = 0, ch = 0;
@@ -971,8 +976,10 @@ bool any_image(const fs::path& p) {
     std::error_code ec;
     if (!fs::is_directory(p, ec)) return false;
     for (fs::recursive_directory_iterator it(p, kWalk, ec), end; !ec && it != end;
-         it.increment(ec))
+         it.increment(ec)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (it->is_regular_file(ec) && is_image_file(it->path())) return true;
+    }
     return false;
 }
 
@@ -1002,6 +1009,7 @@ void collect_image_folders(const fs::path& dir, const std::string& rel, int dept
     std::error_code ec;
     for (fs::directory_iterator it(dir, kWalk, ec), end; !ec && it != end;
          it.increment(ec)) {
+        if (image_discovery::generated_cache(it->path())) continue;
         if (it->is_directory(ec)) {
             if (!is_mask_folder(it->path().string()) &&
                 !is_mask_edits_folder(it->path().string()) &&
@@ -1278,8 +1286,106 @@ int DatasetPrep::count_images(const std::string& dir, const std::string& skip) {
     return (int)walk_images(dir, skip).size();
 }
 
+using SourceHashScratch = std::unique_ptr<uint8_t[]>;
+
+#ifdef SS_SOURCE_HASH_TEST_HOOKS
+void source_hash_before_read(const fs::path& file, uintmax_t offset);
+#endif
+
+static std::string hash_frame_source(const fs::path& file, uintmax_t size,
+                                     SourceHashScratch& scratch) {
+    constexpr size_t chunk = spirula::kFileBufferBytes;
+    if (!scratch) scratch.reset(new uint8_t[2 * chunk]);
+    uint8_t* const chunks[] = {scratch.get(), scratch.get() + chunk};
+    size_t lengths[2];
+    std::mutex mutex;
+    std::condition_variable changed;
+    size_t pending = 0;
+    bool finished = false, read_ok = false;
+    std::exception_ptr reader_error;
+    spirula::Sha256 hash;
+
+    const auto read = [&] {
+#ifdef SS_SOURCE_HASH_TEST_HOOKS
+        source_hash_before_read(file, 0);
+#endif
+#ifdef _WIN32
+        auto* opened = _wfsopen(file.c_str(), L"rb", _SH_DENYNO);
+#else
+        auto* opened = std::fopen(file.c_str(), "rb");
+#endif
+        std::unique_ptr<std::FILE, decltype(&std::fclose)> stream(opened, &std::fclose);
+        if (!stream || std::setvbuf(stream.get(), nullptr, _IONBF, 0) != 0) return false;
+        size_t slot = 0;
+        for (uintmax_t left = size; left;) {
+            {
+                std::unique_lock lock(mutex);
+                changed.wait(lock, [&] { return pending < 2 || finished; });
+                if (finished) return false;
+            }
+            const size_t count = (size_t)std::min<uintmax_t>(left, chunk);
+#ifdef SS_SOURCE_HASH_TEST_HOOKS
+            if (left != size) source_hash_before_read(file, size - left);
+#endif
+            if (std::fread(chunks[slot], 1, count, stream.get()) != count ||
+                std::ferror(stream.get())) return false;
+            {
+                std::lock_guard lock(mutex);
+                lengths[slot] = count;
+                ++pending;
+            }
+            changed.notify_one();
+            slot ^= 1;
+            left -= count;
+        }
+        return std::fgetc(stream.get()) == EOF && std::feof(stream.get()) &&
+               !std::ferror(stream.get());
+    };
+
+    std::thread reader([&] {
+        try {
+            read_ok = read();
+        } catch (...) {
+            reader_error = std::current_exception();
+        }
+        {
+            std::lock_guard lock(mutex);
+            finished = true;
+        }
+        changed.notify_one();
+    });
+    try {
+        std::unique_lock lock(mutex);
+        size_t slot = 0;
+        for (;;) {
+            changed.wait(lock, [&] { return pending || finished; });
+            if (finished && (!read_ok || !pending)) break;
+            const size_t count = lengths[slot];
+            lock.unlock();
+            hash.update(chunks[slot], count);
+            lock.lock();
+            // The slot stays pending until SHA no longer reads it.
+            --pending;
+            slot ^= 1;
+            changed.notify_one();
+        }
+    } catch (...) {
+        {
+            std::lock_guard lock(mutex);
+            finished = true;
+        }
+        changed.notify_one();
+        reader.join();
+        throw;
+    }
+    reader.join();
+    if (reader_error) std::rethrow_exception(reader_error);
+    if (!read_ok || hash.total != size) return {};
+    return hash.hex();
+}
+
 static std::string frame_source_identity_impl(
-    const PrepJob& job, const PrepInput& in, bool content,
+    const PrepJob& job, const PrepInput& in, bool content, SourceHashScratch& scratch,
     const std::vector<std::pair<fs::path, fs::path>>* transferred = nullptr) {
     std::error_code ec;
     const fs::path root = fs::absolute(in.path, ec).lexically_normal();
@@ -1298,6 +1404,7 @@ static std::string frame_source_identity_impl(
         if (ec) return {};
         for (fs::recursive_directory_iterator it(root, fs::directory_options::follow_directory_symlink, ec),
              end; !ec && it != end; it.increment(ec)) {
+            if (image_discovery::skip_cache(it)) continue;
             if (it->is_directory(ec) && it->path().lexically_normal() == workspace) {
                 it.disable_recursion_pending();
                 continue;
@@ -1325,16 +1432,9 @@ static std::string frame_source_identity_impl(
         append(name.lexically_relative(root).generic_string());
         append(std::to_string(size));
         if (content) {
-            std::ifstream stream(file, std::ios::binary);
-            if (!stream) return {};
-            spirula::Sha256 hash;
-            char buffer[65536];
-            while (stream) {
-                stream.read(buffer, sizeof buffer);
-                hash.update(reinterpret_cast<const uint8_t*>(buffer), (size_t)stream.gcount());
-            }
-            if (!stream.eof()) return {};
-            append(hash.hex());
+            const std::string digest = hash_frame_source(file, size, scratch);
+            if (digest.empty()) return {};
+            append(digest);
             if (fs::file_size(file, ec) != size || ec) return {};
             if (fs::last_write_time(file, ec) != stamp || ec) return {};
         } else append(std::to_string((long long)stamp.time_since_epoch().count()));
@@ -1343,13 +1443,15 @@ static std::string frame_source_identity_impl(
 }
 
 std::string frame_source_identity(const PrepJob& job, const PrepInput& in, bool content) {
-    return frame_source_identity_impl(job, in, content);
+    SourceHashScratch scratch;
+    return frame_source_identity_impl(job, in, content, scratch);
 }
 
 bool snapshot_frame_sources(PrepJob& job, std::string& error) {
+    SourceHashScratch scratch;
     std::vector<std::string> identities;
     for (const PrepInput& in : job.inputs) {
-        std::string identity = frame_source_identity(job, in, true);
+        std::string identity = frame_source_identity_impl(job, in, true, scratch);
         if (identity.empty()) {
             error = "Cannot identify frame source: " + in.path;
             return false;
@@ -1862,14 +1964,17 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
 
     // Only once the images are there, so an interrupted extraction is not
     // recorded as having produced what it was asked for.
-    for (size_t i = 0; i < job.inputs.size(); ++i) {
-        // Move imports were checked at the ownership transfer, before sorting
-        // can relocate their only remaining copies into images_skipped/.
-        if (!job.inputs[i].is_video && job.photo_import == PhotoImport::Move) continue;
-        if (i >= job.source_content.size() ||
-            frame_source_identity(job, job.inputs[i], true) != job.source_content[i]) {
-            error = "Frame source changed during preparation; run frame extraction again.";
-            return false;
+    {
+        SourceHashScratch scratch;
+        for (size_t i = 0; i < job.inputs.size(); ++i) {
+            // Move imports were checked at the ownership transfer, before sorting
+            // can relocate their only remaining copies into images_skipped/.
+            if (!job.inputs[i].is_video && job.photo_import == PhotoImport::Move) continue;
+            if (i >= job.source_content.size() ||
+                frame_source_identity_impl(job, job.inputs[i], true, scratch) != job.source_content[i]) {
+                error = "Frame source changed during preparation; run frame extraction again.";
+                return false;
+            }
         }
     }
     if (done) done(Stage::Frames, job);
@@ -3511,8 +3616,9 @@ bool DatasetPrep::gather_photos(const PrepJob& job, const PrepInput& in,
                 transferred.emplace_back(m.from, fs::exists(m.from, exists_ec) ? m.from : m.to);
             }
             const size_t row = input_index(job, in);
+            SourceHashScratch scratch;
             if (row >= job.source_content.size() ||
-                frame_source_identity_impl(job, in, true, &transferred) != job.source_content[row]) {
+                frame_source_identity_impl(job, in, true, scratch, &transferred) != job.source_content[row]) {
                 error = "Frame source changed during photo transfer; run preparation again.";
                 return false;
             }

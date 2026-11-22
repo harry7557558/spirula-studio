@@ -3,23 +3,18 @@
 #include "app/gui/mask/MaskLayer.h"
 
 #include "app/FrameMask.h"
+#include "core/AtomicFile.h"
 #include "data/Json.h"
 #include "data/JsonWrite.h"
 #include "external/miniz.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
-
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
 
 namespace fs = std::filesystem;
 
@@ -85,8 +80,11 @@ std::string frame_key(const std::string& image_root, const std::string& file) {
 
 // A key is '/'-separated (generic_string); make_preferred keeps a Windows
 // path from coming out half '\' and half '/' in the messages that name it.
-std::string mask_file(const std::string& mask_root, const std::string& key) {
-    return (fs::path(mask_root) / (key + ".png")).make_preferred().string();
+std::string mask_file(const std::string& mask_root, const std::string& key,
+                      const MaskPaths& paths) {
+    const auto it = paths.find(key);
+    return (fs::path(mask_root) / (it == paths.end() ? key + ".png" : it->second))
+        .make_preferred().string();
 }
 
 std::string layer_file(const std::string& layer_root, const std::string& key,
@@ -119,36 +117,40 @@ bool encode_gray_png(const uint8_t* px, int w, int h, std::vector<uint8_t>& png)
     return true;
 }
 
-std::string temp_write_path(const std::string& dst) {
-    static std::atomic<uint64_t> counter{0};
-#ifdef _WIN32
-    const unsigned long pid = GetCurrentProcessId();
-#else
-    const long pid = (long)getpid();
-#endif
-    return dst + "." + std::to_string(pid) + "." +
-           std::to_string(counter.fetch_add(1, std::memory_order_relaxed)) + ".tmp";
-}
-
-bool write_file_atomic(const std::string& path, const uint8_t* data, size_t n) {
+static bool write_mask_composite(const std::string& mask_root, const std::string& path,
+                                 const std::vector<uint8_t>& png) {
     std::error_code ec;
-    const fs::path dst(path);
-    fs::create_directories(dst.parent_path(), ec);
-    const fs::path tmp(temp_write_path(dst.string()));
-    FILE* f = std::fopen(tmp.string().c_str(), "wb");
-    if (!f) return false;
-    const bool wrote = n == 0 || std::fwrite(data, 1, n, f) == n;
-    const bool closed = std::fclose(f) == 0;
-    if (!wrote || !closed) {
-        fs::remove(tmp, ec);
+    const auto absolute = fs::absolute(mask_root, ec);
+    if (ec) return false;
+    auto tree = fs::weakly_canonical(absolute, ec);
+    if (ec) return false;
+    if (!tree.has_filename()) tree = tree.parent_path();
+    const auto parent = tree.parent_path();
+    const auto sibling = [&] { return spirula::write_file_atomic(path, png.data(), png.size()); };
+    if (parent.empty() || parent == tree) return sibling();
+
+    std::optional<spirula::AtomicOutputFile> staged;
+    try {
+        staged.emplace(path, 0, parent);
+    } catch (const fs::filesystem_error&) {
+        return sibling();
+    } catch (...) {
         return false;
     }
-    fs::rename(tmp, dst, ec);
-    if (ec) {
-        fs::remove(tmp, ec);
+
+    try {
+        staged->stream().write(reinterpret_cast<const char*>(png.data()),
+                               static_cast<std::streamsize>(png.size()));
+        staged->close_checked();
+        staged->commit();
+        return true;
+    } catch (const fs::filesystem_error& e) {
+        if (e.code() != std::errc::cross_device_link) return false;
+        staged.reset();
+        return sibling();
+    } catch (...) {
         return false;
     }
-    return true;
 }
 
 bool fingerprint_file(const std::string& path, uint64_t& out) {
@@ -173,6 +175,7 @@ std::string utc_now_iso() {
 
 bool LayerIndex::load(const std::string& layer_root, std::string& error) {
     frames.clear();
+    mask_paths.clear();
     mask_root.clear();
     mask_flipped = false;
     const std::string path = (fs::path(layer_root) / kIndexFileName).string();
@@ -190,6 +193,14 @@ bool LayerIndex::load(const std::string& layer_root, std::string& error) {
     const JsonValue* fr = doc.find("frames");
     if (!fr || !fr->is_object()) return true;
     for (const auto& [key, v] : fr->obj) {
+        if (const JsonValue* m = v.find("mask")) {
+            const fs::path rel = fs::path(m->as_string()).lexically_normal();
+            if (rel.empty() || rel.is_absolute() || rel.has_root_name() || *rel.begin() == "..") {
+                error = path + ": invalid mask path";
+                return false;
+            }
+            mask_paths[key] = rel.generic_string();
+        }
         IndexEntry e;
         if (const JsonValue* b = v.find("base")) fnv_parse(b->as_string(), e.base_fp);
         if (const JsonValue* c = v.find("composite")) fnv_parse(c->as_string(), e.composite_fp);
@@ -214,13 +225,15 @@ bool LayerIndex::save(const std::string& layer_root, std::string& error) const {
         w.field("composite", fnv_hex(e.composite_fp));
         w.field("kept", e.kept);
         w.field("saved_at", e.saved_at);
+        if (const auto it = mask_paths.find(key); it != mask_paths.end())
+            w.field("mask", it->second);
         w.end();
     }
     w.end();
     w.end();
     const std::string text = w.str();
     const std::string path = (fs::path(layer_root) / kIndexFileName).string();
-    if (!write_file_atomic(path, (const uint8_t*)text.data(), text.size())) {
+    if (!spirula::write_file_atomic(path, text.data(), text.size())) {
         error = path;
         return false;
     }
@@ -231,7 +244,7 @@ BaseState base_state(const std::string& mask_root, const std::string& key,
                      const LayerIndex& idx) {
     const auto it = idx.frames.find(key);
     std::error_code ec;
-    const std::string mask = mask_file(mask_root, key);
+    const std::string mask = mask_file(mask_root, key, idx.mask_paths);
     const bool have_mask = fs::exists(mask, ec);
     if (it == idx.frames.end()) return have_mask ? BaseState::Unedited : BaseState::Missing;
     if (!have_mask) return BaseState::Missing;
@@ -294,13 +307,13 @@ bool save_frame(const std::string& layer_root, const std::string& mask_root,
     std::error_code ec;
     const size_t n = (size_t)w * h;
     const std::string base_path = layer_file(layer_root, key, Layer::Base);
-    const std::string mask_path = mask_file(mask_root, key);
+    const std::string mask_path = mask_file(mask_root, key, idx.mask_paths);
     IndexEntry e = idx.frames.count(key) ? idx.frames.at(key) : IndexEntry{};
 
     if (!fs::exists(base_path, ec) && fs::exists(mask_path, ec)) {
         std::vector<uint8_t> bytes;
         if (!read_file(mask_path, bytes)) { error = mask_path; return false; }
-        if (!write_file_atomic(base_path, bytes.data(), bytes.size())) {
+        if (!spirula::write_file_atomic(base_path, bytes.data(), bytes.size())) {
             error = base_path;
             return false;
         }
@@ -310,13 +323,13 @@ bool save_frame(const std::string& layer_root, const std::string& mask_root,
     std::vector<uint8_t> png;
     const std::string drop_path = layer_file(layer_root, key, Layer::Drop);
     if (!encode_gray_png(drop, w, h, png) ||
-        !write_file_atomic(drop_path, png.data(), png.size())) {
+        !spirula::write_file_atomic(drop_path, png.data(), png.size())) {
         error = drop_path;
         return false;
     }
     const std::string keep_path = layer_file(layer_root, key, Layer::Keep);
     if (!encode_gray_png(keep, w, h, png) ||
-        !write_file_atomic(keep_path, png.data(), png.size())) {
+        !spirula::write_file_atomic(keep_path, png.data(), png.size())) {
         error = keep_path;
         return false;
     }
@@ -328,7 +341,7 @@ bool save_frame(const std::string& layer_root, const std::string& mask_root,
         for (uint8_t v : out) kept += v ? 1 : 0;
         if (idx.mask_flipped) flip_polarity(out.data(), out.size());
         if (!encode_gray_png(out.data(), w, h, png) ||
-            !write_file_atomic(mask_path, png.data(), png.size())) {
+            !write_mask_composite(mask_root, mask_path, png)) {
             error = mask_path;
             return false;
         }
@@ -345,7 +358,7 @@ bool recomposite_frame(const std::string& layer_root, const std::string& mask_ro
                        std::string& error) {
     found = base_state(mask_root, key, idx);
     if (found != BaseState::Regenerated) return true;
-    const std::string mask_path = mask_file(mask_root, key);
+    const std::string mask_path = mask_file(mask_root, key, idx.mask_paths);
     std::vector<uint8_t> bytes;
     if (!read_file(mask_path, bytes)) { error = mask_path; return false; }
     int w = 0, h = 0;
@@ -367,7 +380,7 @@ bool recomposite_frame(const std::string& layer_root, const std::string& mask_ro
         found = BaseState::Unchanged;
         return idx.save(layer_root, error);
     }
-    if (!write_file_atomic(base_path, bytes.data(), bytes.size())) {
+    if (!spirula::write_file_atomic(base_path, bytes.data(), bytes.size())) {
         error = base_path;
         return false;
     }
@@ -407,8 +420,8 @@ bool revert_frame(const std::string& layer_root, const std::string& mask_root,
     if (fs::exists(base_path, ec)) {
         std::vector<uint8_t> bytes;
         if (!read_file(base_path, bytes)) { error = base_path; return false; }
-        const std::string mask_path = mask_file(mask_root, key);
-        if (!write_file_atomic(mask_path, bytes.data(), bytes.size())) {
+        const std::string mask_path = mask_file(mask_root, key, idx.mask_paths);
+        if (!write_mask_composite(mask_root, mask_path, bytes)) {
             error = mask_path;
             return false;
         }
@@ -456,11 +469,11 @@ int revert_all(const std::string& layer_root, std::string& error) {
 
 bool frame_size(const std::string& layer_root, const std::string& mask_root,
                 const std::string& key, const std::string& image_file, int& w, int& h,
-                std::string& from) {
+                std::string& from, const MaskPaths& paths) {
     std::error_code ec;
     from = layer_file(layer_root, key, Layer::Base);
     if (fs::exists(from, ec)) return app::image_size(from, w, h);
-    from = mask_file(mask_root, key);
+    from = mask_file(mask_root, key, paths);
     if (fs::exists(from, ec)) return app::image_size(from, w, h);
     from = image_file;
     return app::image_size(from, w, h);
@@ -492,9 +505,9 @@ bool restore_layers(const std::string& layer_root, const std::string& mask_root,
     const std::string d = layer_file(layer_root, snap.key, Layer::Drop);
     const std::string k = layer_file(layer_root, snap.key, Layer::Keep);
     const std::string base_path = layer_file(layer_root, snap.key, Layer::Base);
-    const std::string mask_path = mask_file(mask_root, snap.key);
+    const std::string mask_path = mask_file(mask_root, snap.key, idx.mask_paths);
     auto put_one = [&](const std::string& path, bool had, const std::vector<uint8_t>& png) {
-        if (had) return write_file_atomic(path, png.data(), png.size());
+        if (had) return spirula::write_file_atomic(path, png.data(), png.size());
         fs::remove(path, ec);
         return true;
     };
@@ -521,18 +534,18 @@ bool restore_layers(const std::string& layer_root, const std::string& mask_root,
         if (!revert_frame(layer_root, mask_root, snap.key, idx, error)) {
             // Each file on its own: the one that would not go is still there.
             if (readable && idx.frames.count(snap.key)) {
-                if (has_base) write_file_atomic(base_path, found_base.data(), found_base.size());
+                if (has_base) spirula::write_file_atomic(base_path, found_base.data(), found_base.size());
                 put_one(d, now.had_drop, now.drop_png);
                 put_one(k, now.had_keep, now.keep_png);
-                if (has_mask) write_file_atomic(mask_path, found_mask.data(), found_mask.size());
+                if (has_mask) write_mask_composite(mask_root, mask_path, found_mask);
             }
             return false;
         }
-        if (snap.had_drop && !write_file_atomic(d, snap.drop_png.data(), snap.drop_png.size())) {
+        if (snap.had_drop && !spirula::write_file_atomic(d, snap.drop_png.data(), snap.drop_png.size())) {
             error = d;
             return false;
         }
-        if (snap.had_keep && !write_file_atomic(k, snap.keep_png.data(), snap.keep_png.size())) {
+        if (snap.had_keep && !spirula::write_file_atomic(k, snap.keep_png.data(), snap.keep_png.size())) {
             error = k;
             return false;
         }
@@ -629,7 +642,7 @@ bool KeptCache::save(const std::string& layer_root, std::string& error) const {
     w.end();
     const std::string text = w.str();
     const std::string path = (fs::path(layer_root) / kKeptFileName).string();
-    if (!write_file_atomic(path, (const uint8_t*)text.data(), text.size())) {
+    if (!spirula::write_file_atomic(path, text.data(), text.size())) {
         error = path;
         return false;
     }
@@ -637,9 +650,9 @@ bool KeptCache::save(const std::string& layer_root, std::string& error) const {
 }
 
 bool kept_fraction_of(const std::string& mask_root, const std::string& key, bool flipped,
-                      KeptCache& cache, float& kept) {
+                      KeptCache& cache, float& kept, const MaskPaths& paths) {
     kept = -1.0f;
-    const std::string path = mask_file(mask_root, key);
+    const std::string path = mask_file(mask_root, key, paths);
     // A FIFO or a device there would block the open until a writer came.
     std::error_code ec;
     if (!fs::is_regular_file(path, ec)) return false;

@@ -35,6 +35,7 @@ struct StageCaption {
 using MStage = meshing::mlog::Stage;
 const StageCaption kStages[] = {
     {MStage::Loading,    &lmsg::mesh_stage_loading},
+    {MStage::Tsdf,       &lmsg::mesh_stage_tsdf},
     {MStage::PointCloud, &lmsg::mesh_stage_point_cloud},
     {MStage::Delaunay,   &lmsg::mesh_stage_delaunay},
     {MStage::Occupancy,  &lmsg::mesh_stage_occupancy},
@@ -225,6 +226,10 @@ void MeshRunner::run(MeshJob job) {
         argv.push_back("--data");
         argv.push_back(job.data_dir);
     }
+    if (job.use_data && job.tsdf) {
+        argv.push_back("--method");
+        argv.push_back("tsdf");
+    }
     if (job.max_cameras > 0) {
         argv.push_back("--max-cameras");
         argv.push_back(std::to_string(job.max_cameras));
@@ -256,10 +261,6 @@ void MeshRunner::run(MeshJob job) {
     if (job.floater_min_faces != 10) {
         argv.push_back("--floater-min-faces");
         argv.push_back(std::to_string(job.floater_min_faces));
-    }
-    if (job.carve_k != 1) {
-        argv.push_back("--carve-k");
-        argv.push_back(std::to_string(job.carve_k));
     }
     if (!job.cull_unseen) argv.push_back("--no-cull-unseen");
     for (const std::string& a : split_args(job.extra_args)) argv.push_back(a);

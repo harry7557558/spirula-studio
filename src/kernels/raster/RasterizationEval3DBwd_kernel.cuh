@@ -225,6 +225,12 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         RenderOutput v_render_output_local = (inside ?
             v_render_output_buffer.load<SplatPrimitive::pixelType>(pix_id_image_global)
              : RenderOutput::zero());
+    #if IS_EVAL3D
+        // The stored normal is camera space (see the forward); the splats' are world.
+        if constexpr (RenderOutput::has_normal(SplatPrimitive::pixelType))
+            v_render_output_local.normal =
+                SlangProjectionUtils::transform_ray_d(R, v_render_output_local.normal);
+    #endif
         if constexpr (RenderOutput::has_depth(SplatPrimitive::pixelType)) {
             float inv_alpha = 1.0f / fmaxf(1.0f - render_Ts_local, 1e-10f);  // 1/W
             float exp_depth = (inside && render_output_buffer.depths) ?
@@ -248,6 +254,11 @@ __global__ void rasterize_to_pixels_bwd_kernel(
             pix_colors[pix_id_local] = (inside ?
                 render_output_buffer.load<SplatPrimitive::pixelType>(pix_id_image_global)
                 : RenderOutput::zero());
+        #if IS_EVAL3D
+            if constexpr (dist_has_normal(dist_type))
+                pix_colors[pix_id_local].normal =
+                    SlangProjectionUtils::transform_ray_d(R, pix_colors[pix_id_local].normal);
+        #endif
             // Recover the distortion C for the depth channel. Render depth is
             // exp(C_logz/W) (geometric-mean-style log depth), so the un-normalized
             // log-depth mean C_logz = ln(depth) * W. rgb/normal C stay raw.
@@ -342,25 +353,28 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         if (gi >= range_start) {
             int32_t sid = flatten_ids[gi];
         #if IS_EVAL3D
-            // 3dgut keeps the 2D conic in the screen "scale" channel; center is
-            // the AABB center (matches the tile intersector / forward mask).
-            float c_opac = splat_sbuffer.opacities(sid);
-            float3 c_conic = splat_sbuffer.scales(sid);
-            float2 c_ec = aabb16_center(aabb[sid], image_width, image_height);
-            float c_ex = c_ec.x, c_ey = c_ec.y;
+            // The forward's cull.
+            ok = splat_sbuffer.opacities(sid) > ALPHA_THRESHOLD &&
+                SlangProjectionUtils::aabb_reaches_micro_tile(
+                    aabb16_decode(aabb[sid], image_width, image_height),
+                    cull_bx0, cull_by0, (float)TILE_SIZE_DX) &&
+                !SlangProjectionUtils::slab_misses_box(
+                    splat_sbuffer.scales(sid),
+                    {cull_bx0 + 0.5f * TILE_SIZE_DX, cull_by0 + 0.5f * TILE_SIZE_DY},
+                    {0.5f * (TILE_SIZE_DX - 1), 0.5f * (TILE_SIZE_DY - 1)});
         #else
             float c_opac = splat_sbuffer.opac(sid);
             float3 c_conic = splat_sbuffer.conic(sid);
             float2 c_xy = splat_sbuffer.xy(sid);
             float c_ex = c_xy.x, c_ey = c_xy.y;
-        #endif
             if (c_opac > ALPHA_THRESHOLD) {
-                float kk = 0.5f / kernel_reach(c_opac, IS_EVAL3D ? 0.f : kernel_cut);
+                float kk = 0.5f / kernel_reach(c_opac, kernel_cut);
                 float3 inv_cov = { c_conic.x*kk, c_conic.y*kk, c_conic.z*kk };
                 ok = ellipse_box_overlap_test(inv_cov,
                     cull_bx0 - c_ex, cull_bx0 + TILE_SIZE_DX - c_ex,
                     cull_by0 - c_ey, cull_by0 + TILE_SIZE_DY - c_ey);
             }
+        #endif
         }
         uint32_t bal = __ballot_sync(~0u, ok);
         int pos = count + __popc(bal & (((uint32_t)1 << thread_id) - 1));
@@ -552,13 +566,11 @@ __global__ void rasterize_to_pixels_bwd_kernel(
 
             // backward diff splat
         #if IS_EVAL3D
-            float3 v_ray_o_alpha = make_float3(0), v_ray_d_alpha = make_float3(0);
-            float3 v_ray_o_color = make_float3(0), v_ray_d_color = make_float3(0);
+            float3 v_ray_o_splat = make_float3(0), v_ray_d_splat = make_float3(0);
         #endif
             {
             #if IS_EVAL3D
-                splat.evaluate_alpha_vjp(ray_o, ray_d, v_alpha, v_splat, v_ray_o_alpha, v_ray_d_alpha);
-                splat.evaluate_color_vjp(ray_o, ray_d, v_color, v_splat, v_ray_o_color, v_ray_d_color);
+                splat.evaluate_vjp(ray_o, ray_d, v_alpha, v_color, v_splat, v_ray_o_splat, v_ray_d_splat);
             #else
                 splat.evaluate_alpha_vjp(px, py, v_alpha, v_splat, kernel_cut);
                 splat.evaluate_color_vjp(px, py, v_color, v_splat);
@@ -580,8 +592,8 @@ __global__ void rasterize_to_pixels_bwd_kernel(
 
         #if IS_EVAL3D
             if (output_viewmat_grad) {
-                total_v_ray_o += v_ray_o_alpha + v_ray_o_color;
-                shared_v_ray_d[pix_id] += v_ray_d_alpha + v_ray_d_color;
+                total_v_ray_o += v_ray_o_splat;
+                shared_v_ray_d[pix_id] += v_ray_d_splat;
             }
         #endif
 

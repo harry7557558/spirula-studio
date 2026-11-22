@@ -145,7 +145,8 @@ int main(int argc, char** argv) {
     };
 
     std::vector<float> acc;
-    for (int prim = 0; prim < 3; prim++)
+    // prim: 0 = 3dgs, 1 = mip, 2 = 3dgut, 3 = 2dgs
+    for (int prim = 0; prim < 4; prim++)
         for (int ci = 0; ci < 5; ci++)
             for (int shd = 0; shd <= 3; shd += 3)
                 // The tier is orthogonal to SH degree: sweep the compiled
@@ -157,7 +158,8 @@ int main(int argc, char** argv) {
                     backend::memset_sync(d_radii, 0, N * sizeof(float));
                     auto fn = prim == 0   ? projection_3dgs_forward
                               : prim == 1 ? projection_mip_forward
-                                          : projection_3dgut_forward;
+                              : prim == 2 ? projection_3dgut_forward
+                                          : projection_2dgs_forward;
                     auto out = fn(
                         N, ColorBasis{shd, 0}, in_splats, ttv(d_vm, {C, 16}),
                         ttv(d_intr, {C, 4}), W, H, cams[ci],
@@ -182,7 +184,7 @@ int main(int argc, char** argv) {
                             std::fprintf(stderr, "orthographic footprint/culling failed\n");
                             return 1;
                         }
-                        if (prim != 2) {
+                        if (prim < 2) {
                             float rows[2 * SCR2_STRIDE];
                             backend::memcpy_sync(rows, screen[0].data_ptr(), sizeof rows,
                                                  MemcpyKind::DeviceToHost);
@@ -198,7 +200,7 @@ int main(int argc, char** argv) {
                     readback_aabb(acc, aabb.data_ptr(), (int64_t)C * N);
                     readback(acc, depths.data_ptr(), C * N);
                     readback(acc, d_radii, N);
-                    if (prim == 2)
+                    if (prim >= 2)
                         readback_screen(acc, screen[0], SCRG_STRIDE,
                                         SCREEN_ROWS_GUT_COMPS);
                     else
@@ -283,7 +285,7 @@ int main(int argc, char** argv) {
             }
 
     // --- packed projection: nnz-compacted outputs (ids exact via float) ---
-    for (int prim = 0; prim < 3; prim++)
+    for (int prim = 0; prim < 4; prim++)
         for (int ci = 0; ci < 4; ci += 3) {  // PINHOLE + EQUIRECTANGULAR
             // PINHOLE alternates its two distorted tiers across the
             // primitives; EQUIRECTANGULAR has no lens distortion.
@@ -291,7 +293,8 @@ int main(int argc, char** argv) {
             backend::memset_sync(d_radii, 0, N * sizeof(float));
             auto fn = prim == 0   ? projection_3dgs_packed_forward
                       : prim == 1 ? projection_mip_packed_forward
-                                  : projection_3dgut_packed_forward;
+                      : prim == 2 ? projection_3dgut_packed_forward
+                                  : projection_2dgs_packed_forward;
             auto out = fn(N, ColorBasis{3, 0}, in_splats, ttv(d_vm, {C, 16}),
                           ttv(d_intr, {C, 4}), W, H, cams[ci],
                           dist_fixture::kTierNames[tier], dist_tv(tier),
@@ -317,7 +320,7 @@ int main(int argc, char** argv) {
             readback_aabb(acc, aabb.data_ptr(), nnz);
             readback(acc, depths.data_ptr(), nnz);
             readback(acc, d_radii, N);
-            if (prim == 2)
+            if (prim >= 2)
                 readback_screen(acc, screen[0], SCRG_STRIDE,
                                 SCREEN_ROWS_GUT_COMPS);
             else

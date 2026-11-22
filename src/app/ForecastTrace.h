@@ -43,7 +43,7 @@ inline void forecast_trace_sample(std::FILE* f, const MemorySample& m) {
     std::fprintf(f, " %" PRId64 " %" PRId64 " %" PRId64, m.isect_pairs, m.isect_count,
                  m.isect_step);
     for (size_t v : m.phase_capped) std::fprintf(f, " %zu", v);
-    std::fprintf(f, " %" PRId64 "\n", m.isect_finer);
+    std::fprintf(f, " %" PRId64 " %d\n", m.isect_finer, m.resolution_divisor);
 }
 
 // A step as the time model saw it: add_step's arguments (wall < 0: left out),
@@ -63,7 +63,7 @@ inline void forecast_trace_step(std::FILE* f, const ForecastTraceStep& t) {
     if (s.timed)
         for (const auto& row : s.gpu.s)
             for (double v : row) std::fprintf(f, " %.6g", v);
-    std::fprintf(f, " %" PRId64 "\n", t.reg_splats);
+    std::fprintf(f, " %" PRId64 " %d\n", t.reg_splats, s.resolution_divisor);
 }
 
 struct ForecastTrace {
@@ -150,6 +150,7 @@ inline bool forecast_trace_read(const std::string& path, ForecastTrace& out) {
             m.isect_step = (int64_t)l.next();
             for (size_t& v : m.phase_capped) v = (size_t)l.next();
             m.isect_finer = (int64_t)l.next();
+            m.resolution_divisor = (int)l.next();
             out.samples.push_back(m);
         } else if (!std::strncmp(buf.data(), "reg ", 4)) {
             out.setup.reg_start_step = std::atoi(buf.data() + 4);
@@ -172,6 +173,7 @@ inline bool forecast_trace_read(const std::string& path, ForecastTrace& out) {
                 for (auto& row : ss.gpu.s)
                     for (double& v : row) v = l.real();
             t.reg_splats = (int64_t)l.real();
+            ss.resolution_divisor = (int)l.next();
             if (t.reg_splats <= 0) t.reg_splats = t.splats;
             out.steps.push_back(t);
         }

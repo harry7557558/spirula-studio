@@ -125,15 +125,19 @@ int main() {
         scales[i * 3 + 1] = -1.f;
         scales[i * 3 + 2] = -1.5f;
     }
-    // The cameras as a field with their index as label (both rooms).
     std::vector<float> cam_xyz;
     std::vector<int32_t> cam_lab;
-    for (int i = 0; i < 40; i++) {
+    for (int i = 0; i < 300; i++) {
         cam_xyz.insert(cam_xyz.end(), {(i % 2 ? 2.5f : -2.5f) + 0.2f * g(rng), u(rng) * 0.5f, 0.f});
-        cam_lab.push_back(i);
+        cam_lab.push_back(0);
     }
     const LabelField cams = LabelField::build(cam_xyz.data(), cam_lab.data(), nullptr,
                                               (int64_t)cam_lab.size(), 4);
+
+    auto euclidean_field = std::make_shared<LabelField>(*field);
+    euclidean_field->euclidean = true;
+    RegionProgram euclidean_program;
+    check(compile_region(LabelRegion(euclidean_field, 1), euclidean_program, err), "Euclidean region compiles");
 
     // The shapes the ROI editor draws: an ellipsoid minus a star-shaped
     // prism (non-convex, its polygon spilling into a second payload node),
@@ -181,7 +185,8 @@ int main() {
         check(wrong <= 2, "shape program matches the regions it came from");
     }
 
-    void *k_prog, *k_bvh, *k_seeds, *k_cbvh, *k_cseeds, *k_shapes;
+    void *k_prog, *k_bvh, *k_seeds, *k_cbvh, *k_cseeds, *k_shapes, *k_euclidean;
+    DeviceVector<float4> d_euclidean = dv4(euclidean_program.nodes, k_euclidean);
     DeviceVector<float4> d_prog = dv4(prog.nodes, k_prog);
     DeviceVector<float4> d_shapes = dv4(shapes.nodes, k_shapes);
     DeviceVector<float4> d_bvh = dv4(field->nodes, k_bvh);
@@ -198,14 +203,16 @@ int main() {
     DeviceVector<float4> d_pattern = dv4(pattern, k_pattern);
     const uint32_t seed = 12345;
 
-    for (int pass = 0; pass < 6; pass++) {
-        const bool orient = pass % 3 == 1, sampled = pass >= 3;
-        const RegionProgram& hp = pass % 3 == 2 ? shapes : prog;
+    for (int pass = 0; pass < 8; pass++) {
+        const bool euclidean = pass >= 6;
+        const bool orient = euclidean || pass % 3 == 1;
+        const bool sampled = euclidean ? pass == 7 : pass >= 3;
+        const RegionProgram& hp = euclidean ? euclidean_program : pass % 3 == 2 ? shapes : prog;
         region_weight_tensor(N, dv<float3>(d_means, N),
                              orient || sampled ? dv<float4>(d_quats, N) : DeviceVector<float4>(),
                              dv<float3>(d_scales, N), orient ? d_cbvh : DeviceVector<float4>(),
                              d_cseeds, sampled ? d_pattern : DeviceVector<float4>(), seed,
-                             pass % 3 == 2 ? d_shapes : d_prog, d_bvh, d_seeds, 1.0f, 1e-4f,
+                             euclidean ? d_euclidean : pass % 3 == 2 ? d_shapes : d_prog, d_bvh, d_seeds, 1.0f, 1e-4f,
                              dv<float>(d_w, N));
         backend::device_synchronize();
         std::vector<float> w((size_t)N);
@@ -216,9 +223,8 @@ int main() {
             double n[3] = {0, 0, 0};
             const double* np = nullptr;
             if (orient) {
-                // Host mirror of the kernel: nearest camera orients the short axis.
-                const int cam = cams.label(p);
-                const float* c = &cams.seeds[(size_t)cam * 4];
+                const int64_t cam = cams.nearest_seed(p);
+                const float* c = cams.seeds.data() + (size_t)cam * 4;
                 const double to[3] = {c[0] - p[0], c[1] - p[1], c[2] - p[2]};
                 splat_normal(&quats[i * 4], &scales[i * 3], to, n);
                 np = n;
@@ -234,7 +240,7 @@ int main() {
             lost += centre && !device;
             if (host != device) mismatches++;
         }
-        const std::string what = std::string(pass % 3 == 2 ? "shapes" : orient ? "oriented" : "plain") +
+        const std::string what = std::string(euclidean ? "Euclidean oriented" : pass % 3 == 2 ? "shapes" : orient ? "oriented" : "plain") +
                                  (sampled ? " sampled" : "");
         std::printf("pass %d (%s): inside %lld of %lld, by samples only %lld, mismatches %lld\n",
                     pass, what.c_str(), (long long)inside, (long long)N, (long long)widened,
@@ -247,6 +253,44 @@ int main() {
             check(lost <= 5, what + ": a splat whose centre is inside stays inside");
             check(widened > N / 100, what + ": splats straddling the boundary are added");
         }
+    }
+
+    {
+        const float xyz[6] = {0, 0, 0, 0, 0, 0}, dirs[6] = {-1, 0, 0, 1, 0, 0};
+        const int32_t labels[2] = {0, 1}, camera_labels[2] = {0, 0};
+        auto tie_field = std::make_shared<LabelField>(LabelField::build(xyz, labels, dirs, 2));
+        RegionProgram tie_program;
+        check(compile_region(LabelRegion(tie_field, 0), tie_program, err), "camera tie region compiles");
+        void *kp, *kb, *ks;
+        auto dp = dv4(tie_program.nodes, kp);
+        auto db = dv4(tie_field->nodes, kb);
+        auto ds = dv4(tie_field->seeds, ks);
+        const std::vector<float> point = {0, 0, 0}, quaternion = {1, 0, 0, 0}, scale = {-4, -1, -1};
+        float* dm = upload(point);
+        float* dq = upload(quaternion);
+        float* dscale = upload(scale);
+        std::vector<float> camera_xyz = {-1, 0, 0, 1, 0, 0};
+        const double origin[3] = {0, 0, 0};
+        for (int reverse = 0; reverse < 2; reverse++) {
+            const LabelField tie_cameras = LabelField::build(camera_xyz.data(), camera_labels, nullptr, 2, 4);
+            const int64_t nearest = tie_cameras.nearest_seed(origin);
+            check(nearest == 0 && tie_cameras.seeds[0] == (reverse ? 1 : -1),
+                  "host camera ties select the first visited seed, not its label");
+            void *kcb, *kcs;
+            auto dcb = dv4(tie_cameras.nodes, kcb);
+            auto dcs = dv4(tie_cameras.seeds, kcs);
+            region_weight_tensor(1, dv<float3>(dm, 1), dv<float4>(dq, 1), dv<float3>(dscale, 1),
+                                 dcb, dcs, DeviceVector<float4>(), 0, dp, db, ds, 1.0f, 1e-4f,
+                                 dv<float>(d_w, 1));
+            backend::device_synchronize();
+            float weight = 0;
+            backend::memcpy_sync(&weight, d_w, sizeof(float), MemcpyKind::DeviceToHost);
+            check((weight > 0.5f) == !reverse, "device camera tie orientation agrees with host ownership");
+            backend::device_free(kcb);
+            backend::device_free(kcs);
+            std::swap(camera_xyz[0], camera_xyz[3]);
+        }
+        for (void* ptr : {kp, kb, ks, (void*)dm, (void*)dq, (void*)dscale}) backend::device_free(ptr);
     }
 
     // Against the analytic share of a splat's mass across the plane x = 0,

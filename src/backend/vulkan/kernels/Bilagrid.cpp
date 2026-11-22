@@ -1285,9 +1285,9 @@ void fused_bilagrid_tv_adam(
                cam_indices, N_grids, C_batch, C, L, H, W, lr, tv_weight,
                grad_scale, adam_step, total_cells);
     const uint32_t qq = quantize ? (quant_bits == 4 ? 4u : 8u) : 0u;
-    vkk::dispatch_flat("bilagrid_optim.bilagrid_tv_adam",
-                       backend::vk::SpecList{qq, value_quantize ? 1u : 0u},
-                       total_cells, 256, &p, sizeof(p), &p.wgs_per_row);
+    vkk::dispatch_ring_flat("bilagrid_optim.bilagrid_tv_adam",
+                            backend::vk::SpecList{qq, value_quantize ? 1u : 0u},
+                            total_cells, 256, &p, sizeof(p), &p.wgs_per_row);
 }
 
 void fused_bilagrid_tv_adagrad(
@@ -1307,9 +1307,9 @@ void fused_bilagrid_tv_adagrad(
                cam_indices, N_grids, C_batch, C, L, H, W, lr, tv_weight,
                grad_scale, 0, total_cells);
     const uint32_t qq = quantize ? (quant_bits == 4 ? 4u : 8u) : 0u;
-    vkk::dispatch_flat("bilagrid_optim.bilagrid_tv_adagrad",
-                       backend::vk::SpecList{qq, value_quantize ? 1u : 0u},
-                       total_cells, 256, &p, sizeof(p), &p.wgs_per_row);
+    vkk::dispatch_ring_flat("bilagrid_optim.bilagrid_tv_adagrad",
+                            backend::vk::SpecList{qq, value_quantize ? 1u : 0u},
+                            total_cells, 256, &p, sizeof(p), &p.wgs_per_row);
 }
 
 void bilagrid_encode_q16_launch(

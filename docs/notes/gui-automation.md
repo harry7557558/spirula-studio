@@ -146,6 +146,21 @@ camera. The trainer must reload the saved orientation and turn auto-level off
 even though its framing key's path and element counts are unchanged. Saving
 a copy elsewhere must leave the original dataset's trainer preview alone.
 
+## Imported masks and camera drawing
+
+For issue #338, open photos in `images/cam0/` and `images/cam1/`, with
+matching `masks/cam0/image.jpg.png` and `masks/cam1/image.jpg.png` files.
+**Correct Masks** must show the same masked pixels as the source preview;
+the existing files must not be counted as absent. Saving and reopening must
+keep the corrections on those filenames.
+
+Turn off **Use the masks found next to the photos**, enable **Remove fixed
+areas of the frame**, and choose **Draw...** on `cam1`. The panel must show
+`cam1` with **Separate areas for each camera** checked. Draw a box, save the
+set, and visit `cam0` with the frame slider: it must have no box. The saved
+set must contain only the `cam1` SVG with `data-camera="cam1"`. Reopening
+**Draw...** on either row must select that row's camera.
+
 ## As an MCP server
 
 `tools/gui_mcp.py` wraps the same endpoints as MCP tools over stdio, in the

@@ -401,7 +401,8 @@ int main(int argc, char** argv) {
                                  float* max_weight = nullptr,
                                  bool dead_by_opacity = true,
                                  int64_t* num_dead = nullptr,
-                                 float min_split_opacity = 0.0f) {
+                                 float min_split_opacity = 0.0f,
+                                 float min_weight = 0.0f) {
         relocate_splats_with_long_axis_split_tensor(
             N, min_opacity, /*split_opacity_k=*/0.6f, min_split_opacity,
             dv<float3>(m.means, CAP), dv<float4>(m.quats, CAP),
@@ -426,7 +427,7 @@ int main(int argc, char** argv) {
                        0),
             dv<float2>(m.accum, CAP), DeviceVector<float2>{},
             dv<int32_t>(m.bias_steps, CAP), dv<uint32_t>(m.visit, CAP), /*dead_after_steps=*/100u,
-            dv<float>(max_weight, max_weight ? CAP : 0), dead_by_opacity,
+            dv<float>(max_weight, max_weight ? CAP : 0), min_weight, dead_by_opacity,
             m.sh_optim_bits, (int)m.num_sh,
             dv<float4>(m.sh_state_bounds, m.sh_state_bound_f / 4),
             m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
@@ -845,7 +846,7 @@ int main(int argc, char** argv) {
         int64_t n_transparent = 0, n_unseen = 0;
         for (int64_t i = 0; i < CAP; i++) {
             if (i < N && transparent(i)) {
-                op[i] = -8.f;
+                op[i] = -12.f;
                 accum[2 * i] = 0.f;  // never drawn as a source
             }
             mw[i] = 0.5f * sig(op[i]);
@@ -857,12 +858,14 @@ int main(int argc, char** argv) {
                              MemcpyKind::HostToDevice);
         float* d_mw = upload(mw);
         int64_t num_dead = 0;
-        call_relocate_las(m, 0.005f, 151u + either, d_mw, either != 0, &num_dead);
+        // Thresholds apart, so a weight tested against min_opacity miscounts.
+        call_relocate_las(m, 1e-4f, 151u + either, d_mw, either != 0, &num_dead,
+                          0.0f, 0.005f);
         backend::memcpy_sync(op.data(), m.opacs, CAP * 4, MemcpyKind::DeviceToHost);
         backend::memcpy_sync(mw.data(), d_mw, CAP * 4, MemcpyKind::DeviceToHost);
         int64_t kept = 0;
         for (int64_t i = 0; i < N; i++)
-            kept += transparent(i) && op[i] == -8.f && mw[i] == 0.5f;
+            kept += transparent(i) && op[i] == -12.f && mw[i] == 0.5f;
         const int64_t want_dead = n_unseen + (either ? n_transparent : 0);
         const int64_t want_kept = either ? 0 : n_transparent;
         const bool ratio = mw_ratio_ok(op, mw, N, [&](int64_t i) {
