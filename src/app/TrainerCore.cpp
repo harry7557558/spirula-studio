@@ -26,6 +26,7 @@
 #include "data/RandomPoints.h"
 #include "data/ScenePartition.h"
 #include "data/Json.h"
+#include "data/JsonWrite.h"
 #include "data/RegionProgram.h"
 #include "data/RoiDocument.h"
 #include "data/LabelField.h"
@@ -965,6 +966,59 @@ void save_config_json(const TrainConfig& c, const fs::path& out_dir,
 // TrainerSession
 // ===========================================================================
 
+static std::string utc_iso8601(std::chrono::system_clock::time_point t) {
+    const std::time_t tt = std::chrono::system_clock::to_time_t(t);
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &tt);
+#else
+    gmtime_r(&tt, &tm);
+#endif
+    char buf[32];
+    std::strftime(buf, sizeof buf, "%Y-%m-%dT%H:%M:%SZ", &tm);
+    return buf;
+}
+
+// Never throws: it runs inside the handlers that rethrow a run's own error.
+void TrainerSession::write_run_record(const char* status, const std::string& error) try {
+    if (_run_started == std::chrono::system_clock::time_point{}) return;
+    const bool running = !std::strcmp(status, "running");
+    auto str_or_null = [](const std::string& v) { return json_field::emit(v); };
+    JsonWriter w;
+    w.object();
+    w.field("status", status);
+    w.field_raw("error", str_or_null(error));
+    w.field("started", utc_iso8601(_run_started));
+    w.field_raw("ended", running ? std::string("null")
+                                 : json_quote(utc_iso8601(std::chrono::system_clock::now())));
+    w.field("training_time_s", elapsed_seconds());
+    w.field("start_step", start_step);
+    w.field("final_step", std::max(cur_step.load(), start_step));
+    w.field("num_iterations", cfg.num_iterations);
+    w.field("final_checkpoint", _final_saved);
+    w.field("num_splats", (long long)_live_splats.load());
+    w.field("device", _device_name);
+#ifdef SS_BACKEND_VULKAN
+    w.field("backend", "vulkan");
+#else
+    w.field("backend", "cuda");
+#endif
+    w.field_raw("spirula_version", str_or_null(app_version));
+    w.field("preset", preset);
+    w.field("data", fs::absolute(cfg.data).string());
+    w.field_raw("resume", str_or_null(cfg.resume));
+    w.field_raw("log", str_or_null(run_log));
+    if (!_earlier_runs.empty()) {
+        w.key("earlier_runs").array();
+        for (const JsonValue& r : _earlier_runs) json_write(w, r);
+        w.end();
+    }
+    w.end();
+    const std::string text = w.str();
+    write_file_atomic(out_dir / "run.json", text.data(), text.size());
+} catch (const std::exception&) {
+}
+
 void TrainerSession::log(const std::string& msg) {
     if (log_fn) { log_fn(msg); return; }
     std::printf("%s\n", msg.c_str());
@@ -1477,6 +1531,15 @@ static float estimate_views_per_point(const ParsedDataset& ds, float quantile) {
 }
 
 void TrainerSession::setup_engine() {
+    try {
+        setup_engine_steps();
+    } catch (const std::exception& e) {
+        write_run_record("failed", e.what());
+        throw;
+    }
+}
+
+void TrainerSession::setup_engine_steps() {
 #ifndef SS_BACKEND_VULKAN
     check_cuda_runtime();
 #endif
@@ -1506,6 +1569,22 @@ void TrainerSession::setup_engine() {
     if (write_config_json) {
         save_config_json(cfg, out_dir, preset);
         save_scene_transform_json(ds, cfg, out_dir);
+        _run_started = std::chrono::system_clock::now();
+        _device_name = backend::device_info(backend::device_current()).name;
+        _final_saved = false;
+        _earlier_runs.clear();
+        try {
+            const JsonValue prev = json_parse_file((out_dir / "run.json").string());
+            if (const JsonValue* runs = prev.find("earlier_runs"); runs && runs->is_array())
+                _earlier_runs = runs->arr;
+            JsonValue last = prev;
+            last.obj.erase(std::remove_if(last.obj.begin(), last.obj.end(),
+                                          [](const auto& kv) { return kv.first == "earlier_runs"; }),
+                           last.obj.end());
+            if (last.is_object()) _earlier_runs.push_back(std::move(last));
+        } catch (const std::exception&) {
+        }
+        write_run_record("running");
     }
     log(lfmt(lmsg::output_directory, {fs::absolute(out_dir).string()}));
     _perf_dir.clear();
@@ -2045,6 +2124,17 @@ void TrainerSession::observe_memory(int step, int64_t splats_ran) {
 }
 
 void TrainerSession::train(const TrainerCallbacks& cb) {
+    try {
+        train_steps(cb);
+    } catch (const std::exception& e) {
+        write_run_record("failed", e.what());
+        throw;
+    }
+    write_run_record(std::max(cur_step.load(), start_step) < cfg.num_iterations ? "stopped"
+                                                                                 : "completed");
+}
+
+void TrainerSession::train_steps(const TrainerCallbacks& cb) {
     {
         std::lock_guard<std::mutex> lk(_time_mutex);
         _start_time = std::chrono::steady_clock::now();
@@ -2279,6 +2369,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         std::lock_guard<std::mutex> lk(engine_mutex);
         // A run stopped short is one to continue later, so its save must be resumable.
         save_checkpoint(step, cfg.save_full_checkpoint || step < cfg.num_iterations);
+        _final_saved = true;
         log(lfmt(lmsg::checkpoint_saved, {fs::absolute(out_dir).string()}));
     }
 

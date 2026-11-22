@@ -175,7 +175,8 @@ void TrainRunner::load_dataset(const TrainConfig& cfg, const std::string& preset
     });
 }
 
-void TrainRunner::start_training(const TrainConfig& cfg, const std::string& preset) {
+void TrainRunner::start_training(const TrainConfig& cfg, const std::string& preset,
+                                 const std::string& run_log) {
     shutdown();
     _engine_ready = false;
     {
@@ -189,6 +190,8 @@ void TrainRunner::start_training(const TrainConfig& cfg, const std::string& pres
     _session.reset(new TrainerSession());
     _session->cfg = cfg;
     _session->preset = preset;
+    _session->run_log = run_log;
+    _session->app_version = SS_VERSION;
     _session->log_fn = [this](const std::string& s) { push_log(s); };
     _phase = Phase::Preparing;
     TrainerSession* s = _session.get();

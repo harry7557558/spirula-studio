@@ -94,6 +94,7 @@ list(APPEND SS_TOOL_SOURCES
      ${SS_SRC}/app/FrameSharpness.cpp
      ${SS_SRC}/app/Pano360.cpp
      ${SS_SRC}/app/AppPaths.cpp
+     ${SS_SRC}/app/RunLog.cpp
      ${SS_SRC}/app/CrashLog.cpp)
 if(WIN32)
     list(APPEND SS_TOOL_LIBS dbghelp)   # CrashLog.cpp's stack walk

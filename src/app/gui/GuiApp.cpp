@@ -23,6 +23,7 @@
 #include "app/AppPaths.h"
 #include "app/CrashLog.h"
 #include "app/CubeLut.h"
+#include "app/RunLog.h"
 #include "app/DeviceIssue.h"
 #include "app/FramePick.h"
 #include "app/LogLuts.h"
@@ -103,6 +104,8 @@ namespace ldmsg = spirula::i18n::msg::lidar;
 namespace gmsg = spirula::i18n::msg::geometry;
 namespace tmsg = spirula::i18n::msg::train;
 namespace lmsg = spirula::i18n::msg::log;
+namespace runlog = spirula::runlog;
+using spirula::runlog::cfg_str;
 namespace rmsg = spirula::i18n::msg::render;
 namespace mmsg = spirula::i18n::msg::maskedit;
 namespace svmsg = spirula::i18n::msg::preview;
@@ -557,45 +560,6 @@ static std::tm local_tm(std::time_t t) {
     return tm;
 }
 
-// Local wall-clock stamp for log lines: [yyyy-MM-dd HH:mm:ss.fff].
-static std::string log_stamp() {
-    const auto now = std::chrono::system_clock::now();
-    const std::time_t t = std::chrono::system_clock::to_time_t(now);
-    const int ms = int(std::chrono::duration_cast<std::chrono::milliseconds>(
-                           now.time_since_epoch()).count() % 1000);
-    const std::tm tm = local_tm(t);
-    char date[32], frac[16];
-    std::strftime(date, sizeof(date), "[%Y-%m-%d %H:%M:%S", &tm);
-    std::snprintf(frac, sizeof(frac), ".%03d] ", ms);
-    return std::string(date) + frac;
-}
-
-// Run-start stamp for log file names: yyyyMMddHHmmss.
-static std::string run_log_stamp() {
-    const std::tm tm = local_tm(
-        std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
-    char buf[24];
-    std::strftime(buf, sizeof(buf), "%Y%m%d%H%M%S", &tm);
-    return buf;
-}
-
-// Open this run's log file: <dir>/logs/<kind>_<stamp>.log, where dir is the
-// folder the images folder lives in. A run that cannot name that folder keeps
-// its log on the panel only. Returns the file's path, empty when none.
-static fs::path open_run_log(std::ofstream& f, const std::string& dataset_dir,
-                             const char* kind, const std::string& stamp) {
-    if (f.is_open()) f.close();
-    f.clear();
-    if (dataset_dir.empty()) return {};
-    std::error_code ec;
-    const fs::path dir = fs::path(dataset_dir) / "logs";
-    fs::create_directories(dir, ec);
-    if (ec) return {};
-    const fs::path file = dir / (std::string(kind) + "_" + stamp + ".log");
-    f.open(file, std::ios::out | std::ios::app);
-    return file;
-}
-
 // Hand a value to the reconstruction engines through the process environment
 // (the SS_* namespace core/Env.h owns); the SfM subprocess inherits it too.
 // Empty clears.
@@ -608,46 +572,10 @@ static void set_ss_env(const char* suffix, const std::string& value) {
 #endif
 }
 
-// Mirror a log() message into the run's file, stamped the same way.
-static void file_log_line(std::ofstream& f, const std::string& s) {
-    if (!f.is_open()) return;
-    size_t at = 0;
-    do {
-        const size_t nl = s.find('\n', at);
-        f << log_stamp()
-          << s.substr(at, nl == std::string::npos ? nl : nl - at) << '\n';
-        at = nl == std::string::npos ? nl : nl + 1;
-    } while (at != std::string::npos);
-    f.flush();
-}
-
 static std::string cached_model_path(const std::string& id) {
     const ModelEntry* e = find_model(id);
     if (!e || !model_is_cached(*e)) return "";
     return model_path(*e);
-}
-
-// Value formatting for the settings snapshot.
-static std::string cfg_str(const std::string& v) { return v; }
-static std::string cfg_str(bool v) { return v ? "true" : "false"; }
-static std::string cfg_str(int v) { return std::to_string(v); }
-static std::string cfg_str(float v) {
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%.7g", double(v));
-    return buf;
-}
-template <typename T>
-static std::string cfg_str(const std::optional<T>& v) {
-    return v ? cfg_str(*v) : std::string("none");
-}
-template <typename T, size_t N>
-static std::string cfg_str(const std::array<T, N>& v) {
-    std::string s;
-    for (size_t i = 0; i < N; i++) {
-        if (i) s += ',';
-        s += cfg_str(v[i]);
-    }
-    return s;
 }
 
 static const char* photo_import_name(PhotoImport m) {
@@ -663,7 +591,7 @@ static const char* photo_import_name(PhotoImport m) {
 // One entry per SCREEN line: the panel clips with a list clipper and
 // compensates its scroll for trimmed lines, and both want a uniform height.
 void GuiApp::log(const std::string& s, bool detail) {
-    const std::string stamp = log_stamp();
+    const std::string stamp = runlog::line_stamp();
     size_t at = 0;
     do {
         const size_t nl = s.find('\n', at);
@@ -690,13 +618,14 @@ void GuiApp::clear_log() {
 void GuiApp::write_run_settings(std::ofstream& f) {
     if (!f.is_open()) return;
     std::string out;
-    auto section = [&out](const std::string& name) { out += "[" + name + "]\n"; };
+    auto section = [&out](const std::string& name) { out += runlog::section(name); };
     auto line = [&out](const std::string& k, const std::string& v) {
-        out += "  " + k + " = " + v + "\n";
+        out += runlog::entry(k, v);
     };
 
-    section(msg::runlog_section_run.get());
-    line("run_started", run_log_stamp());
+    out += runlog::run_heading();
+    line("run_started", runlog::file_stamp());
+    line("spirula_version", SS_VERSION);
     line("engine", effective_engine() == Engine::BuiltIn ? "builtin" : "colmap");
 #if defined(SS_BUILD_SAM) || defined(SS_TOOL_SFM) || defined(SS_BACKEND_VULKAN)
     line("native_device", _native_device_uuid.empty() ? "auto" : _native_device_uuid);
@@ -804,46 +733,23 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     line("max_size", std::to_string(_geometry.max_size));
     line("face_res", _geometry.face_res == 1 ? "source" : "output");
 
-    // The training config, grouped the way the options editor groups it.
-    for (int si = 0; si < kTrainNumSections; si++) {
-        const TrainConfig& c = _cfg;
-        std::string body;
-#define SS_SNAP_FIELD(type, member, default_, s, tier, choices)              \
-        if (!std::strcmp(s, kTrainSections[si]))                             \
-            body += std::string("  ") + #member + " = " +                    \
-                    cfg_str(c.member) + "\n";
-        SS_CONFIG_FIELDS(SS_SNAP_FIELD)
-#undef SS_SNAP_FIELD
-        if (!body.empty()) {
-            const Msg* label = tmsg::section_label(kTrainSections[si]);
-            section(i18n::format(
-                msg::runlog_section_train,
-                {label ? label->get() : kTrainSections[si]}));
-            out += body;
-        }
-    }
-
-    // A fixed-width rule, so the separator still reads as one whatever the
-    // translated label measures.
-    const std::string end = msg::runlog_settings_end.get();
-    const int fill = std::max(72 - i18n::display_width(end) - 2, 6);
-    out += std::string(fill / 2, '=') + " " + end + " " +
-           std::string(fill - fill / 2, '=') + "\n\n";
+    out += runlog::train_sections(_cfg);
+    out += runlog::settings_end();
     f << out;
     f.flush();
 }
 
 void GuiApp::append_logs() {
     for (auto& s : _runner.drain_log()) {
-        file_log_line(_train_log, s);
+        runlog::write_line(_train_log, s);
         log(s);
     }
     for (auto& l : _colmap.steps().drain()) {
-        file_log_line(_prep_log, l.text);
+        runlog::write_line(_prep_log, l.text);
         log(l.text, l.detail);
     }
     for (auto& l : _sfm.steps().drain()) {
-        file_log_line(_prep_log, l.text);
+        runlog::write_line(_prep_log, l.text);
         log(l.text, l.detail);
     }
     for (auto& s : _compare.drain_log()) log(s);
@@ -1433,13 +1339,11 @@ void GuiApp::launch_training(const TrainConfig& cfg, const std::string& preset) 
     app::set_crash_note("training " + cfg.data);
     close_mesh_preview();
     detach_session_views();
-    std::string data_dir = cfg.data;
-    if (fs::path(data_dir).filename() == "images")
-        data_dir = fs::path(data_dir).parent_path().string();
-    open_run_log(_train_log, data_dir, "train", run_log_stamp());
+    const fs::path log_file =
+        runlog::open(_train_log, runlog::dataset_dir(cfg.data), "train", runlog::file_stamp());
     set_ss_env("UNREG_LOG", "");
     write_run_settings(_train_log);
-    _runner.start_training(cfg, preset);
+    _runner.start_training(cfg, preset, log_file.string());
 }
 
 void GuiApp::start_training() {
@@ -4837,9 +4741,9 @@ bool GuiApp::launch_dataset_job() {
         remember(RecentKind::Reconstruction, fs::absolute(fs::u8path(_workspace), ec).u8string());
     }
     _restored_ws = _workspace;
-    const std::string stamp = run_log_stamp();
+    const std::string stamp = runlog::file_stamp();
     const fs::path prep_log_file =
-        open_run_log(_prep_log,
+        runlog::open(_prep_log,
                      fs::path(planned_image_dir(_sources, _workspace,
                                                 _photo_import)).parent_path().string(),
                      "prep", stamp);
