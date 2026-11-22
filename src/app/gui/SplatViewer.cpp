@@ -11,7 +11,7 @@
 #include "config/TrainConfig.h"
 #include "data/DatasetParser.h"
 #include "data/SparseEdit.h"
-#include "dense/Generation.h"
+#include "dense/Clouds.h"
 #include "engine/Engine.h"
 #include "i18n/catalog/Gui.h"
 #include "app/TrainerCore.h"

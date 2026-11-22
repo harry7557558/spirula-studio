@@ -44,8 +44,8 @@ bool run_dense_step(const DenseJob& job, const std::string& dataset, const std::
     try { config.validate_run(); }
     catch (const std::exception& e) { error = spirula::i18n::format(D::error, {e.what()}); return false; }
     const fs::path root = fs::path(dataset) / "dense";
-    fs::create_directories(root);
-    const fs::path settings = root / "job.json";
+    fs::create_directories(spirula::dense::work_root(dataset));
+    const fs::path settings = spirula::dense::work_root(dataset) / "job.json";
     std::ofstream file(settings); file << spirula::dense::config_json(config); file.flush();
     if (!file) { error = spirula::i18n::format(D::error, {settings.string()}); return false; }
     file.close();
@@ -95,11 +95,6 @@ bool run_dense_step(const DenseJob& job, const std::string& dataset, const std::
             spirula::i18n::format(D::error, {code == kCancelled ? "cancelled" : "child process did not complete"});
         return false;
     }
-    try {
-        if (!spirula::dense::artifact_available(spirula::dense::artifact_files(dataset))) {
-            error = spirula::i18n::format(D::error, {"cloud file is missing or empty"}); return false;
-        }
-    } catch (const std::exception& e) { error = spirula::i18n::format(D::error, {e.what()}); return false; }
     progress.mark(Stage::Dense, StageStatus::Done);
     return true;
 }

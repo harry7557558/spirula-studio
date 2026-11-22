@@ -5,7 +5,6 @@
 #include "roma/model/Fetch.h"
 #include "dense/ConfigFields.h"
 #include "dense/Artifact.h"
-#include "dense/Versions.h"
 #include "data/SeedPointCount.h"
 
 #include "core/ColorBasis.h"
@@ -251,13 +250,9 @@ GuiApp::GuiApp() {
     // A saved reconstruction or dense seed invalidates the trainer's preview.
     _compare.set_on_model_saved([this](const std::string& saved) {
         if (_cfg.data.empty()) return;
-        std::string dataset;
-        spirula::dense::ArtifactFiles files;
         try {
             std::error_code ec;
-            if (fs::equivalent(saved, _cfg.data, ec) ||
-                (spirula::dense::edited_artifact(saved, dataset, files) &&
-                 fs::equivalent(dataset, _cfg.data, ec))) {
+            if (fs::equivalent(saved, _cfg.data, ec) || spirula::dense::is_dense_seed(_cfg.data, saved)) {
                 _parse_dirty = true;
                 _viewport.invalidate_framing();
             }
@@ -7683,7 +7678,7 @@ GuiApp::DatasetFolders GuiApp::workspace_folders(const WorkspaceState& prior) co
 int64_t GuiApp::starting_points() {
     std::error_code ec;
     const std::string seed = _cfg.seed_pointcloud.empty() && dense_cloud_present()
-        ? spirula::dense::artifact_files(_cfg.data).cloud.string()
+        ? spirula::dense::default_cloud(_cfg.data).ply.string()
         : _cfg.seed_pointcloud == spirula::dense::kSparseSeed ? std::string() : _cfg.seed_pointcloud;
     if (!seed.empty()) {
         fs::path p = seed;
@@ -12005,7 +12000,7 @@ void GuiApp::refresh_dense_versions(const std::string& dataset, bool force) {
     _dense_versions_at = now;
     _dense_versions.clear();
     if (!dataset.empty())
-        for (const auto& v : spirula::dense::cloud_versions(dataset))
+        for (const auto& v : spirula::dense::clouds(dataset))
             _dense_versions.emplace_back(v.relative, v.current);
     _dense_version_index = 0;
     for (size_t i = 0; i < _dense_versions.size(); i++)
@@ -12066,7 +12061,7 @@ void GuiApp::draw_dense_versions() {
             const auto dataset = _dense_versions_dataset;
             _dense_deleted_path = (fs::path(dataset) / "dense" / path).lexically_normal().string();
             _dense_delete = std::async(std::launch::async, [dataset, path] {
-                spirula::dense::delete_cloud_version(dataset, path);
+                spirula::dense::delete_cloud(dataset, path);
             });
             ImGui::CloseCurrentPopup();
         }
@@ -12115,7 +12110,7 @@ const std::vector<GuiApp::SeedFile>& GuiApp::dataset_seed_files() {
         std::sort(out.begin(), out.end());
         return out;
     };
-    for (const auto& v : spirula::dense::cloud_versions(_cfg.data)) {
+    for (const auto& v : spirula::dense::clouds(_cfg.data)) {
         if (v.current) continue;
         const auto label = i18n::format(msg::seed_choice_dense_file, {v.relative});
         _seed_files.push_back({label, "dense/" + v.relative, true});

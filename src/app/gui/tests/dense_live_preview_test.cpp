@@ -245,11 +245,11 @@ int main(int argc, char** argv) {
             std::printf("PASS dataset checkpoint: %u cameras, %llu points, %zu pixels, extent %dx%d\n",
                         model.n_registered, (unsigned long long)model.n_points, colored, max_x - min_x, max_y - min_y);
             if (argc == 5) {
-                const auto artifact = spirula::dense::artifact_files(argv[4]);
-                require(spirula::dense::artifact_available(artifact), "dataset cloud is missing");
+                const auto artifact = spirula::dense::default_cloud(argv[4]);
+                require(!artifact.ply.empty(), "dataset cloud is missing");
                 DatasetParserConfig parser;
                 parser.require_image_files = false; parser.center_mode = "camera-mean";
-                parser.seed_pointcloud = artifact.cloud.u8string();
+                parser.seed_pointcloud = artifact.ply.u8string();
                 const auto seeded = parse_dataset(argv[4],parser,"");
                 require(seeded.points.num() == model.ds.points.num(), "preview and PLY point counts differ");
                 require(seeded.points.rgb == model.ds.points.rgb, "preview and PLY colors differ");

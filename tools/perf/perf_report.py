@@ -403,12 +403,12 @@ def main(argv):
             lines += ["Settings: " + ", ".join(f"{k} {cfg[k]}" for k in keys if cfg.get(k) not in (None, "")), ""]
         except (ValueError, OSError):
             pass
-    # A dense run's cloud is the generation published as it ended: its manifest says
-    # which settings ran and how many pairs came from the prediction cache.
+    # A dense run's cloud is published beside dense/perf as it ends: its <name>.json manifest
+    # says which settings ran and how many pairs came from the prediction cache.
     if dense:
         end_s = dense[-1]["unix_ms"] / 1000.0
         found = []
-        for m in (session.parent.parent / "generations").glob("*/manifest.json"):
+        for m in session.parent.parent.glob("*.json"):
             if abs(m.stat().st_mtime - end_s) < 120:
                 found.append(m)
         for m in found[:1]:

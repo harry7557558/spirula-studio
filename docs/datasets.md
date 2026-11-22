@@ -224,7 +224,7 @@ It requires `x`, `y`, `z`, `red`, `green`, `blue`; coordinates must be finite
 and the cloud nonempty. Integer RGB is 0–255; floating RGB is 0–1.
 Relative paths resolve from the dataset directory; absolute paths also work.
 The CLI flag is `--seed-pointcloud lidar.ply`. Left empty, it picks the
-dataset's finished dense cloud (`dense/roma.ply`, [dense.md](dense.md)) when
+dataset's newest dense cloud (any point-cloud PLY under `dense/`, [dense.md](dense.md)) when
 there is one; `sparse` always keeps the format's own cloud. In the GUI, Basic
 Options shows a **Starting points** choice only when the dataset has a dense
 cloud or a seed is already set: **Dense cloud**, **Sparse points** or **Other

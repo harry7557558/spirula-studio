@@ -207,7 +207,7 @@ them again before publication. The fingerprint ledger avoids repeated hashing
 within a run; earlier size/timestamp entries do not establish content validity.
 
 While the step runs, the dataset screen's model view shows the complete growing
-cloud. The child starts with `--progress-dir dense/progress` and appends every
+cloud. The child starts with `--progress-dir dense/.work/progress` and appends every
 accepted reference result to a buffered disk checkpoint. Every 1.5 seconds it
 flushes that file and atomically publishes `model.bin` metadata: the registered
 cameras, checkpoint filename, and committed point count. The GUI reads exactly
@@ -246,26 +246,26 @@ limited each phase. See `tools/perf/README.md`.
 
 Open **Edit Dense Cloud** to clean up a dataset's point cloud before training.
 With one version it opens the editor directly. With multiple versions it opens
-a chooser listing the current cloud, original backups, saved PLY copies and
-earlier reconstructions. Select a version and choose **Edit**, or **Delete
-version** to remove it after confirmation. Deleting the current cloud selects
-another version when available; deleting the last one leaves sparse seeding.
-Deletion removes the selected PLY. Compatibility exports at `dense/roma.ply`
-remain separately accessible by an explicit file path.
+a chooser listing every version, newest first. Select a version and choose
+**Edit**, or **Delete version** to remove it and its manifest after
+confirmation; the next newest becomes the default, and deleting the last one
+leaves sparse seeding.
 
-The first in-place edit keeps the preceding cloud as `roma.original.ply` beside
-it. Later saves preserve that backup until it is edited or deleted explicitly.
-**Save a copy...** keeps another PLY in `dense/`. Versions are also available
-under the trainer's **Starting points**; **Open in trainer** starts from the
-version just edited or last saved in the editing session.
+The first in-place edit keeps the preceding cloud as `<name>.original.ply`
+beside it. Later saves preserve that backup until it is edited or deleted
+explicitly. **Save a copy...** keeps another PLY in `dense/`. Versions are also
+available under the trainer's **Starting points**; **Open in trainer** starts
+from the version just edited or last saved in the editing session.
 
-PLY files can be edited, replaced or renamed in other software. Preview,
-training and dense reuse do not validate output or manifest checksums, and
-stale byte sizes or point counts in the manifest do not reject an edited
-cloud. The PLY parser reads the actual points and still reports invalid files.
-An explicitly selected `dense/roma.ply` is opened as that file, rather than
-redirected to the published generation. The automatic default follows
-`dense/current.json` when present.
+Every PLY anywhere under `dense/` that looks like a point cloud is a version:
+its header names vertices with `x`, it has no faces, and a binary file is
+long enough for its header's counts. Folders starting with a dot are skipped.
+The newest by modification time is the default seed, so the cloud edited or
+saved last trains unless another is chosen. PLY files can be edited, replaced,
+renamed or moved into subfolders in other software; nothing checks their
+contents against the manifest. The PLY parser reads the actual points and
+still reports invalid files. Copying a dataset without preserving modification
+times can change which version is the default.
 
 Dense seed clouds stay in the dataset's camera frame: their editor supports
 point cleanup, but blocks placement edits. Use **Edit Reconstruction** to move
@@ -313,7 +313,8 @@ references may still describe the same surface. After successful fusion and
 outlier filtering, a separate checkpoint holds every exported point. The final
 publication switches the viewport to that file, so the point count can decrease
 as unsupported points and duplicates disappear. Checkpoint files remain under
-`dense/progress`; they are previews rather than resumable reconstruction state.
+`dense/.work/progress`, and a successful run deletes the ones it no longer
+shows; they are previews rather than resumable reconstruction state.
 Verified pair predictions remain the resume mechanism. The progress bar counts
 matched pairs against the planned total.
 
@@ -640,12 +641,23 @@ them, and with the defaults it differs only by the far isolated points.
 
 ## Outputs, caching, and cancellation
 
-Successful runs publish a cloud and manifest under `dense/generations/`, then
-atomically replace `dense/current.json`. Preview, planning and automatic
-training resolve that record. Published PLYs can also be edited externally.
-Training reads the selected file at load time. Compatibility copies remain at `dense/roma.ply` and
-`dense/manifest.json`; datasets without a generation record still use those
-legacy paths. The cloud
+```
+dense/
+  2026-11-22_143005_balanced.ply    one successful run
+  2026-11-22_143005_balanced.json   its manifest
+  my-cleanup.ply                    any other point-cloud PLY, also in subfolders
+  perf/                             only with Log performance stats
+  .work/                            lock, settings, live preview, pair cache
+```
+
+A successful run moves its cloud to `dense/<local date and time>_<preset>.ply`
+with the manifest beside it as `.json`, the manifest first, so a cloud never
+appears without one. A cloud without a manifest still seeds training, but
+dataset updates do not count it as an up-to-date dense step. Clouds from older
+builds (`dense/roma.ply`, `dense/generations/*/roma.ply`) are found the same
+way and read their `manifest.json`; `current.json` is ignored, and the older
+`dense/cache` moves into `dense/.work` on the next run. Training reads the
+selected file at load time. The cloud
 is binary little endian, with double coordinates and 8-bit sRGB colors.
 The parser's centering is restored before export, including Nerfstudio's
 forward `applied_transform`, so the result is in the source file frame
@@ -676,16 +688,13 @@ when no model is loaded. `feature_cache` records view hits,
 misses, evictions, final and peak bytes, and the effective byte limit. Hits
 count image reuse, not pair-cache reuse. Inference time includes resizing,
 GPU computation and prediction downloads, but excludes waiting for image
-decoding and reconstruction. Both generation files are complete before the
-current record changes, so interrupted publication preserves the preceding
-generation for readers. Compatibility copies are separate replacements;
-external consumers requiring a consistent pair should also resolve the
-current-generation record. The GUI child runner checks that the selected cloud
-exists before reporting success. An exclusive workspace writer lock prevents
-two dense processes from publishing to the same dataset concurrently.
+decoding and reconstruction. The GUI child runner checks that a cloud
+exists before reporting success. An exclusive writer lock,
+`dense/.work/run.lock`, prevents two dense processes from running on the
+same dataset concurrently.
 
 Each run keeps its temporary observation tiles and sorting files in a
-`dense/cache/<settings>/run-<number>` folder and removes it when it finishes;
+`dense/.work/cache/<settings>/run-<number>` folder and removes it when it finishes;
 a reference's tiles go as soon as it is refined, so the folder holds the
 references still in progress rather than every pair matched so far. The cache
 folder is opened in Windows' extended-length form, so its nested names work
@@ -697,9 +706,10 @@ holding the writer lock, by deleting every leftover `run-<number>` folder and
 any settings folder left empty. Prediction caches, `pairs-v4`, the fingerprint
 ledger and anything not named that way are never touched.
 
-Complete pair predictions are stored under `dense/cache/pairs-v4/`, with dimensions,
-format revision, and SHA-256 sidecars. Resume verifies the complete cache
-file before reading it. Corrupt or interrupted pairs are recomputed.
+Complete pair predictions are stored under `dense/.work/cache/pairs-v4/`. A
+prediction is renamed into place once written, and resume reads it only when
+its format revision, dimensions and length match and every value is finite;
+anything else is recomputed. There is no checksum.
 Filtering, density, support, and fusion changes reuse these matches.
 Each view has a content/preprocessing identity and each directed pair has its
 own prediction identity. Editing one source image invalidates its affected
@@ -718,8 +728,9 @@ RGB/mask allocation per cached image instead of copying it into a second view.
 Fusion cells, boundary candidates and reconciliation state also have disk-backed
 paths; available memory controls their working sets rather than the cloud size.
 `--rebuild true` ignores cached predictions. Predictions are written while
-the run goes, so a cancelled or failed run resumes from them, and are removed
-after a successful publication unless `--keep-cache true`. They are large:
+the run goes, so a cancelled or failed run resumes from them. A successful
+publication removes the whole cache, including predictions left by earlier
+runs with other settings, unless `--keep-cache true`. They are large:
 about 10 MB a pair at 640, 80 MB at 1280 in both directions, so a few hundred
 High quality pairs fill tens of gigabytes. A run stops writing new ones while
 the disk has less than 4 GB or 5% free. Settings saved before this default
@@ -727,11 +738,7 @@ changed load with it off.
 Completed and failed temporary observation/sort directories are removed after
 their workers and streams have closed. Cleanup validates the application-owned
 run path and rejects redirected paths; image or dataset junctions are not cleanup
-targets. Verified predictions and the last successful generation remain usable.
-Failed publication removes its unpublished generation. Recovery removes owned
-pending generations after acquiring the writer lock, while retaining published
-generations and unmarked directories. Published generations remain available
-for sessions that selected them explicitly.
+targets. Predictions and published clouds remain usable.
 
 Checkpoint resume and explicit initialization keep precedence over the
 automatic dense seed.

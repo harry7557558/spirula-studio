@@ -38,6 +38,12 @@ void touch(const fs::path& p) {
     std::ofstream(p) << "x";
 }
 
+void write_cloud(const fs::path& p) {
+    fs::create_directories(p.parent_path());
+    std::ofstream(p) << "ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nproperty float y\n"
+                        "property float z\nend_header\n0 0 0\n";
+}
+
 // A dual-fisheye clip, the way the panel hands it over once probed.
 PrepInput insv() {
     PrepInput in;
@@ -726,7 +732,7 @@ int main() {
         expect(plan(j)[Step::Dense].act == Act::None, "old settings keep dense processing disabled");
         j.dense.enable = true;
         expect(plan(j)[Step::Dense].act == Act::Run, "enabling dense starts its own step");
-        touch(ws / "dense" / "roma.ply");
+        write_cloud(ws / "dense" / "roma.ply");
         expect(spirula::dense::is_dense_seed(ws.string(), (ws / "dense" / "roma.ply").string()) &&
                spirula::dense::is_dense_seed(ws.string(), "dense/roma.ply") &&
                !spirula::dense::is_dense_seed(ws.string(), "other.ply"), "dense seed mask mode recognizes absolute and dataset-relative paths");
@@ -734,7 +740,7 @@ int main() {
         touch(source);
         const std::vector<std::string> watched{source.string()};
         auto write_manifest = [&](int revision = spirula::dense::reconstruction_revision) {
-            JsonWriter manifest; manifest.object().field("complete", true).field("cloud_sha256", spirula::sha256_file((ws / "dense" / "roma.ply").string()));
+            JsonWriter manifest; manifest.object().field("complete", true);
             manifest.field("reconstruction_revision",revision);
             manifest.field("cloud_bytes", 1).field("input_stamp", spirula::dense::input_stamp(watched));
             manifest.field("input_content_stamp",spirula::dense::input_content_stamp(watched));
@@ -808,7 +814,7 @@ int main() {
         write_manifest();
         std::ofstream(ws / "dense" / "roma.ply", std::ios::app) << "truncated replacement";
         expect(plan(j)[Step::Dense].act == Act::Reuse, "a changed output size does not discard external cloud edits");
-        touch(ws / "dense" / "roma.ply");
+        write_cloud(ws / "dense" / "roma.ply");
         j.dense.use_for_training = false;
         j.dense.config.image_cache_bytes = 123456789;
         expect(plan(j)[Step::Dense].act == Act::Reuse, "training selection and cache budget do not invalidate dense output");

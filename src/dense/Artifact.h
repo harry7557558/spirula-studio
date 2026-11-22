@@ -2,7 +2,7 @@
 
 #include "data/Json.h"
 #include "core/Sha256.h"
-#include "dense/Generation.h"
+#include "dense/Clouds.h"
 
 #include <filesystem>
 #include <algorithm>
@@ -17,7 +17,7 @@ inline constexpr int reconstruction_revision = 5;
 
 // Where `spirula dense --progress-dir` writes the live model.bin the GUI polls.
 inline std::filesystem::path progress_dir(const std::string& dataset) {
-    return std::filesystem::path(dataset) / "dense" / "progress";
+    return work_root(dataset) / "progress";
 }
 
 inline std::string input_stamp(const std::vector<std::string>& paths) {
@@ -77,28 +77,28 @@ inline std::string input_content_stamp(const std::vector<std::string>& paths,
 inline bool artifact_inputs_verified(const std::string& dataset,
                                      const std::function<void()>& check_cancel = {}) {
     try {
-    const auto files = artifact_files(dataset);
-    if (!std::filesystem::is_regular_file(files.manifest)) return false;
-    const auto manifest = json_parse_file(files.manifest.string());
-    if (manifest.get_double("reconstruction_revision",0) != reconstruction_revision) return false;
-    const auto* paths = manifest.find("input_paths"), *content = manifest.find("input_content_stamp");
-    if (!paths || !content) return false;
-    std::vector<std::string> inputs;
-    for (const auto& path : paths->arr) inputs.push_back(path.as_string());
-    return input_content_stamp(inputs,check_cancel) == content->as_string() &&
-           artifact_available(files);
+        const auto cloud = default_cloud(dataset);
+        if (cloud.ply.empty() || !std::filesystem::is_regular_file(cloud.manifest)) return false;
+        const auto manifest = json_parse_file(cloud.manifest.string());
+        if (manifest.get_double("reconstruction_revision",0) != reconstruction_revision) return false;
+        const auto* paths = manifest.find("input_paths"), *content = manifest.find("input_content_stamp");
+        if (!paths || !content) return false;
+        std::vector<std::string> inputs;
+        for (const auto& path : paths->arr) inputs.push_back(path.as_string());
+        return input_content_stamp(inputs,check_cancel) == content->as_string();
     } catch (const std::exception&) {
         if (check_cancel) check_cancel();
         return false;
     }
 }
 
+// A cloud without a manifest seeds training, but only `check_inputs` callers decide reuse.
 inline bool artifact_complete(const std::string& dataset, bool check_inputs = false) {
     try {
-        const auto files = artifact_files(dataset);
-        if (!artifact_available(files)) return false;
-        if (!std::filesystem::is_regular_file(files.manifest)) return !check_inputs;
-        const auto manifest = json_parse_file(files.manifest.string());
+        const auto cloud = default_cloud(dataset);
+        if (cloud.ply.empty()) return false;
+        if (!std::filesystem::is_regular_file(cloud.manifest)) return !check_inputs;
+        const auto manifest = json_parse_file(cloud.manifest.string());
         const auto* complete = manifest.find("complete");
         if (check_inputs) {
             if (manifest.get_double("reconstruction_revision",0) != reconstruction_revision) return false;
@@ -119,7 +119,7 @@ inline constexpr const char* kSparseSeed = "sparse";
 
 inline std::string automatic_seed(const std::string& dataset) {
     if (dataset.empty() || !artifact_complete(dataset)) return {};
-    return artifact_files(dataset).cloud.string();
+    return default_cloud(dataset).ply.string();
 }
 
 }  // namespace spirula::dense
