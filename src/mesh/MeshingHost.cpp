@@ -542,6 +542,7 @@ bool generate_mesh(
     const bool tsdf = cfg.method == MeshMethod::Tsdf;
     const bool grid = tsdf && cfg.tsdf_voxel > 0.0f;   // else the field over the splat samples
     const int cloud_cams = cam_pos ? num_cameras : 0;
+    const int spg = cfg.samples_per_gaussian <= 1 ? 1 : 7;
     const int64_t max_pts = ev.max_delaunay_points();
     // Refused here rather than inside the solver, which can only report an
     // empty result as "no tetrahedra"; OccupancyEvaluator already skipped LBVH
@@ -552,9 +553,9 @@ bool generate_mesh(
             return false;
         }
         const long long max_gaussians =
-            std::max(0LL, (long long)(max_pts - cloud_cams) / 7);
+            std::max(0LL, (long long)(max_pts - cloud_cams) / spg);
         mlog::fail(mlog::Stage::PointCloud, mmsg::too_many_gaussians,
-                   {(long long)ev.num_kept(), (long long)max_pts, max_gaussians});
+                   {(long long)ev.num_kept(), (long long)max_pts, max_gaussians, (long long)spg});
         return false;
     }
     if (tsdf && !ev.has_render_cameras()) {

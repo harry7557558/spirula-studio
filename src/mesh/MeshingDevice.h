@@ -93,14 +93,13 @@ void launch_activate(
 // spikes and holes flat surfaces; 0.1 doubles a cube of discs (docs/notes/2dgs.md).
 constexpr float kSampleMinAxisRatio = 0.25f;
 
-// 7 points per kept Gaussian (center + +/-k sigma along each principal axis,
-// each sigma at least min_axis_ratio * the largest), interleaved xyz into
-// out[num_kept * 21].
+// 1 (center) or 7 (center + +/-k sigma along principal axes) points per kept
+// Gaussian, interleaved xyz into out[num_kept * 3 * samples_per_gaussian].
 void launch_pointcloud(
     int num_kept, const int* kept,
     const float3* mean, const float3* ax0, const float3* ax1,
     const float3* ax2, const float3* invs2, const float* k2,
-    float min_axis_ratio, float* out);
+    float min_axis_ratio, int samples_per_gaussian, float* out);
 
 // Per kept Gaussian: leaf AABB (real space) + remapped Morton code + iota.
 void launch_bvh_prep(
