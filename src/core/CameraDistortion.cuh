@@ -55,6 +55,12 @@ struct SlangDistortion<CameraDistortionType::TIER> {                            
     bool generate_ray(float2 uv, int camera_model, const Coeffs& c, float3* rd) {   \
         return SlangProjectionUtils::generate_ray##SUFFIX(uv, camera_model, c.v, rd); \
     }                                                                              \
+    static __device__ __forceinline__                                              \
+    bool pixel_rect_quad(int camera_model, float4 intrins, const Coeffs& c,         \
+                         float2 lo, float2 hi, float3* q) {                         \
+        return SlangProjectionUtils::pixel_rect_quad##SUFFIX(                       \
+            camera_model, intrins, c.v, lo, hi, q, q + 1, q + 2, q + 3);            \
+    }                                                                              \
 };
 
 _SS_DEF_SLANG_DISTORTION(None,      _none)

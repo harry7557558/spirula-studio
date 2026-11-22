@@ -395,7 +395,7 @@ void SplatViewer::run(std::string path) {
         fs::path ckpt_dir = fs::path(ply).parent_path();
         bool has_bg = ckpt::load_background_sh(ckpt_dir, bg_deg, bg_coeffs,
                                                bg_transfer, bg_is_linear);
-        _hardware_supported = sb_lobes == 0 && !has_bg;
+        _hardware_supported = !has_bg;
         if (_hardware && !_hardware_supported) {
             _hardware = false;
             _hardware_fallback = false;
@@ -420,6 +420,8 @@ void SplatViewer::run(std::string path) {
         vc.primitive = cfg.primitive;
         vc.packed = cfg.packed;
         vc.sh_degree_warmup_every = 1;
+        vc.sh_degree = sh_degree;
+        vc.sb_lobes = sb_lobes;
         // Median and distortion buffers are training diagnostics computed from
         // regularizers this file has none of, so the viewer does not offer
         // them. rgb / depth / alpha / normals all come from the same render.

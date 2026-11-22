@@ -159,8 +159,12 @@ int main(int argc, char** argv) {
     backend::device_synchronize();
     if (check_error("projection")) return 1;
 
+    FootprintView footprint;
+    if (eval3d)
+        footprint = footprint_view(splats, gauss_ids.data_ptr(), ttv(d_vm, {C, 16}),
+                                   dist_tv, "PINHOLE", dist_fixture::kTierNames[0], false);
     auto intersections = do_intersect_tile_generic(
-        aabb_2d, depths, ellipse_view(splats_s, eval3d, cut), (uint32_t)C,
+        aabb_2d, depths, ellipse_view(splats_s, eval3d, cut), footprint, (uint32_t)C,
         ttv(d_intr, {C, 4}), W, H, &cam_ids, nullptr, macro_log2);
     auto& flatten_ids = std::get<1>(intersections);
     auto& tile_offsets = std::get<2>(intersections);
@@ -229,7 +233,7 @@ int main(int argc, char** argv) {
     const double isect_ms = time_ms(iters, [&] {
         int m = macro_log2;
         (void)do_intersect_tile_generic(aabb_2d, depths,
-                                        ellipse_view(splats_s, eval3d, cut),
+                                        ellipse_view(splats_s, eval3d, cut), footprint,
                                         (uint32_t)C, ttv(d_intr, {C, 4}), W, H,
                                         &cam_ids, nullptr, m);
     });

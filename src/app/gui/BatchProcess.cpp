@@ -9,6 +9,7 @@
 #include "app/gui/SourceList.h"
 #include "app/gui/TrainPreset.h"
 #include "checkpoint/SplatPly.h"
+#include "core/AtomicFile.h"
 #include "data/Json.h"
 #include "data/JsonWrite.h"
 #include "data/RoiDocument.h"
@@ -17,7 +18,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <filesystem>
 #include <set>
 #include <stdexcept>
@@ -969,8 +969,7 @@ std::vector<BatchRow> load_batch_list() {
             }
         }
     } catch (const std::exception&) {
-        // No list yet, or one a crash left half-written. Starting empty is the
-        // only useful answer either way.
+        // A missing or unreadable list starts empty.
     }
     return out;
 }
@@ -1027,11 +1026,32 @@ void save_batch_list(const std::vector<BatchRow>& rows) {
     w.end();
     w.end();
 
-    FILE* f = std::fopen(batch_list_path().c_str(), "wb");
-    if (!f) return;
     const std::string text = w.str();
-    std::fwrite(text.data(), 1, text.size(), f);
-    std::fclose(f);
+    const auto path = batch_list_path();
+    try {
+        spirula::AtomicOutputFile file(spirula::resolve_output_symlink(path), 0);
+        file.stream().write(text.data(), static_cast<std::streamsize>(text.size()));
+        file.close_checked();
+        file.commit();
+    } catch (const std::exception& e) {
+        throw std::runtime_error(path + ": " + e.what());
+    }
+}
+
+bool BatchSaveState::save(const std::vector<BatchRow>& rows) noexcept {
+    try {
+        save_batch_list(rows);
+        error_.clear();
+        state_ = State::Clean;
+        return true;
+    } catch (const std::exception& e) {
+        try { error_ = e.what(); }
+        catch (...) { error_.clear(); }
+    } catch (...) {
+        error_.clear();
+    }
+    state_ = State::Failed;
+    return false;
 }
 
 }  // namespace gui

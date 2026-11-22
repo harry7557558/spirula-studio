@@ -280,6 +280,7 @@ private:
     // the trainer screen is on, its region too when `dataset` is open there.
     BatchRun batch_run_on_screen(const std::string& dataset = {}) const;
     void batch_edited();                    // persist, and re-check
+    void save_batch();
     // Pre-flight every row. Cheap enough (a few stats and a small JSON per
     // preset) that nothing waits for a button: check_batch_if_stale() runs it
     // whenever an edit or a couple of seconds have gone by.
@@ -1232,7 +1233,7 @@ private:
     // start_batch() and by the plan preview. Only the running copy carries
     // results, so the preview may be rebuilt whenever the list changes.
     std::vector<BatchTask> _batch_tasks;
-    bool _batch_dirty = false;        // edited -> persist once the widget is idle
+    BatchSaveState _batch_save;
     bool _batch_checked = false;      // a pre-flight has run since the last edit
     // When it ran. The list is re-checked on a timer as well as on an edit:
     // a preset file or a dataset folder can go missing while the screen is up.

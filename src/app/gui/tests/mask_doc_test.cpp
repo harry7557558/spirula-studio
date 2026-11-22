@@ -19,6 +19,7 @@
 #include "app/gui/mask/MaskSession.h"
 #include "app/gui/mask/MaskSlideshow.h"
 #include "app/gui/mask/MaskWindow.h"
+#include "core/AtomicFile.h"
 #include "core/HardwareThreads.h"
 #include "core/ImageOrient.h"
 #include "core/MaskMargin.h"
@@ -43,7 +44,9 @@
 #include <thread>
 #include <vector>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <sddl.h>
+#else
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -152,7 +155,7 @@ bool write_jpg_rgb_oriented(const fs::path& p, int w, int h, const std::vector<u
     jpg.insert(jpg.begin() + 2, seg.begin(), seg.end());
     std::error_code ec;
     fs::create_directories(p.parent_path(), ec);
-    return mk::write_file_atomic(p.string(), jpg.data(), jpg.size());
+    return spirula::write_file_atomic(p, jpg.data(), jpg.size());
 }
 
 std::vector<uint8_t> file_bytes(const fs::path& p) {
@@ -268,7 +271,7 @@ void test_png_and_atomic_write() {
     check(mk::encode_gray_png(px.data(), 64, 48, png), "encode_gray_png");
     check(png.size() > 8 && png[1] == 'P' && png[2] == 'N' && png[3] == 'G', "PNG signature");
     const fs::path p = d / "sub" / "a.png";
-    check(mk::write_file_atomic(p.string(), png.data(), png.size()), "write_file_atomic creates dirs");
+    check(spirula::write_file_atomic(p, png.data(), png.size()), "write_file_atomic creates dirs");
     bool tmp_leftover = false;
     for (const auto& entry : fs::directory_iterator(d / "sub"))
         if (entry.path().extension() == ".tmp") tmp_leftover = true;
@@ -288,38 +291,65 @@ void test_png_and_atomic_write() {
     fs::create_hard_link(p, link, ec);
     if (!ec) {
         const std::vector<uint8_t> other = {1, 2, 3, 4};
-        check(mk::write_file_atomic(p.string(), other.data(), other.size()), "rewrite");
+        check(spirula::write_file_atomic(p, other.data(), other.size()), "rewrite");
         check(file_bytes(link) == png, "hard link still holds the old bytes");
         check(file_bytes(p) == other, "path holds the new bytes");
     }
     check(!mk::fingerprint_file((d / "missing.png").string(), fp), "fingerprint of a missing file fails");
 }
 
-// A fixed temp name (<dst>.tmp) lets two writers of the same destination
-// fopen() the same inode and interleave writes before either renames. The
-// property that rules that out: every call gets its own sibling name.
-void test_temp_write_path_unique() {
-    const fs::path d = scratch("temp_names");
-    const fs::path dst = d / "shared.bin";
-    const std::string a = mk::temp_write_path(dst.string());
-    const std::string b = mk::temp_write_path(dst.string());
-    check(a != b, "temp_write_path differs across calls for the same destination");
-    check(fs::path(a).parent_path() == dst.parent_path() &&
-              fs::path(b).parent_path() == dst.parent_path(),
-          "temp paths are siblings of the destination");
-    // Concurrent-in-flight writers do not collide on disk, and the write
-    // that lands last still wins cleanly -- the hard-link guarantee holds.
-    const std::vector<uint8_t> first = {9, 9, 9};
-    check(mk::write_file_atomic(dst.string(), first.data(), first.size()), "first write lands");
-    const fs::path link = d / "shared.link";
-    std::error_code ec;
-    fs::create_hard_link(dst, link, ec);
-    if (!ec) {
-        const std::vector<uint8_t> second = {1, 2};
-        check(mk::write_file_atomic(dst.string(), second.data(), second.size()), "second write lands");
-        check(file_bytes(link) == first, "hard link unaffected by the second write");
-        check(file_bytes(dst) == second, "destination holds the second write");
-    }
+void test_composite_staging() {
+#ifndef _WIN32
+    if (!chmod_injects()) return;
+#endif
+    const auto root = scratch("composite_staging");
+    const auto storage = root / "storage";
+    const auto masks = storage / "masks";
+    auto mask_root = masks.string();
+    const auto dst = masks / "cam0" / "a.png";
+    const std::vector<uint8_t> base(16 * 16, 255), drop(16 * 16, 255), keep(16 * 16, 0);
+    check(write_png_gray(dst, 16, 16, base), "staging fixture has an old mask");
+#ifndef _WIN32
+    const auto alias = root / "feature_masks";
+    fs::create_directory_symlink(fs::path("storage") / "masks", alias);
+    mask_root = alias.string();
+#endif
+    const auto original = file_bytes(dst);
+    const auto layer_root = (root / "mask_edits").string();
+    mk::LayerIndex idx;
+    idx.mask_root = mask_root;
+    std::string error;
+#ifdef _WIN32
+    constexpr DWORD info = DACL_SECURITY_INFORMATION;
+    DWORD bytes = 0;
+    GetFileSecurityW(storage.c_str(), info, nullptr, 0, &bytes);
+    std::vector<char> original_acl(bytes);
+    PSECURITY_DESCRIPTOR denied = nullptr;
+    const bool ready = bytes != 0 &&
+        GetFileSecurityW(storage.c_str(), info, original_acl.data(), bytes, &bytes) &&
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:(D;;0x2;;;WD)(A;;FA;;;WD)", SDDL_REVISION_1, &denied, nullptr);
+    const bool denied_add_file = ready && SetFileSecurityW(storage.c_str(), info, denied);
+    if (denied) LocalFree(denied);
+    check(denied_add_file, "deny file creation only in the staging parent");
+    if (!denied_add_file) return;
+#else
+    const auto perms = fs::status(storage).permissions();
+    fs::permissions(storage, fs::perms::owner_read | fs::perms::owner_exec);
+#endif
+    check(!spirula::write_file_atomic(storage / "probe", "x", 1),
+          "preferred staging parent cannot create a file");
+    const bool saved = mk::save_frame(layer_root, mask_root, "cam0/a", 16, 16,
+                                      base.data(), drop.data(), keep.data(), true, idx, error);
+#ifdef _WIN32
+    check(SetFileSecurityW(storage.c_str(), info, original_acl.data()),
+          "restore the staging parent's permissions");
+#else
+    fs::permissions(storage, perms);
+#endif
+    check(saved && error.empty() && file_bytes(dst) != original &&
+              file_bytes(root / "mask_edits" / "cam0" / "a.base.png") == original,
+          "denied outside staging falls back beside the destination");
 }
 
 void test_index_roundtrip() {
@@ -354,7 +384,7 @@ void test_index_roundtrip() {
     check(s.find("spirula_mask_edits") != std::string::npos, "marker key present");
     // Garbage is an error, not an empty index.
     const std::vector<uint8_t> junk = {'{', 'x'};
-    mk::write_file_atomic((d / mk::kIndexFileName).string(), junk.data(), junk.size());
+    spirula::write_file_atomic(d / mk::kIndexFileName, junk.data(), junk.size());
     check(!back.load(d.string(), err) && !err.empty(), "corrupt index fails with a message");
     check(mk::utc_now_iso().size() == 20 && mk::utc_now_iso()[10] == 'T', "utc_now_iso shape");
 }
@@ -374,6 +404,9 @@ void test_save_and_layers_roundtrip() {
     Fixture f = make_dataset("save", 64, 48, {"a", "cam0/b"});
     const std::string mask_root = f.masks.string(), layer_root = f.layer.string();
     const std::vector<uint8_t> original = file_bytes(f.masks / "a.png");
+    const auto link = f.root / "original.png";
+    std::error_code link_error;
+    fs::create_hard_link(f.masks / "a.png", link, link_error);
     int w = 0, h = 0;
     std::vector<uint8_t> base;
     app::load_stencil((f.masks / "a.png").string(), w, h, base);
@@ -387,6 +420,7 @@ void test_save_and_layers_roundtrip() {
                          keep.data(), true, idx, err), "save_frame: " + err);
     // The base is a byte copy of the mask as the run wrote it.
     check(file_bytes(f.layer / "a.base.png") == original, "base is byte-identical to the original");
+    if (!link_error) check(file_bytes(link) == original, "composite replacement preserves a hard-linked original");
     // The layers read back as the same sets, through the app's own reader.
     mk::FrameLayers back;
     std::string warn;
@@ -1745,7 +1779,7 @@ void test_propagate_to() {
     // A size read that fails names the file it failed on, not the image.
     const fs::path junk = f2.layer / "cam0" / "a.base.png";
     const uint8_t not_png[] = {'n', 'o', 't', ' ', 'p', 'n', 'g'};
-    mk::write_file_atomic(junk.string(), not_png, sizeof not_png);
+    spirula::write_file_atomic(junk, not_png, sizeof not_png);
     check(!mk::propagate_to(lr2, mr2, "cam0/a", (f2.images / "cam0" / "a.jpg").string(), 64, 48,
                             drop.data(), keep.data(), idx2, refused, err) &&
               err == junk.string() && refused.w == 0, "a corrupt base is named as the failure: " + err);
@@ -1971,7 +2005,7 @@ void test_restore_rollback_keeps_snapshot_layers() {
         check(mk::snapshot_layers(layer_root, "cam0/c", idx, sc, err) && sc.had_entry, tag + "snapshot");
         std::vector<uint8_t> png;
         mk::encode_gray_png(d2.data(), 64, 48, png);
-        mk::write_file_atomic(drop.string(), png.data(), png.size());   // the half-written propagate
+        spirula::write_file_atomic(drop, png.data(), png.size());   // the half-written propagate
         const auto ro_was = fs::status(ro).permissions();
         fs::permissions(ro, fs::perms::owner_read | fs::perms::owner_exec);
         const bool restored = mk::restore_layers(layer_root, mask_root, sc, idx, err);
@@ -2111,7 +2145,7 @@ void test_snapshot_restore_edges() {
     const std::vector<uint8_t> original_o = file_bytes(f.masks / "o.png");
     std::vector<uint8_t> orphan;
     mk::encode_gray_png(box_layer(64, 48, 8, 8, 20, 20).data(), 64, 48, orphan);
-    mk::write_file_atomic((f.layer / "o.drop.png").string(), orphan.data(), orphan.size());
+    spirula::write_file_atomic(f.layer / "o.drop.png", orphan.data(), orphan.size());
     mk::LayerSnapshot so;
     check(mk::snapshot_layers(layer_root, "o", idx, so, err) && !so.had_entry && so.had_drop && !so.had_keep,
           "edges: snapshot of an orphan drop layer");
@@ -2123,7 +2157,7 @@ void test_snapshot_restore_edges() {
               !fs::exists(f.layer / "o.base.png"), "edges: o's mask, entry and base are as before");
     std::vector<uint8_t> orphan_keep;
     mk::encode_gray_png(box_layer(64, 48, 30, 10, 40, 20).data(), 64, 48, orphan_keep);
-    mk::write_file_atomic((f.layer / "p.keep.png").string(), orphan_keep.data(), orphan_keep.size());
+    spirula::write_file_atomic(f.layer / "p.keep.png", orphan_keep.data(), orphan_keep.size());
     mk::LayerSnapshot sp;
     check(mk::snapshot_layers(layer_root, "p", idx, sp, err) && !sp.had_entry && !sp.had_drop && sp.had_keep &&
               prop("p", d2, k2) && mk::restore_layers(layer_root, mask_root, sp, idx, err),
@@ -2300,7 +2334,7 @@ void test_session_propagate_failures() {
     check(s.last_propagate().done == 1 && fs::exists(f.layer / "cam0" / "c.base.png"),
           "fixture: c is corrected, so its snapshot has an entry");
     const std::vector<uint8_t> junk(64, 0x7f);
-    check(mk::write_file_atomic((f.layer / "cam0" / "c.base.png").string(), junk.data(), junk.size()),
+    check(spirula::write_file_atomic(f.layer / "cam0" / "c.base.png", junk.data(), junk.size()),
           "fixture: c's base is not a PNG");
     s.propagate(mk::PropagateScope::Range, 2, 2);
     settle(s);
@@ -2772,7 +2806,7 @@ void test_propagate_names_unrestored() {
     settle(s);
     check(s.last_propagate().done == 1 && fs::exists(d_base), "unrestored: fixture: d has an entry");
     const std::vector<uint8_t> junk(64, 0x7f);
-    mk::write_file_atomic(d_base.string(), junk.data(), junk.size());
+    spirula::write_file_atomic(d_base, junk.data(), junk.size());
     using namespace spirula::i18n;
     for (bool capped : {false, true}) {
         const std::string tag = capped ? "unrestored (over the cap): " : "unrestored: ";
@@ -3296,7 +3330,7 @@ void test_session_corrupt_index_refuses() {
     const std::vector<uint8_t> drop_before = file_bytes(f.layer / "a.drop.png");
 
     const std::vector<uint8_t> junk = {'{', 'x'};
-    mk::write_file_atomic((f.layer / mk::kIndexFileName).string(), junk.data(), junk.size());
+    spirula::write_file_atomic(f.layer / mk::kIndexFileName, junk.data(), junk.size());
     check(!s.open(f.root.string(), f.images.string(), f.masks.string(), false, err),
           "a corrupt index refuses the session");
     check(!s.is_open() && err.find(mk::kIndexFileName) != std::string::npos,
@@ -3322,7 +3356,7 @@ void test_session_close_reports_a_failed_save() {
     fs::remove_all(f.layer, ec);
     fs::create_directories(f.layer.parent_path(), ec);
     const std::vector<uint8_t> one = {'x'};
-    check(mk::write_file_atomic(f.layer.string(), one.data(), one.size()) &&
+    check(spirula::write_file_atomic(f.layer, one.data(), one.size()) &&
               fs::is_regular_file(f.layer, ec),
           "fixture: the layer root is a file, so no layer can be written");
 
@@ -6388,7 +6422,7 @@ std::vector<uint8_t> plant_write_probe(const fs::path& file) {
     check(object, "probe: the file is a JSON object");
     if (!object) return v;   // an insert at begin() + 1 of nothing would crash, not fail
     v.insert(v.begin() + 1, probe.begin(), probe.end());
-    check(mk::write_file_atomic(file.string(), v.data(), v.size()), "probe: planted");
+    check(spirula::write_file_atomic(file, v.data(), v.size()), "probe: planted");
     return v;
 }
 
@@ -6434,7 +6468,7 @@ void test_kept_cache() {
               cache.frames.count("zzz") == 0, "missing mask is false and uncached");
     // A mask that exists but is not an image: false, -1, and no entry.
     const std::vector<uint8_t> junk(64, 0x7f);
-    check(mk::write_file_atomic((f.masks / "junk.png").string(), junk.data(), junk.size()),
+    check(spirula::write_file_atomic(f.masks / "junk.png", junk.data(), junk.size()),
           "fixture: a mask that is not a PNG");
     check(!mk::kept_fraction_of(mask_root, "junk", false, cache, kept) && kept == -1.0f &&
               cache.frames.count("junk") == 0, "an undecodable mask is false and uncached");
@@ -6467,7 +6501,7 @@ void test_kept_cache() {
     check(mk::kept_fraction_of(mask_root, "b", false, back, kept) && back.dirty, "a decode marks it dirty");
     // A corrupt cache fails rather than reading as empty: a kept fraction
     // silently taken as zero would call every frame missing.
-    check(mk::write_file_atomic(file.string(), junk.data(), junk.size()),
+    check(spirula::write_file_atomic(file, junk.data(), junk.size()),
           "fixture: kept.json is not JSON");
     mk::KeptCache bad;
     std::string berr;
@@ -6795,7 +6829,7 @@ void test_find_missing_unreadable() {
     Fixture f = make_dataset("find_corrupt", 64, 48, {"a", "b", "c", "d"});
     write_png_gray(f.masks / "a.png", 64, 48, std::vector<uint8_t>(64 * 48, 0));
     const char junk[] = "not a png";
-    check(mk::write_file_atomic((f.masks / "b.png").string(), (const uint8_t*)junk, sizeof junk - 1),
+    check(spirula::write_file_atomic(f.masks / "b.png", junk, sizeof junk - 1),
           "unreadable: fixture written");
     fs::remove(f.masks / "c.png");
     mk::MaskSession s;
@@ -8693,7 +8727,7 @@ void test_propagate_source_save_failure_sticks() {
     fs::remove_all(f.layer, ec);
     fs::create_directories(f.layer.parent_path(), ec);
     const std::vector<uint8_t> one = {'x'};
-    check(mk::write_file_atomic(f.layer.string(), one.data(), one.size()),
+    check(spirula::write_file_atomic(f.layer, one.data(), one.size()),
           "prop source fail: fixture: the layer root is a file");
     mk::Mapping m;
     gui::ShapeStroke box;
@@ -8782,7 +8816,7 @@ int main() {
     test_composite_truth_table();
     test_keys_and_paths();
     test_png_and_atomic_write();
-    test_temp_write_path_unique();
+    test_composite_staging();
     test_index_roundtrip();
     test_save_and_layers_roundtrip();
     test_fingerprint_decides();

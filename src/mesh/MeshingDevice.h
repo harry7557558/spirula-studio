@@ -157,20 +157,27 @@ void launch_colorize_fallback(const GpuScene& s, const float* verts, int n,
 // Rasterize-and-sample driver kernels  (mesh/MeshingRaster.cu)
 // ===========================================================================
 
-// Project each query point into one camera, sample the rendered occupancy
-// moments and keep the k smallest occupancies seen so far (ascending, +inf
-// padded); `cnt` counts the cameras that did not abstain.
+// How one camera's view of a point is folded in (docs/notes/mesh-field.md).
+// Plain scalars: the Vulkan launcher copies them into its params block.
+struct OccFusion {
+    int   tsdf = 0;            // 1: mean truncated signed distance, not the vote
+    float iso = 0.5f;          // the field's level; a camera's surface is where it reaches it
+    float band_px = 6.0f;      // pixel footprints behind its surface a camera still votes fully
+    float deep_weight = 0.01f; // its vote for points deeper than twice that
+    float clean = 0.2f;        // occupancy under which one camera's sight carves alone
+};
+
+// Folds one camera's view of each query point into acc[n], which starts zeroed:
+// its occupancy by the rendered moments, or its signed distance under f.tsdf,
+// each weighted by how sharply the camera sees the point.
 void launch_sample_occ(
     const float* xyz, int n,
     const float* viewmat, const float* intrin, const float* dist,
     int camera_model, int distortion,
-    const float3* moments, int W, int H, int k,
-    float* occ_kmin, int* cnt);
+    const float3* moments, int W, int H, const OccFusion& f, float4* acc);
 
-// occ[i] = the k-th smallest sample (or the largest available when fewer
-// cameras saw the point); 0 for points no camera saw.
-void launch_finalize_occ(int n, const float* occ_kmin, const int* cnt, int k,
-                         float* occ);
+// occ[i] from the folded views; 0 for points no camera saw.
+void launch_finalize_occ(int n, const float4* acc, const OccFusion& f, float* occ);
 
 // Accumulate transmittance-weighted rendered color for one camera.
 void launch_sample_color(

@@ -387,20 +387,16 @@ void pca_add4(float* dst, uint id, float4 v) {
     for (uint c = 0; c < 4; c++) SS_PCA_REG_ATOMIC_ADD(dst + 4 * id + c, v[c]);
 }
 
-// Probability smoothing is relative to trace, preserving similarity invariance.
+// Squared share of the smallest eigenvalue; ev is ascending.
 float pca_erank_loss(float3 ev, out float3 grad) {
     float3 x = max(ev, float3(0.0));
     float trace = x.x + x.y + x.z;
     grad = float3(0.0);
     if (!(trace > 1e-30)) return 0.0;
-    float3 p = (x / trace + float3(1e-8)) / (1.0 + 3e-8);
-    float3 lp = log(p);
-    float rank = exp(-dot(p, lp));
-    float excess = max(rank - 2.0, 0.0);
-    float3 h = -(lp + float3(1.0)) / (1.0 + 3e-8);
-    grad = (2.0 * excess * rank / trace) * (h - float3(dot(h, x / trace)));
+    float p = x.x / trace;
+    grad = (2.0 * p / trace) * (float3(1.0, 0.0, 0.0) - float3(p));
     grad *= float3(ev.x > 0.0 ? 1.0 : 0.0, ev.y > 0.0 ? 1.0 : 0.0, ev.z > 0.0 ? 1.0 : 0.0);
-    return excess * excess;
+    return p * p;
 }
 
 // A neighbourhood's eigenpairs and G, the loss's adjoint dL/dC.

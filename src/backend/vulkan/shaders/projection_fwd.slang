@@ -139,10 +139,10 @@ void run_projection<let cam: CameraModelType, D : ICameraDistortion>(
                                p.sb_base);
 
     // store (mirrors the kernel epilogue: clamp, degenerate cull, atomics)
-    aabb.x = clamp(aabb.x, 0.0f, float(p.width) - 1.0f);
-    aabb.y = clamp(aabb.y, 0.0f, float(p.height) - 1.0f);
-    aabb.z = clamp(aabb.z, 0.0f, float(p.width) - 1.0f);
-    aabb.w = clamp(aabb.w, 0.0f, float(p.height) - 1.0f);
+    aabb.x = clamp(aabb.x, 0.0f, float(p.width));
+    aabb.y = clamp(aabb.y, 0.0f, float(p.height));
+    aabb.z = clamp(aabb.z, 0.0f, float(p.width));
+    aabb.w = clamp(aabb.w, 0.0f, float(p.height));
     if (aabb.z - aabb.x > 1e-3f && aabb.w - aabb.y > 1e-3f) {
         if (!is_null(p.s_screen))
             scr2_store(scr2_row(p.s_screen, idx), s_xy, s_depth, s_conic,
@@ -250,10 +250,10 @@ void run_projection_3dgut<let cam: CameraModelType, D : ICameraDistortion,
                                p.num_sh_buffer, i64mem_get(p.sh_bounds_stride),
                                p.sb_base);
 
-    aabb.x = clamp(aabb.x, 0.0f, float(p.width) - 1.0f);
-    aabb.y = clamp(aabb.y, 0.0f, float(p.height) - 1.0f);
-    aabb.z = clamp(aabb.z, 0.0f, float(p.width) - 1.0f);
-    aabb.w = clamp(aabb.w, 0.0f, float(p.height) - 1.0f);
+    aabb.x = clamp(aabb.x, 0.0f, float(p.width));
+    aabb.y = clamp(aabb.y, 0.0f, float(p.height));
+    aabb.z = clamp(aabb.z, 0.0f, float(p.width));
+    aabb.w = clamp(aabb.w, 0.0f, float(p.height));
     if (aabb.z - aabb.x > 1e-3f && aabb.w - aabb.y > 1e-3f) {
         if (!is_null(p.s_screen))
             scrg_store(scrg_row(p.s_screen, idx), s_scale, s_opac, rgb);
@@ -354,10 +354,10 @@ bool run_packed_mask<let cam: CameraModelType, D : ICameraDistortion,
         p.width, p.height,
         aabb, sorting_depth, radius, xy, depth, conic, opac);
 
-    aabb.x = clamp(aabb.x, 0.0f, float(p.width) - 1.0f);
-    aabb.y = clamp(aabb.y, 0.0f, float(p.height) - 1.0f);
-    aabb.z = clamp(aabb.z, 0.0f, float(p.width) - 1.0f);
-    aabb.w = clamp(aabb.w, 0.0f, float(p.height) - 1.0f);
+    aabb.x = clamp(aabb.x, 0.0f, float(p.width));
+    aabb.y = clamp(aabb.y, 0.0f, float(p.height));
+    aabb.z = clamp(aabb.z, 0.0f, float(p.width));
+    aabb.w = clamp(aabb.w, 0.0f, float(p.height));
     return aabb.z - aabb.x > 1e-3f && aabb.w - aabb.y > 1e-3f;
 }
 

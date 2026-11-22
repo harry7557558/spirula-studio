@@ -159,7 +159,7 @@ int main(int argc, char** argv) {
                                         DeviceTensor3D<float3>{}};
     RenderOutput::TensorTuple v_dists{t3f3(d_v_drgb), t3f1(d_v_dd),
                                       DeviceTensor3D<float3>{}};
-    // 2DGS renders and regularizes normals too.
+    // 2DGS (and 3DGUT asked to) renders and regularizes normals too.
     RenderOutput::TensorTuple v_renders_n{t3f3(d_v_rgb), t3f1(d_v_depth),
                                           t3f3(d_v_nrm)};
     RenderOutput::TensorTuple v_dists_n{t3f3(d_v_drgb), t3f1(d_v_dd),
@@ -181,7 +181,7 @@ int main(int argc, char** argv) {
     std::vector<float> acc;
 
     struct Cfg {
-        int prim;  // 0 = 3dgs, 2 = 3dgut, 3 = 2dgs
+        int prim;  // 0 = 3dgs, 2 = 3dgut, 3 = 2dgs, 4 = 3dgut with its normal
         bool packed;
         int cam;
         int dist;  // distortion tier, index into dist_fixture::kTierNames
@@ -219,6 +219,10 @@ int main(int argc, char** argv) {
         {3, false, 1, 2, DistortionType::DN, false, DensifyAccumMode::Max, true, false, 0.0f},
         {3, true, 0, 2, DistortionType::D, false, DensifyAccumMode::Avg, false, true, 0.0f},
         {3, true, 2, 0, DistortionType::RGB_D, true, DensifyAccumMode::None, false, false, 0.0f, false},
+        {4, false, 0, 1, DistortionType::RGB_DN, true, DensifyAccumMode::Sum, false, true, 0.0f},
+        {4, false, 1, 0, DistortionType::DN, false, DensifyAccumMode::None, true, false, 0.0f},
+        {4, true, 0, 2, DistortionType::None, false, DensifyAccumMode::Max, false, false, 0.0f},
+        {4, true, 3, 0, DistortionType::D, true, DensifyAccumMode::Avg, false, true, 0.0f},
     };
     const char* cams[4] = {"PINHOLE", "FISHEYE", "EQUISOLID",
                            "EQUIRECTANGULAR"};
@@ -228,7 +232,7 @@ int main(int argc, char** argv) {
     };
 
     for (const Cfg& cfg : cfgs) {
-        auto v_render_cfg = cfg.prim == 3 ? v_renders_n : v_renders;
+        auto v_render_cfg = cfg.prim >= 3 ? v_renders_n : v_renders;
         if (!cfg.depth_grad) std::get<1>(v_render_cfg) = DeviceTensor3D<float>{};
         backend::memset_sync(d_radii, 0, N * sizeof(float));
 
@@ -240,8 +244,8 @@ int main(int argc, char** argv) {
         DeviceTensorFloatND depths_nd;
         if (cfg.packed) {
             auto fn = cfg.prim == 0   ? projection_3dgs_packed_forward
-                      : cfg.prim == 2 ? projection_3dgut_packed_forward
-                                      : projection_2dgs_packed_forward;
+                      : cfg.prim == 3 ? projection_2dgs_packed_forward
+                                      : projection_3dgut_packed_forward;
             auto out = fn(N, ColorBasis{3, 0}, in_splats, ttv(d_vm, {(int64_t)C, 16}),
                           ttv(d_intr, {(int64_t)C, 4}), W, H, cams[cfg.cam],
                           dist_fixture::kTierNames[cfg.dist],
@@ -256,8 +260,8 @@ int main(int argc, char** argv) {
             depths_nd = DeviceTensorFloatND(depths_vec);
         } else {
             auto fn = cfg.prim == 0   ? projection_3dgs_forward
-                      : cfg.prim == 2 ? projection_3dgut_forward
-                                      : projection_2dgs_forward;
+                      : cfg.prim == 3 ? projection_2dgs_forward
+                                      : projection_3dgut_forward;
             auto out = fn(N, ColorBasis{3, 0}, in_splats, ttv(d_vm, {(int64_t)C, 16}),
                           ttv(d_intr, {(int64_t)C, 4}), W, H, cams[cfg.cam],
                           dist_fixture::kTierNames[cfg.dist],
@@ -275,9 +279,16 @@ int main(int argc, char** argv) {
         DeviceVector<int32_t>* image_ids_ptr =
             cfg.packed && cam_ids.data_ptr() ? &cam_ids : nullptr;
         int macro_log2 = kMacroLog2Default;
+        FootprintView footprint;
+        if (cfg.prim >= 2)
+            footprint = footprint_view(
+                in_splats, cfg.packed ? gauss_ids.data_ptr() : nullptr,
+                ttv(d_vm, {(int64_t)C, 16}), dist_tv(cfg.dist), cams[cfg.cam],
+                dist_fixture::kTierNames[cfg.dist], cfg.prim == 3);
         auto [isect_ids, flatten_ids, tile_offsets] =
             do_intersect_tile_generic(aabb_2d, depths_nd,
-                                      ellipse_view(splats_s, cfg.prim >= 2, cfg.cut), C,
+                                      ellipse_view(splats_s, cfg.prim >= 2, cfg.cut),
+                                      footprint, C,
                                       ttv(d_intr, {(int64_t)C, 4}), W, H,
                                       image_ids_ptr, /*tile_active=*/nullptr,
                                       macro_log2);
@@ -290,8 +301,9 @@ int main(int argc, char** argv) {
                    DeviceTensor3D<float>>
             rout;
         if (cfg.prim >= 2) {
-            auto fn = cfg.prim == 2 ? rasterize_to_pixels_3dgut_fwd
-                                    : rasterize_to_pixels_2dgs_fwd;
+            auto fn = cfg.prim == 2   ? rasterize_to_pixels_3dgut_fwd
+                      : cfg.prim == 3 ? rasterize_to_pixels_2dgs_fwd
+                                      : rasterize_to_pixels_3dgut_normal_fwd;
             rout = fn(
                 N, in_splats, splats_s, gauss_ids,
                 ttv(d_vm, {(int64_t)C, 16}), ttv(d_intr, {(int64_t)C, 4}),
@@ -318,7 +330,7 @@ int main(int argc, char** argv) {
         std::optional<RenderOutput::TensorTuple> dist_fwd_opt, v_dist_opt;
         if (dist_any(cfg.dt)) {
             dist_fwd_opt = distortions;
-            v_dist_opt = cfg.prim == 3 ? v_dists_n : v_dists;
+            v_dist_opt = cfg.prim >= 3 ? v_dists_n : v_dists;
         }
         DeviceTensor3D<float> awmap_t = accum_any(cfg.aw)
             ? t3f1(d_awmap) : DeviceTensor3D<float>{};
@@ -333,8 +345,9 @@ int main(int argc, char** argv) {
 
         // --- rasterization backward ---
         if (cfg.prim >= 2) {
-            auto bwd = cfg.prim == 2 ? rasterize_to_pixels_3dgut_bwd
-                                     : rasterize_to_pixels_2dgs_bwd;
+            auto bwd = cfg.prim == 2   ? rasterize_to_pixels_3dgut_bwd
+                       : cfg.prim == 3 ? rasterize_to_pixels_2dgs_bwd
+                                       : rasterize_to_pixels_3dgut_normal_bwd;
             auto [v_w, v_s, v_viewmats, aw_out] =
                 bwd(
                     N, in_splats, splats_s, gauss_ids,

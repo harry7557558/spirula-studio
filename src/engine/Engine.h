@@ -136,12 +136,15 @@ void engine_bin_tile_observe(double step_seconds);
 // map -- has to ask, or it builds a grid the intersect then indexes wrongly.
 int engine_bin_macro_log2();
 
+// output_normal: 3DGUT also renders a normal (implied
+// by a DN / RGB_DN dist_type); 2DGS always renders its normal.
 void forward_3dgs(
     std::string primitive,
     int sh_degree,
     bool packed,
     bool output_median = false,
-    int dist_type = 0  // DistortionType (0=None,1=D,2=RGB_D,3=DN,4=RGB_DN)
+    int dist_type = 0,  // DistortionType (0=None,1=D,2=RGB_D,3=DN,4=RGB_DN)
+    bool output_normal = false
 );
 
 // Hand back the per-splat SCREEN buffers the last forward filled (the
@@ -550,9 +553,30 @@ void engine_copy_gt_depth_to_host(TorchTensorView out);  // float [B, H, W, 1]
 void engine_copy_gt_normal_to_host(TorchTensorView out); // float [B, H, W, 3]
 
 // The normal the loss derives from the rendered depth, with the same kernel
-// and the camera the last forward installed. No primitive renders normals
-// (engine_primitive_pixel_type), so this IS the render's normal.
+// and the camera the last forward installed.
 void engine_copy_render_depth_normal_to_host(TorchTensorView out); // [B,H,W,3]
+
+// The normal the rasterizer composited: camera frame, alpha-weighted, not
+// unit length. `out` is left untouched when the last forward rendered none.
+void engine_copy_render_normal_to_host(TorchTensorView out); // [B,H,W,3]
+// Whether forward_3dgs's output_normal gives this primitive a normal.
+bool engine_primitive_renders_normal(const std::string& primitive);
+
+// Stochastic (sort-free, Monte Carlo) viewer renders, forced on by
+// SS_VIEWER_STOCHASTIC=1 (docs/notes/stochastic-splats.md).
+bool engine_stochastic_enabled();
+// The next forward_3dgs renders one stochastic frame into `channel`'s running
+// average, which restarts when `key` (the caller's view and settings) or the
+// splats change. Channels are independent: one per pane, say.
+void engine_arm_stochastic(int channel, uint64_t key);
+// Frames the last forward averaged; 0 when it was not stochastic.
+uint32_t engine_stochastic_frames();
+// Frames after which a still view has converged (SS_VIEWER_STOCHASTIC_FRAMES),
+// and the samples a pixel each frame takes (SS_VIEWER_STOCHASTIC_SPP).
+uint32_t engine_stochastic_frame_target();
+uint32_t engine_stochastic_spp();
+// A pixel's samples split one uniform a splat (SS_VIEWER_STOCHASTIC_STRATIFIED).
+bool engine_stochastic_stratified();
 
 
 void engine_copy_render_to_host(

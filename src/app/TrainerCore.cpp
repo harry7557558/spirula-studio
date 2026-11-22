@@ -629,16 +629,28 @@ std::string parser_seed(const std::string& seed) {
     return seed == spirula::dense::kSparseSeed ? std::string() : seed;
 }
 
+// 0 -> 1 over `steps`, full weight throughout when steps <= 0.
+float warmup_ramp(int step, int steps, const std::string& schedule) {
+    if (steps <= 0) return 1.0f;
+    const float t = std::min((float)step / (float)steps, 1.0f);
+    if (schedule == "linear")    return t;
+    if (schedule == "cosine")    return 0.5f * (1.0f - std::cos(3.14159265f * t));
+    if (schedule == "quadratic") return t * t;
+    if (schedule == "quartic")   return (t * t) * (t * t);
+    if (schedule == "step")      return t >= 1.0f ? 1.0f : 0.0f;
+    throw std::runtime_error("unknown warm-up schedule: " + schedule);
+}
+
 }  // namespace
 
 std::array<float, (int)LossWeightIndex::length>
 build_loss_weights(const TrainConfig& c, int step) {
-    float dist_factor = std::min((float)step / std::max(c.distortion_reg_warmup, 1), 1.0f);
-    float reg_active  = step >= c.reg_warmup_length ? 1.0f : 0.0f;
-    float sup_active  = step > c.supervision_warmup ? 1.0f : 0.0f;
-    float median_factor = std::min((float)step / std::max(c.median_warmup, 1), 1.0f);
-    float alpha_reg_factor = c.alpha_reg_weight *
-        std::min((float)step / std::max(c.alpha_reg_warmup, 1), 1.0f);
+    const float dist_factor =
+        warmup_ramp(step, c.distortion_reg_warmup, c.distortion_reg_warmup_schedule);
+    const float median_factor =
+        warmup_ramp(step, c.median_warmup, c.median_warmup_schedule);
+    const float alpha_reg_factor =
+        warmup_ramp(step, c.alpha_reg_warmup, c.alpha_reg_warmup_schedule);
     float mask = c.apply_loss_for_mask.value_or(false) ? 1.0f : 0.0f;
 
     float w_rgb_l1 = std::max(0.0f, c.l1_weight);
@@ -657,15 +669,15 @@ build_loss_weights(const TrainConfig& c, int step) {
     w[(int)LossWeightIndex::YSupL2]        = w_y_l2 * scale;
     w[(int)LossWeightIndex::USupL2]        = w_u_l2 * scale;
     w[(int)LossWeightIndex::VSupL2]        = w_v_l2 * scale;
-    w[(int)LossWeightIndex::DepthSup]      = sup_active * c.depth_supervision_weight;
-    w[(int)LossWeightIndex::NormalSup]     = sup_active * c.normal_supervision_weight;
+    w[(int)LossWeightIndex::DepthSup]      = c.depth_supervision_weight;
+    w[(int)LossWeightIndex::NormalSup]     = c.normal_supervision_weight;
     w[(int)LossWeightIndex::AlphaSup]      = mask * c.alpha_loss_weight;
     w[(int)LossWeightIndex::AlphaSupUnder] = mask * c.alpha_loss_weight_under;
-    w[(int)LossWeightIndex::NormalReg]     = reg_active * c.normal_reg_weight * dist_factor;
-    w[(int)LossWeightIndex::AlphaReg]      = reg_active * alpha_reg_factor;
-    w[(int)LossWeightIndex::RgbDistReg]    = reg_active * c.rgb_distortion_reg * dist_factor;
-    w[(int)LossWeightIndex::DepthDistReg]  = reg_active * c.depth_distortion_reg * dist_factor;
-    w[(int)LossWeightIndex::NormalDistReg] = reg_active * c.normal_distortion_reg * dist_factor;
+    w[(int)LossWeightIndex::NormalReg]     = c.normal_reg_weight * dist_factor;
+    w[(int)LossWeightIndex::AlphaReg]      = c.alpha_reg_weight * alpha_reg_factor;
+    w[(int)LossWeightIndex::RgbDistReg]    = c.rgb_distortion_reg * dist_factor;
+    w[(int)LossWeightIndex::DepthDistReg]  = c.depth_distortion_reg * dist_factor;
+    w[(int)LossWeightIndex::NormalDistReg] = c.normal_distortion_reg * dist_factor;
     w[(int)LossWeightIndex::MeanMedianDepthSup]    = median_factor * c.mean_median_depth_weight;
     w[(int)LossWeightIndex::MedianDepthNormalReg]  = median_factor * c.median_depth_normal_reg_weight;
     w[(int)LossWeightIndex::MedianNormalSup]       = median_factor * c.median_normal_supervision_weight;
@@ -743,8 +755,10 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
         c.opacity_reg * reg_decay(c.opacity_reg_decay_power);
     cfg.optim.mcmc_scale_reg_weight       =
         c.scale_reg * reg_decay(c.scale_reg_decay_power) / alpha;
-    cfg.optim.erank_reg_weight            = c.erank_reg;
-    cfg.optim.erank_reg_weight_s3         = c.erank_reg_s3;
+    cfg.optim.erank_reg_weight            = c.erank_reg *
+        warmup_ramp(step, c.erank_reg_warmup, c.erank_reg_warmup_schedule);
+    cfg.optim.erank_reg_weight_s3         = c.erank_reg_s3 *
+        warmup_ramp(step, c.erank_reg_s3_warmup, c.erank_reg_s3_warmup_schedule);
     cfg.optim.quat_norm_reg_weight        = c.quat_norm_reg;
     cfg.optim.dc_reg_weight               = c.dc_reg;
     cfg.optim.sh_reg_weight               = c.sh_reg;
@@ -1578,10 +1592,9 @@ void TrainerSession::setup_engine() {
 
     // ---- DataManager ---------------------------------------------------
     const int64_t N = ds.num_cameras;
-    int64_t num_val = (int64_t)ds.val_indices.size();
-    int64_t num_train = N - num_val;
+    const int64_t num_train = N - (int64_t)ds.val_indices.size();
     // Batch-size policy.
-    double n_batch = std::max((double)num_train / std::max(cfg.max_batch_per_epoch, 1), 1.0);
+    const double n_batch = std::max((double)num_train / std::max(cfg.max_batch_per_epoch, 1), 1.0);
     int train_bs = std::max(1, (int)(n_batch + 0.5));
     if (cfg.min_renders_per_refine > 0.0f && num_train > 0) {
         // A splat seen by V cameras is rendered B * refine_every * V / N_train
@@ -1593,14 +1606,10 @@ void TrainerSession::setup_engine() {
         const int bs_old = train_bs;
         if (cfg.max_train_batch_size > 0)
             train_bs = std::max(1, std::min(std::max(train_bs, bs_need), cfg.max_train_batch_size));
-        n_batch = (double)train_bs;
         log(lfmt(lmsg::batch_from_renders,
                  {(double)v_q, (long long)bs_old, (long long)train_bs}));
     }
     _batches_per_epoch = (int)std::max<int64_t>(1, (num_train + train_bs - 1) / train_bs);
-    int val_bs = 1;
-    if (num_val > 0)
-        val_bs = std::max(1, (int)std::ceil(n_batch * (double)num_val / (double)num_train));
 
     DataManagerConfig dm;
     dm.cache_mode  = (cfg.cache_images == "disk") ? CacheMode::DISK : CacheMode::CPU;
@@ -1612,7 +1621,6 @@ void TrainerSession::setup_engine() {
     dm.load_depths      = has_depth;
     dm.load_normals     = has_normal;
     dm.train_batch_size = train_bs;
-    dm.val_batch_size   = val_bs;
     dm.flip_mask = cfg.flip_mask;
     set_alpha_config(dm, alpha_images);
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
@@ -1708,7 +1716,6 @@ void TrainerSession::setup_engine() {
         st.bilagrid_rgb_init = true;
     }
     if (cfg.use_bilateral_grid_for_geometry && has_depth &&
-        cfg.depth_supervision_weight > 0.0f &&
         (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_depth_lr
                                         : cfg.bilagrid_depth_lr) > 0.0f) {
         engine_init_bilagrid_depth(n_grids,
@@ -1720,7 +1727,6 @@ void TrainerSession::setup_engine() {
         st.bilagrid_depth_init = true;
     }
     if (cfg.use_bilateral_grid_for_geometry && has_normal &&
-        cfg.normal_supervision_weight > 0.0f &&
         (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_normal_lr
                                         : cfg.bilagrid_normal_lr) > 0.0f) {
         engine_init_bilagrid_normal(n_grids,
@@ -2311,6 +2317,9 @@ ViewerRenderConfig TrainerSession::make_viewer_config() const {
     vc.primitive = cfg.primitive;
     vc.packed = cfg.packed;
     vc.sh_degree_warmup_every = cfg.sh_degree_warmup_every;
+    vc.sh_degree = cfg.sh_degree;
+    vc.sb_lobes = cfg.sb_lobes;
+    vc.refinement_score = true;
     vc.relative_scale = cfg.relative_scale;
     vc.output_median = cfg.mean_median_depth_weight > 0.0f ||
                        cfg.median_depth_normal_reg_weight > 0.0f ||
@@ -2439,7 +2448,6 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
     dm.load_depths = false;
     dm.load_normals = false;
     dm.train_batch_size = 1;
-    dm.val_batch_size   = 1;
     dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
     dm.exif_quarter_turns = eds.exif_quarter_turns;

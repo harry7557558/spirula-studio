@@ -28,11 +28,11 @@ constexpr double kAtlas = 32e-6, kBakeTexel = 0.15e-6, kBakeFace = 3e-6;
 constexpr double kFuse = 21e-9, kExtract = 44e-9, kTsdfRawPerPixel = 0.024;
 constexpr double kHostTsdf = 45.0;
 
-// How each stage shrinks the mesh on that run (6.1M edges of 6.95M points; then
-// 12.2M -> 5.0M -> 2.2M -> 1.19M faces), each raised a fifth: an estimate that
-// comes in high moves the bar forward when the real size arrives, not back.
+// Edges per point and raw faces per edge from that run; per merge pass, the
+// largest shrink of nine runs (docs/notes/mesh-check.md) raised a fifth, at most
+// 1: an estimate that comes in high moves the bar forward when the real size arrives.
 constexpr double kEdgesPerPoint = 1.0, kRawPerEdge = 2.0;
-constexpr double kShrink[3] = {0.5, 0.53, 0.65};
+constexpr double kShrink[3] = {0.88, 0.62, 1.0};
 
 // Bytes above what the process held on entry, from the same run's working set
 // (processRamBytes): 0.28 GB, then 2.1 GB triangulating, 1.8 GB at the first merge

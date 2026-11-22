@@ -34,6 +34,14 @@ gradient against its regularizers at the scale of one batch's mean loss).
 `backend/vulkan/tests/` adds 3 Vulkan-only smoke tests (runtime, pipeline,
 sort/scan).
 
+`footprint_exact` is self-checking on both backends: every camera model
+renders random 3DGUT and 2DGS splats twice through the real forward
+rasterizer, binned and culled as the engine does and with every splat in every
+tile, and the two images must agree to one 8-bit level (they are bit-identical
+on Vulkan). The reference takes its visible set from the host, so a splat the
+projection wrongly culls fails it too; `noslab` and `nobox` say which bound a
+failure comes from (docs/notes/footprint.md).
+
 `missing_depth_supervision` is self-checking on both backends: missing and
 all-zero reference depth must give zero depth loss and gradients, while valid
 depth must retain finite supervision. It covers masks, multiple scales and
@@ -334,6 +342,18 @@ advertised 384. Encoding uncropped and setting the display crop only in the
 returned SPS preserves the coded grid. The grid/rotated-tile checks measured
 8.0/13.7 dB before this correction and 47.9/47.5 dB afterward. The same test
 also checks grid assembly, crop, rotation, mirroring, dimensions, and EXIF.
+
+## CPU-only training holdout regression
+
+`data_manager_validation_test` generates two RGB images and checks that disk
+prefetch delivers 64 training steps without pulling in the held-out view.
+It also covers CPU caching, an empty holdout, indexed fetch, teardown with a
+full ready queue, and retry or abort after a missing-file error. No GPU,
+models, or input dataset are needed.
+
+```sh
+ctest --test-dir build_vulkan -R "^data_manager_validation_test$" --output-on-failure --no-tests=error
+```
 
 ## CPU-only subprocess lifecycle regression
 

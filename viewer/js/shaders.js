@@ -1,15 +1,15 @@
 // GLSL (WebGL2 / GLSL ES 3.00) shader sources for the viewer.
 //
-// Splats are drawn as instanced screen-aligned quads. Each Gaussian is
-// projected with an analytic EWA Jacobian for the 3dgs/mip primitives, or via
-// a 7-point unscented transform for 3dgut (whose fragments then evaluate the
-// 3D Gaussian along per-pixel rays, "eval3d"). Data lives in 2D-array textures
-// so arbitrarily large models fit even under a small MAX_TEXTURE_SIZE.
+// Splats are drawn as instanced quads. 3dgs/mip project with an analytic EWA
+// Jacobian; 3dgut and 2dgs fragments evaluate the splat along per-pixel rays
+// ("eval3d") inside a quad bounding their exact footprint
+// (docs/notes/footprint.md). Data lives in 2D-array textures so arbitrarily
+// large models fit even under a small MAX_TEXTURE_SIZE.
 //
 // Shaders are specialized at compile time: the renderer injects
 //   #define CAM_MODEL n   (0 perspective, 1 orthographic, 2 fisheye
 //                          equidistant, 3 fisheye equisolid, 4 equirect)
-//   #define PRIM n        (0 3dgs, 1 mip, 2 3dgut; splat shaders only)
+//   #define PRIM n        (0 3dgs, 1 mip, 2 3dgut, 3 2dgs; splat shaders only)
 // and caches one program per combination, so no shader carries dead branches.
 
 // ---------------------------------------------------------------------------
@@ -126,17 +126,8 @@ mat2x3 projJac(vec3 pc, vec2 focal) {
 // ---------------------------------------------------------------------------
 // SPLAT vertex shader (specialized by PRIM and CAM_MODEL)
 // ---------------------------------------------------------------------------
-export const SPLAT_VS = /* glsl */`#version 300 es
-precision highp float;
-precision highp int;
-precision highp sampler2DArray;
-
-layout(location=0) in uint aIndex;  // per-instance splat index (sorted)
-
-uniform sampler2DArray uPos;        // (x,y,z,opacity)
-uniform sampler2DArray uRot;        // (qx,qy,qz,qw)
-uniform sampler2DArray uScale;      // (sx,sy,sz, shScale)  exp-scale (world);
-                                    // w = per-splat SH quantization scale
+// Shared: a splat's view-dependent colour (SH and spherical-beta lobes).
+const SPLAT_COLOR_GLSL = /* glsl */`
 uniform sampler2DArray uCol;        // (r,g,b,_)     raw f_dc
 // Rest SH coeffs, uShRest texels/splat, snorm8 (RGB8_SNORM): the true coeff
 // is texel * uScale.w (Gaussian-wise 8-bit quantization). Split by layer
@@ -159,27 +150,7 @@ uniform sampler2DArray uSb1;
 uniform int   uSbChunkLayers;
 uniform ivec2 uSbDim;
 uniform int   uSbLobes;
-
-uniform mat3  uViewR;               // world -> camera rotation
 uniform vec3  uCamPos;
-uniform vec2  uFocal;               // fx, fy (pixels)
-uniform vec2  uCenter;              // cx, cy (pixels)
-uniform vec2  uViewport;            // width, height (pixels)
-uniform float uNear;
-uniform float uOpacityScale;
-uniform bool uLogScale;            // native textures retain thin splats in log space
-
-flat out vec4 vColor;
-flat out vec2 vCenterPx;
-flat out float vDepth;              // projCam front-depth (used by the pick pass)
-#if PRIM == 2
-flat out vec3 vGro;                 // G * (ray_origin - mean_cam), ray_origin = 0
-flat out mat3 vG;                   // maps cam-space offsets into the unit gaussian frame
-#endif
-flat out vec3 vConic;
-
-${TEX_FETCH}
-${PROJ_GLSL}
 
 vec4 fetch1(sampler2DArray tex, int i) { return texelFetch(tex, texCoord(i, uDim), 0); }
 vec3 fetchSh(int i, int k) {
@@ -199,41 +170,35 @@ vec4 fetchSb(int i, int k) {
   return (ch == 0) ? texelFetch(uSb0, c, 0) : texelFetch(uSb1, c, 0);
 }
 
-mat3 quatToMat3(vec4 q) {
-  float x=q.x,y=q.y,z=q.z,w=q.w;
-  return mat3(
-    1.0-2.0*(y*y+z*z), 2.0*(x*y+w*z),     2.0*(x*z-w*y),
-    2.0*(x*y-w*z),     1.0-2.0*(x*x+z*z), 2.0*(y*z+w*x),
-    2.0*(x*z+w*y),     2.0*(y*z-w*x),     1.0-2.0*(x*x+y*y));
-}
-
-vec3 projCam(vec3 pc) { return projectCam(pc, uFocal, uCenter); }
-
 // ---- spherical harmonics (real, up to degree 4; matches harmonics.slang).
 // The rest coeffs are snorm8; the sum is de-quantized once by shScale
 // (uScale.w), which distributes over the per-splat-constant scale. ----
-vec3 evalColor(vec3 pw, float shScale) {
-  vec3 dc = fetch1(uCol, int(aIndex)).rgb;
+vec3 evalColor(int idx, vec3 pw, float shScale) {
+#ifdef SPLAT_ZERO_DC
+  vec3 dc = vec3(0.0);                 // the view-dependent part alone
+#else
+  vec3 dc = fetch1(uCol, idx).rgb;
+#endif
   vec3 c = 0.2820947917738781 * dc;
   if (uShDegree >= 1) {
     vec3 d = normalize(pw - uCamPos);
     float x=d.x, y=d.y, z=d.z;
-    vec3 r = 0.4886025119029199 * (-y*fetchSh(int(aIndex),0) + z*fetchSh(int(aIndex),1) - x*fetchSh(int(aIndex),2));
+    vec3 r = 0.4886025119029199 * (-y*fetchSh(idx,0) + z*fetchSh(idx,1) - x*fetchSh(idx,2));
     if (uShDegree >= 2) {
       float xx=x*x, yy=y*y, zz=z*z, xy=x*y, yz=y*z, xz=x*z;
-      r += 1.0925484305920792*xy*fetchSh(int(aIndex),3);
-      r += -1.0925484305920792*yz*fetchSh(int(aIndex),4);
-      r += (0.9461746957575601*zz-0.31539156525252005)*fetchSh(int(aIndex),5);
-      r += -1.0925484305920792*xz*fetchSh(int(aIndex),6);
-      r += 0.5462742152960396*(xx-yy)*fetchSh(int(aIndex),7);
+      r += 1.0925484305920792*xy*fetchSh(idx,3);
+      r += -1.0925484305920792*yz*fetchSh(idx,4);
+      r += (0.9461746957575601*zz-0.31539156525252005)*fetchSh(idx,5);
+      r += -1.0925484305920792*xz*fetchSh(idx,6);
+      r += 0.5462742152960396*(xx-yy)*fetchSh(idx,7);
       if (uShDegree >= 3) {
-        r += -0.5900435899266435*y*(3.0*xx-yy)*fetchSh(int(aIndex),8);
-        r += 2.890611442640554*xy*z*fetchSh(int(aIndex),9);
-        r += -0.4570457994644658*y*(4.0*zz-xx-yy)*fetchSh(int(aIndex),10);
-        r += 0.3731763325901154*z*(2.0*zz-3.0*xx-3.0*yy)*fetchSh(int(aIndex),11);
-        r += -0.4570457994644658*x*(4.0*zz-xx-yy)*fetchSh(int(aIndex),12);
-        r += 1.445305721320277*z*(xx-yy)*fetchSh(int(aIndex),13);
-        r += -0.5900435899266435*x*(xx-3.0*yy)*fetchSh(int(aIndex),14);
+        r += -0.5900435899266435*y*(3.0*xx-yy)*fetchSh(idx,8);
+        r += 2.890611442640554*xy*z*fetchSh(idx,9);
+        r += -0.4570457994644658*y*(4.0*zz-xx-yy)*fetchSh(idx,10);
+        r += 0.3731763325901154*z*(2.0*zz-3.0*xx-3.0*yy)*fetchSh(idx,11);
+        r += -0.4570457994644658*x*(4.0*zz-xx-yy)*fetchSh(idx,12);
+        r += 1.445305721320277*z*(xx-yy)*fetchSh(idx,13);
+        r += -0.5900435899266435*x*(xx-3.0*yy)*fetchSh(idx,14);
         if (uShDegree >= 4) {
           float fC1=xx-yy, fS1=2.0*xy;
           float fC2=x*fC1-y*fS1, fS2=x*fS1+y*fC1;
@@ -243,15 +208,15 @@ vec3 evalColor(vec3 pw, float shScale) {
           float fTmp0D = z*(-4.683325804901025*zz + 2.007139630671868);
           float fTmp1C = 3.31161143515146*zz - 0.47308734787878;
           float fTmp2B = -1.770130769779931*z;
-          r += (0.6258357354491763*fS3)*fetchSh(int(aIndex),15);
-          r += (fTmp2B*fS2)*fetchSh(int(aIndex),16);
-          r += (fTmp1C*fS1)*fetchSh(int(aIndex),17);
-          r += (fTmp0D*y)*fetchSh(int(aIndex),18);
-          r += (1.984313483298443*z*pSH12 - 1.006230589874905*pSH6)*fetchSh(int(aIndex),19);
-          r += (fTmp0D*x)*fetchSh(int(aIndex),20);
-          r += (fTmp1C*fC1)*fetchSh(int(aIndex),21);
-          r += (fTmp2B*fC2)*fetchSh(int(aIndex),22);
-          r += (0.6258357354491763*fC3)*fetchSh(int(aIndex),23);
+          r += (0.6258357354491763*fS3)*fetchSh(idx,15);
+          r += (fTmp2B*fS2)*fetchSh(idx,16);
+          r += (fTmp1C*fS1)*fetchSh(idx,17);
+          r += (fTmp0D*y)*fetchSh(idx,18);
+          r += (1.984313483298443*z*pSH12 - 1.006230589874905*pSH6)*fetchSh(idx,19);
+          r += (fTmp0D*x)*fetchSh(idx,20);
+          r += (fTmp1C*fC1)*fetchSh(idx,21);
+          r += (fTmp2B*fC2)*fetchSh(idx,22);
+          r += (0.6258357354491763*fC3)*fetchSh(idx,23);
         }
       }
     }
@@ -264,15 +229,162 @@ vec3 evalColor(vec3 pw, float shScale) {
     vec3 d = normalize(pw - uCamPos);
     for (int l = 0; l < 8; l++) {
       if (l >= uSbLobes) break;
-      vec4 a = fetchSb(int(aIndex), 2*l);
+      vec4 a = fetchSb(idx, 2*l);
       float w = dot(d, normalize(a.xyz));
-      if (w > 0.0) col += pow(w, a.w) * fetchSb(int(aIndex), 2*l + 1).rgb;
+      if (w > 0.0) col += pow(w, a.w) * fetchSb(idx, 2*l + 1).rgb;
     }
   }
   return col;
 }
 
+`;
+
+export const SPLAT_VS = /* glsl */`#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2DArray;
+
+layout(location=0) in uint aIndex;  // per-instance splat index (sorted)
+
+uniform sampler2DArray uPos;        // (x,y,z,opacity)
+uniform sampler2DArray uRot;        // (qx,qy,qz,qw)
+uniform sampler2DArray uScale;      // (sx,sy,sz, shScale)  exp-scale (world);
+                                    // w = per-splat SH quantization scale
+#ifdef SPLAT_COLOR_TEXTURE
+uniform sampler2DArray uColor;      // the colour pass's output, one texel a splat
+#endif
+
+uniform mat3  uViewR;               // world -> camera rotation
+uniform vec2  uFocal;               // fx, fy (pixels)
+uniform vec2  uCenter;              // cx, cy (pixels)
+uniform vec2  uViewport;            // width, height (pixels)
+uniform float uNear;
+uniform float uOpacityScale;
+uniform bool uLogScale;            // native textures retain thin splats in log space
+
+flat out vec4 vColor;
+flat out vec2 vCenterPx;
+flat out float vDepth;              // projCam front-depth (used by the pick pass)
+#if PRIM >= 2
+flat out vec3 vGro;                 // G * (ray_origin - mean_cam), ray_origin = 0
+flat out mat3 vG;                   // maps cam-space offsets into the unit gaussian frame
+#else
+flat out vec3 vConic;
+#endif
+
+${TEX_FETCH}
+${PROJ_GLSL}
+${SPLAT_COLOR_GLSL}
+
+mat3 quatToMat3(vec4 q) {
+  float x=q.x,y=q.y,z=q.z,w=q.w;
+  return mat3(
+    1.0-2.0*(y*y+z*z), 2.0*(x*y+w*z),     2.0*(x*z-w*y),
+    2.0*(x*y-w*z),     1.0-2.0*(x*x+z*z), 2.0*(y*z+w*x),
+    2.0*(x*z+w*y),     2.0*(y*z-w*x),     1.0-2.0*(x*x+y*y));
+}
+
+vec3 projCam(vec3 pc) { return projectCam(pc, uFocal, uCenter); }
+
 void cull() { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); }
+
+// A renderer defining SPLAT_COLOR_TEXTURE evaluates every splat's colour in a
+// pass of its own, in storage order: 15 SH texels fetched in depth order cost
+// ~6x the rest of this shader on a 10M-splat model.
+vec4 splatColor(vec3 pw, float shScale, float opacity) {
+#ifdef SPLAT_COLOR_TEXTURE
+  return vec4(fetch1(uColor, int(aIndex)).rgb, opacity);
+#else
+  return vec4(evalColor(int(aIndex), pw, shScale), opacity);
+#endif
+}
+
+// A renderer defining SPLAT_STOCHASTIC depth-tests unsorted splats: their z is
+// the native CPU sort's key (HardwareSplatSort.h) mapped into [0, 1).
+#ifdef SPLAT_STOCHASTIC
+flat out uint vIndex;
+float gSortZ = 0.0;
+void setSortZ(vec3 pc) {
+#if CAM_MODEL == 0 || CAM_MODEL == 1
+  float k = max(-pc.z, 0.0);
+#elif CAM_MODEL == 4
+  float k = dot(pc, pc);
+#else
+  float z2 = pc.z*pc.z, r2 = dot(pc.xy, pc.xy);
+  float k = z2*z2 + r2*r2/512.0;
+#endif
+  gSortZ = k/(k + 1.0);
+}
+#endif
+
+// The quad ctr + x a + y b, x and y = +-1 from gl_VertexID.
+void emitQuad(vec2 ctr, vec2 a, vec2 b) {
+  vec2 corner = vec2((gl_VertexID & 1) == 0 ? -1.0 : 1.0,
+                     (gl_VertexID & 2) == 0 ? -1.0 : 1.0);
+  vec2 px = ctr + corner.x*a + corner.y*b;
+#ifdef SPLAT_STOCHASTIC
+  gl_Position = vec4(2.0*px/uViewport - 1.0, 2.0*gSortZ - 1.0, 1.0);
+#else
+  gl_Position = vec4(2.0*px/uViewport - 1.0, 0.0, 1.0);
+#endif
+}
+
+#if PRIM >= 2
+// footprint_disc (projection_utils.slang): every ray that reaches alpha 1/255
+// passes through the planar ellipse c0 + a cos + b sin. m is the mean in a
+// forward-z camera frame, ax the splat's axes there (columns). False: the
+// camera is inside the gaussian, and every forward ray reaches it.
+bool footprintDisc(vec3 m, mat3 ax, vec3 s, float r2, out vec3 c0, out vec3 a, out vec3 b) {
+#if PRIM == 3
+  float r = sqrt(r2);
+  c0 = m; a = r*s.x*ax[0]; b = r*s.y*ax[1];
+  return true;
+#else
+  s = max(s, 1e-3*max(s.x, max(s.y, s.z)));
+  vec3 h = (transpose(ax)*m)/s;
+  float hh = dot(h, h);
+  c0 = m; a = vec3(0.0); b = vec3(0.0);
+  if (!(hh > 1.001*r2)) return false;
+  float k = r2/hh;
+  float rho = sqrt(r2*(1.0 - k));
+  h *= inversesqrt(hh);
+  float sg = h.z >= 0.0 ? 1.0 : -1.0;
+  float p = -1.0/(sg + h.z);
+  float o = h.x*h.y*p;
+  c0 = m*(1.0 - k);
+  a = ax*(rho*s*vec3(1.0 + sg*h.x*h.x*p, sg*o, -sg*h.x));
+  b = ax*(rho*s*vec3(o, sg + h.y*h.y*p, -h.y));
+  return true;
+#endif
+}
+
+// footprint_pinhole_ellipse: the disc's conic in pixels while it stays in
+// front of the camera plane, as a centre and covariance (xx, xy, yy).
+bool pinholeEllipse(vec3 c0, vec3 a, vec3 b, out vec2 ctr, out vec3 cov) {
+  float den = c0.z*c0.z - a.z*a.z - b.z*b.z;
+  ctr = vec2(0.0); cov = vec3(0.0);
+  if (!(c0.z > 0.0 && den > 1e-6*c0.z*c0.z)) return false;
+  float inv = 1.0/den;
+  ctr = uFocal*vec2(c0.x*c0.z - a.x*a.z - b.x*b.z, c0.y*c0.z - a.y*a.z - b.y*b.z)*inv + uCenter;
+  float ab_x = a.x*b.z - a.z*b.x, ab_y = a.y*b.z - a.z*b.y;
+  float ca_x = c0.x*a.z - c0.z*a.x, cb_x = c0.x*b.z - c0.z*b.x;
+  float ca_y = c0.y*a.z - c0.z*a.y, cb_y = c0.y*b.z - c0.z*b.y;
+  cov = vec3(uFocal.x*uFocal.x*max(ca_x*ca_x + cb_x*cb_x - ab_x*ab_x, 0.0),
+             uFocal.x*uFocal.y*(ca_x*ca_y + cb_x*cb_y - ab_x*ab_y),
+             uFocal.y*uFocal.y*max(ca_y*ca_y + cb_y*cb_y - ab_y*ab_y, 0.0))*(inv*inv);
+  return true;
+}
+
+#if CAM_MODEL == 2 || CAM_MODEL == 3
+float lensRadius(float theta) {
+#if CAM_MODEL == 2
+  return theta;
+#else
+  return 2.0*sin(0.5*theta);
+#endif
+}
+#endif
+#endif
 
 void main() {
   int idx = int(aIndex);
@@ -282,6 +394,10 @@ void main() {
 
   vec3 pc = uViewR * (pw - uCamPos);
   vDepth = projCam(pc).z;
+#ifdef SPLAT_STOCHASTIC
+  vIndex = aIndex;
+  setSortZ(pc);
+#endif
   if (vDepth <= uNear) { cull(); return; }
 
   vec4 q = fetch1(uRot, idx);
@@ -290,81 +406,112 @@ void main() {
   vec3 scale = uLogScale ? exp(scaleSh.xyz) : scaleSh.xyz;
   mat3 Rq = quatToMat3(q);
 
-  mat2 cov2d;
-  vec2 mean2d;
-#if PRIM == 2
-  // ---- 3dgut: 7-sigma-point unscented transform. Only the bounding quad
-  // comes from the projected covariance; alpha itself is evaluated in 3D in
-  // the fragment shader (eval3d). ----
-  const float rr = 1.7320508075688772;   // sqrt(dim + lambda), lambda = 0
-  vec3 axC[3];
-  axC[0] = uViewR*Rq[0]*scale.x*rr; axC[1] = uViewR*Rq[1]*scale.y*rr; axC[2] = uViewR*Rq[2]*scale.z*rr;
-  vec3 pcs[7];
-  pcs[0] = pc;
-  for (int i=0;i<3;i++) { pcs[1+i] = pc + axC[i]; pcs[4+i] = pc - axC[i]; }
-  vec2 pts[7];
-  for (int i=0;i<7;i++) {
+#if PRIM >= 2
+  // ---- eval3d (3dgut, 2dgs): each fragment casts its pixel's ray, so the
+  // quad only has to hold the exact footprint, as compute bins it. ----
+  if (opacity <= 1.0/255.0) { cull(); return; }
+  float r2 = 2.0*log(opacity*255.0);
+  mat3 ax = uViewR*Rq;                 // the splat's axes in camera space
+  // G = S^-1 Rq^T Rv^T maps camera-space offsets into the splat's frame
+  // (compute_3dgut_iscl_rot); a disc keeps its normal row unit length
+  // (compute_2dgs_iscl_rot). An axis that flushes to 0 in f16 stays finite.
+#if PRIM == 3
+  vec3 iscl = vec3(1.0/max(scale.xy, vec2(uLogScale ? 1e-30 : 1e-7)), 1.0);
+#else
+  vec3 iscl = 1.0/max(scale, vec3(uLogScale ? 1e-30 : 1e-7));
+#endif
+  vG = mat3(iscl.x, 0.0, 0.0,  0.0, iscl.y, 0.0,  0.0, 0.0, iscl.z)*transpose(ax);
+  vGro = -(vG*pc);
+  // corners of the quad: ctr + x*semi1 + y*semi2, a pixel wider than the footprint
+  vec2 ctr = 0.5*uViewport, semi1 = vec2(0.5*uViewport.x + 1.0, 0.0), semi2 = vec2(0.0, 0.5*uViewport.y + 1.0);
+  vec3 cov = vec3(-1.0);
+#if CAM_MODEL == 1
+  // footprint_ortho_ellipse: a parallel projection is the splat's marginal
+  vec3 sv = scale;
+#if PRIM == 3
+  sv.z = 0.0;
+#endif
+  mat3 M = ax*mat3(sv.x, 0.0, 0.0,  0.0, sv.y, 0.0,  0.0, 0.0, sv.z);
+  mat3 Sigma = M*transpose(M);
+  ctr = uFocal*pc.xy + uCenter;
+  cov = r2*vec3(uFocal.x*uFocal.x*Sigma[0][0], uFocal.x*uFocal.y*Sigma[0][1], uFocal.y*uFocal.y*Sigma[1][1]);
+#else
+  vec3 c0, da, db;
+  mat3 axf = mat3(ax[0]*vec3(1.0, 1.0, -1.0), ax[1]*vec3(1.0, 1.0, -1.0), ax[2]*vec3(1.0, 1.0, -1.0));
+  if (footprintDisc(vec3(pc.xy, -pc.z), axf, scale, r2, c0, da, db)) {
 #if CAM_MODEL == 0
-    if (pcs[i].z >= 0.0) { cull(); return; }
-#endif
-    pts[i] = projCam(pcs[i]).xy;
-  }
-#if CAM_MODEL == 4
-  // unwrap longitude across the +-pi seam relative to the center point so a
-  // straddling splat averages coherently (period in pixels = fx * 2*pi)
-  float period = uFocal.x * 2.0 * PI;
-  for (int i=1;i<7;i++) {
-    float du = pts[i].x - pts[0].x;
-    du -= period * round(du / period);
-    pts[i].x = pts[0].x + du;
-  }
-#endif
-#if CAM_MODEL == 2 || CAM_MODEL == 3
-  // cull gaussians entirely behind the camera whose projected sigma spread
-  // wraps around the image center (they would wrongly occlude the view)
-  {
-    float max_z = -pcs[0].z;
-    vec2 min_p = pts[0], max_p = pts[0];
-    for (int i=1;i<7;i++) {
-      max_z = max(max_z, -pcs[i].z);
-      vec2 p = pts[0] + (pts[i] - pts[0]) * 3.329;
-      min_p = min(min_p, p);
-      max_p = max(max_p, p);
+    if (!pinholeEllipse(c0, da, db, ctr, cov)) { ctr = 0.5*uViewport; cov = vec3(-1.0); }
+#else
+    // Other lenses: the cone of directions the disc subtends, mapped to its
+    // pixel box. A 16-gon pushed out by 1/cos(pi/16) holds the rim.
+    vec3 cd = normalize(c0);
+    float cmin = 1.0;
+    for (int k = 0; k < 16; k++) {
+      float t = float(k)*(PI/8.0);
+      cmin = min(cmin, dot(cd, normalize(c0 + 1.0196*(da*cos(t) + db*sin(t)))));
     }
-    min_p -= uCenter; max_p -= uCenter;
-    if (max_z <= 0.0 && min_p.x*max_p.x < 0.0 && min_p.y*max_p.y < 0.0) { cull(); return; }
+    if (cmin > 0.0) {
+      float al = acos(cmin);
+      vec2 lo, hi;
+#if CAM_MODEL == 4
+      float phc = asin(clamp(cd.y, -1.0, 1.0));
+      lo = vec2(-PI, max(phc - al, -0.5*PI));
+      hi = vec2(PI, min(phc + al, 0.5*PI));
+      if (phc - al > -0.5*PI && phc + al < 0.5*PI) {
+        float lamc = atan(cd.x, cd.z);
+        float dl = asin(min(sin(al)/cos(phc), 1.0));
+        // past the +-pi seam the footprint is at both edges: keep the full width
+        if (lamc - dl > -PI && lamc + dl < PI) { lo.x = lamc - dl; hi.x = lamc + dl; }
+      }
+#else
+      float thc = acos(clamp(cd.z, -1.0, 1.0));
+      float r0 = lensRadius(max(thc - al, 0.0)), r1 = lensRadius(min(thc + al, PI));
+      lo = vec2(-r1); hi = vec2(r1);
+      if (thc > al && thc + al < PI) {
+        // an annular sector: its corners, and the axes it sweeps across
+        float phc = atan(cd.y, cd.x);
+        float dph = asin(min(sin(al)/sin(thc), 1.0));
+        vec2 u0 = vec2(cos(phc - dph), sin(phc - dph)), u1 = vec2(cos(phc + dph), sin(phc + dph));
+        lo = min(min(r0*u0, r1*u0), min(r0*u1, r1*u1));
+        hi = max(max(r0*u0, r1*u0), max(r0*u1, r1*u1));
+        for (int q = 0; q < 4; q++) {
+          float ang = float(q)*0.5*PI;
+          float dq = ang - phc;
+          dq -= 2.0*PI*floor((dq + PI)/(2.0*PI));
+          if (abs(dq) <= dph) {
+            vec2 e = r1*vec2(cos(ang), sin(ang));
+            lo = min(lo, e); hi = max(hi, e);
+          }
+        }
+      }
+#endif
+      ctr = uCenter + uFocal*0.5*(lo + hi);
+      semi1 = vec2(0.5*uFocal.x*(hi.x - lo.x) + 1.0, 0.0);
+      semi2 = vec2(0.0, 0.5*uFocal.y*(hi.y - lo.y) + 1.0);
+    }
+#endif
   }
 #endif
-  mean2d = vec2(0.0);
-  for (int i=1;i<7;i++) mean2d += pts[i];
-  mean2d /= 6.0;                        // w_mean[0] = 0, w_mean[i] = 1/6
-  vec2 covarianceMean = mean2d;
-#if CAM_MODEL == 0
-  // Match the compute projection's padded viewport covariance clamp.
-  vec2 low = -0.15*uViewport, high = 1.15*uViewport;
-  covarianceMean = clamp(covarianceMean, low, high);
-  for (int i=0;i<7;i++) pts[i] = clamp(pts[i], low, high);
-#endif
-  cov2d = mat2(0.0);
-  vec2 d0 = pts[0]-covarianceMean;
-  cov2d[0][0] += 2.0*d0.x*d0.x; cov2d[0][1] += 2.0*d0.x*d0.y;
-  cov2d[1][0] += 2.0*d0.y*d0.x; cov2d[1][1] += 2.0*d0.y*d0.y;
-  for (int i=1;i<7;i++) {
-    vec2 d = pts[i]-covarianceMean;
-    cov2d[0][0] += (1.0/6.0)*d.x*d.x; cov2d[0][1] += (1.0/6.0)*d.x*d.y;
-    cov2d[1][0] += (1.0/6.0)*d.y*d.x; cov2d[1][1] += (1.0/6.0)*d.y*d.y;
+  if (cov.x >= 0.0) {
+    float a = cov.x, b = cov.y, c = cov.z;
+    float mid = 0.5*(a + c);
+    float disc = sqrt(max(0.0, mid*mid - (a*c - b*b)));
+    float l1 = mid + disc, l2 = max(mid - disc, 0.0);
+    vec2 e1 = abs(b) < 1e-12*max(l1, 1e-30) ? (a >= c ? vec2(1.0, 0.0) : vec2(0.0, 1.0))
+                                           : normalize(vec2(l1 - c, b));
+    semi1 = e1*(sqrt(l1) + 1.0);
+    semi2 = vec2(-e1.y, e1.x)*(sqrt(l2) + 1.0);
   }
-  // eval3d frame: G = S^-1 Rq^T Rv^T maps camera-space offsets into the
-  // normalized gaussian frame (compute_3dgut_iscl_rot in the training code).
-  // Flattened splats can have a scale component that flushes to 0 in the f16
-  // texture — clamp so 1/scale stays finite (NaN alpha renders as garbage).
-  vec3 iscl = 1.0 / max(scale, vec3(uLogScale ? 1e-30 : 1e-7));
-  mat3 G = mat3(iscl.x, 0.0, 0.0,  0.0, iscl.y, 0.0,  0.0, 0.0, iscl.z)
-         * transpose(Rq) * transpose(uViewR);
-  vG = G;
-  vGro = -(G * pc);
+  vec2 be = abs(semi1) + abs(semi2);
+  if (ctr.x + be.x < 0.0 || ctr.x - be.x > uViewport.x ||
+      ctr.y + be.y < 0.0 || ctr.y - be.y > uViewport.y) { cull(); return; }
+  vColor = splatColor(pw, scaleSh.w, opacity);
+  emitQuad(ctr, semi1, semi2);
+}
 #else
   // ---- 3dgs / mip: EWA projection with the analytic Jacobian ----
+  mat2 cov2d;
+  vec2 mean2d;
   mat3 M = uViewR * Rq * mat3(scale.x,0.0,0.0, 0.0,scale.y,0.0, 0.0,0.0,scale.z);
   mat3 Sigma = M * transpose(M);       // camera-space 3D covariance
   mat2x3 J = projJac(pc, uFocal);
@@ -394,7 +541,6 @@ void main() {
       if (opac > 1.0/255.0) { cull(); return; }
     }
   }
-#endif
 #endif
 
   // low-pass dilation + optional opacity compensation
@@ -428,11 +574,6 @@ void main() {
   extend = min(extend, 3.33);
   vec2 semi1 = e1*extend*sqrt(l1);
   vec2 semi2 = e2*extend*sqrt(l2);
-#if PRIM == 2
-  // Eval3d contours need the compute rasterizer's full axis-aligned support.
-  semi1 = vec2(extend*sqrt(a), 0.0);
-  semi2 = vec2(0.0, extend*sqrt(c));
-#endif
 
   // frustum cull by screen bounds
   vec2 be = abs(semi1) + abs(semi2);
@@ -440,22 +581,10 @@ void main() {
       mean2d.y+be.y < 0.0 || mean2d.y-be.y > uViewport.y) { cull(); return; }
 
   vCenterPx = mean2d;
-  vec2 corner = vec2((gl_VertexID & 1) == 0 ? -1.0 : 1.0,
-                     (gl_VertexID & 2) == 0 ? -1.0 : 1.0);
-  vec2 px = mean2d + corner.x*semi1 + corner.y*semi2;
-#if PRIM == 2
-  // Compute evaluates whole 8px tiles around its clipped, quantized AABB.
-  vec2 lo = clamp(floor((mean2d-be)*65535.0/uViewport), 0.0, 65535.0)*uViewport/65535.0;
-  vec2 hi = clamp(ceil((mean2d+be)*65535.0/uViewport), 0.0, 65535.0)*uViewport/65535.0;
-  vCenterPx = 0.5*(lo+hi);
-  lo.x = floor(lo.x/8.0)*8.0; hi.x = ceil(hi.x/8.0)*8.0;
-  lo.y = uViewport.y-ceil((uViewport.y-lo.y)/8.0)*8.0;
-  hi.y = uViewport.y-floor((uViewport.y-hi.y)/8.0)*8.0;
-  px = mix(lo, hi, 0.5*(corner+1.0));
-#endif
-  vColor = vec4(evalColor(pw, scaleSh.w), opacity);
-  gl_Position = vec4(2.0*px/uViewport - 1.0, 0.0, 1.0);
+  vColor = splatColor(pw, scaleSh.w, opacity);
+  emitQuad(mean2d, semi1, semi2);
 }
+#endif
 `;
 
 // fragment domain limit for fisheye models (image circle): everything outside
@@ -487,31 +616,33 @@ void main() {
 }
 `;
 
-const EVAL3D_TILE_GLSL = /* glsl */`
-flat in vec3 vConic;
-flat in vec2 vCenterPx;
-uniform vec2 uViewport;
-bool tileHit(vec2 frag) {
-  vec2 low = floor(vec2(frag.x, uViewport.y-frag.y)/8.0)*8.0;
-  low.y = uViewport.y-low.y-8.0;
-  low -= vCenterPx;
-  vec2 high = low+8.0;
-  vec3 abc = vConic*(0.5/log(vColor.a*255.0));
-  float a = abc.x, b = abc.y, c = abc.z;
-  vec2 u = clamp(vec2(low.x,high.x)*(-b/c),low.y,high.y);
-  vec2 v = clamp(vec2(low.y,high.y)*(-b/a),low.x,high.x);
-  b *= 2.0;
-  float mx = min(a*low.x*low.x+b*low.x*u.x+c*u.x*u.x,
-                 a*high.x*high.x+b*high.x*u.y+c*u.y*u.y);
-  float my = min(a*v.x*v.x+b*v.x*low.y+c*low.y*low.y,
-                 a*v.y*v.y+b*v.y*high.y+c*high.y*high.y);
-  float mc = max(max(low.x,-high.x),max(low.y,-high.y));
-  return min(mc,min(mx,my)-1.0) < 0.0;
+// The fragment the compute rasterizer evaluates along the pixel's ray
+// (evaluate_alpha_3dgs, or a 2dgs disc's surfel_ray_hit), and its ray depth.
+const EVAL3D_ALPHA_GLSL = /* glsl */`
+float eval3dAlpha(vec2 frag, out vec3 rd, out float t) {
+  vec2 uv = (frag - uCenter) / uFocal;
+#if CAM_MODEL == 1
+  rd = vec3(0.0, 0.0, -1.0);           // parallel rays: origin on the image plane
+  vec3 gro = vG * vec3(uv, 0.0) + vGro;
+#else
+  rd = unprojectCam(uv);               // rays start at the camera origin
+  vec3 gro = vGro;
+#endif
+  vec3 grd = vG * rd;
+#if PRIM == 3
+  t = 0.0;
+  if (grd.z*grd.z <= 1e-6*dot(rd, rd)) return 0.0;   // SURFEL_GRAZING_COS2
+  t = -gro.z/grd.z;
+  vec2 h = gro.xy + t*grd.xy;
+  return t > 0.0 ? vColor.a*exp(-0.5*dot(h, h)) : 0.0;
+#else
+  t = -dot(gro, grd)/dot(grd, grd);
+  vec3 gcrod = cross(grd, gro);
+  return t > 0.0 ? vColor.a*exp(-0.5*dot(gcrod, gcrod)/dot(grd, grd)) : 0.0;
+#endif
 }
 `;
 
-// eval3d (3dgut): evaluate the 3D gaussian along the per-pixel camera ray
-// (evaluate_alpha_3dgs in the training code)
 export const SPLAT_FS_3D = /* glsl */`#version 300 es
 precision highp float;
 flat in vec4 vColor;
@@ -521,22 +652,11 @@ uniform vec2 uFocal;
 uniform vec2 uCenter;
 out vec4 fragColor;
 ${PROJ_GLSL}
-${EVAL3D_TILE_GLSL}
+${EVAL3D_ALPHA_GLSL}
 void main() {
 ${DOMAIN_DISCARD}
-  if (!tileHit(gl_FragCoord.xy)) discard;
-  vec2 uv = (gl_FragCoord.xy - uCenter) / uFocal;
-#if CAM_MODEL == 1
-  vec3 gro = vG * vec3(uv, 0.0) + vGro;   // parallel rays: origin on the image plane
-  vec3 grd = vG * vec3(0.0, 0.0, -1.0);
-#else
-  vec3 gro = vGro;                        // rays start at the camera origin
-  vec3 grd = vG * unprojectCam(uv);
-#endif
-  if (dot(gro, grd) >= 0.0) discard;
-  vec3 gcrod = cross(grd, gro);
-  float sigma = 0.5 * dot(gcrod, gcrod) / dot(grd, grd);
-  float alpha = vColor.a * exp(-sigma);
+  vec3 rd; float t;
+  float alpha = eval3dAlpha(gl_FragCoord.xy, rd, t);
   if (alpha <= 1.0/255.0) discard;
   fragColor = vec4(vColor.rgb, alpha);
 }
@@ -581,31 +701,18 @@ uniform vec2 uCenter;
 uniform vec2 uPixelOffset;
 out vec4 fragColor;
 ${PROJ_GLSL}
-${EVAL3D_TILE_GLSL}
+${EVAL3D_ALPHA_GLSL}
 void main() {
   vec2 frag = gl_FragCoord.xy + uPixelOffset;
-  if (!tileHit(frag)) discard;
 #if CAM_MODEL == 2
   if (length((frag - uCenter) / uFocal) > PI) discard;
 #elif CAM_MODEL == 3
   if (length((frag - uCenter) / uFocal) > 2.0) discard;
 #endif
-  vec2 uv = (frag - uCenter) / uFocal;
-#if CAM_MODEL == 1
-  vec3 rd = vec3(0.0, 0.0, -1.0);
-  vec3 gro = vG * vec3(uv, 0.0) + vGro;
-#else
-  vec3 rd = unprojectCam(uv);
-  vec3 gro = vGro;
-#endif
-  vec3 grd = vG * rd;
-  vec3 gcrod = cross(grd, gro);
-  float sigma = 0.5 * dot(gcrod, gcrod) / dot(grd, grd);
-  float alpha = vColor.a * exp(-sigma);
+  vec3 rd; float t;
+  float alpha = eval3dAlpha(frag, rd, t);
   if (alpha <= 1.0/255.0) discard;
-  // ray parameter of max response -> convert to the projCam depth convention
-  float t = -dot(gro, grd) / dot(grd, grd);
-  if (t <= 0.0) discard;
+  // ray parameter of the hit -> the projCam depth convention
 #if CAM_MODEL == 0
   float depth = t * -rd.z;              // pinhole depth is axial distance
 #else

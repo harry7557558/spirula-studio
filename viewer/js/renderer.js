@@ -603,7 +603,7 @@ export class Renderer {
   _drawSplats(viewR, camPos, U, intr, cameraModel, w, h, opts) {
     const gl = this.gl, m = this.model;
     const prim = opts.primitive | 0;
-    const { prog, u } = this._prog('splat', SPLAT_VS, prim === 2 ? SPLAT_FS_3D : SPLAT_FS,
+    const { prog, u } = this._prog('splat', SPLAT_VS, prim >= 2 ? SPLAT_FS_3D : SPLAT_FS,
                                    { CAM_MODEL: cameraModel, PRIM: prim });
     gl.useProgram(prog);
     this._splatUniforms(u, viewR, camPos, U, intr, w, h, opts);
@@ -638,7 +638,7 @@ export class Renderer {
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.pickTex, 0);
     }
     const ox = Math.floor(px), oy = Math.floor(py);
-    const { prog, u } = this._prog('pick', SPLAT_VS, prim === 2 ? PICK_FS_3D : PICK_FS,
+    const { prog, u } = this._prog('pick', SPLAT_VS, prim >= 2 ? PICK_FS_3D : PICK_FS,
                                    { CAM_MODEL: cameraModel, PRIM: prim });
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.pickFbo);
     gl.viewport(-ox, -oy, w, h);        // canvas pixel (ox,oy) -> FBO pixel (0,0)

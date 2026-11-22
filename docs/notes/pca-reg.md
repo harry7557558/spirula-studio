@@ -93,21 +93,20 @@ reducing its opacity; it is not exclusively a positional constraint.
 `--pca-reg-erank-weight` adds a mean over neighborhoods of
 
 ```
-p_m = lambda_m / trace(C)
-erank(C) = exp(-sum_m p_m log(p_m))
-L_erank = max(erank(C) - 2, 0)^2
+p_min = lambda_min / trace(C)
+L_erank = p_min^2
 ```
 
-This dimensionless penalty is active only above rank two. The implementation
-clamps roundoff-negative eigenvalues to zero and smooths the probabilities
-as `(p + 1e-8)/(1 + 3e-8)`. It differentiates the trace, probabilities and
-entropy. This differs from the existing per-splat `erank_reg` shape penalty.
+This dimensionless penalty is zero only when the neighborhood covariance has
+rank at most two, like the per-splat `erank_reg_s3` term but on `C`. The
+implementation clamps roundoff-negative eigenvalues to zero and differentiates
+both the eigenvalue and the trace. The option and the `pca_erank` diagnostic
+keep the name of the entropy effective-rank hinge this term replaced.
 
-Rank below two is allowed: this term alone does not prevent lines, and a
-strongly elongated volume can also have effective rank below two. Exactly
-isotropic covariance is stationary for any differentiable spectral penalty;
-photometric gradients or perturbations must break that symmetry. Retaining a
-small PCA thickness/isotropy term can be useful.
+Lines are allowed: this term does not act on the two larger eigenvalues
+except through the trace. Its gradient fades linearly with `p_min`, so thin
+neighborhoods are flattened more gently than by the linear PCA thickness
+term.
 
 ## Transparency along the normal
 

@@ -49,7 +49,8 @@ kPrimitives = [
 k2DGS = [f"Vanilla2DGS<{n}>" for n in range(5)]
 k2DGSInclude = "primitives/Primitive2DGS.cuh"
 
-# Distortion channel sets: an RGB_D primitive's, then 2DGS's (RGB_DN).
+# Distortion channel sets: an RGB_D primitive's, then an RGB_DN one's (2DGS,
+# and 3DGUT rendering a normal).
 kDistTypesRgbD = ("DistortionType::None", "DistortionType::D", "DistortionType::RGB_D")
 kDistTypes2DGS = kDistTypesRgbD + ("DistortionType::DN", "DistortionType::RGB_DN")
 
@@ -367,6 +368,8 @@ def generate_RasterizationEval3DFwd():
     for prefix, ortho_prefix, prim, include, dist_types in [
         ("RasterizationEval3DFwd", "RasterizationEval3DFwdOrtho",
          "Vanilla3DGUT<0>", "primitives/Primitive3DGUT.cuh", kDistTypesRgbD),
+        ("RasterizationEval3DFwd3DGUTN", "RasterizationEval3DFwdOrtho3DGUTN",
+         "Vanilla3DGUTNormal<0>", "primitives/Primitive3DGUT.cuh", kDistTypes2DGS),
         ("RasterizationEval3DFwd2DGS", "RasterizationEval3DFwdOrtho2DGS",
          "Vanilla2DGS<0>", k2DGSInclude, kDistTypes2DGS),
     ]:
@@ -393,6 +396,7 @@ def generate_RasterizationEval3DBwd():
     kernel = "kernels/raster/RasterizationEval3DBwd_kernel.cuh"
     for prefix, prim, include, dist_types in [
         ("RasterizationEval3DBwd", "Vanilla3DGUT<0>", "primitives/Primitive3DGUT.cuh", kDistTypesRgbD),
+        ("RasterizationEval3DBwd3DGUTN", "Vanilla3DGUTNormal<0>", "primitives/Primitive3DGUT.cuh", kDistTypes2DGS),
         ("RasterizationEval3DBwd2DGS", "Vanilla2DGS<0>", k2DGSInclude, kDistTypes2DGS),
     ]:
         map_body = [
