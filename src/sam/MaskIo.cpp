@@ -5,9 +5,6 @@
 #include "sam/Sam.h"
 
 #include "nn/core/Log.h"
-#include "external/stb_image_write.h"
-
-#include <vector>
 
 namespace sam {
 
@@ -16,13 +13,13 @@ bool save_mask_png(const Mask& mask, const std::string& path) {
         NN_LOG_ERROR("save_mask_png: empty mask\n");
         return false;
     }
-    return stbi_write_png(path.c_str(), mask.width, mask.height, 1, mask.data.data(),
-                          mask.width) != 0;
+    return nn::save_gray_png(mask.data.data(), mask.width, mask.height, path);
 }
 
 bool save_overlay_png(const Image& image, const Result& result, const std::string& path) {
     if (image.empty()) return false;
-    std::vector<uint8_t> rgb = image.data;
+    Image overlay = image;
+    std::vector<uint8_t>& rgb = overlay.data;
 
     // A fixed, reasonably distinguishable palette. Instance ids are arbitrary
     // integers, so the index into the palette is the detection order.
@@ -60,8 +57,7 @@ bool save_overlay_png(const Image& image, const Result& result, const std::strin
             }
         }
     }
-    return stbi_write_png(path.c_str(), image.width, image.height, 3, rgb.data(),
-                          image.width * 3) != 0;
+    return nn::save_image(overlay, path, -1);
 }
 
 }  // namespace sam

@@ -10,18 +10,115 @@ into one model. The code is portable host code in `data/ScenePartition.h`,
 hooks are `--partition` / `--partition-part` and `--roi-region`
 (`TrainerSession::apply_partition_config`, `setup_region`).
 
-## Why not Voronoi over the cameras
+## Choosing a partition
 
-The obvious split -- k-means on positions, Voronoi cells, crop by cell at the
-merge -- already leaves surprisingly few visible seams, because a Gaussian's
-look is set by nearby cameras. What survives comes from four places: Gaussians
-straddling a cell boundary, sky and far geometry that every part reconstructs
-on its own, per-image appearance drift between parts, and floaters that one
-part grows in front of another part's cameras. The scheme here targets the
-first and the last two directly; appearance drift is left for a later shared
-initialization (see "Not done").
+The default is `--method viewgraph`. `--method graph` cuts the joint
+camera/point visibility graph; `--method voronoi` makes convex cells around
+camera clusters. The same choice is available in the Partition panel.
 
-## The visibility cut (the default, `--method graph`)
+Voronoi uses deterministic farthest-point initialization followed by Lloyd
+iterations over camera positions. Fitting excludes at most 2% of isolated
+poses whose eighth-neighbor distance exceeds 16 times the median; every
+camera, including those poses, is then assigned to the final cells. This
+prevents a single bad pose from consuming a training part. The ownership field contains one unoriented
+seed per centroid, so training masks, device region tests, previews and the
+merge all query the same cells. A Euclidean flag bypasses direction and
+normal penalties in the shared host/device field query.
+`--parts` fixes the cell count; automatic mode increases it until every core
+fits `--max-images`. Rings may exceed that core cap. Coincident cameras cannot
+be separated by Euclidean cells and impossible requests fail explicitly.
+
+Convex cells offer simple boundaries and much smaller region tables. They do
+not know about walls, floors or visibility. Evaluate their merged quality and
+total training time before selecting them for a particular capture. The existing
+default remains unchanged.
+
+Tiny disconnected camera components no longer consume the requested graph
+cuts before they are absorbed. A request below the number of substantial
+disconnected components is rejected rather than silently exceeding the count.
+
+Projection covisibility stores observer lists once per sampled point and lets
+unsampled points share those rows. This preserves the file-order propagation
+rule without copying each list across the full cloud. `--max-projected-points`
+controls the sample budget (default 200,000); `--max-seeds` independently caps
+the ownership samples. Lower sampling trades visibility precision for work and
+memory. Neither limit changes the original dataset.
+
+Voronoi uses the observer rows directly for ring selection, seed selection,
+cut weight and connected-component diagnostics. It does not materialize the
+quadratic camera-pair graph for tracked or projected observations. The same
+strided rows and duplicate-camera semantics preserve the full-graph result;
+ViewGraph and graph partitioning still build their required graph.
+
+Four-core, 200,000-sample comparisons produced byte-identical partition BIN
+files and identical JSON, including diagnostics, on all four captures in
+both run orders:
+
+| Capture | Full graph then observer rows | Observer rows then full graph | Peak RSS, either path |
+|---|---:|---:|---:|
+| London | 3.856 / 1.342 s | 3.623 / 1.505 s | 1.010 GiB |
+| Campus | 12.401 / 4.318 s | 10.308 / 6.303 s | 1.469 GiB |
+| Private B | 5.134 / 1.505 s | 4.993 / 1.603 s | 0.774 GiB |
+| Private C | 66.088 / 54.752 s | 54.483 / 65.393 s | 6.941 GiB |
+
+Filesystem caches were not flushed. The first run is substantially slower
+on the tracked captures in either order, so the first pair alone overstates
+the speedup. C's approximately 11-second reduction persists in both orders;
+its projected-observer construction still dominates peak memory. No peak-RSS
+reduction was measured. These are two ordered pairs, not repeated independent
+trials.
+
+
+Projection without depth filtering tests the camera frustum, not occlusion:
+points behind walls can create false overlap in multi-floor captures.
+`--projection-depth-slack 0.1` enables an experimental coarse depth test with
+10% relative slack. A grid with a 64-cell longest side keeps the two nearest
+sample depths per cell; the second depth prevents one isolated foreground
+point from hiding the whole cell. Real observation tracks are unaffected.
+The default is zero (disabled). Sparse occluders can still be missed, while
+multiple points on a thin foreground object can hide nearby background in
+the same cell. Check reconstruction quality before relying on this proxy.
+`--source proximity` avoids projected overlap entirely, using camera poses.
+
+
+## Merge policies and bounded memory
+
+The CLI and GUI merge by reading 65,536 rows at a time. A counting pass fixes
+the output basis and vertex count; a second pass writes retained rows through
+the shared PLY writer. Each invocation atomically reserves its own sibling
+temporary directory, then publishes only the completed, closed file.
+The large-file path never retains all input models or the merged model in RAM.
+
+New ROI checkpoints record the exact camera BVH uploaded to the trainer, in
+its training frame, alongside the training-to-dataset transform. A SHA-256
+reference in the PLY names an immutable `roi-cameras-<hash>.bin` companion.
+Keep that blob beside the PLY when moving a checkpoint for partition merging.
+Missing, malformed or modified referenced blobs are errors; viewing the PLY
+does not need the blob. Each checkpoint retains its own reference even when
+a later run changes its camera subset or normalization.
+
+Ownership merging queries this saved BVH with the same traversal and tie
+order as training. Older and external PLYs without a reference use all cameras
+assigned to the part, including held-out poses, and the run's
+`scene_transform.json`. That fallback can orient a splat differently from a
+trainer that used a smaller camera subset. Fresh merged and edited exports
+discard the checkpoint reference.
+
+The in-memory API remains available for callers that need a `SplatCloud`.
+Camera-normal orientation queries return the nearest BVH seed index directly,
+including with more than 255 cameras. They do not use the field's eight-bit
+partition label as an array index; the same rule applies to both training
+backends and to merging.
+
+
+Each part keeps only the splats in its ownership region. Voxel-density and
+base/detail alternatives were evaluated with the ideas and reference code from
+[simonbethke/splat-merge](https://github.com/simonbethke/splat-merge). They did
+not improve the measured quality/time/memory tradeoff enough to keep a density
+merge option. See the [benchmark report](partition-benchmarks.md) for settings,
+results and qualifications.
+
+## The visibility cut (`--method graph`)
 
 What a part needs is that each of its cameras sees mostly its own region,
 and that the region is one coherent piece of the scene rather than a plane's
@@ -89,7 +186,7 @@ views by their ground-truth image (see below); Dataset C at half resolution:
 | Dataset A | one model on everything | 22.73 / 0.793 | | | | 459 s |
 | | view graph, 3 parts, ring 0.1 | 22.71 / 0.799 | -0.02 | 0 | -2.8 | 778 s |
 | | visibility cut, 3 parts, ring 0.2 | 22.45 / 0.796 | -0.28 | 10 | -6.0 | 515 s |
-| | visibility cut, 3 parts, ring 0.1 (default) | 22.63 / 0.799 | -0.10 | 2 | -3.4 | 776 s |
+| | visibility cut, 3 parts, ring 0.1 | 22.63 / 0.799 | -0.10 | 2 | -3.4 | 776 s |
 | Dataset C | one model on everything | 17.11 / 0.687 | | | | 613 s |
 | | visibility cut, 6 parts, ring 0.2 | 17.11 / 0.694 | +0.00 | 2 | -3.8 | 1072 s |
 
@@ -191,9 +288,10 @@ matches the full model.
    Nothing else changes: the run's output is in the dataset's frame as always,
    and its `scene_transform.json` records any centering or rescale.
 8. **Merge** (`merge_partition_splats`): each part's splats go back through
-   its run's `world_from_train`; each one's short axis is pointed at the
-   nearest camera that trained it and the field is asked which part owns that
-   oriented point; the winners get their SH padded to the highest degree
+   its checkpoint's saved transform (the run's `world_from_train` for legacy
+   PLYs); each one's short axis is pointed at the nearest saved camera
+   (all assigned part cameras for legacy PLYs), and the field determines
+   which part owns the oriented point; the winners get their SH padded to the highest degree
    present and are concatenated. Hard ownership, no feathering.
 9. **Region of interest while training**: a partitioned run hands its part's
    label region to the engine (`engine_set_region`), and `--roi-region` hands
@@ -230,7 +328,7 @@ matches the full model.
 - JSON: `format`, `version`, `dataset` (absolute), `source`, `options`,
   `num_parts`, `frame_names` (image leaves) and `frame_parts` (core label per
   frame), `parts[k].ring` (frame indices), `cut_fraction`, `binary`.
-- BIN: `SSPT` v2, then the `LabelField` (`SSLF` v1: seeds [n,4] and BVH
+- BIN: `SSPT` v2, then the `LabelField` (`SSLF` v1 for directional fields, v2 for Euclidean fields: seeds [n,4] and BVH
   nodes [m,8] as floats), the camera centres [N,3], then u8 owner per seed
   point in file order, then per part a u32 count and u32 point indices.
 
@@ -261,6 +359,8 @@ The Partition button on the dataset screen opens the panel over the parsed
 reconstruction and computes nothing until Compute is pressed. "Queue parts in
 Batch" saves the partition, then asks for the run's preset, splat cap, SH
 degree, step count and floater suppression in a dialog; Queue is the confirmation.
+The cap and step count apply to each part. For a fixed aggregate splat budget,
+divide that budget across the parts; the queue does not divide it automatically.
 If the batch list still holds rows that have not finished it asks whether to clear
 them first. With "merge once all have trained" ticked the list gets a final
 Merge row (`BatchStage::Merge`), which finds the parts' runs under the runs
@@ -287,14 +387,14 @@ host against the frame's depth so the fill and the outline fade behind
 nearer geometry. The "region" switch beside "grid" hides it; pinhole views
 only.
 
-## Other ways to split, not taken
+## Other partition designs
 
 - Ground-plane tiles (VastGaussian, CityGS), or recursive plane cuts of the
   point cloud across its principal axes (the default before the visibility
   cut): a plane through a hall or a floor splits rooms, and on Dataset C every
   part mixed storeys.
-- k-means on the points with Voronoi cells: compact, but the cells know
-  nothing about which cameras they will need, and nothing about walls.
+- k-means on points, instead of the optional camera-centroid Voronoi cells:
+  dense nearby geometry would dominate the clustering.
 - Soft ownership: keep splats a band past the seam from both sides with
   opacity scaled by distance to the boundary, or fine-tune the band jointly.
 
@@ -307,7 +407,7 @@ only.
   per-image appearance state every part starts from). Colour seams from
   exposure drift between parts are the one failure mode this design does not
   address.
-- Projection covisibility ignores occlusion, so a wall between two rooms does
-  not separate them the way tracks would. Tracks win whenever they exist.
+- Default projection covisibility ignores occlusion; the optional coarse depth
+  filter is only a proxy. Tracks win whenever they exist.
 - The region test on the device has no mesh leaf; a mesh region is host-only
   until a triangle BVH joins the program.

@@ -1,5 +1,6 @@
 // SourceList.cpp -- see SourceList.h.
 
+#include "data/ImageDiscovery.h"
 #include "app/gui/SourceList.h"
 #include "app/LogLuts.h"
 #include "app/gui/RigGuess.h"
@@ -243,6 +244,7 @@ void guess_source_rigs(std::vector<PrepInput>& sources, bool force) {
         // nested, and matching is by path relative to it, as the rig's is.
         for (fs::recursive_directory_iterator it(dir, opts, ec), end;
              !ec && it != end; it.increment(ec)) {
+            if (image_discovery::skip_cache(it)) continue;
             if (g.sub >= 0) it.disable_recursion_pending();
             if (!it->is_regular_file(ec) || !is_image_file(it->path())) continue;
             fs::path rel = it->path().lexically_relative(dir);

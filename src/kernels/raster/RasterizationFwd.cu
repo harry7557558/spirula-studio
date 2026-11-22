@@ -159,8 +159,7 @@ inline std::tuple<
 
 
 
-// 3DGS and Mip-Splatting share the 2D fragment; only None/D/RGB_D are
-// instantiated (RGB_D primitive) until a normal-rendering primitive exists.
+// 3DGS and Mip-Splatting share the 2D fragment, an RGB_D one: no DN / RGB_DN.
 static std::tuple<
     RenderOutput::TensorTuple, DeviceTensor3D<float>, DeviceTensor3D<int32_t>,
     RenderOutput::TensorTuple, DeviceTensor3D<float>
@@ -188,7 +187,7 @@ static std::tuple<
         dist_type == DistortionType::None  ? _DISPATCH_FWD(DistortionType::None) :
         dist_type == DistortionType::D     ? _DISPATCH_FWD(DistortionType::D) :
         dist_type == DistortionType::RGB_D ? _DISPATCH_FWD(DistortionType::RGB_D) :
-        throw std::runtime_error("rasterize_to_pixels_fwd: distortion type not instantiated (normal needs a normal-rendering primitive)");
+        throw std::runtime_error("rasterize_to_pixels_fwd: 3DGS renders no normal distortion");
 #undef _DISPATCH_FWD
 #undef _F
     return dispatch(

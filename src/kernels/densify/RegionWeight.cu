@@ -39,11 +39,9 @@ __global__ void region_weight_kernel(
     float3 n = make_float3(0.f, 0.f, 0.f);
     bool has_n = false;
     if (camera_bvh != nullptr && num_camera_nodes > 0) {
-        // The nearest camera, found through the same field query with the
-        // cameras as seeds: its index is the seed's label slot.
-        const uint32_t cam = SlangRegion::label_field_nearest(
-            p, n, false, (float4*)camera_bvh, (float4*)camera_seeds, num_camera_nodes);
-        if (cam != 255u) {
+        const uint32_t cam = SlangRegion::field_seed_nearest(
+            p, (float4*)camera_bvh, (float4*)camera_seeds, num_camera_nodes);
+        if (cam != 0xFFFFFFFFu) {
             const float4 c = camera_seeds[cam];
             n = SlangRegion::splat_normal(quats[idx], scales[idx], p, make_float3(c.x, c.y, c.z));
             has_n = true;
@@ -82,7 +80,7 @@ void region_weight_tensor(
     DeviceVector<float3> means,
     DeviceVector<float4> quats,          // optional with scales: the cameras orient the
     DeviceVector<float3> scales,         // test, the pattern samples it
-    DeviceVector<float4> camera_bvh,     // a label field over the cameras, index as label
+    DeviceVector<float4> camera_bvh,     // a BVH over camera positions
     DeviceVector<float4> camera_seeds,
     DeviceVector<float4> pattern,        // region_sample_pattern, or empty: centre only
     uint32_t seed,                       // turns the pattern, per call
@@ -96,9 +94,6 @@ void region_weight_tensor(
     if (num_splats <= 0 || program.data_ptr() == nullptr) return;
     const bool splats = quats.data_ptr() && scales.data_ptr();
     const bool orient = splats && camera_bvh.data_ptr() && camera_seeds.data_ptr();
-    // The camera field's seeds label slot holds only 8 bits, so a camera
-    // index above 254 cannot be returned; the launcher stores indices modulo
-    // nothing -- callers pass a field whose labels ARE the seed indices.
     region_weight_kernel<<<_LAUNCH_ARGS_1D(num_splats, 256)>>>(
         num_splats, means.data_ptr(), splats ? quats.data_ptr() : nullptr, scales.data_ptr(),
         orient ? camera_bvh.data_ptr() : nullptr, camera_seeds.data_ptr(),

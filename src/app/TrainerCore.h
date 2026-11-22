@@ -31,6 +31,8 @@
 
 namespace spirula {
 
+struct RegionCameras;
+
 // ===========================================================================
 // Color-space handling
 // ===========================================================================
@@ -278,12 +280,14 @@ public:
     // --roi-region (by default the dataset's first roi/*.json), or both
     // intersected. Null for all of space.
     std::shared_ptr<const Region> roi;
+    std::shared_ptr<const RegionCameras> roi_cameras;
     // The whole seed cloud (parsed frame) and which of it the part owns, kept
     // from before the partition cut it down: what the region masks project.
     std::vector<double> roi_cloud;
     std::vector<uint8_t> roi_cloud_inside;
     // Reads --roi-region into `roi`, writing back the file it picked.
     void load_region();
+    RegionCameras build_region_cameras() const;
     void setup_region();
 
     // Create the output dir, dump config.json, reset + seed the engine,

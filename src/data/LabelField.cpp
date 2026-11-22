@@ -68,8 +68,9 @@ float float_of(uint32_t u) {
 // ===========================================================================
 
 LabelField LabelField::build(const float* xyz, const int32_t* labels, const float* dirs,
-                             int64_t n, int leaf_size) {
+                             int64_t n, int leaf_size, bool euclidean) {
     LabelField f;
+    f.euclidean = euclidean;
     std::vector<int64_t> keep;
     for (int64_t i = 0; i < n; i++)
         if (labels[i] >= 0 && labels[i] < kNone && std::isfinite(xyz[i * 3]) &&
@@ -150,18 +151,19 @@ inline float aabb_d2(const float p[3], const float* lo, const float* hi) {
 
 }  // namespace
 
-int LabelField::label(const double pd[3], const double* nd) const {
-    if (nodes.empty()) return kNone;
+int64_t LabelField::query(const double pd[3], const double* nd, bool index) const {
+    if (nodes.empty()) return index ? -1 : kNone;
+    const bool metric_euclidean = euclidean || index;
     const float p[3] = {(float)pd[0], (float)pd[1], (float)pd[2]};
     float nq[3] = {0, 0, 0};
-    const bool has_n = nd != nullptr;
+    const bool has_n = nd != nullptr && !metric_euclidean;
     if (has_n)
         for (int k = 0; k < 3; k++) nq[k] = (float)nd[k];
     uint32_t stack[48];
     uint32_t sp = 0;
     stack[sp++] = 0;
     float best = 3.0e38f;
-    int label = kNone;
+    int64_t label = index ? -1 : kNone;
     while (sp > 0) {
         const uint32_t node = stack[--sp];
         const float* n0 = &nodes[node * 8];
@@ -176,7 +178,7 @@ int LabelField::label(const double pd[3], const double* nd) const {
                 const uint32_t packed = bits_of(s[3]);
                 const uint32_t dir_bits = packed >> 8;
                 float dir[3];
-                if (dir_bits != kOmni) {
+                if (dir_bits != kOmni && !metric_euclidean) {
                     oct_decode(dir_bits, dir);
                     const float behind = std::max(0.0f, -(d[0] * dir[0] + d[1] * dir[1] + d[2] * dir[2]));
                     e2 += (kBehindWeight * behind) * (kBehindWeight * behind);
@@ -191,7 +193,7 @@ int LabelField::label(const double pd[3], const double* nd) const {
                 }
                 if (e2 < best) {
                     best = e2;
-                    label = (int)(packed & 0xFFu);
+                    label = index ? (int64_t)i : (int64_t)(packed & 0xFFu);
                 }
             }
         } else {
@@ -206,6 +208,14 @@ int LabelField::label(const double pd[3], const double* nd) const {
         }
     }
     return label;
+}
+
+int LabelField::label(const double p[3], const double* n) const {
+    return (int)query(p, n, false);
+}
+
+int64_t LabelField::nearest_seed(const double p[3]) const {
+    return query(p, nullptr, true);
 }
 
 void LabelField::labels_of(const float* xyz, int64_t n, int32_t* out) const {
@@ -281,7 +291,7 @@ bool get(const char* data, size_t size, size_t& at, T& v) {
 
 void LabelField::write(std::string& out) const {
     out.append("SSLF", 4);
-    put(out, (uint32_t)1);
+    put(out, (uint32_t)(euclidean ? 2 : 1));
     put(out, (uint64_t)num_seeds());
     put(out, (uint64_t)num_nodes());
     out.append(reinterpret_cast<const char*>(seeds.data()), seeds.size() * sizeof(float));
@@ -293,10 +303,12 @@ bool LabelField::read(const char* data, size_t size, size_t& consumed, LabelFiel
     size_t at = 4;
     uint32_t version = 0;
     uint64_t ns = 0, nn = 0;
-    if (!get(data, size, at, version) || version != 1) return false;
+    if (!get(data, size, at, version) || (version != 1 && version != 2)) return false;
+    out.euclidean = version == 2;
     if (!get(data, size, at, ns) || !get(data, size, at, nn)) return false;
-    const size_t bytes = (size_t)(ns * 4 + nn * 8) * sizeof(float);
-    if (at + bytes > size) return false;
+    if (ns > (size - at) / (4 * sizeof(float))) return false;
+    const size_t seed_bytes = (size_t)ns * 4 * sizeof(float);
+    if (nn > (size - at - seed_bytes) / (8 * sizeof(float))) return false;
     out.seeds.resize((size_t)ns * 4);
     out.nodes.resize((size_t)nn * 8);
     std::memcpy(out.seeds.data(), data + at, out.seeds.size() * sizeof(float));
@@ -343,6 +355,8 @@ bool LabelRegion::emit(RegionProgram& out, std::string& error) const {
     }
     out.field = _field;
     out.push(3, nullptr, 0, nullptr, nullptr, _label);
+    // Label-node y selects the metric in shaders/region.slang.
+    out.nodes[out.nodes.size() - 4 * RegionProgram::kNodeStride + 1] = _field->euclidean ? 1.0f : 0.0f;
     return true;
 }
 

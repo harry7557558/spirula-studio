@@ -130,10 +130,6 @@ void write_mesh(const MeshData& mesh, MeshColorMode mode,
 // Area-weighted smooth vertex normals from the (consistently oriented) faces.
 void compute_vertex_normals(MeshData& mesh);
 
-// Print a mesh-quality report (manifoldness, boundary loops, orientation
-// consistency, connected components, min-angle stats, duplicate faces).
-void print_mesh_stats(const MeshData& mesh);
-
 } // namespace meshing
 
 #endif

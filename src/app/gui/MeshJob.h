@@ -38,6 +38,7 @@ struct MeshJob {
     bool formats[kNumMeshFormats] = {true, false, false, false, false};
 
     int max_cameras = 0;               // 0 = every camera
+    bool tsdf = false;                 // --method tsdf; needs use_data
     int texture_size = 0;              // 0 = auto (texture mode only)
 
     // Canonical UUID for native children; empty uses shared precedence and prevents
@@ -53,7 +54,6 @@ struct MeshJob {
     int quality_iters = 3;
     int floater_min_faces = 10;
     bool cull_unseen = true;
-    int carve_k = 1;
     std::string extra_args;            // appended verbatim
 
     // The file the preview should open when the run finishes: the richest of

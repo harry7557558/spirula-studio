@@ -46,7 +46,9 @@ void long_axis_split_tensor(
     if (num_splats == 0)
         return;
 
-    if (primitive == "3dgs" || primitive == "mip" || primitive == "3dgut")
+    // 2DGS seeds its normal-axis scale below any disc axis (kSurfelLogScaleZ).
+    if (primitive == "3dgs" || primitive == "mip" || primitive == "3dgut" ||
+        primitive == "2dgs")
         long_axis_split_3dgs_kernel<<<_LAUNCH_ARGS_1D(num_splats, 256)>>>(
             num_splats,
             split_opacity_k,

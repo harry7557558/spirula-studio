@@ -8,6 +8,9 @@
 
 static const float ALPHA_THRESHOLD = 1.0f/255.0f;
 
+// Below this squared cosine a ray misses a surfel's plane; ~0.06 degrees.
+static const float SURFEL_GRAZING_COS2 = 1e-6f;
+
 // This must match Common.cuh
 enum CameraModelType {
     PINHOLE = 0,
@@ -777,6 +780,49 @@ bool generate_ray<D : ICameraDistortion>(
 }
 
 
+// Four camera-space rays, in image order, whose quad contains every ray of the
+// pixel rectangle [lo, hi]: a lens bends its edges, so one that bows out moves to
+// twice the bow of its midpoint. False where the lens model lacks a ray.
+bool pixel_rect_quad<D : ICameraDistortion>(
+    int camera_model, float4 intrins, float dist_coeffs[D.kNumParams],
+    float2 lo, float2 hi, out float3 q0, out float3 q1, out float3 q2, out float3 q3
+) {
+    q0 = float3(0.0f); q1 = q0; q2 = q0; q3 = q0;
+    float2 c[4] = { lo, float2(hi.x, lo.y), hi, float2(lo.x, hi.y) };
+    float3 r[4];
+    float3 n[4];
+    bool ok = true;
+    [ForceUnroll] for (int k = 0; k < 4; k++)
+        ok = ok && generate_ray<D>((c[k] - intrins.zw) / intrins.xy, camera_model,
+                                   dist_coeffs, r[k]);
+    // Past 60 degrees across, four rays stop bounding what lies between them.
+    ok = ok && dot(r[0], r[2]) > 0.5f && dot(r[1], r[3]) > 0.5f;
+    [ForceUnroll] for (int k = 0; k < 4; k++) {
+        float3 mid;
+        ok = ok && generate_ray<D>((0.5f * (c[k] + c[(k + 1) & 3]) - intrins.zw) / intrins.xy,
+                                   camera_model, dist_coeffs, mid);
+        // The edge's plane, its normal pointing into the quad.
+        float3 along = r[(k + 1) & 3] - r[k];
+        n[k] = cross(r[k], along);
+        float3 chord = normalize(r[k] + r[(k + 1) & 3]);
+        if (dot(n[k], mid) < 0.0f)
+            n[k] = cross(mid + (mid - chord), along);
+    }
+    if (!ok)
+        return false;
+    // A corner is where two edge planes meet; an edge shrunk to a point (the
+    // pole of a panorama) has none, and keeps its own ray.
+    float3 q[4];
+    [ForceUnroll] for (int k = 0; k < 4; k++) {
+        float3 x = cross(n[(k + 3) & 3], n[k]);
+        float xx = dot(x, x);
+        q[k] = xx > 1e-20f ? x * (rsqrt(xx) * (dot(x, r[k]) < 0.0f ? -1.0f : 1.0f)) : r[k];
+    }
+    q0 = q[0]; q1 = q[1]; q2 = q[2]; q3 = q[3];
+    return true;
+}
+
+
 // ================
 // Per-tier CUDA exports
 // ================
@@ -830,7 +876,12 @@ bool generate_ray<D : ICameraDistortion>(
     [CudaDeviceExport] \
     bool generate_ray##suffix( \
         float2 uv, int camera_model, float dist_coeffs[NC], out float3 raydir \
-    ) { return generate_ray<D>(uv, camera_model, dist_coeffs, raydir); }
+    ) { return generate_ray<D>(uv, camera_model, dist_coeffs, raydir); } \
+    [CudaDeviceExport] \
+    bool pixel_rect_quad##suffix( \
+        int camera_model, float4 intrins, float dist_coeffs[NC], float2 lo, float2 hi, \
+        out float3 q0, out float3 q1, out float3 q2, out float3 q3 \
+    ) { return pixel_rect_quad<D>(camera_model, intrins, dist_coeffs, lo, hi, q0, q1, q2, q3); }
 
 _DEF_DIST_ENTRIES(_none, DistNone, 1)
 _DEF_DIST_ENTRIES(_opencv, DistOpenCV, 4)
@@ -986,6 +1037,442 @@ void evaluate_color_3dgs_vjp(
     v_rgb = dp_rgb.d;
     v_ray_o = dp_ray_o.d;
     v_ray_d = dp_ray_d.d;
+}
+
+// The normal of the surface the splat's depth draws, facing the ray when depth > 0:
+// in its frame, rays from one centre peak on the sphere on diameter [mean, ray_o].
+[CudaDeviceExport]
+[Differentiable]
+void evaluate_color_3dgs_normal(
+    float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
+    float3 ray_o, float3 ray_d,
+    out float3 out_rgb, out float depth, out float3 normal
+) {
+    out_rgb = rgb;
+    float3 gro = mul(iscl_rot, (ray_o - mean));
+    float3 grd = mul(iscl_rot, ray_d);
+    float grd2 = dot(grd, grd);
+    depth = -dot(gro, grd) / grd2;
+    float3 n = mul(gro + 2.f * depth * grd, iscl_rot);
+    normal = -n * rsqrt(dot(n, n));
+}
+
+[CudaDeviceExport]
+void evaluate_color_3dgs_normal_vjp(
+    float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
+    float3 ray_o, float3 ray_d, float3 v_out_rgb, float v_depth, float3 v_normal,
+    out float3 v_mean, out float3x3 v_iscl_rot, out float v_opacity, out float3 v_rgb,
+    out float3 v_ray_o, out float3 v_ray_d
+) {
+    DifferentialPair<float3> dp_mean = diffPair(mean);
+    DifferentialPair<float3x3> dp_iscl_rot = diffPair(iscl_rot);
+    DifferentialPair<float> dp_opacity = diffPair(opacity);
+    DifferentialPair<float3> dp_rgb = diffPair(rgb);
+    DifferentialPair<float3> dp_ray_o = diffPair(ray_o);
+    DifferentialPair<float3> dp_ray_d = diffPair(ray_d);
+    bwd_diff(evaluate_color_3dgs_normal)(
+        dp_mean, dp_iscl_rot, dp_opacity, dp_rgb,
+        dp_ray_o, dp_ray_d, v_out_rgb, v_depth, v_normal
+    );
+    v_mean = dp_mean.d;
+    v_iscl_rot = dp_iscl_rot.d;
+    v_opacity = dp_opacity.d;
+    v_rgb = dp_rgb.d;
+    v_ray_o = dp_ray_o.d;
+    v_ray_d = dp_ray_d.d;
+}
+
+
+// ================
+// 2DGS surfel
+// ================
+
+// Rows: tangent u / su, tangent v / sv, unit normal. scale.z is ignored.
+[CudaDeviceExport]
+[Differentiable]
+float3x3 compute_2dgs_iscl_rot(float4 quat, float3 scale) {
+    float3x3 R = normalized_quat_to_rotmat(quat);
+    float3x3 S = float3x3(
+        exp(-scale.x), 0.f, 0.f,
+        0.f, exp(-scale.y), 0.f,
+        0.f, 0.f, 1.f
+    );
+    return mul(S, transpose(R));
+}
+
+[CudaDeviceExport]
+void compute_2dgs_iscl_rot_vjp(
+    float4 quat, float3 scale,
+    float3x3 v_iscl_rot,
+    out float4 v_quat, out float3 v_scale
+) {
+    DifferentialPair<float4> dp_quat = diffPair(quat);
+    DifferentialPair<float3> dp_scale = diffPair(scale);
+    bwd_diff(compute_2dgs_iscl_rot)(dp_quat, dp_scale, v_iscl_rot);
+    v_quat = dp_quat.d;
+    v_scale = dp_scale.d;
+}
+
+struct SurfelHit : IDifferentiable {
+    float g;       // exp(-r^2/2) at the ray-plane hit; 0 past grazing
+    float t_hit;   // ray parameter of the plane hit
+};
+
+// The bare disc, with no screen-space low-pass: it renders as 3DGUT renders a
+// flat gaussian, so the mesher's moments and a 3dgut view see what trained.
+[Differentiable]
+[ForceInline]
+SurfelHit surfel_ray_hit(float3 mean, float3x3 iscl_rot, float3 ray_o, float3 ray_d) {
+    SurfelHit h;
+    float3 gro = mul(iscl_rot, ray_o - mean);
+    float3 grd = mul(iscl_rot, ray_d);
+    // The normal row is unit length, so grd.z / |ray_d| is the cosine.
+    if (grd.z * grd.z > SURFEL_GRAZING_COS2 * dot(ray_d, ray_d)) {
+        h.t_hit = -gro.z / grd.z;
+        float2 uv = gro.xy + h.t_hit * grd.xy;
+        h.g = exp(-0.5f * dot(uv, uv));
+    } else {
+        h.t_hit = 0.f;
+        h.g = 0.f;
+    }
+    return h;
+}
+
+[CudaDeviceExport]
+[Differentiable]
+float evaluate_alpha_2dgs(
+    float3 mean, float3x3 iscl_rot, float opacity, float3 ray_o, float3 ray_d
+) {
+    return opacity * surfel_ray_hit(mean, iscl_rot, ray_o, ray_d).g;
+}
+
+// The normal faces the ray.
+[CudaDeviceExport]
+[Differentiable]
+float evaluate_2dgs(
+    float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
+    float3 ray_o, float3 ray_d,
+    out float3 out_rgb, out float depth, out float3 normal
+) {
+    out_rgb = rgb;
+    SurfelHit h = surfel_ray_hit(mean, iscl_rot, ray_o, ray_d);
+    depth = h.t_hit;
+    float3 n = float3(iscl_rot[2][0], iscl_rot[2][1], iscl_rot[2][2]);
+    normal = dot(n, ray_d) > 0.f ? -n : n;
+    return opacity * h.g;
+}
+
+[CudaDeviceExport]
+void evaluate_color_2dgs(
+    float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
+    float3 ray_o, float3 ray_d,
+    out float3 out_rgb, out float depth, out float3 normal
+) {
+    evaluate_2dgs(mean, iscl_rot, opacity, rgb, ray_o, ray_d, out_rgb, depth, normal);
+}
+
+// Alpha and colour in one VJP: the ray-disc hit is computed once.
+[CudaDeviceExport]
+void evaluate_2dgs_vjp(
+    float3 mean, float3x3 iscl_rot, float opacity, float3 rgb,
+    float3 ray_o, float3 ray_d,
+    float v_alpha, float3 v_out_rgb, float v_depth, float3 v_normal,
+    out float3 v_mean, out float3x3 v_iscl_rot, out float v_opacity, out float3 v_rgb,
+    out float3 v_ray_o, out float3 v_ray_d
+) {
+    DifferentialPair<float3> dp_mean = diffPair(mean);
+    DifferentialPair<float3x3> dp_iscl_rot = diffPair(iscl_rot);
+    DifferentialPair<float> dp_opacity = diffPair(opacity);
+    DifferentialPair<float3> dp_rgb = diffPair(rgb);
+    DifferentialPair<float3> dp_ray_o = diffPair(ray_o);
+    DifferentialPair<float3> dp_ray_d = diffPair(ray_d);
+    bwd_diff(evaluate_2dgs)(
+        dp_mean, dp_iscl_rot, dp_opacity, dp_rgb,
+        dp_ray_o, dp_ray_d, v_out_rgb, v_depth, v_normal, v_alpha
+    );
+    v_mean = dp_mean.d;
+    v_iscl_rot = dp_iscl_rot.d;
+    v_opacity = dp_opacity.d;
+    v_rgb = dp_rgb.d;
+    v_ray_o = dp_ray_o.d;
+    v_ray_d = dp_ray_d.d;
+}
+
+
+// ================
+// Stochastic splats
+// ================
+
+// docs/notes/stochastic-splats.md. The PCG hash of Jarzynski & Olano 2020.
+[ForceInline]
+uint stochastic_pcg(uint v) {
+    uint state = v * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+// A draw for one splat at one pixel in one frame; stochastic_uniform(h, s) is
+// sample s's uniform in [0, 1). Every (pixel, splat, frame, sample) draws its own.
+[CudaDeviceExport]
+uint stochastic_hash(uint pixel, uint splat, uint frame) {
+    return stochastic_pcg(pixel ^ stochastic_pcg(splat ^ stochastic_pcg(frame)));
+}
+
+[CudaDeviceExport]
+float stochastic_uniform(uint h, uint sample) {
+    return float(stochastic_pcg(h + sample) >> 8u) * (1.0f / 16777216.0f);
+}
+
+
+// ================
+// Exact eval3d footprint
+// ================
+
+// docs/notes/footprint.md. A ray is carried in a splat's frame: g = M (origin -
+// mean), e = M direction, M the fragment's iscl_rot. alpha > ALPHA_THRESHOLD
+// where q(g, e) <= 0 with the hit in front, and q is quadratic along a quad edge.
+
+struct FootprintRay {
+    float3 c;  // moment of the ray about the splat; a surfel's is its plane offset
+    float3 w;
+    float f;   // > 0: the hit is in front of the ray origin
+};
+
+[ForceInline]
+FootprintRay footprint_ray(float3 g, float3 e, bool surfel) {
+    // Unit e keeps q of a 1e-9-thin splat inside fp32.
+    e *= rsqrt(max(dot(e, e), 1e-37f));
+    FootprintRay k;
+    if (surfel) {
+        k.c = float3(g.x * e.z - g.z * e.x, g.y * e.z - g.z * e.y, 0.0f);
+        k.w = float3(e.z, 0.0f, 0.0f);
+        k.f = -g.z * e.z;
+    } else {
+        k.c = cross(g, e);
+        k.w = e;
+        k.f = -dot(g, e);
+    }
+    return k;
+}
+
+[ForceInline]
+float footprint_form(FootprintRay a, FootprintRay b, float r2) {
+    return dot(a.c, b.c) - r2 * dot(a.w, b.w);
+}
+
+// Two rays that both miss: whether the footprint crosses the edge between them.
+// q is taken at its minimum from the interpolated ray: across a thin splat the
+// corner values are ~1e12 against a minimum of ~10, and their difference is noise.
+[ForceInline]
+bool footprint_edge_hit(FootprintRay a, FootprintRay b, float r2) {
+    float3 dc = b.c - a.c, dw = b.w - a.w;
+    float lin = dot(a.c, dc) - r2 * dot(a.w, dw);
+    float quad = dot(dc, dc) - r2 * dot(dw, dw);
+    if (!(lin < 0.0f && -lin < quad))
+        return false;
+    float s = -lin / quad;
+    float3 c = a.c + s * dc, w = a.w + s * dw;
+    return dot(c, c) - r2 * dot(w, w) <= 0.0f && a.f + s * (b.f - a.f) > 0.0f;
+}
+
+// Every ray that reaches a splat passes through one planar ellipse, c0 + a cos +
+// b sin: the surfel itself, or the gaussian's tangent circle seen from the camera.
+struct FootprintDisc {
+    float3 c0, a, b;
+    bool inside;  // the camera is inside the gaussian: every forward ray hits
+};
+
+// axes: the splat's axes in camera space, as rows. scale is linear.
+[ForceInline]
+FootprintDisc footprint_disc(
+    float3 mean_c, float3x3 axes, float3 scale, float r2, bool surfel
+) {
+    FootprintDisc d;
+    d.inside = false;
+    if (surfel) {
+        float r = sqrt(r2);
+        d.c0 = mean_c;
+        d.a = r * scale.x * axes[0];
+        d.b = r * scale.y * axes[1];
+        return d;
+    }
+    // Bounds only: a thicker gaussian contains the real one and keeps h in fp32.
+    scale = max(scale, 1e-3f * max(scale.x, max(scale.y, scale.z)));
+    float3 h = mul(axes, mean_c) / scale;
+    float hh = dot(h, h);
+    if (!(hh > 1.001f * r2)) {
+        d.inside = true;
+        d.c0 = mean_c;
+        d.a = float3(0.0f);
+        d.b = float3(0.0f);
+        return d;
+    }
+    float k = r2 / hh;
+    float rho = sqrt(r2 * (1.0f - k));
+    h *= rsqrt(hh);
+    // Duff et al. 2017, "Building an Orthonormal Basis, Revisited"
+    float sg = h.z >= 0.0f ? 1.0f : -1.0f;
+    float p = -1.0f / (sg + h.z);
+    float o = h.x * h.y * p;
+    float3 u1 = rho * scale * float3(1.0f + sg * h.x * h.x * p, sg * o, -sg * h.x);
+    float3 u2 = rho * scale * float3(o, sg + h.y * h.y * p, -h.y);
+    d.c0 = mean_c * (1.0f - k);
+    d.a = mul(u1, axes);
+    d.b = mul(u2, axes);
+    return d;
+}
+
+// Whether the ray from the camera along dir passes through the disc.
+[ForceInline]
+bool footprint_disc_contains(FootprintDisc d, float3 dir) {
+    if (d.inside)
+        return true;
+    float3 n = cross(d.a, d.b);
+    float den = dot(dir, n);
+    float num = dot(d.c0, n);
+    if (!(num * den > 0.0f))
+        return false;
+    float3 p = dir * (num / den) - d.c0;
+    float nn = dot(n, n);
+    float u = dot(cross(p, d.b), n);
+    float v = dot(cross(d.a, p), n);
+    return u * u + v * v <= nn * nn;
+}
+
+// The footprint of an undistorted pinhole view is the conic with dual c0 c0^T -
+// a a^T - b b^T: an ellipse while the disc stays in front of the camera plane.
+// Its centre and covariance (xx, xy, yy) in pixels; false when it is not one.
+[ForceInline]
+bool footprint_pinhole_ellipse(FootprintDisc d, float4 intrins, out float2 centre, out float3 cov) {
+    centre = float2(0.0f);
+    cov = float3(0.0f);
+    float den = d.c0.z * d.c0.z - d.a.z * d.a.z - d.b.z * d.b.z;
+    if (d.inside || !(d.c0.z > 0.0f && den > 1e-6f * d.c0.z * d.c0.z))
+        return false;
+    float inv = 1.0f / den;
+    float2 ctr = float2(d.c0.x * d.c0.z - d.a.x * d.a.z - d.b.x * d.b.z,
+                        d.c0.y * d.c0.z - d.a.y * d.a.z - d.b.y * d.b.z) * inv;
+    // Half extents as cross products: the plain difference cancels for a
+    // splat a pixel wide.
+    float ab_x = d.a.x * d.b.z - d.a.z * d.b.x, ab_y = d.a.y * d.b.z - d.a.z * d.b.y;
+    float ca_x = d.c0.x * d.a.z - d.c0.z * d.a.x, cb_x = d.c0.x * d.b.z - d.c0.z * d.b.x;
+    float ca_y = d.c0.y * d.a.z - d.c0.z * d.a.y, cb_y = d.c0.y * d.b.z - d.c0.z * d.b.y;
+    float fx = intrins.x, fy = intrins.y;
+    centre = float2(fx * ctr.x + intrins.z, fy * ctr.y + intrins.w);
+    cov = float3(
+        fx * fx * max(ca_x * ca_x + cb_x * cb_x - ab_x * ab_x, 0.0f) * inv * inv,
+        fx * fy * (ca_x * ca_y + cb_x * cb_y - ab_x * ab_y) * inv * inv,
+        fy * fy * max(ca_y * ca_y + cb_y * cb_y - ab_y * ab_y, 0.0f) * inv * inv);
+    return true;
+}
+
+// The splat a camera sees, as footprint_disc takes it.
+[ForceInline]
+FootprintDisc footprint_disc_of(
+    float3 mean, float4 quat, float3 log_scale, float opacity, float3x3 R, float3 t, bool surfel
+) {
+    float3x3 axes = transpose(mul(R, normalized_quat_to_rotmat(normalize(quat))));
+    return footprint_disc(mul(R, mean) + t, axes, exp(log_scale),
+                          2.0f * log(opacity / ALPHA_THRESHOLD), surfel);
+}
+
+// A parallel projection of a gaussian is its marginal, and of a disc an ellipse:
+// the footprint's centre and covariance (xx, xy, yy) in pixels.
+[ForceInline]
+void footprint_ortho_ellipse(
+    float3 mean, float4 quat, float3 log_scale, float opacity, float3x3 R, float3 t,
+    float4 intrins, bool surfel, out float2 centre, out float3 cov
+) {
+    float3 scale = exp(log_scale);
+    if (surfel)
+        scale.z = 0.0f;
+    float3x3 covar, covar_c;
+    quat_scale_to_covar(normalize(quat), scale, covar);
+    covarW2C(R, covar, covar_c);
+    float3 mean_c = mul(R, mean) + t;
+    float r2 = 2.0f * log(opacity / ALPHA_THRESHOLD);
+    float fx = intrins.x, fy = intrins.y;
+    centre = float2(fx * mean_c.x + intrins.z, fy * mean_c.y + intrins.w);
+    cov = r2 * float3(fx * fx * covar_c[0][0], fx * fy * covar_c[0][1], fy * fy * covar_c[1][1]);
+}
+
+// The footprint of an undistorted pinhole (planar 1) or orthographic (2) view as
+// an ellipse, a hundredth of a pixel^2 wider so an edge-on disc keeps a width the
+// tile sweep can divide by. False where a pinhole's is not one.
+[CudaDeviceExport]
+bool footprint_planar_cov(
+    float3 mean, float4 quat, float3 log_scale, float opacity, float3x3 R, float3 t,
+    float4 intrins, bool surfel, int planar, out float2 centre, out float3 cov
+) {
+    bool ok = true;
+    if (planar == 2)
+        footprint_ortho_ellipse(mean, quat, log_scale, opacity, R, t, intrins, surfel,
+                                centre, cov);
+    else
+        ok = footprint_pinhole_ellipse(
+            footprint_disc_of(mean, quat, log_scale, opacity, R, t, surfel), intrins,
+            centre, cov);
+    cov.x += 0.01f;
+    cov.z += 0.01f;
+    return ok;
+}
+
+// How a splat's footprint meets the quad of four rays from one origin, given in
+// image order (x0,y0) (x1,y0) (x1,y1) (x0,y1): 0 misses it, 2 covers it (both are
+// convex, so four corners inside is all of it), 1 neither.
+[ForceInline]
+int footprint_quad_coverage(
+    float3 g, float3 e0, float3 e1, float3 e2, float3 e3, float r2, bool surfel
+) {
+    FootprintRay k0 = footprint_ray(g, e0, surfel);
+    FootprintRay k1 = footprint_ray(g, e1, surfel);
+    FootprintRay k2 = footprint_ray(g, e2, surfel);
+    FootprintRay k3 = footprint_ray(g, e3, surfel);
+    float q0 = footprint_form(k0, k0, r2);
+    float q1 = footprint_form(k1, k1, r2);
+    float q2 = footprint_form(k2, k2, r2);
+    float q3 = footprint_form(k3, k3, r2);
+    int inside = int(q0 <= 0.0f && k0.f > 0.0f) + int(q1 <= 0.0f && k1.f > 0.0f) +
+                 int(q2 <= 0.0f && k2.f > 0.0f) + int(q3 <= 0.0f && k3.f > 0.0f);
+    if (inside != 0)
+        return inside == 4 ? 2 : 1;
+    if (footprint_edge_hit(k0, k1, r2) || footprint_edge_hit(k1, k2, r2) ||
+        footprint_edge_hit(k2, k3, r2) || footprint_edge_hit(k3, k0, r2))
+        return 1;
+    // No edge is crossed: the footprint is inside the quad when its centre, -g, is.
+    return int(dot(cross(e0, e1), g) <= 0.0f && dot(cross(e1, e2), g) <= 0.0f &&
+               dot(cross(e2, e3), g) <= 0.0f && dot(cross(e3, e0), g) <= 0.0f);
+}
+
+// footprint_quad_coverage for rays from origin o with directions d, in the frame
+// of mean and M. A zero direction is a corner the lens model has no ray for: the
+// quad is kept, and never counts as covered.
+[CudaDeviceExport]
+int footprint_rays_coverage(
+    float3 mean, float3x3 M, float opacity, bool surfel, float3 o,
+    float3 d0, float3 d1, float3 d2, float3 d3
+) {
+    if (dot(d0, d0) == 0.0f || dot(d1, d1) == 0.0f || dot(d2, d2) == 0.0f ||
+        dot(d3, d3) == 0.0f)
+        return 1;
+    return footprint_quad_coverage(
+        mul(M, o - mean), mul(M, d0), mul(M, d1), mul(M, d2), mul(M, d3),
+        2.0f * log(opacity / ALPHA_THRESHOLD), surfel);
+}
+
+// Whether the box reaches a pixel centre of the micro tile at (bx0, by0).
+[CudaDeviceExport]
+bool aabb_reaches_micro_tile(float4 aabb, float bx0, float by0, float size) {
+    return aabb.x <= bx0 + size - 0.5f && aabb.z >= bx0 + 0.5f &&
+           aabb.y <= by0 + size - 0.5f && aabb.w >= by0 + 0.5f;
+}
+
+// A footprint's extent across its narrow side, |slab.xy . p - slab.z| <= 1 in
+// pixels: whether a box (centre, half extent) lies outside it. Zero: no slab.
+[CudaDeviceExport]
+bool slab_misses_box(float3 slab, float2 centre, float2 half_extent) {
+    return abs(dot(slab.xy, centre) - slab.z) >
+           1.0f + dot(abs(slab.xy), half_extent);
 }
 
 

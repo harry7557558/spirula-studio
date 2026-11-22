@@ -67,7 +67,7 @@ static void _visit_accumulate_camera_stats(const std::string& primitive) {
     const int64_t N = engine().cur_num_splats;
     const bool packed = engine().packed;
     const int64_t n_isect = packed ? (int64_t)engine().fwd.camera_ids.size() : (int64_t)C * N;
-    const bool gut = primitive == "3dgut";
+    const bool gut = engine_primitive_eval3d(primitive);
     visit_camera_stats_zero_tensor(C, cam_map, v.cam_sum, v.cam_cnt);
     visit_camera_stats_tensor(
         n_isect, N, C, packed, engine().fwd.camera_ids, engine().fwd.gaussian_ids,
@@ -77,21 +77,30 @@ static void _visit_accumulate_camera_stats(const std::string& primitive) {
 }
 
 
-void _engine_arm_step_forward(const EngineStepConfig& cfg,
-                              DistortionType dist_type, bool image_stages) {
+StepRender _engine_arm_step_forward(const EngineStepConfig& cfg,
+                                    const std::string& primitive,
+                                    bool image_stages) {
+    const auto& w = cfg.loss.weights;
+    const RenderOutputType pixel_type = engine_primitive_pixel_type(
+        primitive,
+        engine_loss_reads_render_normal(w, engine().gt.normal.data_ptr() != nullptr));
+    StepRender render;
+    render.normal = RenderOutput::has_normal(pixel_type);
+    render.dist_type = engine_distortion_type(
+        pixel_type, w[(int)LossWeightIndex::RgbDistReg],
+        w[(int)LossWeightIndex::DepthDistReg],
+        w[(int)LossWeightIndex::NormalDistReg]);
     // The rendered depth and its gradient are two full-resolution floats a
     // pixel; a step none of whose terms reads them leaves both out.
-    {
-        const auto& w = cfg.loss.weights;
-        engine().fwd.skip_depth_pending =
-            !dist_any(dist_type) && engine().gt.depth.data_ptr() == nullptr &&
-            engine().gt.normal.data_ptr() == nullptr &&
-            w[(int)LossWeightIndex::MeanMedianDepthSup] == 0.0f &&
-            w[(int)LossWeightIndex::MedianDepthNormalReg] == 0.0f &&
-            w[(int)LossWeightIndex::MedianNormalSup] == 0.0f &&
-            w[(int)LossWeightIndex::MedianRenderNormalReg] == 0.0f &&
-            !engine_calib_warp_wants_depth();
-    }
+    engine().fwd.skip_depth_pending =
+        !dist_any(render.dist_type) && engine().gt.depth.data_ptr() == nullptr &&
+        engine().gt.normal.data_ptr() == nullptr &&
+        w[(int)LossWeightIndex::MeanMedianDepthSup] == 0.0f &&
+        w[(int)LossWeightIndex::MedianDepthNormalReg] == 0.0f &&
+        w[(int)LossWeightIndex::MedianNormalSup] == 0.0f &&
+        w[(int)LossWeightIndex::MedianRenderNormalReg] == 0.0f &&
+        !(render.normal && w[(int)LossWeightIndex::NormalReg] != 0.0f) &&
+        !engine_calib_warp_wants_depth();
     auto& pp = engine().ppisp;
     pp.cur_run_before_bilagrid = cfg.ppisp.run_before_bilagrid;
     pp.cur_run_before_color_space =
@@ -111,6 +120,7 @@ void _engine_arm_step_forward(const EngineStepConfig& cfg,
         image_stages && engine().fwd.image_fmt_pending == PixelFormat::F16 &&
         engine().bilagrid_rgb.enabled;
     engine().background.match_luma_pending = cfg.background.match_luminance;
+    return render;
 }
 
 void _engine_step_image_stages(TorchTensorView cam_indices) {
@@ -165,15 +175,6 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     _set_cur_cam_indices(bilagrid_cam_indices);
     engine_max_weight_begin_step(step, max_steps, cfg.densify);
 
-    // Pick the distortion channel set from the per-channel weights, restricted
-    // to the channels this primitive renders (normal is honored only once a
-    // normal-rendering primitive exists). 3dgs/mip and 3dgut all consume the
-    // distortion gradient in their backward.
-    const DistortionType dist_type = engine_distortion_type(
-        engine_primitive_pixel_type(primitive),
-        cfg.loss.weights[(int)LossWeightIndex::RgbDistReg],
-        cfg.loss.weights[(int)LossWeightIndex::DepthDistReg],
-        cfg.loss.weights[(int)LossWeightIndex::NormalDistReg]);
     // A tile the mask excludes entirely is read by no term of the loss, so it
     // is left out of the intersections; alpha supervision is the one term that
     // reads a masked pixel (docs/datasets.md, "Skipping masked tiles").
@@ -220,14 +221,16 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     } else {
         engine().fwd.tile_active = DeviceVector<int32_t>();
     }
-    _engine_arm_step_forward(cfg, dist_type, /*image_stages=*/true);
+    const StepRender render =
+        _engine_arm_step_forward(cfg, primitive, /*image_stages=*/true);
     engine().fwd.score_pending = cfg.loss.learned_score;
     engine().learned_score.power = cfg.loss.loss_map_power * cfg.densify.score_power;
 
     engine().fwd.kernel_cut = cfg.loss.raster_kernel_cut;
     {
         SplatStageTimer stage_timer;
-        forward_3dgs(primitive, sh_degree, packed, /*output_median=*/false, (int)dist_type);
+        forward_3dgs(primitive, sh_degree, packed, /*output_median=*/false,
+                     (int)render.dist_type, render.normal);
     }
     _engine_step_image_stages(bilagrid_cam_indices);
     _engine_calib_warp_before_loss(step, skip_tiles);

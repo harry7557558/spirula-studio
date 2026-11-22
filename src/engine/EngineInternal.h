@@ -11,6 +11,7 @@
 #include "core/Tensor.h"
 #include "kernels/loss/PerPixelLoss.cuh"   // LossIndex / LossValues / PerPixelGrads
 #include "kernels/pixelwise/PixelWise.cuh"      // PPISPRegLossIndex
+#include "kernels/raster/RasterizationStochastic.cuh"
 
 #include <array>
 #include <cstdint>
@@ -189,6 +190,14 @@ int engine_resolve_num_loss_scales(int num_loss_scales,
                                    int loss_scale_min_pixels,
                                    int64_t H, int64_t W);
 
+// The armed stochastic frame of forward_3dgs: its channel's running sum, and
+// whether the sum carries on (engine/EngineStochastic.cpp).
+StochasticFrame _engine_stochastic_frame(const std::string& primitive, int sh_degree,
+                                         bool output_normal, bool depth_sorted);
+// Whether its tile lists are depth-sorted, which lets a walk end early
+// (SS_VIEWER_STOCHASTIC_SORTED).
+bool _engine_stochastic_depth_sorted();
+
 // Background blend: forward runs inside forward_3dgs, out of place, so viewer
 // renders blend too. The backward hook adds v_T, rewrites v_render_rgb, and
 // folds in overexposure_reg -- which needs the blend composite.
@@ -216,13 +225,18 @@ void _engine_appearance_backward(TorchTensorView v_render_rgb,
 // kept it only transiently (AppearanceState::transient_post).
 DeviceTensor3D<float3> _engine_appearance_replay();
 
-// What a training step's forward renders, in which formats, and which stages it
-// fuses -- armed after the GT is installed. A preview arms the same, so it fills
-// the buffers the step sized instead of growing float32 twins of them.
+// What a training step's forward renders (the channels its loss reads), in which
+// formats and fused stages -- armed after the GT is installed. A preview arms the
+// same, filling the buffers the step sized rather than float32 twins of them.
 struct EngineStepConfig;
 enum class DistortionType;
-void _engine_arm_step_forward(const EngineStepConfig& cfg,
-                              DistortionType dist_type, bool image_stages);
+struct StepRender {
+    bool normal = false;
+    DistortionType dist_type{};
+};
+StepRender _engine_arm_step_forward(const EngineStepConfig& cfg,
+                                    const std::string& primitive,
+                                    bool image_stages);
 // PPISP and the colour grids the forward left to run, in the step's order.
 void _engine_step_image_stages(TorchTensorView cam_indices);
 

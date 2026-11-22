@@ -172,6 +172,11 @@ __global__ void rasterize_to_pixels_fwd_kernel(
     // micro-tile pixel box, for the footprint cull
     const float mt_bx0 = (float)(mt_x * TILE_SIZE_X);
     const float mt_by0 = (float)(mt_y * TILE_SIZE_Y);
+#if IS_EVAL3D
+    // the box of its pixel centres
+    const float2 mt_half = {0.5f * (TILE_SIZE_X - 1), 0.5f * (TILE_SIZE_Y - 1)};
+    const float2 mt_centre = {mt_bx0 + 0.5f + mt_half.x, mt_by0 + 0.5f + mt_half.y};
+#endif
 
     __shared__ typename SplatPrimitive::FragmentFwd splat_batch[TILE_AREA];
     // whether the loaded gaussian's footprint reaches this micro-tile (uniform
@@ -193,20 +198,15 @@ __global__ void rasterize_to_pixels_fwd_kernel(
             int32_t g = flatten_ids[idx]; // flatten index in [I * N] or [nnz]
             uint32_t wi = gaussian_ids ? gaussian_ids[g] : g % N;
         #if IS_EVAL3D
-            // 3dgut keeps the projected 2D conic in the screen "scale" channel
-            // and the ellipse center is the AABB center. Cull here, before the
-            // (expensive) 3D fragment load, matching the tile intersector.
-            float opac = splat_sbuffer.opacities(g);
-            if (opac > ALPHA_THRESHOLD) {
-                float3 conic = splat_sbuffer.scales(g);
-                float2 ec = aabb16_center(aabb[g], image_width, image_height);
-                float ecx = ec.x, ecy = ec.y;
-                float kk = 0.5f / __logf(opac / ALPHA_THRESHOLD);
-                float3 inv_cov = { conic.x * kk, conic.y * kk, conic.z * kk };
-                hit = ellipse_box_overlap_test(inv_cov,
-                    mt_bx0 - ecx, mt_bx0 + TILE_SIZE_X - ecx,
-                    mt_by0 - ecy, mt_by0 + TILE_SIZE_Y - ecy);
-            }
+            // The screen "scale" channel holds the slab of the splat's bounds
+            // (docs/notes/footprint.md). Each pixel tests its own alpha, so a
+            // bound that keeps too much costs time only.
+            hit = splat_sbuffer.opacities(g) > ALPHA_THRESHOLD &&
+                SlangProjectionUtils::aabb_reaches_micro_tile(
+                    aabb16_decode(aabb[g], image_width, image_height),
+                    mt_bx0, mt_by0, (float)TILE_SIZE_X) &&
+                !SlangProjectionUtils::slab_misses_box(
+                    splat_sbuffer.scales(g), mt_centre, mt_half);
             if (hit)
                 splat_batch[tid].load(splat_wbuffer, splat_sbuffer, wi, g);
         #else
@@ -324,6 +324,11 @@ __global__ void rasterize_to_pixels_fwd_kernel(
             else
                 pix_out.depth *= invW;  // expected (arithmetic) ray depth
         }
+    #if IS_EVAL3D
+        // Normals composite in world space and are stored in camera space.
+        if constexpr (RenderOutput::has_normal(SplatPrimitive::pixelType))
+            pix_out.normal = SlangProjectionUtils::undo_transform_ray_d(R, pix_out.normal);
+    #endif
         pix_out.saveParamsToBuffer<SplatPrimitive::pixelType>(render_colors, pix_id_global);
         // index in bin of last gaussian in this pixel
         last_ids[pix_id] = static_cast<int32_t>(cur_idx);

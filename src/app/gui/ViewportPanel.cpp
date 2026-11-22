@@ -848,6 +848,23 @@ void ViewportPanel::enable_scene_options(
     _linear_color = linear;
     _apply_color_space = std::move(apply_color_space);
     _on_primitive_changed = std::move(on_primitive_changed);
+    if (_mode == Mode::Engine || _mode == Mode::Hardware) refresh_buffer_keys();
+}
+
+void ViewportPanel::refresh_buffer_keys() {
+    const std::string selected =
+        _buffer_keys.empty() ? "rgb" : _buffer_keys[_buffer_idx];
+    if (_mode == Mode::Hardware) {
+        // The compute view's list, less what has no OpenGL equivalent.
+        _buffer_keys.clear();
+        HardwareSplatRenderer::Buffer buffer;
+        for (const auto& key : viewer_buffer_keys(_hardware_cfg, primitive()))
+            if (HardwareSplatRenderer::buffer(key, buffer)) _buffer_keys.push_back(key);
+    } else {
+        _buffer_keys = _worker.buffer_keys(primitive());
+    }
+    const auto it = std::find(_buffer_keys.begin(), _buffer_keys.end(), selected);
+    _buffer_idx = it != _buffer_keys.end() ? (int)(it - _buffer_keys.begin()) : 0;
 }
 
 void ViewportPanel::attach_preview_mesh(const meshing::MeshData& mesh,
@@ -891,8 +908,7 @@ void ViewportPanel::attach(spirula::TrainerSession& session) {
     detach();
     _worker.start(session.make_viewer_config(), session.make_viewer_hooks());
     _worker.set_region_overlay(_roi_engine);
-    _buffer_keys = _worker.buffer_keys();
-    _buffer_idx = std::min<int>(_buffer_idx, (int)_buffer_keys.size() - 1);
+    refresh_buffer_keys();
     _has_cameras = session.ds.num_cameras > 0;
     maybe_frame(session);
     _pending = 0;
@@ -905,8 +921,7 @@ void ViewportPanel::attach_scene(const ViewerRenderConfig& cfg,
                                  const std::string& key, float radius) {
     detach();
     _worker.start(cfg, hooks);
-    _buffer_keys = _worker.buffer_keys();
-    _buffer_idx = std::min<int>(_buffer_idx, (int)_buffer_keys.size() - 1);
+    refresh_buffer_keys();
     _has_cameras = false;
     _show_cams = false;
     set_centers(&cfg.centers, cfg.center_cameras);
@@ -926,7 +941,25 @@ void ViewportPanel::attach_scene(const ViewerRenderConfig& cfg,
     _mode = Mode::Engine;
 }
 
+void ViewportPanel::attach_hardware(const ViewerRenderConfig& cfg,
+        const std::string& path, const std::string& key, const float center[3], float unit) {
+    detach();
+    _hardware_path = path;
+    std::copy(center, center + 3, _hardware_center);
+    _hardware_unit = unit;
+    _hardware_cfg = cfg;
+    _has_cameras = false; _show_cams = false;
+    set_centers(&cfg.centers, cfg.center_cameras);
+    _align_identity = true; _gauge_metric = false;
+    _scene_scale = unit; rebuild_m2s();
+    if (key != _framed_key) { _framed_key = key; reset_pose(1); }
+    _last_error.clear(); _mode = Mode::Hardware;
+    refresh_buffer_keys();
+}
+
 void ViewportPanel::detach() {
+    if (_mode == Mode::Hardware) _hardware.destroy();
+    _hardware_path.clear();
     set_wipe();
     _preview_tex = 0;
     _scene_options = false;
@@ -934,12 +967,14 @@ void ViewportPanel::detach() {
     _on_primitive_changed = nullptr;
     if (_mode == Mode::Engine) _worker.stop();
     _pending = 0;
+    _refining = false;
     _shot_done = nullptr;
     _shot_inflight = false;
     _mode = Mode::None;
 }
 
 void ViewportPanel::destroy_gl() {
+    _hardware.destroy();
     _preview.destroy_gl();
     if (_tex) {
         GLuint t = (GLuint)_tex;
@@ -1544,7 +1579,7 @@ void ViewportPanel::draw_controls(bool engine) {
         ui::help_on_hover(msg::viewport_dataset_preview_help);
     }
     // No dataset behind a splat file, so nothing to draw a frustum for.
-    if (_has_cameras || _views) {
+    if ((_has_cameras || _views) && _mode != Mode::Hardware) {
         place(check_w(msg::viewport_cameras));
         if (ui::Checkbox(msg::viewport_cameras, &_show_cams)) _dirty = true;
         ui::help_on_hover(msg::viewport_cameras_help);
@@ -1566,9 +1601,11 @@ void ViewportPanel::draw_controls(bool engine) {
             _dirty = true;
         ui::help_on_hover(msg::viewport_point_size_help);
     }
-    place(check_w(msg::viewport_grid));
-    if (ui::Checkbox(msg::viewport_grid, &_show_grid)) _dirty = true;
-    ui::help_on_hover(msg::viewport_grid_help);
+    if (_mode != Mode::Hardware) {
+        place(check_w(msg::viewport_grid));
+        if (ui::Checkbox(msg::viewport_grid, &_show_grid)) _dirty = true;
+        ui::help_on_hover(msg::viewport_grid_help);
+    }
     if (_mode == Mode::Engine ? _roi_engine != nullptr : (_roi_preview || _roi_points_inside)) {
         place(check_w(msg::viewport_region));
         if (ui::Checkbox(msg::viewport_region, &_show_roi)) _dirty = true;
@@ -1620,7 +1657,7 @@ void ViewportPanel::draw_controls(bool engine) {
         }
         ui::help_on_hover(msg::viewport_center_help);
     }
-    if (engine) {
+    if (engine && _mode != Mode::Hardware) {
         place(px(66.0f) + st.ItemInnerSpacing.x +
               text_w(msg::viewport_scale.get()));
         ImGui::SetNextItemWidth(px(66.0f));
@@ -1674,6 +1711,7 @@ void ViewportPanel::draw_controls(bool engine) {
         if (ui::ComboRaw("##primitive", &_primitive_idx, kViewerPrimitives,
                          kNumViewerPrimitives)) {
             if (_on_primitive_changed) _on_primitive_changed();
+            if (_mode == Mode::Engine || _mode == Mode::Hardware) refresh_buffer_keys();
             _dirty = true;
         }
         ui::help_on_hover(msg::viewport_primitive_help);
@@ -1798,7 +1836,7 @@ void ViewportPanel::draw_nav_controls() {
 
 void ViewportPanel::draw(bool training, int step) {
     const float y0 = ImGui::GetCursorPosY();
-    draw_controls(_mode == Mode::Engine);
+    draw_controls(_mode == Mode::Engine || _mode == Mode::Hardware);
     _controls_h = ImGui::GetCursorPosY() - y0;
     if (_controls_pad > 0.0f) ImGui::Dummy(ImVec2(1.0f, _controls_pad));
 
@@ -1834,8 +1872,36 @@ void ViewportPanel::draw(bool training, int step) {
         return;
     }
 
+    if (_mode == Mode::Hardware) {
+        try {
+            const int W = int(std::clamp(avail.x, 64.f, 4096.f));
+            const int H = int(std::clamp(avail.y, 64.f, 4096.f));
+            const unsigned tex = pump_hardware(W, H);
+            ImGui::Image((ImTextureID)(intptr_t)tex, ImVec2(float(W), float(H)), ImVec2(0,1), ImVec2(1,0));
+            if (_wipe_splits) draw_wipe(ImGui::GetItemRectMin(), ImGui::GetItemRectSize());
+            handle_input(float(H));
+        } catch (const std::exception& e) {
+            _last_error = e.what(); _hardware.destroy(); _mode = Mode::None;
+            ui::TextDisabledRaw(_last_error);
+        }
+        return;
+    }
     if (_mode == Mode::Preview) draw_preview(avail);
     else                        draw_engine(training, avail, step);
+}
+
+unsigned ViewportPanel::pump_hardware(int W, int H) {
+    if (!_hardware.loaded()) _hardware.load(_hardware_path, _hardware_center, _hardware_unit);
+    float view[16], fx, fy;
+    view_matrix(view); compute_intrinsics(W, H, fx, fy);
+    if (_ortho) { fx *= _m2s_scale; fy *= _m2s_scale; }
+    auto gamut = spirula::gamut_to_rec709(kViewerGamuts[_gamut_idx]);
+    HardwareSplatRenderer::Buffer buffer = HardwareSplatRenderer::Buffer::Rgb;
+    if (!_buffer_keys.empty()) HardwareSplatRenderer::buffer(_buffer_keys[_buffer_idx], buffer);
+    _hardware_tex = _hardware.render(W, H, view, _cam_model, fx, fy,
+        _primitive_idx, _sh_degree, gamut.data(), _transfer_idx, _linear_color, buffer);
+    _refining = _hardware.refining();
+    return _hardware_tex;
 }
 
 unsigned ViewportPanel::pump_preview(const ImVec2& avail, int& W, int& H) {
@@ -2071,6 +2137,9 @@ void ViewportPanel::pump_engine(bool training, const ImVec2& avail, int step) {
             if (res.error.empty()) {
                 upload(res);
                 _last_error.clear();
+                // Training moves the splats anyway; a still model is refined.
+                _refining = res.refining && !training;
+                if (_refining) _dirty = true;
                 if (_tool_pick_inflight) {
                     _tool_pick_inflight = false;
                     _tool_pick_done = true;
@@ -2125,7 +2194,11 @@ void ViewportPanel::pump_engine(bool training, const ImVec2& avail, int step) {
 
 void ViewportPanel::render_only(const ImVec2& avail) {
     note_motion(ImGui::GetTime());
-    if (_mode == Mode::Engine) pump_engine(false, avail, -1);
+    if (_mode == Mode::Hardware) {
+        try { pump_hardware(int(std::clamp(avail.x,64.f,4096.f)), int(std::clamp(avail.y,64.f,4096.f))); }
+        catch (const std::exception& e) { _last_error = e.what(); _hardware.destroy(); _mode = Mode::None; }
+    }
+    else if (_mode == Mode::Engine) pump_engine(false, avail, -1);
     else if (_mode == Mode::Preview) {
         int W, H;
         pump_preview(avail, W, H);
@@ -2163,8 +2236,9 @@ void ViewportPanel::draw_wipe(const ImVec2& tl, const ImVec2& size) const {
         const float top = tl.y + v0 * size.y, bottom = tl.y + v1 * size.y;
         const auto& source = _wipe_sources[i];
         if (i > 0) {
-            const bool preview = source.panel->_mode == Mode::Preview;
-            const unsigned tex = preview ? source.panel->_preview_tex : source.panel->_tex;
+            const bool hardware = source.panel->_mode == Mode::Hardware;
+            const bool preview = source.panel->_mode == Mode::Preview || hardware;
+            const unsigned tex = hardware ? source.panel->_hardware_tex : preview ? source.panel->_preview_tex : source.panel->_tex;
             if (tex)
                 dl->AddImage((ImTextureID)(intptr_t)tex, ImVec2(left, top), ImVec2(right, bottom),
                              ImVec2(lo, preview ? 1.0f - v0 : v0),

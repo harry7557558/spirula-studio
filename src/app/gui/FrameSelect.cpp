@@ -1,5 +1,6 @@
 // FrameSelect.cpp -- see FrameSelect.h.
 
+#include "data/ImageDiscovery.h"
 #include "app/gui/FrameSelect.h"
 #include "core/BufferedFile.h"
 
@@ -133,6 +134,7 @@ void move_file(const fs::path& from, const fs::path& to) {
 }
 
 bool is_picture(const fs::path& p) {
+    if (image_discovery::generated_cache(p)) return false;
     std::string ext = p.extension().string();
     for (char& c : ext) c = (char)std::tolower((unsigned char)c);
     return ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".bmp" || ext == ".tga" ||
@@ -387,8 +389,10 @@ int judge_image_folder(const std::string& dir, const FrameSelectOptions& options
     std::error_code ec;
     const fs::path root(dir);
     std::vector<fs::path> files;
-    for (fs::recursive_directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec))
+    for (fs::recursive_directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec)) {
+        if (image_discovery::skip_cache(it)) continue;
         if (it->is_regular_file(ec) && is_picture(it->path())) files.push_back(it->path());
+    }
     std::sort(files.begin(), files.end());
     app::PickRule rule{options.blur_reject, options.blur_neighbour, options.similar_bits};
     if (files.empty() || (!rule.on() && !options.judged)) return (int)files.size();

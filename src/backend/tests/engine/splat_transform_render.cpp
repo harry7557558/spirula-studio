@@ -3,7 +3,7 @@
 // Every attribute checkpoint/SplatTransform.h touches is on that path -- the
 // means, the orientation, the log scales, the SH bands, whose rotation is the
 // part a wrong sign survives everywhere except here, and the spherical-beta
-// lobes (Vulkan builds). The control renders the moved model with its colour
+// lobes. The control renders the moved model with its colour
 // rows left alone and must NOT match.
 //
 //   ./splat_transform_render        (either backend, no reference file)
@@ -67,11 +67,7 @@ int main() {
     };
 
     struct Basis { int degree, lobes; };
-    std::vector<Basis> bases = {{3, 0}, {4, 0}};
-#ifdef SS_BACKEND_VULKAN
-    bases.push_back({0, 2});
-    bases.push_back({3, 4});
-#endif
+    std::vector<Basis> bases = {{3, 0}, {4, 0}, {0, 2}, {3, 4}};
     for (const Basis& basis : bases) {
         const int degree = basis.degree;
         spirula::SplatCloud c;

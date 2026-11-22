@@ -240,13 +240,24 @@ int64_t engine_bin_finer_isects() {
 }
 
 void forward_3dgs(
-    std::string primitive,   // "3dgs", "mip", "3dgut"
+    std::string primitive,   // "3dgs", "mip", "3dgut", "2dgs"
     int sh_degree,
     bool packed,
     bool output_median,      // also emit per-pixel median depth
-    int dist_type_int        // distortion channel set (DistortionType); emits D = W*S - C^2
+    int dist_type_int,       // distortion channel set (DistortionType); emits D = W*S - C^2
+    bool output_normal
 ) {
+    // Read-and-clear, like the pending flags below. A stochastic frame renders
+    // no median, distortion or score.
+    const bool stochastic = engine().stochastic.armed && engine().camera.num == 1;
+    engine().stochastic.armed = false;
+    engine().stochastic.last_frames = 0;
+    if (stochastic) {
+        output_median = false;
+        dist_type_int = 0;
+    }
     const DistortionType dist_type = (DistortionType)dist_type_int;
+    output_normal = output_normal || dist_has_normal(dist_type);
     engine().primitive = primitive;
     engine().sh_degree = sh_degree;
     engine().packed = packed;
@@ -255,7 +266,7 @@ void forward_3dgs(
     const bool output_depth = !engine().fwd.skip_depth_pending;
     engine().fwd.skip_depth_pending = false;
     // The scores exist from the first optimizer step on.
-    const bool output_score = engine().fwd.score_pending &&
+    const bool output_score = !stochastic && engine().fwd.score_pending &&
                               engine().optim.accum_buffer.data_ptr() != nullptr;
     engine().fwd.score_pending = false;
     engine().fwd.image_fmt = engine().fwd.image_fmt_pending;
@@ -384,8 +395,10 @@ void forward_3dgs(
                 sh_value_packed_opt, sh_value_bounds_opt, num_sh_buffer, sh_value_bits, sh_bounds_stride);
             cam_ids = a; gauss_ids = b; aabb_vec = c; depths_vec = d;
             engine().fwd.splats_s = e;
-        } else if (primitive == "3dgut") {
-            auto [a, b, c, d, e] = projection_3dgut_packed_forward(
+        } else if (engine_primitive_eval3d(primitive)) {
+            auto fn = primitive == "2dgs" ? projection_2dgs_packed_forward
+                                          : projection_3dgut_packed_forward;
+            auto [a, b, c, d, e] = fn(
                 engine().cur_num_splats, color, in_splats,
                 _dt2d_tv(engine().camera.viewmats), _dv_tv(engine().camera.intrins),
                 (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
@@ -430,8 +443,10 @@ void forward_3dgs(
                 sh_value_packed_opt, sh_value_bounds_opt, num_sh_buffer, sh_value_bits, sh_bounds_stride);
             aabb_2d = a; depths_2d = b;
             engine().fwd.splats_s = c;
-        } else if (primitive == "3dgut") {
-            auto [a, b, c] = projection_3dgut_forward(
+        } else if (engine_primitive_eval3d(primitive)) {
+            auto fn = primitive == "2dgs" ? projection_2dgs_forward
+                                          : projection_3dgut_forward;
+            auto [a, b, c] = fn(
                 engine().cur_num_splats, color, in_splats,
                 _dt2d_tv(engine().camera.viewmats), _dv_tv(engine().camera.intrins),
                 (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
@@ -458,11 +473,19 @@ void forward_3dgs(
         image_ids_ptr = &engine().fwd.camera_ids;
 
     // Handing the projected conic to the intersector buys the tighter
-    // ellipse-vs-tile test instead of the conservative AABB one.
+    // ellipse-vs-tile test instead of the conservative AABB one. The eval3d
+    // rasterizers draw the splat itself, and are binned by its own footprint.
     ProjEllipseView ellipse = proj_ellipse_view(
-        engine().fwd.splats_s[0].data_ptr(), primitive == "3dgut");
-    if (primitive != "3dgut")  // the 3DGUT rasterizer draws the full gaussian
+        engine().fwd.splats_s[0].data_ptr(), engine_primitive_eval3d(primitive));
+    FootprintView footprint;
+    if (engine_primitive_eval3d(primitive))
+        footprint = footprint_view(
+            in_splats, packed ? engine().fwd.gaussian_ids.data_ptr() : nullptr,
+            _dt2d_tv(engine().camera.viewmats), _dt2d_tv(engine().camera.dist_coeffs),
+            engine().camera.model_str, engine().camera.distortion_str, primitive == "2dgs");
+    else
         ellipse.max_sigma = engine().fwd.kernel_cut;
+    ellipse.by_tile_only = stochastic && !_engine_stochastic_depth_sorted();
 
     auto& bin = bin_choice();
     engine().fwd.macro_log2 = engine_bin_macro_log2();
@@ -471,7 +494,7 @@ void forward_3dgs(
     timing.emplace(StepPart::Render, StepScale::SplatsPixels);
 
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-        aabb_q, depths_nd, ellipse,
+        aabb_q, depths_nd, ellipse, footprint,
         (uint32_t)engine().camera.num,
         _dv_tv(engine().camera.intrins),
         (uint32_t)engine().camera.width,
@@ -529,7 +552,20 @@ void forward_3dgs(
     DeviceTensor3D<int32_t> last_ids;
     DeviceTensor3D<float> render_median;
 
-    if (primitive == "3dgs") {
+    if (stochastic) {
+        const int kind = !engine_primitive_eval3d(primitive) ? 0 : primitive == "2dgs" ? 2 : 1;
+        auto [r, rTs] = rasterize_stochastic_fwd(
+            kind, output_normal, output_depth, engine().cur_num_splats,
+            in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids, depths_nd,
+            _dt2d_tv(engine().camera.viewmats), _dv_tv(engine().camera.intrins),
+            engine().camera.model_str, engine().camera.distortion_str,
+            _dt2d_tv(engine().camera.dist_coeffs), aabb_q,
+            (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
+            tile_offsets, flatten_ids, engine().fwd.macro_log2,
+            _engine_stochastic_frame(primitive, sh_degree, output_normal, !ellipse.by_tile_only),
+            engine().fwd.kernel_cut);
+        renders = r; render_Ts = rTs;
+    } else if (primitive == "3dgs") {
         auto [r, rTs, lids, dist, med] = rasterize_to_pixels_3dgs_fwd(
             engine().cur_num_splats,
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
@@ -545,8 +581,11 @@ void forward_3dgs(
             tile_offsets, flatten_ids, engine().fwd.macro_log2,
             dist_type, output_median, output_depth, score, engine().fwd.kernel_cut);
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
-    } else if (primitive == "3dgut") {
-        auto [r, rTs, lids, dist, med] = rasterize_to_pixels_3dgut_fwd(
+    } else if (engine_primitive_eval3d(primitive)) {
+        auto fn = primitive == "2dgs" ? rasterize_to_pixels_2dgs_fwd
+                  : output_normal     ? rasterize_to_pixels_3dgut_normal_fwd
+                                      : rasterize_to_pixels_3dgut_fwd;
+        auto [r, rTs, lids, dist, med] = fn(
             engine().cur_num_splats,
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
             _dt2d_tv(engine().camera.viewmats), _dv_tv(engine().camera.intrins),
@@ -609,6 +648,11 @@ void engine_debug_forward(
         engine().sh_degree = override_sh_degree;
     engine().background.enabled = false;
 
+    // A stochastic render's debug view averages in a channel of its own.
+    if (engine().stochastic.last_frames > 0) {
+        const auto& st = engine().stochastic;
+        engine_arm_stochastic(st.arm_channel | (1 << 16), st.arm_key);
+    }
     // Restore even when the forward throws: leaving the debug features_dc
     // swapped in would fail every subsequent training step (tensor size
     // mismatch) and kill the session over a bad debug render.

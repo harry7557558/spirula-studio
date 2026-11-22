@@ -123,7 +123,8 @@ int main(int argc, char** argv) {
     // Deterministic per-pixel output gradients (shared across configs).
     const int64_t n_pix = (int64_t)C * H * W;
     std::vector<float> h_v_rgb(n_pix * 3), h_v_depth(n_pix), h_v_T(n_pix),
-        h_v_med(n_pix), h_v_drgb(n_pix * 3), h_v_dd(n_pix), h_awmap(n_pix);
+        h_v_med(n_pix), h_v_drgb(n_pix * 3), h_v_dd(n_pix), h_awmap(n_pix),
+        h_v_nrm(n_pix * 3), h_v_dn(n_pix * 3);
     for (auto& v : h_v_rgb) v = uf(-1.f, 1.f);
     for (auto& v : h_v_depth) v = uf(-0.2f, 0.2f);
     for (auto& v : h_v_T) v = uf(-0.5f, 0.5f);
@@ -131,6 +132,8 @@ int main(int argc, char** argv) {
     for (auto& v : h_v_drgb) v = uf(-0.05f, 0.05f);
     for (auto& v : h_v_dd) v = uf(-0.05f, 0.05f);
     for (auto& v : h_awmap) v = uf(0.f, 1.f);
+    for (auto& v : h_v_nrm) v = uf(-0.5f, 0.5f);
+    for (auto& v : h_v_dn) v = uf(-0.05f, 0.05f);
     float* d_v_rgb = upload(h_v_rgb);
     float* d_v_depth = upload(h_v_depth);
     float* d_v_T = upload(h_v_T);
@@ -138,6 +141,8 @@ int main(int argc, char** argv) {
     float* d_v_drgb = upload(h_v_drgb);
     float* d_v_dd = upload(h_v_dd);
     float* d_awmap = upload(h_awmap);
+    float* d_v_nrm = upload(h_v_nrm);
+    float* d_v_dn = upload(h_v_dn);
     // Peak-weight seed: some splats keep it, the rest are raised past it.
     std::vector<float> h_mw(N);
     for (auto& v : h_mw) v = uf(0.f, 0.3f);
@@ -154,6 +159,11 @@ int main(int argc, char** argv) {
                                         DeviceTensor3D<float3>{}};
     RenderOutput::TensorTuple v_dists{t3f3(d_v_drgb), t3f1(d_v_dd),
                                       DeviceTensor3D<float3>{}};
+    // 2DGS (and 3DGUT asked to) renders and regularizes normals too.
+    RenderOutput::TensorTuple v_renders_n{t3f3(d_v_rgb), t3f1(d_v_depth),
+                                          t3f3(d_v_nrm)};
+    RenderOutput::TensorTuple v_dists_n{t3f3(d_v_drgb), t3f1(d_v_dd),
+                                        t3f3(d_v_dn)};
     // The RGB distortion gradient as the loss hands it over: a fixed multiple
     // of the depth one, either spelled out or left for the kernel to derive.
     const float kDistRatio = 0.6f;
@@ -171,20 +181,20 @@ int main(int argc, char** argv) {
     std::vector<float> acc;
 
     struct Cfg {
-        int prim;  // 0 = 3dgs, 2 = 3dgut
+        int prim;  // 0 = 3dgs, 2 = 3dgut, 3 = 2dgs, 4 = 3dgut with its normal
         bool packed;
         int cam;
         int dist;  // distortion tier, index into dist_fixture::kTierNames
         DistortionType dt;
         bool median;
         DensifyAccumMode aw;
-        bool vmg;  // 3dgut viewmat grad
+        bool vmg;  // eval3d viewmat grad
         bool mw;   // peak-weight output
         float cut; // 3dgs kernel_cut: Primitive3DGS::kernel_vis
         bool depth_grad = true;
     };
     // The 3dgs backward never sees the camera, so the tier sweep lives on the
-    // 3dgut rows; the 3dgs rows carry it through the projection only.
+    // eval3d rows; the 3dgs rows carry it through the projection only.
     const Cfg cfgs[] = {
         {0, false, 0, 0, DistortionType::None, false, DensifyAccumMode::None, false, true, 0.0f},
         {0, false, 0, 1, DistortionType::RGB_D, true, DensifyAccumMode::Max, false, false, 0.0f},
@@ -204,6 +214,15 @@ int main(int argc, char** argv) {
         {2, false, 0, 1, DistortionType::D, true, DensifyAccumMode::Sum, true, true, 0.0f, false},
         {0, false, 0, 0, DistortionType::None, true, DensifyAccumMode::None, false, false, 0.0f, false},
         {2, false, 0, 0, DistortionType::None, true, DensifyAccumMode::None, true, false, 0.0f, false},
+        {3, false, 0, 0, DistortionType::None, false, DensifyAccumMode::None, true, false, 0.0f},
+        {3, false, 0, 1, DistortionType::RGB_DN, true, DensifyAccumMode::Sum, false, true, 0.0f},
+        {3, false, 1, 2, DistortionType::DN, false, DensifyAccumMode::Max, true, false, 0.0f},
+        {3, true, 0, 2, DistortionType::D, false, DensifyAccumMode::Avg, false, true, 0.0f},
+        {3, true, 2, 0, DistortionType::RGB_D, true, DensifyAccumMode::None, false, false, 0.0f, false},
+        {4, false, 0, 1, DistortionType::RGB_DN, true, DensifyAccumMode::Sum, false, true, 0.0f},
+        {4, false, 1, 0, DistortionType::DN, false, DensifyAccumMode::None, true, false, 0.0f},
+        {4, true, 0, 2, DistortionType::None, false, DensifyAccumMode::Max, false, false, 0.0f},
+        {4, true, 3, 0, DistortionType::D, true, DensifyAccumMode::Avg, false, true, 0.0f},
     };
     const char* cams[4] = {"PINHOLE", "FISHEYE", "EQUISOLID",
                            "EQUIRECTANGULAR"};
@@ -213,7 +232,7 @@ int main(int argc, char** argv) {
     };
 
     for (const Cfg& cfg : cfgs) {
-        auto v_render_cfg = v_renders;
+        auto v_render_cfg = cfg.prim >= 3 ? v_renders_n : v_renders;
         if (!cfg.depth_grad) std::get<1>(v_render_cfg) = DeviceTensor3D<float>{};
         backend::memset_sync(d_radii, 0, N * sizeof(float));
 
@@ -224,8 +243,9 @@ int main(int argc, char** argv) {
         DeviceVector<uint2> aabb_vec;
         DeviceTensorFloatND depths_nd;
         if (cfg.packed) {
-            auto fn = cfg.prim == 0 ? projection_3dgs_packed_forward
-                                    : projection_3dgut_packed_forward;
+            auto fn = cfg.prim == 0   ? projection_3dgs_packed_forward
+                      : cfg.prim == 3 ? projection_2dgs_packed_forward
+                                      : projection_3dgut_packed_forward;
             auto out = fn(N, ColorBasis{3, 0}, in_splats, ttv(d_vm, {(int64_t)C, 16}),
                           ttv(d_intr, {(int64_t)C, 4}), W, H, cams[cfg.cam],
                           dist_fixture::kTierNames[cfg.dist],
@@ -239,8 +259,9 @@ int main(int argc, char** argv) {
             aabb_2d = vec_to_2d_aabb(aabb_vec);
             depths_nd = DeviceTensorFloatND(depths_vec);
         } else {
-            auto fn = cfg.prim == 0 ? projection_3dgs_forward
-                                    : projection_3dgut_forward;
+            auto fn = cfg.prim == 0   ? projection_3dgs_forward
+                      : cfg.prim == 3 ? projection_2dgs_forward
+                                      : projection_3dgut_forward;
             auto out = fn(N, ColorBasis{3, 0}, in_splats, ttv(d_vm, {(int64_t)C, 16}),
                           ttv(d_intr, {(int64_t)C, 4}), W, H, cams[cfg.cam],
                           dist_fixture::kTierNames[cfg.dist],
@@ -258,9 +279,16 @@ int main(int argc, char** argv) {
         DeviceVector<int32_t>* image_ids_ptr =
             cfg.packed && cam_ids.data_ptr() ? &cam_ids : nullptr;
         int macro_log2 = kMacroLog2Default;
+        FootprintView footprint;
+        if (cfg.prim >= 2)
+            footprint = footprint_view(
+                in_splats, cfg.packed ? gauss_ids.data_ptr() : nullptr,
+                ttv(d_vm, {(int64_t)C, 16}), dist_tv(cfg.dist), cams[cfg.cam],
+                dist_fixture::kTierNames[cfg.dist], cfg.prim == 3);
         auto [isect_ids, flatten_ids, tile_offsets] =
             do_intersect_tile_generic(aabb_2d, depths_nd,
-                                      ellipse_view(splats_s, cfg.prim == 2, cfg.cut), C,
+                                      ellipse_view(splats_s, cfg.prim >= 2, cfg.cut),
+                                      footprint, C,
                                       ttv(d_intr, {(int64_t)C, 4}), W, H,
                                       image_ids_ptr, /*tile_active=*/nullptr,
                                       macro_log2);
@@ -272,8 +300,11 @@ int main(int argc, char** argv) {
                    DeviceTensor3D<int32_t>, RenderOutput::TensorTuple,
                    DeviceTensor3D<float>>
             rout;
-        if (cfg.prim == 2) {
-            rout = rasterize_to_pixels_3dgut_fwd(
+        if (cfg.prim >= 2) {
+            auto fn = cfg.prim == 2   ? rasterize_to_pixels_3dgut_fwd
+                      : cfg.prim == 3 ? rasterize_to_pixels_2dgs_fwd
+                                      : rasterize_to_pixels_3dgut_normal_fwd;
+            rout = fn(
                 N, in_splats, splats_s, gauss_ids,
                 ttv(d_vm, {(int64_t)C, 16}), ttv(d_intr, {(int64_t)C, 4}),
                 cams[cfg.cam], dist_fixture::kTierNames[cfg.dist],
@@ -299,7 +330,7 @@ int main(int argc, char** argv) {
         std::optional<RenderOutput::TensorTuple> dist_fwd_opt, v_dist_opt;
         if (dist_any(cfg.dt)) {
             dist_fwd_opt = distortions;
-            v_dist_opt = v_dists;
+            v_dist_opt = cfg.prim >= 3 ? v_dists_n : v_dists;
         }
         DeviceTensor3D<float> awmap_t = accum_any(cfg.aw)
             ? t3f1(d_awmap) : DeviceTensor3D<float>{};
@@ -313,9 +344,12 @@ int main(int argc, char** argv) {
         }
 
         // --- rasterization backward ---
-        if (cfg.prim == 2) {
+        if (cfg.prim >= 2) {
+            auto bwd = cfg.prim == 2   ? rasterize_to_pixels_3dgut_bwd
+                       : cfg.prim == 3 ? rasterize_to_pixels_2dgs_bwd
+                                       : rasterize_to_pixels_3dgut_normal_bwd;
             auto [v_w, v_s, v_viewmats, aw_out] =
-                rasterize_to_pixels_3dgut_bwd(
+                bwd(
                     N, in_splats, splats_s, gauss_ids,
                     ttv(d_vm, {(int64_t)C, 16}),
                     ttv(d_intr, {(int64_t)C, 4}), cams[cfg.cam],

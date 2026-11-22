@@ -181,7 +181,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(std::optional<float>, relative_scale, std::nullopt, "scene", "expert", "") \
                                                                              \
     /* ==== splats -- what a splat is and how the splats start out ==== */   \
-    X(std::string, primitive, "3dgs", "splats", "basic", "3dgs|mip|3dgut")   \
+    X(std::string, primitive, "3dgs", "splats", "basic", "3dgs|mip|3dgut|2dgs")   \
     X(int, sh_degree, 3, "splats", "basic", "")                              \
     X(int, sb_lobes, 0, "splats", "basic", "")                               \
     X(int, sh_degree_warmup_every, 0, "splats", "expert", "")             \
@@ -271,21 +271,21 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(float, depth_distortion_reg, 0.0f, "geometry", "basic", "")            \
     X(float, normal_distortion_reg, 0.0f, "geometry", "basic", "")           \
     X(float, rgb_distortion_reg, 0.0f, "geometry", "basic", "")              \
-    X(int, distortion_reg_warmup, 6000, "geometry", "basic", "")             \
-    X(float, normal_reg_weight, 0.04f, "geometry", "basic", "")              \
-    X(int, normal_reg_warmup, 6000, "geometry", "advanced", "")              \
+    X(int, distortion_reg_warmup, 8000, "geometry", "basic", "")             \
+    X(std::string, distortion_reg_warmup_schedule, "quartic", "geometry", "advanced", "linear|cosine|quadratic|quartic|step") \
+    X(float, normal_reg_weight, 0.0f, "geometry", "basic", "")               \
     X(float, alpha_reg_weight, 0.0f, "geometry", "basic", "")                \
     X(int, alpha_reg_warmup, 12000, "geometry", "advanced", "")              \
-    X(int, reg_warmup_length, 0, "geometry", "advanced", "")                 \
+    X(std::string, alpha_reg_warmup_schedule, "linear", "geometry", "advanced", "linear|cosine|quadratic|quartic|step") \
     X(float, depth_supervision_weight, 0.0f, "geometry", "basic", "")        \
     X(float, normal_supervision_weight, 0.01f, "geometry", "basic", "")      \
     X(std::optional<bool>, input_depth_is_ray_depth, std::nullopt, "geometry", "basic", "") \
-    X(int, supervision_warmup, 0, "geometry", "expert", "")                  \
     X(float, mean_median_depth_weight, 0.0f, "geometry", "advanced", "")     \
     X(float, median_depth_normal_reg_weight, 0.0f, "geometry", "expert", "") \
     X(float, median_normal_supervision_weight, 0.0f, "geometry", "expert", "") \
     X(float, median_render_normal_reg_weight, 0.0f, "geometry", "expert", "")\
-    X(int, median_warmup, 6000, "geometry", "expert", "")                    \
+    X(int, median_warmup, 8000, "geometry", "expert", "")                    \
+    X(std::string, median_warmup_schedule, "quartic", "geometry", "expert", "linear|cosine|quadratic|quartic|step") \
     X(int, pca_reg_neighbors, 0, "geometry", "advanced", "")                 \
     X(std::string, pca_reg_knn, "morton-best", "geometry", "advanced", "exact|exact-cached|morton|morton-cached|morton-best|morton-best-cached") \
     X(int, pca_reg_window, 0, "geometry", "expert", "")                      \
@@ -311,7 +311,11 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(float, opacity_decay, 0.0f, "shape", "basic", "")                      \
     X(float, scale_decay, 0.0f, "shape", "basic", "")                        \
     X(float, erank_reg, 0.001f, "shape", "basic", "")                        \
+    X(int, erank_reg_warmup, 0, "shape", "advanced", "")                     \
+    X(std::string, erank_reg_warmup_schedule, "linear", "shape", "advanced", "linear|cosine|quadratic|quartic|step") \
     X(float, erank_reg_s3, 0.0f, "shape", "advanced", "")                    \
+    X(int, erank_reg_s3_warmup, 8000, "shape", "advanced", "")               \
+    X(std::string, erank_reg_s3_warmup_schedule, "quadratic", "shape", "advanced", "linear|cosine|quadratic|quartic|step") \
     X(float, scale_regularization_weight, 0.0f, "shape", "advanced", "")     \
     X(float, max_gauss_ratio, 10.0f, "shape", "advanced", "")                \
     X(float, dc_reg, 0.001f, "shape", "basic", "")                           \
@@ -468,6 +472,7 @@ inline constexpr TrainPresetInfo kTrainPresets[] = {
     {"hdr"},
     {"synthetic"},
     {"meshing"},
+    {"2dgs"},
     // {"academic-baseline"},  // hidden by default, uncomment to enable
 };
 
@@ -506,7 +511,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.center_method = "focus";
         c.background_mode = "sh";
         c.depth_distortion_reg = 0.01f;
-        c.rgb_distortion_reg = 0.01f;
+        // c.rgb_distortion_reg = 0.01f;
         c.erank_reg = 0.05f;
         return true;
     }
@@ -542,7 +547,8 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         return true;
     }
     if (name == "meshing") {
-        c.primitive = "mip";
+        // c.primitive = "mip";
+        c.primitive = "3dgut";
         c.sh_degree = 0;
         c.dc_reg = 10.0f;
         // c.sh_reg = 10.0f;
@@ -551,13 +557,31 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         // c.depth_distortion_reg = 0.01f;
         c.floater_suppression = "strong";
         c.normal_distortion_reg = 0.01f;
+        c.normal_reg_weight = 0.04f;
         c.mean_median_depth_weight = 0.01f;
         c.median_depth_normal_reg_weight = 0.01f;
-        c.normal_supervision_weight = 0.01f;
+        // c.normal_supervision_weight = 0.01f;
         c.median_normal_supervision_weight = 0.01f;
         c.median_render_normal_reg_weight = 0.01f;
         c.erank_reg = 0.01f;
         c.erank_reg_s3 = 0.01f;
+        return true;
+    }
+    if (name == "2dgs") {
+        c.primitive = "2dgs";
+        c.sh_degree = 0;
+        c.dc_reg = 10.0f;
+        c.overexposure_reg = 10.0f;
+        c.background_mode = "noise";
+        c.depth_distortion_reg = 0.1f;
+        c.normal_distortion_reg = 0.01f;
+        c.normal_reg_weight = 0.04f;
+        c.mean_median_depth_weight = 0.01f;
+        c.median_depth_normal_reg_weight = 0.01f;
+        // c.normal_supervision_weight = 0.01f;
+        c.median_normal_supervision_weight = 0.01f;
+        c.median_render_normal_reg_weight = 0.01f;
+        c.erank_reg = 0.01f;
         return true;
     }
     if (name == "academic-baseline") {

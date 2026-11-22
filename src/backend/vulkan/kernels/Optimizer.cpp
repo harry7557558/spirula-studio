@@ -448,8 +448,9 @@ struct OptimGeoParams {
     uint32_t has_steps, has_densify_score, numel, wgs_per_row, has_visit,
         skip_unrendered_reg;
     uint32_t has_auxiliary_opacities;
+    uint32_t surfel, _pad0;
 };
-static_assert(sizeof(OptimGeoParams) == 48 * 8 + 32 * 4,
+static_assert(sizeof(OptimGeoParams) == 48 * 8 + 34 * 4,
               "params layout must match the slang struct");
 
 int64_t tv_numel(const TorchTensorView& tv) {
@@ -605,6 +606,7 @@ void fused_optim_3dgs_geometry(
     const float max_gauss_ratio, const float scale_regularization_weight,
     const float mcmc_opacity_reg_weight, const float mcmc_scale_reg_weight,
     const float erank_reg_weight, const float erank_reg_weight_s3, const float quat_norm_reg_weight,
+    bool surfel,
     const float dc_reg_weight, const float sh_reg_weight,
     const float max_screen_size, const float max_screen_size_penalty,
     bool use_scale_agnostic_mean,
@@ -620,6 +622,7 @@ void fused_optim_3dgs_geometry(
     OptimGeoParams p{};
     p.auxiliary_opacities = vkk::or_fallback(auxiliary_opacities.data_ptr());
     p.has_auxiliary_opacities = auxiliary_opacities.data_ptr() ? 1u : 0u;
+    p.surfel = surfel ? 1u : 0u;
     p.means = (uint64_t)means.data_ptr();
     p.v_means = vkk::or_fallback(v_means.data_ptr());
     p.g1_means = vkk::or_fallback(g1_means.data_ptr());

@@ -287,6 +287,9 @@ if(SS_BUILD_GUI)
         ${CMAKE_BINARY_DIR}/app_generated/app_banner.h
         AppBanner)
 
+    ss_embed_file(${SS_ROOT}/viewer/js/shaders.js
+        ${CMAKE_BINARY_DIR}/app_generated/splat_shaders.h SplatShaders)
+
     file(GLOB SS_GUI_SOURCES CONFIGURE_DEPENDS
         ${SS_SRC}/app/gui/*.cpp ${SS_SRC}/app/gui/edit/*.cpp
         ${SS_SRC}/app/gui/render/*.cpp ${SS_SRC}/app/gui/mask/*.cpp)
@@ -570,6 +573,13 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/gui/Subprocess.cpp)
     ss_configure_app(command_argv_test)
 
+    add_executable(hardware_splat_test
+        ${SS_SRC}/app/gui/tests/hardware_splat_test.cpp
+        ${SS_SRC}/app/gui/HardwareSplatRenderer.cpp
+        ${SS_SRC}/app/gui/GlLoader.cpp)
+    ss_configure_app(hardware_splat_test)
+    target_link_libraries(hardware_splat_test PRIVATE glfw OpenGL::GL)
+
     add_executable(dense_live_preview_test
         ${SS_SRC}/app/gui/tests/dense_live_preview_test.cpp
         ${SS_SRC}/app/gui/SfmProgress.cpp
@@ -734,6 +744,7 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/Pano360.cpp
         ${SS_FILM_REEL_SOURCES})
     ss_configure_app(dataset_prep_test)
+    target_compile_definitions(dataset_prep_test PRIVATE SS_SOURCE_HASH_TEST_HOOKS=1)
 
     if(SS_BUILD_SAM)
         get_target_property(SS_DATASET_PREP_TEST_SOURCES dataset_prep_test SOURCES)

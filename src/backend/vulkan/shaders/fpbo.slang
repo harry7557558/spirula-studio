@@ -143,7 +143,7 @@ struct FpboParams {
     uint32_t has_visit;
     uint32_t skip_unrendered_reg;
     uint32_t sb_base; // float3 coefficient of the first lobe in a row
-    uint32_t _pad0;
+    uint32_t surfel;  // per_splat_losses_bwd's
 };
 
 [ForceInline]
@@ -309,7 +309,7 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                              p.mcmc_scale_reg_weight, p.max_gauss_ratio,
                              p.scale_regularization_weight,
                              p.erank_reg_weight, p.erank_reg_weight_s3,
-                             p.quat_norm_reg_weight);
+                             p.quat_norm_reg_weight, p.surfel != 0);
         if (regularize) {
             g.v_scale += v_scale_t;
             g.v_quat += v_quat_t;
@@ -361,6 +361,8 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         float3 new_scale =
             s.scale - p.lr_scales * ibc1 * g1v /
                           (oq_sqrt3(g2v * ibc2) + float3(kFpboEps));
+        // 2DGS: z stays at or below the disc, so a collapsed disc reads as dead.
+        if (p.surfel != 0) new_scale.z = min(new_scale.z, max(new_scale.x, new_scale.y));
         p.scales[3 * gid] = new_scale.x;
         p.scales[3 * gid + 1] = new_scale.y;
         p.scales[3 * gid + 2] = new_scale.z;

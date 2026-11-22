@@ -7,6 +7,7 @@
 // same <chunk> an export writes, and its tie points are the cloud.
 // The cameras become a transforms.json-shaped meta for parse_nerfstudio_meta.
 
+#include "data/ImageDiscovery.h"
 #include "data/DatasetParser.h"
 #include "i18n/catalog/Data.h"
 #include "data/Json.h"
@@ -435,11 +436,13 @@ JsonValue metashape_meta(const std::string& dataset_dir,
                                  image_dir.string() +
                                  " does not exist; specify using --image-dir");
     std::vector<std::string> image_filenames;
-    if (fs::is_directory(image_dir))
-        for (const auto& entry : fs::recursive_directory_iterator(image_dir))
-            if (entry.is_regular_file())
-                image_filenames.push_back(
-                    fs::relative(entry.path(), root).generic_string());
+    if (fs::is_directory(image_dir)) {
+        for (fs::recursive_directory_iterator it(image_dir), end; it != end; ++it) {
+            if (image_discovery::skip_cache(it)) continue;
+            if (it->is_regular_file())
+                image_filenames.push_back(fs::relative(it->path(), root).generic_string());
+        }
+    }
 
     // ---- The <chunk>: an export's first child, or the project's own --------
     const std::string source = project_only ? psx_path.string() : xml_path.string();

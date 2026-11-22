@@ -152,7 +152,7 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
         (packed && cam_ids.data_ptr()) ? &cam_ids : nullptr;
     int macro_log2 = kMacroLog2Default;
     auto intersections = do_intersect_tile_generic(
-        aabb_2d, depths_nd, ellipse_view(splats_s, false), C,
+        aabb_2d, depths_nd, ellipse_view(splats_s, false), FootprintView{}, C,
         ttv(d_intr, {(int64_t)C, 4}), W, H, img_ids, /*tile_active=*/nullptr,
         macro_log2);
     auto& flatten_ids = std::get<1>(intersections);

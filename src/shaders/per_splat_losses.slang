@@ -31,7 +31,7 @@ float erank_reg_3dgs(float3 scales, float erank_reg, float erank_reg_s3) {
     float s2 = max(1.0 - s1 - s3, kMinEigenRatio);
     float r = exp(-s1*log(s1) - s2*log(s2) - s3*log(s3));
     float reg = max(-log(r-0.99999), 0.0);
-    return erank_reg * reg + erank_reg_s3 * s3;
+    return erank_reg * reg + erank_reg_s3 * s3*s3;
 }
 
 [ForceInline]
@@ -88,7 +88,8 @@ float mcmc_scale_reg_3dgs(float3 scales, float mcmc_scale_reg_weight) {
 [ForceInline]
 [Differentiable]
 float mcmc_scale_reg_2dgs(float2 scales, float mcmc_scale_reg_weight) {
-    scales = exp(scales);
+    scales = max(scales, kMinLogScale);
+    mcmc_scale_reg_weight *= 1e-2;  // as mcmc_scale_reg_3dgs
     return mcmc_scale_reg_weight * (scales.x + scales.y) / 2.0;
 }
 
@@ -112,14 +113,14 @@ float[5] per_splat_losses(
     no_diff float scale_regularization_weight,
     no_diff float erank_reg_weight,
     no_diff float erank_reg_weight_s3,
-    no_diff float quat_norm_reg_weight
+    no_diff float quat_norm_reg_weight,
+    no_diff bool surfel  // 2DGS: scale.z is unused, so only x and y are regularized
 ) {
-    constexpr bool is_3dgs = true;
     scales = max(scales, kFiniteLogScale);
     float losses[5];
     losses[0] = mcmc_opacity_reg(opacity, mcmc_opacity_reg_weight);
     losses[4] = quat_norm_reg(quat, quat_norm_reg_weight);
-    if (is_3dgs) {
+    if (!surfel) {
         losses[1] = mcmc_scale_reg_3dgs(scales, mcmc_scale_reg_weight);
         losses[2] = scale_reg_3dgs(scales, max_gauss_ratio, scale_regularization_weight);
         losses[3] = erank_reg_3dgs(scales, erank_reg_weight, erank_reg_weight_s3);
@@ -144,7 +145,8 @@ void per_splat_losses_bwd(
     no_diff float scale_regularization_weight,
     no_diff float erank_reg_weight,
     no_diff float erank_reg_weight_s3,
-    no_diff float quat_norm_reg_weight
+    no_diff float quat_norm_reg_weight,
+    no_diff bool surfel
 ) {
     var p_scales = diffPair(scales);
     var p_opacity = diffPair(opacity);
@@ -158,6 +160,7 @@ void per_splat_losses_bwd(
         erank_reg_weight,
         erank_reg_weight_s3,
         quat_norm_reg_weight,
+        surfel,
         v_loss
     );
     v_scales = p_scales.d;

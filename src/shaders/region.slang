@@ -51,10 +51,11 @@ float aabb_d2(float3 p, float3 lo, float3 hi) {
 
 // The metric between a query and one seed, negative for a seed that could
 // not have seen the query; see the constants above.
-float seed_d2(float3 p, float3 n, bool has_n, float4 seed) {
+float seed_d2(float3 p, float3 n, bool has_n, float4 seed, bool euclidean) {
     float3 d = p - seed.xyz;
     float e2 = dot(d, d);
     uint packed = asuint(seed.w);
+    if (euclidean) return e2;
     uint dir_bits = packed >> 8;
     float3 dir;
     if (dir_bits != kSeedOmni) {
@@ -72,16 +73,14 @@ float seed_d2(float3 p, float3 n, bool has_n, float4 seed) {
     return e2;
 }
 
-// Label of the nearest seed, kLabelNone for an empty field.
-[CudaDeviceExport]
-uint label_field_nearest(float3 p, float3 n, bool has_n, float4* bvh, float4* seeds,
-                         uint num_nodes) {
-    if (num_nodes == 0) return kLabelNone;
+uint label_field_query(float3 p, float3 n, bool has_n, float4* bvh, float4* seeds,
+                         uint num_nodes, bool euclidean, bool index) {
+    if (num_nodes == 0) return index ? 0xFFFFFFFFu : kLabelNone;
     uint stack[48];
     uint sp = 0;
     stack[sp++] = 0;
     float best = 3.0e38;
-    uint label = kLabelNone;
+    uint label = index ? 0xFFFFFFFFu : kLabelNone;
     while (sp > 0) {
         uint node = stack[--sp];
         float4 n0 = bvh[2 * node];
@@ -92,10 +91,10 @@ uint label_field_nearest(float3 p, float3 n, bool has_n, float4* bvh, float4* se
         if (count > 0) {
             for (uint i = first; i < first + count; i++) {
                 float4 s = seeds[i];
-                float e2 = seed_d2(p, n, has_n, s);
+                float e2 = seed_d2(p, n, has_n, s, euclidean);
                 if (e2 >= 0.0 && e2 < best) {
                     best = e2;
-                    label = asuint(s.w) & 0xFFu;
+                    label = index ? i : asuint(s.w) & 0xFFu;
                 }
             }
         } else {
@@ -111,6 +110,17 @@ uint label_field_nearest(float3 p, float3 n, bool has_n, float4* bvh, float4* se
         }
     }
     return label;
+}
+
+[CudaDeviceExport]
+uint label_field_nearest(float3 p, float3 n, bool has_n, float4* bvh, float4* seeds,
+                         uint num_nodes) {
+    return label_field_query(p, n, has_n, bvh, seeds, num_nodes, false, false);
+}
+
+[CudaDeviceExport]
+uint field_seed_nearest(float3 p, float4* bvh, float4* seeds, uint num_nodes) {
+    return label_field_query(p, float3(0), false, bvh, seeds, num_nodes, true, true);
 }
 
 // Whether `p` (with normal `n` when has_n) is inside the program's region.
@@ -165,7 +175,7 @@ bool region_contains(float3 p, float3 n, bool has_n, float4* program, uint num_p
             float4 c = program[i * kRegionNodeStride + 1];
             v = dot(c.xyz, p) + c.w >= 0.0;
         } else if (type == kRegionLabel) {
-            v = label_field_nearest(p, n, has_n, bvh, seeds, num_field_nodes) == uint(h.w);
+            v = label_field_query(p, n, has_n, bvh, seeds, num_field_nodes, h.y != 0.0, false) == uint(h.w);
         } else if (type == kRegionAll) {
             v = true;
         } else if (type == kRegionNone) {

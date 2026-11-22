@@ -705,9 +705,11 @@ void test_auto_primitive() {
               resolve_primitive("", "3dgs", pin, 1920, 1080) == "3dgs" &&
               resolve_primitive("", "mip", pin, 1920, 1080) == "mip" &&
               resolve_primitive("", "3dgut", pin, 1920, 1080) == "3dgs" &&
-              resolve_primitive("mip", "3dgs", sphere, 1920, 960) == "mip",
-          "the automatic primitive: 3DGUT for the lens that needs it, else as trained; "
-          "a chosen one stays");
+              resolve_primitive("mip", "3dgs", sphere, 1920, 960) == "mip" &&
+              resolve_primitive("", "2dgs", folding, 1920, 1080) == "2dgs" &&
+              resolve_primitive("3dgs", "2dgs", pin, 1920, 1080) == "3dgs",
+          "the automatic primitive: 2DGS as trained, else 3DGUT for the lens that needs it, "
+          "else as trained; a chosen one stays");
 }
 
 // Who is on screen when, and how far each is through its way in or out.

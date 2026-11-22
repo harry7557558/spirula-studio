@@ -22,12 +22,33 @@
 #include "primitives/Primitive.cuh"
 
 // Explicit primitive -> rendered channel set. The only place the engine encodes
-// what each primitive renders; update here when adding a primitive (e.g. a
-// normal-rendering one would return RGB_DN).
-inline RenderOutputType engine_primitive_pixel_type(const std::string& primitive) {
-    if (primitive == "3dgs" || primitive == "mip" || primitive == "3dgut")
+// what each primitive renders; update here when adding a primitive. 3DGUT
+// renders a normal only when asked; 2DGS always does.
+inline RenderOutputType engine_primitive_pixel_type(const std::string& primitive,
+                                                    bool want_normal = false) {
+    if (primitive == "3dgs" || primitive == "mip")
         return RenderOutputType::RGB_D;
+    if (primitive == "3dgut")
+        return want_normal ? RenderOutputType::RGB_DN : RenderOutputType::RGB_D;
+    if (primitive == "2dgs")
+        return RenderOutputType::RGB_DN;
     throw std::runtime_error("engine_primitive_pixel_type: unknown primitive: " + primitive);
+}
+
+// The loss terms that read the rendered normal (the per-pixel loss in
+// shaders/per_pixel_losses.slang).
+inline bool engine_loss_reads_render_normal(
+    const std::array<float, (int)LossWeightIndex::length>& w, bool has_gt_normal) {
+    return w[(int)LossWeightIndex::NormalReg] != 0.0f ||
+           w[(int)LossWeightIndex::NormalDistReg] != 0.0f ||
+           w[(int)LossWeightIndex::MedianRenderNormalReg] != 0.0f ||
+           (has_gt_normal && w[(int)LossWeightIndex::NormalSup] != 0.0f);
+}
+
+// 3DGUT and 2DGS rasterize per-pixel rays, write world-geometry gradients from
+// the rasterizer, and share 3DGUT's projection backward and fused optimizer.
+inline bool engine_primitive_eval3d(const std::string& primitive) {
+    return primitive == "3dgut" || primitive == "2dgs";
 }
 
 // Pick the distortion channel set from the per-channel weights, restricted to
@@ -748,6 +769,21 @@ struct EngineState {
     // once. Not a function-local static: engine_reset() frees the pool, and a
     // flag outliving it leaves the next scene reading the reallocated buffer.
     bool    v_losses_uploaded = false;
+
+    // Stochastic viewer renders (engine/EngineStochastic.cpp): a running sum per
+    // channel (engine_arm_stochastic), restarted whenever its key moves.
+    struct Stochastic {
+        struct Sum {
+            uint64_t key = 0;
+            uint32_t frames = 0;
+        };
+        std::map<int, Sum> sums;
+        bool     armed = false;
+        int      arm_channel = 0;
+        uint64_t arm_key = 0;
+        uint32_t last_frames = 0;  // what the last forward averaged; 0: not stochastic
+        uint64_t revision = 0;     // moves whenever the splats change outside a train step
+    } stochastic;
 
     WorldSplats    world;
     CameraTable    camera;

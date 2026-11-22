@@ -293,6 +293,32 @@ SS_MSG(preset_meshing_help,
     TR("Ağ çıkarmak üzere splat eğitmek için hazır ayar. Splat'ların kendi "
        "görünüşünden çok, üretilecek ağ geometrisinin niteliğini gözetir."));
 
+SS_MSG(preset_2dgs_help,
+    EN("Preset for training splats for meshing. Produces better geometry on "
+       "flat areas, at the cost of fine detail."),
+    JA("メッシュ化のためにスプラットを学習するプリセットです。平らな部分の形状は"
+       "よくなりますが、細部は失われます。"),
+    ZH_HANS("为生成网格而训练泼溅的预设。平坦区域的几何更好，但会损失细节。"),
+    ZH_HANT("為產生網格而訓練潑濺的預設。平坦區域的幾何更好，但會損失細節。"),
+    KO("메시로 만들기 위해 스플랫을 학습하는 프리셋입니다. 평평한 부분의 "
+       "형상은 좋아지지만 세부 묘사는 줄어듭니다."),
+    DE("Voreinstellung für das Training von Splats zur Netzerzeugung. Bessere "
+       "Geometrie auf flachen Flächen, auf Kosten feiner Details."),
+    FR("Préréglage pour entraîner des splats en vue du maillage. Meilleure "
+       "géométrie sur les zones planes, au détriment des détails fins."),
+    ES("Preajuste para entrenar splats con vistas al mallado. Mejor geometría "
+       "en las zonas planas, a costa de los detalles finos."),
+    PT("Predefinição para treinar splats visando a malha. Melhor geometria nas "
+       "áreas planas, à custa dos detalhes finos."),
+    IT("Preimpostazione per addestrare splat in vista della mesh. Geometria "
+       "migliore sulle zone piatte, a scapito dei dettagli fini."),
+    NL("Voorinstelling om splats te trainen met het oog op mesh-generatie. "
+       "Betere geometrie op vlakke delen, ten koste van fijne details."),
+    RU("Пресет для обучения сплатов под построение меша. Лучше геометрия "
+       "плоских участков, но теряются мелкие детали."),
+    TR("Ağ çıkarmak üzere splat eğitmek için hazır ayar. Düz alanlarda daha iyi "
+       "geometri verir, ince ayrıntılar kaybolur."));
+
 SS_MSG(preset_academic_baseline,
     EN("Academic baseline"),
     JA("論文どおりのベースライン"),
@@ -343,6 +369,7 @@ inline constexpr PresetText kPresetText[] = {
     {"hdr",               &preset_hdr,               &preset_hdr_help},
     {"synthetic",         &preset_synthetic,         &preset_synthetic_help},
     {"meshing",           &preset_meshing,           &preset_meshing_help},
+    {"2dgs",              &preset_meshing,           &preset_2dgs_help},
     // hidden by default, uncomment to enable
    //  {"academic-baseline", &preset_academic_baseline, &preset_academic_baseline_help},
 };

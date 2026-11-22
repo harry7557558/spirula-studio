@@ -55,6 +55,7 @@ void sort_pairs(DoubleBuffer<KeyT>& keys, DoubleBuffer<ValueT>& values,
                 int64_t num_items, int begin_bit, int end_bit,
                 Stream stream = kDefaultStream);
 
+// in may equal out, as with CUB.
 template <typename T>
 void inclusive_sum(const T* in, T* out, int64_t num_items,
                    Stream stream = kDefaultStream);

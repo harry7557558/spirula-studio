@@ -479,7 +479,7 @@ static void run(ColorBasis basis, bool eval3d, const char* cam) {
            std::nullopt, NonShQuantState{}, SplatVisitState{}, {},
            DeviceVector<float>(ttv(radii, {N, 1})), DeviceVector<float>{},
            1e-4f, 1e-3f, 5e-3f, 5e-2f, 2.5e-3f, 1e-4f, 2.5e-3f,
-           /*max_gauss_ratio=*/10.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
+           /*max_gauss_ratio=*/10.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, /*surfel=*/false,
            /*dc_reg=*/0.f, /*sh_reg=*/0.f, /*max_screen_size=*/1e9f, 0.f,
            false, false, 1e-6f, (int32_t)1, /*quantization_level=*/0);
         backend::device_synchronize();

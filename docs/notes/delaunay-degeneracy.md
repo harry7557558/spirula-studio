@@ -19,10 +19,12 @@ endpoints `m ± k·σ_i·a_i` of the principal axes. Per splat that is
 - six points on a common ellipsoid — an exactly cospherical sextuple whenever
   the splat is isotropic.
 
-A trained scene adds near-duplicates: an axis shorter than an ulp of the centre
-collapses `m ± o` onto `m`. In a 10M-point sample of a 15M-splat scene
-(coordinates spanning ±350) there were 1508 exactly repeated
-points and no fully collapsed splats.
+A trained scene adds near-duplicates where a whole splat is smaller than an ulp
+of its centre, which collapses `m ± o` onto `m`. A thin axis alone does not:
+each axis's offset is floored at a quarter of the largest
+(`kSampleMinAxisRatio`, [2dgs.md](2dgs.md#meshing)). Without the floor, a
+10M-point sample of a 15M-splat scene (coordinates spanning ±350) had 1508
+exactly repeated points, and a 2dgs model collapses every splat's third axis.
 
 None of this is pathological data — it is what every mesh export feeds in.
 

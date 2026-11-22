@@ -541,6 +541,21 @@ SS_MSG(log_done,
     RU("готово: записано {0}, уже было {1}, за {2}"),
     TR("bitti: {0} yazıldı, {1} zaten vardı, süre {2}"));
 
+SS_MSG(warn_serial_memory,
+    EN("{0}: {1}/worker, {2} shared budget.\nBudget too small: depth and normals will run on one GPU."),
+    JA("{0}: ワーカーあたり {1}、共有メモリ {2}。\nメモリ不足のため、深度と法線を 1 つの GPU で処理します。"),
+    ZH_HANS("{0}: 每个工作进程 {1}，共享内存预算 {2}。\n预算不足：深度和法线将在一个 GPU 上运行。"),
+    ZH_HANT("{0}: 每個工作程序 {1}，共用記憶體預算 {2}。\n預算不足：深度和法線將在一個 GPU 上執行。"),
+    KO("{0}: 작업자당 {1}, 공유 메모리 {2}.\n메모리가 부족하여 깊이와 법선을 GPU 하나에서 처리합니다."),
+    DE("{0}: {1}/Worker, gemeinsames Budget {2}.\nBudget zu klein: Tiefe und Normalen laufen auf einer GPU."),
+    FR("{0} : {1}/worker, budget partagé de {2}.\nBudget trop faible : profondeur et normales sur un seul GPU."),
+    ES("{0}: {1}/worker, presupuesto compartido de {2}.\nPresupuesto insuficiente: profundidad y normales en una GPU."),
+    PT("{0}: {1}/worker, orçamento partilhado de {2}.\nOrçamento insuficiente: profundidade e normais numa só GPU."),
+    IT("{0}: {1}/worker, budget condiviso di {2}.\nBudget insufficiente: profondità e normali su una sola GPU."),
+    NL("{0}: {1}/worker, gedeeld budget {2}.\nBudget te klein: diepte en normalen draaien op één GPU."),
+    RU("{0}: {1}/процесс, общий бюджет {2}.\nМало памяти: глубина и нормали будут вычислены на одном GPU."),
+    TR("{0}: işçi başına {1}, paylaşılan bütçe {2}.\nBütçe yetersiz: derinlik ve normaller tek GPU'da çalışacak."));
+
 SS_MSG(warn_fitted_camera,
     EN("camera {0} has a lens no distortion tier represents exactly;\nthe maps are resampled through the fit and land within a pixel of the images"),
     JA("カメラ {0} のレンズは、どの歪みモデルでも厳密には表せません。\nマップは近似を通して再サンプルされ、画像とは 1 画素以内でずれます"),

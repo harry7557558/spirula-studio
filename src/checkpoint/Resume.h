@@ -28,9 +28,9 @@ JsonValue read_state_json(const std::filesystem::path& ckpt_dir);
 // save_full_checkpoint -- and so cannot restore training.
 void check_resumable(const std::filesystem::path& ckpt_dir);
 
-// A run's config.json -> TrainConfig. Keys absent from the file keep the
-// field's default, so a config.json written by an older build still loads.
-TrainConfig config_from_json(const std::filesystem::path& config_json);
+// A run's config.json -> TrainConfig. Missing keys keep the given defaults,
+// except old runs without a scene_center setting load uncentred.
+TrainConfig config_from_json(const std::filesystem::path& config_json, TrainConfig defaults = {});
 
 // Explicit flags override the preset, which overrides the saved configuration.
 TrainConfig build_resume_config(const TrainConfig& cli,

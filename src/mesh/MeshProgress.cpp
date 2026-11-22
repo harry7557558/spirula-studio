@@ -22,12 +22,17 @@ constexpr double kCutEdges = 0.16e-6, kMarching = 0.16e-6, kBisection = 0.25e-6;
 constexpr double kMerge = 0.47e-6, kPass = 3.0e-6;                                // per face
 constexpr double kQuality = 1.4e-6, kOrient = 0.46e-6, kColor = 3.5e-6, kWrite = 0.5e-6;
 constexpr double kAtlas = 32e-6, kBakeTexel = 0.15e-6, kBakeFace = 3e-6;
+// TSDF, one run on an RTX 5070 laptop (998k-splat model, 488 cameras at
+// 2688x1512): fusion per camera pixel, extraction per raw face, raw faces per
+// pixel (48.4M of 1.98G), and the volume's bytes per raw face (2.06 GB).
+constexpr double kFuse = 21e-9, kExtract = 44e-9, kTsdfRawPerPixel = 0.024;
+constexpr double kHostTsdf = 45.0;
 
-// How each stage shrinks the mesh on that run (6.1M edges of 6.95M points; then
-// 12.2M -> 5.0M -> 2.2M -> 1.19M faces), each raised a fifth: an estimate that
-// comes in high moves the bar forward when the real size arrives, not back.
+// Edges per point and raw faces per edge from that run; per merge pass, the
+// largest shrink of nine runs (docs/notes/mesh-check.md) raised a fifth, at most
+// 1: an estimate that comes in high moves the bar forward when the real size arrives.
 constexpr double kEdgesPerPoint = 1.0, kRawPerEdge = 2.0;
-constexpr double kShrink[3] = {0.5, 0.53, 0.65};
+constexpr double kShrink[3] = {0.88, 0.62, 1.0};
 
 // Bytes above what the process held on entry, from the same run's working set
 // (processRamBytes): 0.28 GB, then 2.1 GB triangulating, 1.8 GB at the first merge
@@ -51,6 +56,7 @@ MeshProgress::MeshProgress(const MeshingConfig& cfg, const MeshProgressSink& sin
     : _sink(sink), _bisection_iters(std::max(1, cfg.bisection_iters)),
       _quality_iters(std::max(0, cfg.quality_iters)), _points(points) {
     for (int i = 0; i < kCount; ++i) _on[i] = true;
+    _on[(int)MeshPhase::Fuse] = _on[(int)MeshPhase::Extract] = false;
     _on[(int)MeshPhase::Quality] = _quality_iters > 0;
     _on[(int)MeshPhase::Color] = vertex_color;
     _on[(int)MeshPhase::Atlas] = _on[(int)MeshPhase::Bake] = texture;
@@ -62,6 +68,13 @@ MeshProgress::MeshProgress(const MeshingConfig& cfg, const MeshProgressSink& sin
     plan();
 }
 
+void MeshProgress::tsdf(double pixels) {
+    _tsdf = true;
+    _pixels = pixels;
+    _on[(int)MeshPhase::Fuse] = _on[(int)MeshPhase::Extract] = true;
+    for (int i = (int)MeshPhase::PointCloud; i <= (int)MeshPhase::Marching; ++i) _on[i] = false;
+    plan();
+}
 void MeshProgress::edges(double e) { _edges = e; _edges_known = true; plan(); }
 void MeshProgress::raw_faces(double f) { _raw_faces = f; _raw_known = true; plan(); }
 void MeshProgress::texels(double t) { _texels = t; plan(); }
@@ -73,7 +86,7 @@ void MeshProgress::faces(double f) {
 
 void MeshProgress::sizes(double& E, double F[4]) const {
     E = _edges_known ? _edges : kEdgesPerPoint * _points;
-    F[0] = _raw_known ? _raw_faces : kRawPerEdge * E;
+    F[0] = _raw_known ? _raw_faces : _tsdf ? kTsdfRawPerPixel * _pixels : kRawPerEdge * E;
     for (int k = 1; k <= 3; ++k) F[k] = _faces_known >= k ? _faces[k] : kShrink[k - 1] * F[k - 1];
 }
 
@@ -82,6 +95,8 @@ void MeshProgress::plan() {
     sizes(E, F);
     const double raw = F[0];
     auto set = [&](MeshPhase p, double c) { _cost[(int)p] = c; };
+    set(MeshPhase::Fuse, kFuse * _pixels);
+    set(MeshPhase::Extract, kExtract * raw);
     set(MeshPhase::PointCloud, kPointCloud * _points);
     set(MeshPhase::Delaunay, kDelaunay * _points);
     set(MeshPhase::Occupancy, kOccupancy * _points);
@@ -127,6 +142,7 @@ void MeshProgress::report() {
         if (!_on[i]) continue;
         left += _cost[i];
         switch ((MeshPhase)i) {
+            case MeshPhase::Fuse:      host = std::max(host, kHostTsdf * F[0]); break;
             case MeshPhase::Delaunay:  host = std::max(host, kHostDelaunay * _points); break;
             case MeshPhase::Occupancy: device = std::max(device, kDeviceOccupancy * _points); break;
             case MeshPhase::Merge:     host = std::max(host, kHostMerge * F[0]); break;
