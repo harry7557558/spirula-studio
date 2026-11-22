@@ -127,6 +127,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(std::string, data_format, "", "dataset", "basic", "colmap|nerfstudio|metashape|none") \
     X(std::string, image_dir, "images", "dataset", "basic", "<data>/<folder>") \
     X(std::string, mask_dir, "masks", "dataset", "basic", "<data>/<folder>") \
+    X(std::string, mask_mode, "auto", "dataset", "basic", "auto|ignore|segment|segment_and_ignore|off") \
     X(bool, load_masks, true, "dataset", "basic", "")                        \
     X(std::optional<bool>, apply_loss_for_mask, std::nullopt, "dataset", "basic", "") \
     X(bool, flip_mask, false, "dataset", "basic", "")                        \
@@ -768,4 +769,31 @@ inline void train_resolve_macros(TrainConfig& c,
         put("pca_reg_neighbors", c.pca_reg_neighbors, 31);
         put("pca_reg_start_iter", c.pca_reg_start_iter, 4500);
     }
+}
+
+enum class ResolvedMaskMode { Off, Ignore, Segment, SegmentAndIgnore };
+
+// When mask_mode == "auto", preserve load_masks / apply_loss_for_mask behavior.
+inline ResolvedMaskMode resolve_train_mask_mode(const TrainConfig& c) {
+    if (c.mask_mode == "off") return ResolvedMaskMode::Off;
+    if (c.mask_mode == "ignore") return ResolvedMaskMode::Ignore;
+    if (c.mask_mode == "segment") return ResolvedMaskMode::Segment;
+    if (c.mask_mode == "segment_and_ignore") return ResolvedMaskMode::SegmentAndIgnore;
+    if (!c.load_masks) return ResolvedMaskMode::Off;
+    return c.apply_loss_for_mask.value_or(false)
+        ? ResolvedMaskMode::Segment
+        : ResolvedMaskMode::Ignore;
+}
+
+inline bool train_mask_enabled(const TrainConfig& c) {
+    return resolve_train_mask_mode(c) != ResolvedMaskMode::Off;
+}
+
+inline bool train_mask_applies_alpha_loss(const TrainConfig& c) {
+    ResolvedMaskMode m = resolve_train_mask_mode(c);
+    return m == ResolvedMaskMode::Segment || m == ResolvedMaskMode::SegmentAndIgnore;
+}
+
+inline bool train_mask_is_segment_and_ignore(const TrainConfig& c) {
+    return resolve_train_mask_mode(c) == ResolvedMaskMode::SegmentAndIgnore;
 }

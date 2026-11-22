@@ -503,11 +503,22 @@ void decode_rgb_into(const std::string& path,
     }
 }
 
-// Signed dilate (+) / erode (-) of a 0/1 mask, by fraction * sqrt(W * H) pixels.
-void apply_boundary_offset(uint8_t* mask, int h, int w, float fraction) {
+// Signed dilate (+) / erode (-) of keep pixels, by fraction * sqrt(W * H) pixels.
+void apply_boundary_offset(uint8_t* mask, int h, int w, float fraction,
+                           bool segment_and_ignore = false) {
     if (fraction == 0.0f) return;
     const float offset_px = fraction * std::sqrt((float)w * (float)h);
-    edt::apply_mask_boundary_offset_in_place(mask, h, w, offset_px);
+    if (!segment_and_ignore) {
+        edt::apply_mask_boundary_offset_in_place(mask, h, w, offset_px);
+        return;
+    }
+    std::vector<uint8_t> bin((size_t)h * w);
+    for (size_t i = 0; i < bin.size(); ++i) bin[i] = (mask[i] == 1) ? 1 : 0;
+    edt::apply_mask_boundary_offset_in_place(bin.data(), h, w, offset_px);
+    for (size_t i = 0; i < bin.size(); ++i) {
+        if (bin[i] == 1) mask[i] = 1;
+        else if (mask[i] == 1) mask[i] = 0;
+    }
 }
 
 void decode_mask_into(const std::string& path,
@@ -515,16 +526,19 @@ void decode_mask_into(const std::string& path,
                       bool flip,
                       float boundary_offset_frac,
                       uint8_t* dst,
-                      int turns_cw = 0)
+                      int turns_cw = 0,
+                      bool segment_and_ignore = false)
 {
     int w, h, ch;
     stbi_uc* img = stbi_load(path.c_str(), &w, &h, &ch, 1);
     if (!img) throw std::runtime_error(decode_failure(path));
 
-    // Binarize on-disk pixels first so the broadcast / resize always emits
-    // strict 0/1 (matches the kernel's bool semantics).
-    for (size_t i = 0; i < (size_t)w * h; ++i)
-        img[i] = (uint8_t)(img[i] != 0);
+    // Map raw pixels to class codes before resizing: 0=ignore, 1=keep, 2=segment.
+    for (size_t i = 0; i < (size_t)w * h; ++i) {
+        uint8_t v = img[i];
+        img[i] = segment_and_ignore ? (v >= 251 ? 1 : (v >= 128 ? 2 : 0))
+                                    : (uint8_t)(v != 0);
+    }
 
     const stbi_uc* src = img;
     std::vector<stbi_uc> turned;
@@ -536,11 +550,15 @@ void decode_mask_into(const std::string& path,
     }
     stbi_image_free(img);
 
-    // Before the offset: a flipped mask's boundary is the one to grow or shrink.
-    if (flip)
-        for (size_t i = 0; i < (size_t)dst_h * dst_w; i++) dst[i] = (uint8_t)!dst[i];
+    // Flip keep <-> ignore while leaving segment untouched.
+    if (flip) {
+        for (size_t i = 0; i < (size_t)dst_h * dst_w; i++) {
+            if (dst[i] == 0) dst[i] = 1;
+            else if (dst[i] == 1) dst[i] = 0;
+        }
+    }
 
-    apply_boundary_offset(dst, dst_h, dst_w, boundary_offset_frac);
+    apply_boundary_offset(dst, dst_h, dst_w, boundary_offset_frac, segment_and_ignore);
 }
 
 // cpu_area_resize with colour weighted by the last channel, alpha: compositing
@@ -1434,19 +1452,27 @@ void DataManagerImpl::decode_mask_of(int64_t i, int dst_h, int dst_w,
                                      uint8_t* dst) const {
     const std::string& file = _mask_filenames[(size_t)i];
     const int turns = turns_of(i);
+    const bool seg_ign = _cfg.segment_and_ignore_masks;
     if (!alpha_mask(i)) {
         if (file.empty()) std::memset(dst, 1, (size_t)dst_h * dst_w);
         else decode_mask_into(file, dst_h, dst_w, _cfg.flip_mask,
-                              _cfg.mask_boundary_offset, dst, turns);
+                              _cfg.mask_boundary_offset, dst, turns, seg_ign);
         return;
     }
     decode_alpha_mask_into(_image_filenames[(size_t)i], dst_h, dst_w, dst, turns);
     if (!file.empty()) {
         std::vector<uint8_t> other((size_t)dst_h * dst_w);
-        decode_mask_into(file, dst_h, dst_w, _cfg.flip_mask, 0.0f, other.data(), turns);
-        for (size_t k = 0; k < other.size(); ++k) dst[k] &= other[k];
+        decode_mask_into(file, dst_h, dst_w, _cfg.flip_mask, 0.0f, other.data(), turns, seg_ign);
+        if (seg_ign) {
+            for (size_t k = 0; k < other.size(); ++k)
+                dst[k] = other[k] == 0 ? 0 : ((dst[k] == 0 || other[k] == 2) ? 2 : 1);
+        } else {
+            for (size_t k = 0; k < other.size(); ++k) dst[k] &= other[k];
+        }
+    } else if (seg_ign) {
+        for (size_t k = 0; k < (size_t)dst_h * dst_w; ++k) dst[k] = dst[k] ? 1 : 2;
     }
-    apply_boundary_offset(dst, dst_h, dst_w, _cfg.mask_boundary_offset);
+    apply_boundary_offset(dst, dst_h, dst_w, _cfg.mask_boundary_offset, seg_ign);
 }
 
 
@@ -1904,7 +1930,8 @@ void DataManagerImpl::fill_batch_from_cache(DecodedBatch& b) {
             uint8_t* dst_row = b.mask_buffer.data() + (size_t)j * mask_row;
             int32_t  ih = _mask_h_per[i], iw = _mask_w_per[i];
             if (ih == 1 && iw == 1) {
-                std::memset(dst_row, _mask_cache[i][0] ? 1 : 0, mask_row);
+                uint8_t v = _mask_cache[i][0];
+                std::memset(dst_row, _cfg.segment_and_ignore_masks ? v : (v ? 1 : 0), mask_row);
             } else if (ih == b.mask_height && iw == b.mask_width) {
                 std::memcpy(dst_row, _mask_cache[i].data(), mask_row);
             } else {

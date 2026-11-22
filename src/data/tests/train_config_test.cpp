@@ -118,11 +118,47 @@ static void background_export_height() {
     }
 }
 
+static void mask_mode_resolution() {
+    TrainConfig cfg;
+    check(cfg.mask_mode == "auto", "mask_mode defaults to auto");
+    check(resolve_train_mask_mode(cfg) == ResolvedMaskMode::Ignore,
+          "default auto mask_mode resolves to ignore");
+    cfg.apply_loss_for_mask = true;
+    check(resolve_train_mask_mode(cfg) == ResolvedMaskMode::Segment,
+          "auto + apply_loss_for_mask=true resolves to segment");
+    cfg.mask_mode = "segment_and_ignore";
+    check(train_mask_is_segment_and_ignore(cfg) &&
+          train_mask_applies_alpha_loss(cfg) &&
+          train_mask_enabled(cfg),
+          "explicit segment_and_ignore overrides auto flags");
+    cfg.mask_mode = "ignore";
+    check(!train_mask_applies_alpha_loss(cfg) &&
+          train_mask_enabled(cfg),
+          "explicit ignore overrides apply_loss_for_mask preset");
+    cfg.mask_mode = "off";
+    check(!train_mask_enabled(cfg) &&
+          !train_mask_applies_alpha_loss(cfg),
+          "explicit off disables masks");
+
+    train_config_from_json(json_parse(R"({"mask_mode": "segment_and_ignore"})"), cfg);
+    check(spirula::train_config_error(cfg).empty(), "segment_and_ignore loads cleanly");
+    check(cfg.mask_mode == "segment_and_ignore", "mask_mode survives JSON load");
+    bool saved = false;
+    for (const auto& [key, value] : train_config_json_pairs(cfg))
+        if (std::string(key) == "mask_mode") saved = value == "\"segment_and_ignore\"";
+    check(saved, "mask_mode is serialized");
+
+    cfg.mask_mode = "bogus";
+    check(spirula::train_config_error(cfg).find("--mask-mode") != std::string::npos,
+          "invalid mask_mode is rejected");
+}
+
 int main() {
     presets();
     saved_config();
     test_suppress_initial_scales();
     background_export_height();
+    mask_mode_resolution();
     if (failures) return 1;
     std::puts("train_config_test: OK");
     return 0;

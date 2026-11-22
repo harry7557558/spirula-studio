@@ -78,7 +78,7 @@ Result run(TorchTensorView rgb, TorchTensorView ref, const float* Ts,
         weights, 0.2f, loss, /*saturation_threshold=*/0.9f,
         std::make_tuple((uint64_t)d_v_losses, (uint32_t)4,
                         std::vector<int64_t>{(int64_t)LossIndex::length}),
-        needs, B, null_view(), view(map, 4, 1), mode, 0.75f, 0.5f, grads);
+        needs, B, null_view(), view(map, 4, 1), mode, 0.75f, 0.5f, grads, false);
     backend::device_synchronize();
     Result r{download(v_rgb, 3 * NP), download(v_Ts, NP), download(map, NP)};
     for (void* p : {(void*)d_v_losses, (void*)v_rgb, (void*)v_Ts, (void*)map})

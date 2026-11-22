@@ -78,7 +78,7 @@ Outcome run(int64_t h, int64_t w, int scales, bool masked,
         losses = compute_multi_scale_per_pixel_losses(scales, rgb, rgb, depth, gt,
             absent(), absent(), absent(), transmittance, absent(), absent(), absent(),
             absent(), absent(), alpha, masked, weights, 0.0f, 0, -1.0f, v_losses, needs,
-            1, absent(), absent(), static_cast<int>(DensifyLossMapMode::None), 0.75f, 0.0f, grads);
+            1, absent(), absent(), static_cast<int>(DensifyLossMapMode::None), 0.75f, 0.0f, grads, false);
         backend::device_synchronize();
     }
     Outcome result{losses.depth_sup, std::vector<float>(count)};

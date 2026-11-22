@@ -153,9 +153,8 @@ void set_training_data(
     engine().gt.rgb    = _upload_gt_rgb(gt_rgb);
     engine().gt.depth  = _hv_to_dt3d_gt<float>(gt_depth,   PoolSlot::GtDepth,  "depth");
     engine().gt.normal = _hv_to_dt3d_gt<float3>(gt_normal, PoolSlot::GtNormal, "normal");
-    // gt_alpha: small bool/uint8 buffer (the external mask). No conversion;
-    // the slang kernel reads bool per pixel. Drives engine().gt.has_mask.
-    engine().gt.alpha  = _hv_to_dt3d<bool>(PoolSlot::GtAlpha, gt_alpha);
+    // gt_alpha: uint8 mask (0=ignore, 1=keep, 2=segment). Drives has_mask.
+    engine().gt.alpha  = _hv_to_dt3d<uint8_t>(PoolSlot::GtAlpha, gt_alpha);
     engine().gt.has_gt    = (std::get<0>(gt_rgb) != 0);
     engine().gt.has_mask  = (std::get<0>(gt_alpha) != 0);
 

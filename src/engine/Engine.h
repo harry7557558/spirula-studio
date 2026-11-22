@@ -189,7 +189,8 @@ std::map<std::string, float> engine_compute_loss_backward(
     // Color-shift regularizer for combined bilagrid + PPISP (see LossConfig).
     // Zero (default) disables the kernel launch entirely.
     float color_shift_reg_weight  = 0.0f,
-    float color_shift_reg_beta    = 0.0f
+    float color_shift_reg_beta    = 0.0f,
+    bool segment_and_ignore_mask  = false
 );
 
 // The densification error map for the last forward -- the buffer

@@ -493,6 +493,7 @@ static std::map<std::string, float> _engine_loss(
     float overexposure_reg_weight,
     float color_shift_reg_weight,
     float color_shift_reg_beta,
+    bool segment_and_ignore_mask,
     TorchTensorView map_out
 ) {
     const bool map_only = _tv_valid(map_out);
@@ -723,7 +724,8 @@ static std::map<std::string, float> _engine_loss(
         loss_map_mode,
         robust_edge_aware_quantile,
         nms_falloff,
-        pixel_grads
+        pixel_grads,
+        segment_and_ignore_mask
     );
 
     // The one place the error map is conditioned, so the preview copy below
@@ -997,7 +999,8 @@ std::map<std::string, float> engine_compute_loss_backward(
     float saturation_threshold,
     float overexposure_reg_weight,
     float color_shift_reg_weight,
-    float color_shift_reg_beta
+    float color_shift_reg_beta,
+    bool segment_and_ignore_mask
 ) {
     StepTimingScope timing(StepPart::Loss, StepScale::Pixels);
     return _engine_loss(loss_weights, w_ssim, perceptual_loss, num_loss_scales,
@@ -1008,6 +1011,7 @@ std::map<std::string, float> engine_compute_loss_backward(
                         loss_map_accum_mode, saturation_threshold,
                         overexposure_reg_weight,
                         color_shift_reg_weight, color_shift_reg_beta,
+                        segment_and_ignore_mask,
                         _tv_null());
 }
 
@@ -1025,6 +1029,6 @@ bool engine_preview_loss_map(const LossConfig& loss, TorchTensorView out) {
                  loss.loss_map_normalize,
                  loss.loss_map_clip_quantile, loss.loss_map_power,
                  loss.loss_map_accum_mode, loss.saturation_threshold,
-                 0.0f, 0.0f, 0.0f, out);
+                 0.0f, 0.0f, 0.0f, loss.segment_and_ignore_mask, out);
     return true;
 }

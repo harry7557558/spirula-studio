@@ -655,6 +655,29 @@ SS_MSG(mask_dir_help,
     TR("Görüntü maskelerini içeren alt klasör; COLMAP ve Metashape veri kümeleri "
        "için. Maskenin ne anlama geldiğini apply_loss_for_mask belirler."));
 
+SS_MSG(mask_mode,
+    EN("Mask mode"), JA("マスクモード"),
+    ZH_HANS("蒙版模式"), ZH_HANT("遮罩模式"),
+    KO("마스크 모드"), DE("Maskenmodus"),
+    FR("Mode de masque"), ES("Modo de máscara"),
+    PT("Modo de máscara"), IT("Modalità maschera"),
+    NL("Maskermodus"), RU("Режим маски"),
+    TR("Maske kipi"));
+SS_MSG(mask_mode_help,
+    EN("How image masks control the loss.\n- auto — uses load_masks and apply_loss_for_mask.\n- ignore / segment — binary keep vs. ignore or empty.\n- segment_and_ignore — 0-127 ignore, 128-250 empty, 251-255 keep."),
+    JA("マスクの損失への適用方法です。\n- auto — load_masks と apply_loss_for_mask に従います。\n- ignore / segment — 除外または空として学習します。\n- segment_and_ignore — 0-127無視、128-250空、251-255保持。"),
+    ZH_HANS("图像蒙版如何控制损失。\n- auto — 沿用 load_masks 与 apply_loss_for_mask。\n- ignore / segment — 二值忽略或训练为空。\n- segment_and_ignore — 0-127忽略，128-250空，251-255保留。"),
+    ZH_HANT("影像遮罩如何控制損失。\n- auto — 沿用 load_masks 與 apply_loss_for_mask。\n- ignore / segment — 二值忽略或訓練為空。\n- segment_and_ignore — 0-127忽略，128-250空，251-255保留。"),
+    KO("마스크의 손실 적용 방식입니다.\n- auto — load_masks 및 apply_loss_for_mask를 따릅니다.\n- ignore / segment — 무시 또는 빈 공간으로 학습합니다.\n- segment_and_ignore — 0-127 무시, 128-250 빈 공간, 251-255 유지."),
+    DE("Steuert die Maskenwirkung im Loss.\n- auto — nutzt load_masks und apply_loss_for_mask.\n- ignore / segment — auslassen oder als leer trainieren.\n- segment_and_ignore — 0-127 ignorieren, 128-250 leer, 251-255 behalten."),
+    FR("Contrôle l’effet des masques sur la perte.\n- auto — suit load_masks et apply_loss_for_mask.\n- ignore / segment — exclure ou entraîner comme vide.\n- segment_and_ignore — 0-127 ignorer, 128-250 vide, 251-255 garder."),
+    ES("Controla el efecto de las máscaras en la pérdida.\n- auto — usa load_masks y apply_loss_for_mask.\n- ignore / segment — omitir o entrenar como vacío.\n- segment_and_ignore — 0-127 ignorar, 128-250 vacío, 251-255 conservar."),
+    PT("Controla o efeito das máscaras na perda.\n- auto — usa load_masks e apply_loss_for_mask.\n- ignore / segment — omitir ou treinar como vazio.\n- segment_and_ignore — 0-127 ignorar, 128-250 vazio, 251-255 manter."),
+    IT("Controlla l’effetto delle maschere sulla perdita.\n- auto — usa load_masks e apply_loss_for_mask.\n- ignore / segment — esclude o addestra come vuoto.\n- segment_and_ignore — 0-127 ignora, 128-250 vuoto, 251-255 mantieni."),
+    NL("Bepaalt hoe maskers het verlies sturen.\n- auto — volgt load_masks en apply_loss_for_mask.\n- ignore / segment — overslaan of als leeg trainen.\n- segment_and_ignore — 0-127 negeren, 128-250 leeg, 251-255 behouden."),
+    RU("Определяет действие масок в функции потерь.\n- auto — использует load_masks и apply_loss_for_mask.\n- ignore / segment — исключить или обучать как пустоту.\n- segment_and_ignore — 0-127 игнор, 128-250 пусто, 251-255 сохранить."),
+    TR("Maskelerin kayba etkisini belirler.\n- auto — load_masks ve apply_loss_for_mask ayarını izler.\n- ignore / segment — yok say veya boş olarak eğit.\n- segment_and_ignore — 0-127 yok say, 128-250 boş, 251-255 tut."));
+
 SS_MSG(load_masks,
     EN("Use dataset masks"), JA("データセットのマスクを使う"),
     ZH_HANS("使用数据集的蒙版"), ZH_HANT("使用資料集的遮罩"),

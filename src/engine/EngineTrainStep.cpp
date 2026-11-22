@@ -250,7 +250,8 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
         cfg.loss.saturation_threshold,
         cfg.loss.overexposure_reg_weight,
         cfg.loss.color_shift_reg_weight,
-        cfg.loss.color_shift_reg_beta);
+        cfg.loss.color_shift_reg_beta,
+        cfg.loss.segment_and_ignore_mask);
     _engine_calib_warp_restore_gt();
     engine().fwd.kernel_cut = 0.0f;
     // Less the allocator's time: a buffer growing under a finer trial is not

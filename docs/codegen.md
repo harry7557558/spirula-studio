@@ -27,7 +27,8 @@ python3 tools/codegen/generate_backend_api.py
 ```
 
 The one exception is `src/shaders/build.bash`, which runs from `src/` and needs
-`slangc` on PATH. **The dev build scripts do NOT run it.** Editing anything
+`slangc` **2026.2.1** on PATH; it refuses any other version (the slangc the
+Vulkan build fetches is newer and does not reproduce the committed headers). **The dev build scripts do NOT run it.** Editing anything
 under `src/shaders/` and skipping it leaves the two backends computing
 different things: Vulkan compiles the Slang, CUDA compiles the committed
 `src/generated/*.cuh`.
