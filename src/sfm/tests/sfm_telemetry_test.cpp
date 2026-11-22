@@ -707,6 +707,56 @@ static void test_dji_avata() {
           "avata: report shows exposure and rel alt");
 }
 
+// An Osmo 360 II frame: the Avata's numbers, plus raw rows at 3.3.5. Both batch
+// stamps are the low 32 bits of the frame clock, 800 us before the frame.
+static Bytes osmo2_sample(bool with_clip, uint64_t frame_us, int rows) {
+    Bytes out;
+    if (with_clip) {
+        Bytes hdr = cat({pb_str(1, "dvtm_OQ102.proto"), pb_str(10, "Osmo 360 II")});
+        Bytes clip = cat({pb_bytes(1, hdr), pb_bytes(8, pb_v(1, 1000)), pb_bytes(9, pb_f32(1, 25.0f)),
+                          pb_bytes(10, pb_v(1, 18446744073709551288ull)), pb_bytes(11, pb_v(1, 4810))});
+        put_raw(out, pb_bytes(1, clip));
+    }
+    const uint64_t stamp = (frame_us - 800) & 0xffffffffull;
+    Bytes quat = pb_bytes(3, cat({pb_f32(1, 1.0f), pb_f32(2, 0), pb_f32(3, 0), pb_f32(4, 0)}));
+    Bytes row = pb_bytes(2, cat({pb_f32(1, 0.25f), pb_f32(2, 0), pb_f32(3, 0),
+                                 pb_f32(4, 0), pb_f32(5, 0), pb_f32(6, -1.0f)}));
+    Bytes att = cat({pb_v(1, stamp), pb_v(2, 32571)}), raw = pb_v(1, stamp);
+    for (int i = 0; i < rows; i++) { put_raw(att, quat); put_raw(raw, row); }
+    Bytes cam = pb_bytes(10, cat({pb_f32(2, 0), pb_f32(3, 0), pb_f32(4, -1.0f)}));
+    Bytes imu = cat({pb_bytes(2, pb_bytes(1, att)), pb_bytes(5, raw)});
+    put_raw(out, pb_bytes(3, cat({pb_bytes(1, pb_v(2, frame_us)), pb_bytes(2, cam), pb_bytes(3, imu)})));
+    return out;
+}
+
+static void test_osmo_360_ii() {
+    const uint64_t f0 = 5000000000ull;   // past 2^32 us: the stamps wrapped, the frame clock did not
+    const Telemetry tm = read_samples({osmo2_sample(true, f0, 41), osmo2_sample(false, f0 + 40000, 40),
+                                       osmo2_sample(false, f0 + 80000, 40)}, "osmo II: ");
+    const bool sized = tm.gyro.size() == 121 && tm.accel.size() == 121 && tm.orientation.size() == 121;
+    check(sized, "osmo II: one gyro, accel and quaternion per row; 3.2.10 is not accel");
+    if (sized) {
+        check(close_to(tm.gyro[0].x, 0.25, 1e-7) && close_to(tm.accel[0].z, -9.80665, 1e-5),
+              "osmo II: gyro rad/s, accel g converted");
+        check(close_to(tm.gyro[0].t, -0.0008, 1e-9) && close_to(tm.gyro[41].t, 0.0392, 1e-9),
+              "osmo II: batches start at their stamps, unwrapped against the frame");
+        check(close_to(tm.gyro[1].t - tm.gyro[0].t, 0.04 / 41, 1e-9) && tm.gyro[40].t < tm.gyro[41].t,
+              "osmo II: 41 rows spaced by the next stamp, not run into the next batch");
+        check(close_to(tm.gyro[120].t - tm.gyro[119].t, 0.001, 1e-9), "osmo II: last batch at the stated rate");
+        bool shared = true;
+        for (size_t i = 0; i < 121; i++)
+            shared &= tm.gyro[i].t == tm.accel[i].t && tm.gyro[i].t == tm.orientation[i].t;
+        check(shared, "osmo II: raw rows and quaternions share the batch times");
+    }
+    check(has_note(tm, "IMU fusion rate 1000 Hz, sensor 25.000 fps", true), "osmo II: Avata clip fields");
+    check(tm.attitude_world_up[2] == -1, "osmo II: attitude world z-down, as the Avata");
+
+    // The .LRF drops every other batch: a gap of two frames is not a row spacing.
+    const Telemetry lrf = read_samples({osmo2_sample(true, f0, 41), osmo2_sample(false, f0 + 80000, 40)}, "osmo II lrf: ");
+    check(lrf.gyro.size() == 81 && close_to(lrf.gyro[1].t - lrf.gyro[0].t, 0.001, 1e-9),
+          "osmo II: a skipped batch falls back to the stated rate");
+}
+
 // An Osmo frame carrying the Avata's numbers must not be read at them.
 static void test_dji_osmo_ignores_avata_fields() {
     Bytes coord = cat({pb_f64(2, 42.2174447), pb_f64(3, -83.6715616)});
@@ -1146,6 +1196,7 @@ static int cmdTelemetryTest(int argc, char** argv) {
     test_kandao();
     test_dji();
     test_dji_avata();
+    test_osmo_360_ii();
     test_dji_osmo_ignores_avata_fields();
     test_dji_unknown_proto();
     test_log_profile();

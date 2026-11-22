@@ -938,7 +938,7 @@ struct DjiLayout {
     // 2090-image model of an Avata 360 flight.
     bool attitude_z_down = false;
     bool verified = false;
-    bool imu_raw = false;         // raw six axes at imu.5 (DeviceRawAttitude)
+    bool imu_raw = false;         // raw six axes at imu.5; both batches timed by their stamps
 };
 
 // Avata 360: checked frame by frame against the SRT of a 139 s flight. Its
@@ -987,6 +987,34 @@ void dji_clip(const std::vector<PbField>& clip, DjiLayout& layout, DjiClip& c) {
     if (const PbField* f = pb_find(fps, 1)) c.sensor_fps = f->f32();
 }
 
+// One IMU batch: its samples hold their row index in t until dji_time_batches.
+struct DjiBatch {
+    double start;
+    size_t begin, end, rows;
+};
+
+// A batch stamp is the low 32 bits of the frame's microsecond clock
+// (telemetry-parser timing.rs anchor_us), so it is read against this frame's stamp.
+double dji_batch_start(uint64_t stamp, uint64_t frame_us, double t) {
+    return t + (double)(int32_t)(uint32_t)(stamp - frame_us) * 1e-6;
+}
+
+// Rows are spaced by the next batch's stamp: the Osmo 360 II reads every 995 us,
+// not the stated 1000, so 41 rows at 1 ms run into the next batch. A missing
+// next batch (the .LRF keeps every other one) falls back to the stated rate.
+template <class S>
+void dji_time_batches(const std::vector<DjiBatch>& bs, std::vector<S>& v, double rate) {
+    for (size_t k = 0; k < bs.size(); k++) {
+        const DjiBatch& b = bs[k];
+        double dt = 1.0 / rate;
+        if (k + 1 < bs.size() && b.rows) {
+            const double gap = (bs[k + 1].start - b.start) / (double)b.rows;
+            if (gap > 0.5 * dt && gap < 1.5 * dt) dt = gap;
+        }
+        for (size_t i = b.begin; i < b.end; i++) v[i].t = b.start + v[i].t * dt;
+    }
+}
+
 bool read_dji(const Source& src, const Track& tk, Telemetry& out, std::string& error) {
     std::vector<uint8_t> buf;
     DjiClip clip;
@@ -994,6 +1022,7 @@ bool read_dji(const Source& src, const Track& tk, Telemetry& out, std::string& e
     bool have_clip = false, any = false, first = true;
     double t0 = 0;
     size_t attitude_frames = 0;
+    std::vector<DjiBatch> raw_batches, attitude_batches;
     for (const Sample& sm : tk.samples) {
         if (sm.size < 2 || sm.size > (16u << 20)) continue;
         if (!src.readVec(sm.offset, sm.size, buf)) { error = "truncated djmd sample"; return false; }
@@ -1049,7 +1078,20 @@ bool read_dji(const Source& src, const Track& tk, Telemetry& out, std::string& e
         auto attitude = pb_sub(att);
         if (!attitude.empty() && attitude[0].number == 1 && attitude[0].wire == 2)
             attitude = pb_sub(pb_find(attitude, 1));
-        if (!attitude.empty()) {
+        const bool stamped = layout.imu_raw && clip.imu_rate > 0;
+        const PbField* att_stamp = stamped ? pb_find(attitude, 1) : nullptr;
+        if (att_stamp && att_stamp->wire == 0) {
+            DjiBatch b{dji_batch_start(att_stamp->varint, ts->varint, t), out.orientation.size(), 0, 0};
+            for (const PbField& f : attitude) {
+                if (f.number != 3 || f.wire != 2) continue;
+                const auto q = pb_sub(&f);
+                const PbField *w = pb_find(q, 1), *x = pb_find(q, 2), *y = pb_find(q, 3), *z = pb_find(q, 4);
+                if (w && x && y && z) out.orientation.push_back({(double)b.rows, w->f32(), x->f32(), y->f32(), z->f32()});
+                b.rows++;
+            }
+            b.end = out.orientation.size();
+            if (b.end > b.begin) { attitude_batches.push_back(b); attitude_frames++; any = true; }
+        } else if (!attitude.empty()) {
             std::vector<TelemetryQuat> qs;
             double offset = 0;
             for (const PbField& f : attitude) {
@@ -1069,27 +1111,27 @@ bool read_dji(const Source& src, const Track& tk, Telemetry& out, std::string& e
             if (!qs.empty()) { attitude_frames++; any = true; }
         }
 
-        // DeviceRawAttitude: accel g per IMU sample; the gyro stays unread -- a raw
-        // gyro flips the timeline onto the IMU-to-lens fit, which fails here, while
-        // attitude and accelerometer share a frame. Its clock differs: spread evenly.
-        if (layout.imu_raw) {
-            if (const PbField* f = pb_find(imu, 5)) {
-                const auto raw = pb_sub(f);
-                size_t n = 0;
-                for (const PbField& s : raw) n += s.number == 2 && s.wire == 2;
-                const double frame_dt = clip.sensor_fps > 0 ? 1.0 / clip.sensor_fps : 0.0;
-                size_t i = 0;
-                for (const PbField& s : raw) {
-                    if (s.number != 2 || s.wire != 2) continue;
-                    i++;
-                    const auto r = pb_sub(&s);
-                    const PbField *ax = pb_find(r, 4), *ay = pb_find(r, 5), *az = pb_find(r, 6);
-                    if (!ax || !ay || !az) continue;
-                    out.accel.push_back({t + frame_dt * ((double)i - 0.5) / (double)n,
-                                         ax->f32() * kG, ay->f32() * kG, az->f32() * kG});
-                    any = true;
+        // DeviceRawAttitude: one row of gyro rad/s and accel g per quaternion.
+        const auto raw = pb_sub(stamped ? pb_find(imu, 5) : nullptr);
+        if (const PbField* stamp = pb_find(raw, 1); stamp && stamp->wire == 0) {
+            DjiBatch b{dji_batch_start(stamp->varint, ts->varint, t), out.gyro.size(), 0, 0};
+            for (const PbField& row : raw) {
+                if (row.number != 2 || row.wire != 2) continue;
+                float v[6];
+                int have = 0;
+                for (const PbField& axis : pb_sub(&row))
+                    if (axis.number >= 1 && axis.number <= 6 && axis.wire == 5 && std::isfinite(axis.f32())) {
+                        v[axis.number - 1] = axis.f32();
+                        have |= 1 << (axis.number - 1);
+                    }
+                if (have == 0x3f) {
+                    out.gyro.push_back({(double)b.rows, v[0], v[1], v[2]});
+                    out.accel.push_back({(double)b.rows, v[3] * kG, v[4] * kG, v[5] * kG});
                 }
+                b.rows++;
             }
+            b.end = out.gyro.size();
+            if (b.end > b.begin) { raw_batches.push_back(b); any = true; }
         }
 
         const auto gimbal = pb_sub(pb_find(frame, 4));
@@ -1118,6 +1160,9 @@ bool read_dji(const Source& src, const Track& tk, Telemetry& out, std::string& e
         }
     }
     if (!any) return true;
+    dji_time_batches(raw_batches, out.gyro, clip.imu_rate);
+    dji_time_batches(raw_batches, out.accel, clip.imu_rate);
+    dji_time_batches(attitude_batches, out.orientation, clip.imu_rate);
     out.carrier = TelemetryCarrier::DjiDvtm;
     out.camera = clip.product.empty() ? "DJI" : (clip.product.rfind("DJI", 0) == 0 ? clip.product : "DJI " + clip.product);
     out.serial = clip.serial;
@@ -1135,8 +1180,9 @@ bool read_dji(const Source& src, const Track& tk, Telemetry& out, std::string& e
         }
         out.notes.push_back(note);
     }
-    if (layout.cam_accel) out.notes.push_back("accel is one reading per frame in g, converted; no raw gyro is written");
-    else if (!layout.imu_raw) out.notes.push_back("no accelerometer and no raw gyro are written");
+    if (!raw_batches.empty()) out.notes.push_back("raw gyro rad/s and accel g per IMU sample, converted; timed by the batch stamps");
+    else if (layout.cam_accel) out.notes.push_back("accel is one reading per frame in g, converted; no raw gyro is written");
+    else out.notes.push_back("no accelerometer and no raw gyro are written");
     if (attitude_frames) out.notes.push_back("orientation is IMU_attitude_after_fusion: sense not documented, see the check");
     return true;
 }
