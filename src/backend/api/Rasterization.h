@@ -2,7 +2,7 @@
 // Backend API module — GENERATED forwarder by
 // tools/codegen/generate_backend_api.py. DO NOT EDIT.
 //
-// Tile-based rasterization forward/backward (2D and eval-3D/3DGUT).
+// Tile-based rasterization forward/backward (2D and eval-3D/3DGUT), and the stochastic viewer forward.
 //
 // Authoritative declarations live in the per-kernel headers included below
 // (declaration sections generated from /*[AutoHeaderGeneratorExport]*/
@@ -15,3 +15,4 @@
 #include "kernels/raster/RasterizationEval3DFwd.cuh"
 #include "kernels/raster/RasterizationEval3DBwd.cuh"
 #include "kernels/raster/RasterizationMomentsFwd.cuh"
+#include "kernels/raster/RasterizationStochastic.cuh"

@@ -50,6 +50,8 @@ body {
 }
 #drop-hint .big { font-size:15px; color: var(--text); }
 #drop-hint .sub { font-size:11px; max-width:360px; line-height:1.6; }
+#browse-files { width:auto; padding:7px 18px; pointer-events:auto; }
+#browse-files:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 #viewport.dragover { outline: 2px dashed var(--accent); outline-offset:-8px; }
 #overlay {
   position:absolute; left:10px; bottom:8px; font-size:10px; color: var(--text-dim);

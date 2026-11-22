@@ -567,11 +567,18 @@ bool generate_mesh(
     MeshProgress prog(cfg, cfg.on_progress, (double)ev.num_points(), want_vertex, want_texture);
     Mesh mesh;
     if (grid) {
+        const std::vector<int>& sel = ev.selected_cameras();
         long long pixels = 0;
-        for (int c = 0; c < num_cameras; ++c) pixels += (long long)cams.widths[c] * cams.heights[c];
+        if (sel.empty()) {
+            for (int c = 0; c < num_cameras; ++c)
+                pixels += (long long)cams.widths[c] * cams.heights[c];
+        } else {
+            for (int c : sel)
+                pixels += (long long)cams.widths[c] * cams.heights[c];
+        }
         prog.tsdf((double)pixels);
         if (!extract_tsdf(ev, cams, num_cameras, cfg, prog, mesh)) return false;
-    } else if (!extract_opacity_field(ev, cfg, prog, t0, mesh, cam_pos, cam_pos ? num_cameras : 0)) {
+    } else if (!extract_opacity_field(ev, cfg, prog, t0, mesh, cam_pos, cloud_cams)) {
         return false;
     }
     return finish_mesh(mesh, ev, prog, cfg, cam_pos, cam_pos ? num_cameras : 0, outputs,

@@ -196,6 +196,7 @@
   X("rasterize_bwd_nodepth.rasterize_bwd_3dgut_nodepth", Backward, SplatsPixels) \
   X("rasterize_fwd.rasterize_fwd_2d",                Render,      SplatsPixels) \
   X("rasterize_fwd.rasterize_fwd_3dgut",             Render,      SplatsPixels) \
+  X("rasterize_stochastic.rasterize_stochastic",     Render,      SplatsPixels) \
   X("rasterize_moments.rasterize_moments_3dgut",     Render,      SplatsPixels) \
   X("region.decay_opacity",                          Densify,     Splats) \
   X("region.densify_scale_score",                    Densify,     Splats) \

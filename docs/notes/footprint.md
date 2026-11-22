@@ -128,6 +128,12 @@ and bins exactly:
 - **Blocks of 4 x 4 tiles go first.** Footprint and quad are both convex, so
   four corners inside means every tile of the block is hit, and a miss means
   none is. A box inside one tile needs no test at all.
+- **The write pass reuses the count's tests.** A range of 32 tiles or fewer
+  has its hits kept as a bit mask in the slot the cumulative counts used,
+  which the scan no longer needs: it runs in place. On a 10M-splat fisheye
+  view the write pass went from 2.7 to 1.6 ms on Vulkan and from 5.3 to 2.4
+  on CUDA; capping CUDA's kernel at 64 registers then took the count from 5.5
+  to 4.2 ms and the write to 1.4.
 
 The edge test evaluates the quadratic at its minimum from the interpolated
 ray. The closed form `q_a - lin^2 / quad` subtracts corner values of order 1e12
@@ -147,7 +153,8 @@ saves: the forward took 1432 ms against 914 over 1500 steps of bicycle.
 
 `footprint_exact`: nine views (pinhole, fisheye and equisolid with and without
 distortion, panorama, orthographic) x both primitives x 16 and 64 px tiles,
-1500 splats, a tenth of them large and a fifth thin. Every image is
+with and without a third of the tiles switched off, 1500 splats, a tenth of
+them large and a fifth thin. Every image is
 bit-identical to the brute-force one on both backends, which also bin the same
 number of pairs.
 

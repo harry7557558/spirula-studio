@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
+#include <string_view>
 #include <thread>
 
 namespace {
@@ -609,10 +610,30 @@ struct RenderWorker::Impl {
                               tvp(vm, 4, {1, 4, 4}),
                               tvp(intr, 4, {1, 4}),
                               tvp(dist0, 4, {1, 8}));
+            // A frame for a file, or one an effect rewrites the splats for,
+            // renders sorted: it gets one pass, not a running average.
+            const bool stochastic = engine_stochastic_enabled() && !q.raw &&
+                                    !q.before_render && !q.after_render;
+            if (stochastic) {
+                uint64_t key = std::hash<std::string>{}(q.model + '\n' + primitive);
+                auto mix = [&key](const void* p, size_t n) {
+                    key ^= std::hash<std::string_view>{}(
+                               std::string_view((const char*)p, n)) +
+                           0x9e3779b97f4a7c15ull + (key << 6) + (key >> 2);
+                };
+                const int step = hooks.current_step ? hooks.current_step() : 0;
+                mix(vm, sizeof vm);
+                mix(intr, sizeof intr);
+                mix(&sh_deg, sizeof sh_deg);
+                mix(&step, sizeof step);
+                engine_arm_stochastic(cfg.scene_slot + 1, key);
+            }
             forward_3dgs(primitive, sh_deg, cfg.packed,
                          want_median, want_dist ? 2 : 0,
                          q.key == "render_normal");
             if (!draw_on_device()) draw_on_host();
+            if (stochastic)
+                res.refining = engine_stochastic_frames() < engine_stochastic_frame_target();
         }
         if (q.show_cams && !cfg.held_out_cameras.empty()) {
             auto project = [&](const std::array<float, 3>& origin, const std::array<float, 3>& offset, double pixel[2]) {
@@ -688,24 +709,35 @@ void RenderWorker::set_region_overlay(std::shared_ptr<const spirula::RegionOverl
     _impl->overlay = std::move(ov);
 }
 
-std::vector<std::string> RenderWorker::buffer_keys() const {
+std::vector<std::string> RenderWorker::buffer_keys(const std::string& primitive) const {
+    return viewer_buffer_keys(_impl->cfg, primitive);
+}
+
+std::vector<std::string> viewer_buffer_keys(const ViewerRenderConfig& cfg,
+                                            const std::string& primitive) {
+    // A stochastic depth's finite differences are noise, and its renders carry
+    // no median or distortion.
+    const bool stochastic = engine_stochastic_enabled();
     std::vector<std::string> keys = {"rgb"};
-    if (_impl->cfg.color_space_on) keys.push_back("rgb_raw");
-    for (const char* k : {"depth", "alpha", "depth_normal"}) keys.push_back(k);
-    if (engine_primitive_renders_normal(_impl->cfg.primitive)) keys.push_back("render_normal");
-    if (_impl->cfg.output_median) {
+    if (cfg.color_space_on) keys.push_back("rgb_raw");
+    keys.push_back("depth");
+    keys.push_back("alpha");
+    if (!stochastic) keys.push_back("depth_normal");
+    if (engine_primitive_renders_normal(primitive.empty() ? cfg.primitive : primitive))
+        keys.push_back("render_normal");
+    if (cfg.output_median && !stochastic) {
         keys.push_back("depth_median");
         keys.push_back("normal_median");
     }
     // Distortion buffers only when a distortion regularizer is configured:
     // they are full-resolution never-freed pool allocations, so with zero
     // reg weights they are neither offered nor computed (no VRAM).
-    if (_impl->cfg.distortion_reg_on) {
+    if (cfg.distortion_reg_on && !stochastic) {
         keys.push_back("rgb_distortion");
         keys.push_back("depth_distortion");
     }
-    keys.push_back("sh");
-    keys.push_back("refinement_score");
+    if (cfg.sh_degree != 0 || cfg.sb_lobes > 0) keys.push_back("sh");
+    if (cfg.refinement_score) keys.push_back("refinement_score");
     return keys;
 }
 

@@ -15,6 +15,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  viewer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npm ci --prefix viewer/tests --no-audit --no-fund
+      - run: npm exec --prefix viewer/tests -- playwright install --with-deps chromium --only-shell
+      - run: npm test --prefix viewer/tests
+        env:
+          SS_VIEWER_EVIDENCE: ${{ runner.temp }}/viewer-smoke
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: viewer-smoke
+          path: ${{ runner.temp }}/viewer-smoke
+
   lint:
     runs-on: ubuntu-24.04
     steps:

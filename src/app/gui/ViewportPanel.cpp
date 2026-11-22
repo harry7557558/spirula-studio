@@ -848,6 +848,23 @@ void ViewportPanel::enable_scene_options(
     _linear_color = linear;
     _apply_color_space = std::move(apply_color_space);
     _on_primitive_changed = std::move(on_primitive_changed);
+    if (_mode == Mode::Engine || _mode == Mode::Hardware) refresh_buffer_keys();
+}
+
+void ViewportPanel::refresh_buffer_keys() {
+    const std::string selected =
+        _buffer_keys.empty() ? "rgb" : _buffer_keys[_buffer_idx];
+    if (_mode == Mode::Hardware) {
+        // The compute view's list, less what has no OpenGL equivalent.
+        _buffer_keys.clear();
+        HardwareSplatRenderer::Buffer buffer;
+        for (const auto& key : viewer_buffer_keys(_hardware_cfg, primitive()))
+            if (HardwareSplatRenderer::buffer(key, buffer)) _buffer_keys.push_back(key);
+    } else {
+        _buffer_keys = _worker.buffer_keys(primitive());
+    }
+    const auto it = std::find(_buffer_keys.begin(), _buffer_keys.end(), selected);
+    _buffer_idx = it != _buffer_keys.end() ? (int)(it - _buffer_keys.begin()) : 0;
 }
 
 void ViewportPanel::attach_preview_mesh(const meshing::MeshData& mesh,
@@ -891,8 +908,7 @@ void ViewportPanel::attach(spirula::TrainerSession& session) {
     detach();
     _worker.start(session.make_viewer_config(), session.make_viewer_hooks());
     _worker.set_region_overlay(_roi_engine);
-    _buffer_keys = _worker.buffer_keys();
-    _buffer_idx = std::min<int>(_buffer_idx, (int)_buffer_keys.size() - 1);
+    refresh_buffer_keys();
     _has_cameras = session.ds.num_cameras > 0;
     maybe_frame(session);
     _pending = 0;
@@ -905,8 +921,7 @@ void ViewportPanel::attach_scene(const ViewerRenderConfig& cfg,
                                  const std::string& key, float radius) {
     detach();
     _worker.start(cfg, hooks);
-    _buffer_keys = _worker.buffer_keys();
-    _buffer_idx = std::min<int>(_buffer_idx, (int)_buffer_keys.size() - 1);
+    refresh_buffer_keys();
     _has_cameras = false;
     _show_cams = false;
     set_centers(&cfg.centers, cfg.center_cameras);
@@ -932,13 +947,14 @@ void ViewportPanel::attach_hardware(const ViewerRenderConfig& cfg,
     _hardware_path = path;
     std::copy(center, center + 3, _hardware_center);
     _hardware_unit = unit;
-    _buffer_keys = {"rgb"}; _buffer_idx = 0;
+    _hardware_cfg = cfg;
     _has_cameras = false; _show_cams = false;
     set_centers(&cfg.centers, cfg.center_cameras);
     _align_identity = true; _gauge_metric = false;
     _scene_scale = unit; rebuild_m2s();
     if (key != _framed_key) { _framed_key = key; reset_pose(1); }
     _last_error.clear(); _mode = Mode::Hardware;
+    refresh_buffer_keys();
 }
 
 void ViewportPanel::detach() {
@@ -951,6 +967,7 @@ void ViewportPanel::detach() {
     _on_primitive_changed = nullptr;
     if (_mode == Mode::Engine) _worker.stop();
     _pending = 0;
+    _refining = false;
     _shot_done = nullptr;
     _shot_inflight = false;
     _mode = Mode::None;
@@ -1694,6 +1711,7 @@ void ViewportPanel::draw_controls(bool engine) {
         if (ui::ComboRaw("##primitive", &_primitive_idx, kViewerPrimitives,
                          kNumViewerPrimitives)) {
             if (_on_primitive_changed) _on_primitive_changed();
+            if (_mode == Mode::Engine || _mode == Mode::Hardware) refresh_buffer_keys();
             _dirty = true;
         }
         ui::help_on_hover(msg::viewport_primitive_help);
@@ -1878,10 +1896,11 @@ unsigned ViewportPanel::pump_hardware(int W, int H) {
     view_matrix(view); compute_intrinsics(W, H, fx, fy);
     if (_ortho) { fx *= _m2s_scale; fy *= _m2s_scale; }
     auto gamut = spirula::gamut_to_rec709(kViewerGamuts[_gamut_idx]);
-    // The GL shaders know 3dgs / mip / 3dgut; a 2dgs disc draws as a flat 3dgut splat.
-    const int primitive = std::string(kViewerPrimitives[_primitive_idx]) == "2dgs" ? 2 : _primitive_idx;
+    HardwareSplatRenderer::Buffer buffer = HardwareSplatRenderer::Buffer::Rgb;
+    if (!_buffer_keys.empty()) HardwareSplatRenderer::buffer(_buffer_keys[_buffer_idx], buffer);
     _hardware_tex = _hardware.render(W, H, view, _cam_model, fx, fy,
-        primitive, _sh_degree, gamut.data(), _transfer_idx, _linear_color);
+        _primitive_idx, _sh_degree, gamut.data(), _transfer_idx, _linear_color, buffer);
+    _refining = _hardware.refining();
     return _hardware_tex;
 }
 
@@ -2118,6 +2137,9 @@ void ViewportPanel::pump_engine(bool training, const ImVec2& avail, int step) {
             if (res.error.empty()) {
                 upload(res);
                 _last_error.clear();
+                // Training moves the splats anyway; a still model is refined.
+                _refining = res.refining && !training;
+                if (_refining) _dirty = true;
                 if (_tool_pick_inflight) {
                     _tool_pick_inflight = false;
                     _tool_pick_done = true;

@@ -704,6 +704,10 @@ bool OccupancyEvaluator::has_render_cameras() const {
     return impl_->use_render && impl_->rctx != nullptr;
 }
 
+const std::vector<int>& OccupancyEvaluator::selected_cameras() const {
+    return impl_->render_cam_indices;
+}
+
 void OccupancyEvaluator::cull_unseen_vertices(
     const float* verts, int n, const int* faces, int n_faces, unsigned char* visible_out
 ) {
@@ -713,7 +717,10 @@ void OccupancyEvaluator::cull_unseen_vertices(
         std::fill(visible_out, visible_out + n, (unsigned char)1);
         return;
     }
-    render_cull_unseen_vertices(impl_->rctx, verts, n, faces, n_faces, visible_out);
+    const auto& sel = impl_->render_cam_indices;
+    render_cull_unseen_vertices(
+        impl_->rctx, sel.empty() ? nullptr : sel.data(), (int)sel.size(),
+        verts, n, faces, n_faces, visible_out);
 }
 
 } // namespace meshing
