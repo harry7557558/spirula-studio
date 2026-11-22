@@ -14,6 +14,8 @@
 #include "app/gui/FilmReel.h"
 #include "app/gui/PickSheet.h"
 #include "app/gui/mask/MaskLayer.h"
+#include "core/BufferedFile.h"
+#include "core/Sha256.h"
 #include "core/SourcePath.h"
 #include "data/ImageDiscovery.h"
 #include "external/stb_image_write.h"
@@ -23,18 +25,29 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <stdexcept>
 #include <vector>
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 namespace fs = std::filesystem;
 namespace mk = gui::mask;
 
 namespace {
+
+std::function<void(const fs::path&, uintmax_t)> source_hash_read_hook;
 
 // The blur rule at `px` (0 off), `by_hand` with the pause.
 void skip_blurry(gui::PrepJob& job, float px, bool by_hand = false) {
@@ -777,6 +790,124 @@ void test_sort_folders_not_rig() {
           "days: the one smeared photograph moves aside, alone");
 }
 
+namespace gui {
+void source_hash_before_read(const fs::path& file, uintmax_t offset) {
+    if (source_hash_read_hook) source_hash_read_hook(file, offset);
+}
+}  // namespace gui
+
+static void test_source_hash_overlap() {
+    constexpr size_t chunk = spirula::kFileBufferBytes;
+    const fs::path root = scratch("source_hash_overlap").lexically_normal();
+    const fs::path source = root / "source.mp4", first = root / "first.mp4";
+    const fs::path lut = root / "look.cube";
+    std::vector<uint8_t> bytes(40u * (1u << 20) + 3);
+    for (size_t i = 0; i < bytes.size(); ++i)
+        bytes[i] = (uint8_t)(i ^ (i >> 8) ^ (i >> 16) ^ (i >> 24));
+
+    const auto write = [&](const fs::path& file, size_t size) {
+        std::ofstream out(file, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)size);
+        out.close();
+        if (!out) throw std::runtime_error("cannot write hash fixture");
+    };
+    const auto record = [&](const std::string& name, size_t size) {
+        spirula::Sha256 hash;
+        hash.update(bytes.data(), size);
+        return name + '\0' + std::to_string(size) + '\0' + hash.hex() + '\0';
+    };
+    const auto digest = [](const std::string& text) {
+        spirula::Sha256 hash;
+        hash.update(reinterpret_cast<const uint8_t*>(text.data()), text.size());
+        return hash.hex();
+    };
+    gui::PrepJob job;
+    job.workspace = (root / "dataset").string();
+    gui::PrepInput input;
+    input.path = source.string();
+    input.is_video = true;
+    input.lut = gui::kLutNone;
+    job.inputs = {input};
+    for (size_t size : {size_t{0}, size_t{1}, chunk - 1, chunk, chunk + 1, bytes.size()}) {
+        write(source, size);
+        check(gui::frame_source_identity(job, job.inputs[0], true) == digest(record(".", size)),
+              "legacy source digest at " + std::to_string(size) + " bytes");
+    }
+
+    write(source, chunk + 1);
+    write(first, 1);
+    write(lut, 65);
+    gui::PrepInput first_input = input;
+    first_input.path = first.string();
+    first_input.lut = lut.string();
+    job.inputs = {first_input, input};
+    const std::vector<std::string> expected = {
+        digest(record(".", 1) + record("../look.cube", 65)), digest(record(".", chunk + 1))};
+    std::string error;
+    check(gui::snapshot_frame_sources(job, error) && job.source_content == expected,
+          "snapshot retains input and file-backed LUT order");
+
+    const auto reject_mutation = [&](auto action, const char* what) {
+        bool changed = false;
+        source_hash_read_hook = [&](const fs::path& file, uintmax_t offset) {
+            if (file == source && offset == chunk) {
+                action(file);
+                changed = true;
+            }
+        };
+        const bool rejected = gui::frame_source_identity(job, job.inputs[1], true).empty();
+        source_hash_read_hook = {};
+        check(changed && rejected, what);
+    };
+    const auto stamp = fs::last_write_time(source);
+    reject_mutation([&](const fs::path& file) {
+        fs::last_write_time(file, stamp - std::chrono::hours(1));
+    }, "mtime change between chunk reads rejects the identity");
+    reject_mutation([&](const fs::path& file) {
+        fs::resize_file(file, chunk);
+    }, "truncation between chunk reads rejects a prefix digest");
+    write(source, chunk + 1);
+
+    struct ReaderError {};
+    source_hash_read_hook = [&](const fs::path& file, uintmax_t offset) {
+        if (file == source && offset == chunk) throw ReaderError{};
+    };
+    bool propagated = false;
+    try {
+        gui::frame_source_identity(job, job.inputs[1], true);
+    } catch (const ReaderError&) {
+        propagated = true;
+    }
+    source_hash_read_hook = {};
+    check(propagated, "reader exceptions reach the identity caller");
+
+    write(first, 2);
+
+#ifdef _WIN32
+    const HANDLE handle = CreateFileW(source.c_str(), GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    OVERLAPPED offset{};
+    offset.Offset = (DWORD)chunk;
+    const bool unreadable = handle != INVALID_HANDLE_VALUE &&
+        LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &offset);
+#else
+    bool unreadable = false;
+    source_hash_read_hook = [&](const fs::path& file, uintmax_t offset) {
+        if (file == source && offset == 0) unreadable = fs::remove(file);
+    };
+#endif
+    const bool rejected = !gui::snapshot_frame_sources(job, error);
+#ifdef _WIN32
+    if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle);
+#else
+    source_hash_read_hook = {};
+#endif
+    check(unreadable && rejected && error.find(input.path) != std::string::npos &&
+              job.source_content == expected,
+          "unreadable source rejects the snapshot without partial identities");
+    fs::remove_all(root);
+}
+
 void test_source_aware_video_resume() {
     const fs::path root = scratch("source_identity");
     const fs::path source = root / "source.mp4", ws = root / "dataset";
@@ -901,6 +1032,7 @@ void test_geometry_reel_outputs() {
 int main() {
     test_geometry_reel_outputs();
     test_mask_output_ownership();
+    test_source_hash_overlap();
     test_source_aware_video_resume();
     test_bare_model_is_not_a_dataset();
     test_rerun_reapplies_corrections();
