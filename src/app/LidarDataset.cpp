@@ -1,6 +1,12 @@
 #include "core/BufferedFile.h"
 #include "app/LidarDataset.h"
 
+#ifdef SS_TOOL_SFM
+#include "app/AnchorRefine.h"
+#include "app/ScanCorrection.h"
+#endif
+
+#include "app/CaptureTrajectory.h"
 #include "app/DepthPng.h"
 #include "app/E57Dataset.h"
 #include "app/ScanDepth.h"
@@ -11,6 +17,7 @@
 #include "data/Json.h"
 #include "data/JsonWrite.h"
 #include "data/PointCloudFile.h"
+#include "data/XbinReader.h"
 #include "external/stb_image.h"
 #include "external/stb_image_write.h"
 #include "i18n/Message.h"
@@ -70,6 +77,10 @@ constexpr double kAnchorDrift = 0.05;
 // stand in for the photographs the reconstruction did not place.
 constexpr double kPlaceCentre = 0.05;   // metres, median
 constexpr double kPlaceRot = 0.5;       // degrees, median
+#ifdef SS_TOOL_SFM
+// The span each move of a capture's scan is smoothed over (ScanCorrection.h).
+constexpr double kCorrectionWindowS = 6.0;
+#endif
 
 uint64_t splitmix64(uint64_t x) {
     x += 0x9E3779B97F4A7C15ull;
@@ -440,6 +451,8 @@ std::string signature(const DatasetOptions& opt, const std::string& anchors_path
     for (const std::string& c : opt.clouds) {
         s += c + ":" + std::to_string(fs::file_size(c, ec)) + ":" +
              std::to_string((long long)fs::last_write_time(c, ec).time_since_epoch().count()) + ";";
+        const std::string t = trajectory_path((fs::path(opt.dataset) / "lidar").string(), c);
+        if (spirula::xbin::is_xbin_path(c) && fs::exists(t, ec)) s += "trajectory:" + hex(file_hash(t)) + ";";
     }
     s += "anchors:" + (fs::exists(anchors_path, ec) ? hex(file_hash(anchors_path)) : "none") + ";";
     s += "mode:" + std::to_string((int)opt.mode) + ";seeds:" + std::to_string(opt.seed_points) +
@@ -448,6 +461,12 @@ std::string signature(const DatasetOptions& opt, const std::string& anchors_path
          ";flip:" + std::to_string(opt.flip_masks) + ";images:" + opt.image_dir +
          ";masks:" + opt.mask_dir + ";frames:" + std::to_string((int)opt.frames) +
          ";scanner:" + std::to_string(opt.scanner_poses_only);
+    if (opt.refine_capture) {
+        const fs::path m = fs::path(opt.dataset) / "matches.bin";
+        s += ";refine:" + std::to_string(fs::file_size(m, ec)) + ":" +
+             std::to_string((long long)fs::last_write_time(m, ec).time_since_epoch().count()) +
+             ";scan follows";
+    }
     return hex(fnv1a(s));
 }
 
@@ -488,6 +507,7 @@ std::vector<Anchor> read_anchors(const std::string& path) {
         an.centre = {t[0], t[1], t[2]};
         if (const JsonValue* sc = a.find("scan")) an.scan = sc->as_string();
         if (const JsonValue* r = a.find("rendered")) an.rendered = r->as_bool();
+        if (const JsonValue* t = a.find("time_us")) an.time_us = (int64_t)t->as_double();
         if (const JsonValue* c = a.find("camera")) {
             an.camera_model = (int)c->get_double("model", -1);
             an.width = (int64_t)c->get_double("width", 0);
@@ -519,6 +539,7 @@ void write_anchors(const std::string& path, const std::vector<Anchor>& anchors) 
         w.field_raw("c2w", m + "]");
         if (!a.scan.empty()) w.field("scan", a.scan);
         if (a.rendered) w.field("rendered", true);
+        if (a.time_us >= 0) w.field("time_us", (long long)a.time_us);
         if (a.camera_model >= 0) {
             w.key("camera").object();
             w.field("model", a.camera_model);
@@ -861,6 +882,120 @@ ModelFit fit_model(const ModelGeometry& g, const std::vector<Anchor>& anchors,
     return f;
 }
 
+// The reader's camera that took `a`, or -1 when `a` is no photograph of the
+// capture at `canon`.
+int capture_camera(const spirula::xbin::Reader& reader, const Anchor& a, const fs::path& canon) {
+    std::error_code ec;
+    if (a.scan.empty() || fs::weakly_canonical(a.scan, ec) != canon) return -1;
+    const std::string folder = fs::path(a.name).parent_path().filename().string();
+    for (size_t c = 0; c < reader.cameras().size(); c++)
+        if (reader.cameras()[c].name == folder) return (int)c;
+    return -1;
+}
+
+// The trajectory the dataset holds for each capture, by cloud index, and the
+// capture's photographs placed on it: anchors.json may be older than the file.
+std::map<size_t, spirula::xbin::Correction> capture_trajectories(
+    const std::vector<std::string>& clouds, std::vector<Anchor>& anchors, const fs::path& ds) {
+    std::map<size_t, spirula::xbin::Correction> out;
+    std::error_code ec;
+    for (size_t k = 0; k < clouds.size(); k++) {
+        if (!spirula::xbin::is_xbin_path(clouds[k])) continue;
+        spirula::xbin::Correction t = read_trajectory(trajectory_path((ds / "lidar").string(), clouds[k]));
+        if (t.time_us.empty()) continue;
+        spirula::xbin::Reader reader(clouds[k]);
+        reader.set_correction(t);
+        const fs::path canon = fs::weakly_canonical(clouds[k], ec);
+        for (Anchor& a : anchors) {
+            const int cam = capture_camera(reader, a, canon);
+            double R[9], c[3];
+            if (cam < 0 || a.time_us < 0 || !reader.camera_pose((size_t)cam, a.time_us, R, c)) continue;
+            for (int j = 0; j < 9; j++) a.R[j] = R[j];
+            a.centre = {c[0], c[1], c[2]};
+        }
+        out[k] = std::move(t);
+    }
+    return out;
+}
+
+#ifdef SS_TOOL_SFM
+// A capture's scan, and the photographs the refinement left, moved by what it moved
+// the others, on top of the trajectory in `corrections` (by cloud index), which
+// gets the result. The move is against the very poses the reader places the points by.
+void follow_photos(const std::vector<std::string>& clouds, const std::vector<Anchor>& before,
+                   std::vector<Anchor>& anchors, const fs::path& ds,
+                   std::map<size_t, spirula::xbin::Correction>& corrections,
+                   const std::function<void(const std::string&)>& log) {
+    std::error_code ec;
+    for (size_t k = 0; k < clouds.size(); k++) {
+        if (!spirula::xbin::is_xbin_path(clouds[k])) continue;
+        const fs::path canon = fs::weakly_canonical(clouds[k], ec);
+        spirula::xbin::Reader reader(clouds[k]);
+        const auto base_it = corrections.find(k);
+        const spirula::xbin::Correction base =
+            base_it == corrections.end() ? spirula::xbin::Correction{} : base_it->second;
+        reader.set_correction(base);
+        std::vector<PosePair> pairs;
+        std::vector<std::pair<size_t, size_t>> left;   // anchor, camera
+        bool ours = false, timed = false;
+        for (size_t i = 0; i < anchors.size(); i++) {
+            Anchor& a = anchors[i];
+            const int cam = a.rendered ? -1 : capture_camera(reader, a, canon);
+            if (cam < 0) continue;
+            ours = true;
+            double R[9], c[3];
+            if (a.time_us < 0 || !reader.camera_pose((size_t)cam, a.time_us, R, c)) continue;
+            timed = true;
+            const Anchor& b = before[i];
+            if (a.R == b.R && a.centre.x == b.centre.x && a.centre.y == b.centre.y &&
+                a.centre.z == b.centre.z) {
+                left.push_back({i, (size_t)cam});
+                continue;
+            }
+            PosePair p;
+            p.time_us = a.time_us;
+            p.camera = reader.cameras()[(size_t)cam].name;
+            for (int j = 0; j < 9; j++) p.R_device[j] = R[j];
+            p.c_device = {c[0], c[1], c[2]};
+            p.R_refined = a.R;
+            p.c_refined = a.centre;
+            pairs.push_back(p);
+        }
+        const std::string name = fs::path(clouds[k]).filename().string();
+        if (ours && !timed) log(format(lmsg::scan_follows_untimed, {name}));
+        if (pairs.empty()) continue;
+        ScanCorrection sc = scan_correction(pairs, kCorrectionWindowS);
+        if (sc.keys.time_us.empty()) continue;
+        // Each instant's move and the smoothed key, before the LiDAR trajectory is composed under them.
+        std::ofstream csv(ds / "lidar" / (fs::path(clouds[k]).stem().string() + ".correction.csv"));
+        csv << "# time_us rx ry rz tx ty tz kept, then the smoothed move when kept\n";
+        for (size_t i = 0, key = 0; i < sc.instants.size(); i++) {
+            csv << sc.instants[i];
+            for (double v : sc.raw[i]) csv << ' ' << json_number_exact(v);
+            csv << ' ' << (int)sc.kept[i];
+            if (sc.kept[i])
+                for (double v : sc.keys.move[key++]) csv << ' ' << json_number_exact(v);
+            csv << '\n';
+        }
+        spirula::xbin::Correction both = spirula::xbin::compose(sc.keys, base);
+        reader.set_correction(both);
+        for (const auto& [i, cam] : left) {
+            Anchor& a = anchors[i];
+            double R[9], c[3];
+            if (!reader.camera_pose(cam, a.time_us, R, c)) continue;
+            for (int j = 0; j < 9; j++) a.R[j] = R[j];
+            a.centre = {c[0], c[1], c[2]};
+        }
+        log(format(lmsg::scan_follows,
+                   {name, (long long)sc.keys.time_us.size(), (long long)sc.rejected,
+                    fixed(sc.moved_m, 3), fixed(sc.turned_deg, 2), fixed(sc.mount_deg, 2)}));
+        log(format(lmsg::scan_follows_rest,
+                   {(long long)left.size(), fixed(100.0 * sc.mount_shift_m, 1)}));
+        corrections[k] = std::move(both);
+    }
+}
+#endif
+
 }  // namespace
 
 // ================
@@ -882,6 +1017,31 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     if (!anchors.empty()) log(format(lmsg::anchors_read, {(long long)anchors.size()}));
     bool placeable = false;
     for (const Anchor& a : anchors) placeable = placeable || (a.camera_model >= 0 && !a.rendered);
+    for (const std::string& c : opt.clouds)
+        if (spirula::xbin::is_xbin_path(c) && !ensure_trajectory(c, (ds / "lidar").string(), log, {}, cancel)) {
+            res.cancelled = true;
+            return res;
+        }
+    std::map<size_t, spirula::xbin::Correction> corrections =
+        capture_trajectories(opt.clouds, anchors, ds);
+    if (opt.refine_capture && placeable) {
+#ifdef SS_TOOL_SFM
+        const std::vector<Anchor> before = anchors;
+        const RefineResult r = refine_anchors_in(anchors, ds.string(), RefineOptions{});
+        if (r.points == 0) {
+            log(format(lmsg::refine_none, {ds.string()}));
+        } else {
+            log(format(lmsg::refine_head, {(long long)r.matched, (long long)r.photos,
+                                           (long long)r.moments}));
+            log(format(lmsg::refine_done, {(long long)r.points, fixed(r.error_px, 2),
+                                           fixed(r.moved_m, 3), fixed(r.turned_deg, 2)}));
+            log(format(lmsg::refine_block, {fixed(r.block_scale, 4), fixed(r.block_turn_deg, 2)}));
+            follow_photos(opt.clouds, before, anchors, ds, corrections, log);
+        }
+#else
+        throw std::runtime_error(lmsg::err_refine_unbuilt.get());
+#endif
+    }
 
     // Nothing moves until the result is complete in sparse.lidar_tmp/: a run
     // killed half way leaves the dataset as it was. sparse/0 is ours only
@@ -910,7 +1070,7 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     else if (flat) sources = {sparse};
     else if (!ours && fs::exists(sparse, ec) && holds_files(sparse))
         throw std::runtime_error(format(lmsg::err_unreadable_model, {sparse.string()}));
-    if (opt.scanner_poses_only) sources.clear();
+    if (opt.scanner_poses_only || opt.refine_capture) sources.clear();
     const std::string sig = signature(opt, anchors_path);
     if (ours && fresh.empty() && !opt.overwrite) {
         const JsonValue* last_sig = last.find("signature");
@@ -965,6 +1125,8 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
                               ? nullptr
                               : std::make_unique<spirula::cloud::Reader>(opt.clouds[k]));
         if (!readers.back()) continue;
+        if (const auto c = corrections.find(k); c != corrections.end() && readers.back()->xbin())
+            readers.back()->xbin()->set_correction(c->second);
         total += readers.back()->info().points;
         any_color = any_color || readers.back()->info().has_color;
     }

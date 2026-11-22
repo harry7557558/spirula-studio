@@ -248,6 +248,9 @@ public:
     // Which step the run is on, how far through, and its lines -- everything
     // the dataset screen draws.
     RunProgress& steps() { return _prog; }
+    // The model the laser step left in sparse/0, parsed once it is written;
+    // false before, and after it was taken.
+    bool take_aligned_model(LiveModel& out);
     std::string stage();
     std::string error();
     std::string dataset_dir();
@@ -334,6 +337,7 @@ private:
     RunProgress _prog;
     RunFilms _films;
     std::mutex _mu;
+    std::optional<LiveModel> _aligned;   // under _mu
     std::string _error, _dataset_dir, _image_dir, _mask_dir;
     std::atomic<bool> _mask_flipped{false};
     // Absolute; what the screen polls while the run is going.

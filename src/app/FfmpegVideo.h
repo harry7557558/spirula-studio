@@ -30,6 +30,10 @@ struct VideoFacts {
     std::vector<int> streams;
     std::string error;   // why ffmpeg itself could not be started, if it could not
 };
+
+// Whether it takes -fps_mode (ffmpeg 5.1) rather than the deprecated -vsync.
+bool ffmpeg_has_fps_mode(const std::string& ffmpeg_exe);
+
 bool ffmpeg_probe_video(const std::string& ffmpeg_exe, const std::string& path,
                         VideoFacts& out, const std::atomic<bool>& cancel);
 

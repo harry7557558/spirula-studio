@@ -46,6 +46,9 @@ struct DatasetOptions {
     bool flip_masks = false;             // the dataset's masks paint what to remove
     bool overwrite = false;              // redo a result whose inputs have not changed
     bool scanner_poses_only = false;     // the reconstruction failed: use none of it
+    // Use no model either, but the scanner's poses refined on the run's
+    // features/ and matches.bin first (AnchorRefine.h).
+    bool refine_capture = false;
 };
 
 struct DatasetResult {

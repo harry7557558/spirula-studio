@@ -19,21 +19,6 @@ namespace app {
 
 namespace {
 
-// -fps_mode arrived in ffmpeg 5.1 and -vsync, which it replaces, is deprecated
-// from then on; a version this cannot read is taken to be a recent build.
-bool has_fps_mode(const std::string& exe) {
-    int major = -1, minor = 0;
-    std::atomic<bool> never{false};
-    gui::run_process({exe, "-hide_banner", "-version"}, "",
-                     [&](const std::string& line) {
-                         if (major < 0)
-                             std::sscanf(line.c_str(), "ffmpeg version %d.%d",
-                                         &major, &minor);
-                     },
-                     never);
-    return major < 0 || major > 5 || (major == 5 && minor >= 1);
-}
-
 double span_fps(const VideoFacts& f) { return f.fps > 1.0 ? f.fps : 30.0; }
 
 // Everything before the output. Every decoded frame comes out exactly once, in
@@ -42,7 +27,7 @@ double span_fps(const VideoFacts& f) { return f.fps > 1.0 ? f.fps : 30.0; }
 std::vector<std::string> decode_args(const FrameExtractJob& o, const VideoFacts& f,
                                      int track, bool auto_rotate,
                                      const std::string& filters, const FrameSpan& span) {
-    static const bool fps_mode = has_fps_mode(o.ffmpeg_exe);
+    static const bool fps_mode = ffmpeg_has_fps_mode(o.ffmpeg_exe);
     const int stream = track < (int)f.streams.size() ? f.streams[track] : -1;
     std::vector<std::string> a{o.ffmpeg_exe, "-nostdin", "-hide_banner",
                                "-loglevel", "error", "-hwaccel", "none"};

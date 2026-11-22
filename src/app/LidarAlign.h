@@ -60,6 +60,7 @@ struct Anchor {
     sfm::Vec3 centre;                 // in `scan`'s own frame
     std::string scan;                 // the file it came from; "" = not recorded
     bool rendered = false;            // a view of the scan, not a photograph: never trained on
+    int64_t time_us = -1;             // when a capture took it; -1 = not recorded
     // Its COLMAP camera, when known: what places it where the reconstruction
     // could not. -1 = none.
     int camera_model = -1;

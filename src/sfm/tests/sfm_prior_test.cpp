@@ -150,6 +150,15 @@ void testJacobians(uint32_t rig) {
     std::mt19937 rng(11 + rig);
     BAProblem P = synth::makeProblem(3, 7, 40, 1, 0.2, 5 + rig, -1, rig, true);
     PosePriors pr = priorsFrom(P, rng, 0.05, true);
+    // An axis of its own, which two factors on one image use to state its attitude.
+    for (uint32_t i = 1; i < P.num_images; i += 2) {
+        PriorUp u;
+        u.i = i;
+        u.w = Vec3{0.8, -0.1, 0.3}.normalized();
+        u.u = mul(angleAxisToRotation({0.03, -0.02, 0.01}), mul(camPose(P, i).R, u.w));
+        u.sigma = 0.02;
+        pr.ups.push_back(u);
+    }
     P.priors = &pr;
     PriorAssembler pa;
     pa.init(P);
