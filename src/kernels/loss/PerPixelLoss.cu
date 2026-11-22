@@ -840,23 +840,26 @@ static void _avg_pool_downsample_gt_geometry(const TorchTensorView& src,
 // trained toward the distractor the mask exists to ignore.
 __global__ void zero_masked_grad_kernel(
     TensorView<float, 4> grad,
-    const TensorView<uint8_t, 4> mask
+    const TensorView<uint8_t, 4> mask,
+    bool ignore_only  // zero only class 0, leaving segment (2) its alpha grad
 ) {
     uint32_t xid = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t yid = blockIdx.y * blockDim.y + threadIdx.y;
     uint32_t bid = blockIdx.z * blockDim.z + threadIdx.z;
     if (yid >= grad.shape[1] || xid >= grad.shape[2])
         return;
-    if (mask.at(bid, yid, xid, 0) == 1)
+    const uint8_t m = mask.at(bid, yid, xid, 0);
+    if (ignore_only ? m != 0 : m == 1)
         return;
     for (int c = 0; c < grad.shape[3]; ++c)
         grad.at(bid, yid, xid, c) = 0.0f;
 }
 
-static void _zero_masked_grad(const TorchTensorView& grad, const TorchTensorView& mask) {
+static void _zero_masked_grad(const TorchTensorView& grad, const TorchTensorView& mask,
+                              bool ignore_only = false) {
     const auto& s = std::get<2>(grad);
     zero_masked_grad_kernel<<<_LAUNCH_ARGS_3D(s[2], s[1], s[0], 16, 16, 1)>>>(
-        _tv_view4(grad), _tv_view4_u8(mask));
+        _tv_view4(grad), _tv_view4_u8(mask), ignore_only);
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 
@@ -1479,12 +1482,18 @@ LossValues compute_multi_scale_per_pixel_losses(
 
     // Scale 0 already leaves masked pixels at zero gradient; only the
     // upsampled coarse scales put anything there.
-    if (num_loss_scales > 1 && has_mask && _has(grads_out.v_render_rgb) &&
-            _has(ref_alpha)) {
-        const auto& gs = std::get<2>(grads_out.v_render_rgb);
+    // An ignore pixel takes no alpha gradient either, unlike a cut-out's empty one.
+    auto same_shape = [&](const TorchTensorView& g) {
+        const auto& gs = std::get<2>(g);
         const auto& ms = std::get<2>(ref_alpha);
-        if (gs[0] == ms[0] && gs[1] == ms[1] && gs[2] == ms[2])
+        return gs[0] == ms[0] && gs[1] == ms[1] && gs[2] == ms[2];
+    };
+    if (num_loss_scales > 1 && has_mask && _has(ref_alpha)) {
+        if (_has(grads_out.v_render_rgb) && same_shape(grads_out.v_render_rgb))
             _zero_masked_grad(grads_out.v_render_rgb, ref_alpha);
+        if (segment_and_ignore_mask && _has(grads_out.v_render_Ts) &&
+                same_shape(grads_out.v_render_Ts))
+            _zero_masked_grad(grads_out.v_render_Ts, ref_alpha, true);
     }
 
     // Scale total losses by 1/num_scales (device-side)

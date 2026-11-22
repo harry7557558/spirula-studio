@@ -145,7 +145,7 @@ static void mask_mode_resolution() {
     check(cfg.mask_mode == "segment_and_ignore", "mask_mode survives JSON load");
     bool saved = false;
     for (const auto& [key, value] : train_config_json_pairs(cfg))
-        if (std::string(key) == "mask_mode") saved = value == "segment_and_ignore";
+        if (std::string(key) == "mask_mode") saved = value == "\"segment_and_ignore\"";
     check(saved, "mask_mode is serialized");
 
     cfg.mask_mode = "bogus";

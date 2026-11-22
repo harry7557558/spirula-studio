@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
 # run this from the `src` folder
-# tested with slang-2026.2.1-linux-x86_64
 
 set -euo pipefail
+
+# Other slangc versions renumber every header and fail on primitive_3dgs.slang.
+required_slang=2026.2.1
+if ! command -v slangc >/dev/null 2>&1; then
+    echo "slangc not found on PATH; need slang $required_slang:" >&2
+    echo "  https://github.com/shader-slang/slang/releases/tag/v$required_slang" >&2
+    exit 1
+fi
+found_slang=$(slangc -version 2>&1 | tr -d '[:space:]')
+if [ "$found_slang" != "$required_slang" ]; then
+    echo "slangc $found_slang at $(command -v slangc); src/generated needs exactly $required_slang:" >&2
+    echo "  https://github.com/shader-slang/slang/releases/tag/v$required_slang" >&2
+    exit 1
+fi
 
 compile_args="-ignore-capabilities -line-directive-mode none"
 # compile_args="-ignore-capabilities"  # for debugging

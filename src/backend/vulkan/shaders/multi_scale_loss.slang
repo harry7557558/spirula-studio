@@ -759,7 +759,7 @@ struct MsZeroMaskedParams {
     float* grad;
     uint* mask;
     int B, C, H, W;
-    int _pad0;
+    int ignore_only;  // zero only class 0, leaving segment (2) its alpha grad
 };
 
 [shader("compute")]
@@ -771,7 +771,8 @@ void ms_zero_masked_grad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint bid = wg.z;
     if (yid >= uint(p.H) || xid >= uint(p.W)) return;
     gindex_t i = ((gindex_t)bid * p.H + yid) * (gindex_t)p.W + xid;
-    if (u8_load(p.mask, (uint)i) == 1u) return;
+    uint m = u8_load(p.mask, (uint)i);
+    if (p.ignore_only != 0 ? m != 0u : m == 1u) return;
     for (int c = 0; c < p.C; c++)
         p.grad[i * p.C + c] = 0.0f;
 }

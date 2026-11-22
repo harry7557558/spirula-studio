@@ -101,6 +101,7 @@ struct MsCfg {
     int rgb_pattern = 0;
     int mask_pattern = 0;
     bool half_rgb = false;
+    bool seg_ign = false;  // 3-class mask: 0 ignore, 1 keep, 2 segment
 };
 
 void run_ms_cfg(Rng& r, const MsCfg& c) {
@@ -186,7 +187,10 @@ void run_ms_cfg(Rng& r, const MsCfg& c) {
     uint8_t* ref_alpha = nullptr;
     if (c.with_alpha) {
         std::vector<uint8_t> m(npa);
-        for (auto& x : m) x = r.uf(0, 1) < 0.8f ? 1 : 0;
+        for (auto& x : m) {
+            const float u = r.uf(0, 1);
+            x = c.seg_ign ? (u < 0.5f ? 1 : u < 0.8f ? 2 : 0) : (u < 0.8f ? 1 : 0);
+        }
         if (c.mask_pattern != 0) {
             for (int64_t i = 0; i < npa; ++i)
                 m[i] = c.mask_pattern == 1 && (i / (Ha * Wa)) % 3 != 0 &&
@@ -261,7 +265,7 @@ void run_ms_cfg(Rng& r, const MsCfg& c) {
             ttv(v_losses, {(int)LossIndex::length}), needs, num_train,
             cams ? ttv(cams, {c.B}) : ttv_null(),
             ttv(loss_map_out, {c.B, c.H, c.W, 1}), c.loss_map_mode,
-            c.quantile, c.nms_falloff, grads, false);
+            c.quantile, c.nms_falloff, grads, c.seg_ign);
     };
 
     run_once();  // primes the one-behind readouts
@@ -500,6 +504,23 @@ int main(int argc, char** argv) {
             0.9f, 0.5f, -1.0f, (int)PerceptualLoss::SsimBlurTolerant};
         c.rgb_pattern = pattern;
         run_ms_cfg(matched, c);
+    }
+    // segment_and_ignore masks: the 3-class pyramid, the per-class alpha terms
+    // and the post-upsample zeroing; one mask smaller than the render.
+    Rng tri(260731u);
+    MsCfg seg_cfgs[] = {
+        {"seg_ign_full", 2, 64, 80, 3, 0, 0, 0, 0, 0, 0, true, false, false,
+         (int)DensifyLossMapMode::LossFull, 0.9f, 0.5f, -1.0f},
+        {"seg_ign_edge", 1, 67, 91, 3, 0, 0, 0, 0, 0, 0, true, false, true,
+         (int)DensifyLossMapMode::RobustEdgeAware, 0.85f, 0.5f, -1.0f,
+         (int)PerceptualLoss::SsimBlurTolerant},
+        {"seg_ign_small", 1, 40, 48, 2, 0, 0, 0, 0, 16, 16, true, false, false,
+         (int)DensifyLossMapMode::SsimContrastStruct, 0.9f, 0.5f, 0.98f,
+         (int)PerceptualLoss::SCielab},
+    };
+    for (MsCfg& c : seg_cfgs) {
+        c.seg_ign = true;
+        run_ms_cfg(tri, c);
     }
 
     auto write_all = [&](const char* path) {

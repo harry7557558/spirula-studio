@@ -106,7 +106,7 @@ static_assert(sizeof(MsPoolMaskedParams) == 3 * 8 + 10 * 4, "layout");
 struct MsZeroMaskedParams {
     uint64_t grad, mask;
     int32_t B, C, H, W;
-    int32_t _pad0;
+    int32_t ignore_only;
 };
 static_assert(sizeof(MsZeroMaskedParams) == 2 * 8 + 6 * 4, "layout");
 
@@ -841,7 +841,7 @@ void avg_pool_downsample_masked_float_vk(const TorchTensorView& src,
 }
 
 void zero_masked_grad_vk(const TorchTensorView& grad,
-                         const TorchTensorView& mask) {
+                         const TorchTensorView& mask, bool ignore_only = false) {
     const auto& gs = std::get<2>(grad);
     MsZeroMaskedParams p{};
     p.grad = std::get<0>(grad);
@@ -850,6 +850,7 @@ void zero_masked_grad_vk(const TorchTensorView& grad,
     p.C = (int32_t)gs[3];
     p.H = (int32_t)gs[1];
     p.W = (int32_t)gs[2];
+    p.ignore_only = ignore_only ? 1 : 0;
     dispatch_tiles("multi_scale_loss.ms_zero_masked_grad", p.W, p.H, p.B, &p,
                    sizeof(p));
 }
@@ -1393,12 +1394,18 @@ LossValues compute_multi_scale_per_pixel_losses(
 
     // Scale 0 already leaves masked pixels at zero gradient; only the
     // upsampled coarse scales put anything there.
-    if (num_loss_scales > 1 && has_mask && _has(grads_out.v_render_rgb) &&
-            _has(ref_alpha)) {
-        const auto& gs = std::get<2>(grads_out.v_render_rgb);
+    // An ignore pixel takes no alpha gradient either, unlike a cut-out's empty one.
+    auto same_shape = [&](const TorchTensorView& g) {
+        const auto& gs = std::get<2>(g);
         const auto& ms = std::get<2>(ref_alpha);
-        if (gs[0] == ms[0] && gs[1] == ms[1] && gs[2] == ms[2])
+        return gs[0] == ms[0] && gs[1] == ms[1] && gs[2] == ms[2];
+    };
+    if (num_loss_scales > 1 && has_mask && _has(ref_alpha)) {
+        if (_has(grads_out.v_render_rgb) && same_shape(grads_out.v_render_rgb))
             zero_masked_grad_vk(grads_out.v_render_rgb, ref_alpha);
+        if (segment_and_ignore_mask && _has(grads_out.v_render_Ts) &&
+                same_shape(grads_out.v_render_Ts))
+            zero_masked_grad_vk(grads_out.v_render_Ts, ref_alpha, true);
     }
 
     // Scale total losses by 1/num_scales (device-side).
