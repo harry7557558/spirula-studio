@@ -545,12 +545,16 @@ bool generate_mesh(
         return false;
     }
     // Refused here rather than inside the solver, which can only report the
-    // empty result as "no tetrahedra".
+    // empty result as "no tetrahedra". extract_opacity_field appends cam_pos
+    // to the point cloud for pocket sealing, so count those vertices too.
     const bool grid = tsdf && cfg.tsdf_voxel > 0.0f;   // else the field over the splat samples
-    if (!grid && (long long)ev.num_kept() * 7 > delaunay3d::kMaxPoints) {
+    const int cloud_cams = cam_pos ? num_cameras : 0;
+    if (!grid && (long long)ev.num_points() + cloud_cams > delaunay3d::kMaxPoints) {
+        const long long max_gaussians =
+            std::max(0LL, ((long long)delaunay3d::kMaxPoints - cloud_cams) / 7);
         mlog::fail(mlog::Stage::PointCloud, mmsg::too_many_gaussians,
                    {(long long)ev.num_kept(), (long long)delaunay3d::kMaxPoints,
-                    (long long)(delaunay3d::kMaxPoints / 7)});
+                    max_gaussians});
         return false;
     }
 
@@ -559,11 +563,18 @@ bool generate_mesh(
     MeshProgress prog(cfg, cfg.on_progress, ev.num_points(), want_vertex, want_texture);
     Mesh mesh;
     if (grid) {
+        const std::vector<int>& sel = ev.selected_cameras();
         long long pixels = 0;
-        for (int c = 0; c < num_cameras; ++c) pixels += (long long)cams.widths[c] * cams.heights[c];
+        if (sel.empty()) {
+            for (int c = 0; c < num_cameras; ++c)
+                pixels += (long long)cams.widths[c] * cams.heights[c];
+        } else {
+            for (int c : sel)
+                pixels += (long long)cams.widths[c] * cams.heights[c];
+        }
         prog.tsdf((double)pixels);
         if (!extract_tsdf(ev, cams, num_cameras, cfg, prog, mesh)) return false;
-    } else if (!extract_opacity_field(ev, cfg, prog, t0, mesh, cam_pos, cam_pos ? num_cameras : 0)) {
+    } else if (!extract_opacity_field(ev, cfg, prog, t0, mesh, cam_pos, cloud_cams)) {
         return false;
     }
     return finish_mesh(mesh, ev, prog, cfg, cam_pos, cam_pos ? num_cameras : 0, outputs,
