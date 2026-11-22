@@ -486,10 +486,10 @@ void mesh_pointcloud(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     int g = p.kept[i];
     float3 m = ld3(p.mean, g);
     if (p.samples_per_gaussian <= 1u) {
-        int base = i * 3;
-        p.out_xyz[base + 0] = m.x;
-        p.out_xyz[base + 1] = m.y;
-        p.out_xyz[base + 2] = m.z;
+        gindex_t base = gindex_t(gid) * 3;
+        elem_at(p.out_xyz, base + gindex_t(0))[0] = m.x;
+        elem_at(p.out_xyz, base + gindex_t(1))[0] = m.y;
+        elem_at(p.out_xyz, base + gindex_t(2))[0] = m.z;
         return;
     }
     float k = sqrt(p.k2[g]) * 2.5f;  // 2.5x the cutoff, for overlapping splats

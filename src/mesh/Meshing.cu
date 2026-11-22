@@ -469,7 +469,7 @@ __global__ void pointcloud_kernel(
     int g = kept[i];
     float3 m = mean[g];
     if (samples_per_gaussian <= 1) {
-        long base = (long)i * 3;
+        const size_t base = (size_t)i * 3;
         out[base + 0] = m.x;
         out[base + 1] = m.y;
         out[base + 2] = m.z;
@@ -483,7 +483,7 @@ __global__ void pointcloud_kernel(
     float3 o1 = ax1[g] * (k * fmaxf(s1, lo));
     float3 o2 = ax2[g] * (k * fmaxf(s2, lo));
     float3 pts[7] = { m, m+o0, m-o0, m+o1, m-o1, m+o2, m-o2 };
-    long base = (long)i * 21;
+    const size_t base = (size_t)i * 21;
     for (int j = 0; j < 7; ++j) {
         out[base + 3*j + 0] = pts[j].x;
         out[base + 3*j + 1] = pts[j].y;
