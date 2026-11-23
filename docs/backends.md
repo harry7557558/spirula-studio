@@ -110,6 +110,15 @@ change design decisions:
   `kCasFloatAddEntries` (src/backend/vulkan/VulkanPipelines.cpp) load their
   CAS-loop blob instead. CAS is not a win everywhere, so the list is per
   entry. `SS_VK_NATIVE_ATOMICS=1` turns it off.
+- Fewer workgroups means fewer same-address float atomics, ~60 ns each on RDNA 4 (RADV).
+  `appearance_bwd` had one workgroup per 256 pixels adding to the same PPISP
+  parameters: 2.15 ms a call at 4,300 workgroups with native atomics, 0.16 ms
+  after capping the workgroups at 256 and striding them over the image. RADV already merges the
+  lanes of a uniform-address atomic; it cannot merge across workgroups.
+- The bilagrid TV forward lost more to its access pattern than to atomics on
+  RDNA 4: lanes 12 KB apart reached ~100 GB/s without any atomic. A coalesced
+  grid-stride pass plus a one-workgroup sum of the partials took it from 338
+  to 41 us a call on an R9700 (RTX 5070 Ti: 25 to 24 us; garden, `3dgs`).
 - Vulkan driver choice matters (`amdvlk` vs RADV differ by an order of
   magnitude on some kernels). When comparing, state the driver.
 

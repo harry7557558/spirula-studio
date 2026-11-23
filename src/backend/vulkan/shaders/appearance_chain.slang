@@ -190,11 +190,9 @@ static const uint kPpispReduceThreads = 256u;
 void appearance_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                     uniform AppParams* pp) {
     AppParams p = *pp;
-    uint gid = (wg.z * p.wgs_per_row + wg.x) * 256 + tid;
     uint bid = wg.y;
-    bool inside = bid < uint(p.B) && gid < uint(p.H * p.W);
-    uint pix = inside ? bid * uint(p.H * p.W) + gid : 0u;
-    uint x = inside ? gid % uint(p.W) : 0u, y = inside ? gid / uint(p.W) : 0u;
+    uint hw = uint(p.H * p.W);
+    uint gid_end = bid < uint(p.B) ? hw : 0u;
 
     int slot = 0;
     float pbuf[kMaxParams];
@@ -204,7 +202,11 @@ void appearance_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (kPpisp != 0 && bid < uint(p.B))
         _app_load_params(p, bid, slot, pbuf);
 
-    if (inside) {
+    // wgs_per_row workgroups stride over the image, so the parameter
+    // gradients reach global memory once per workgroup, not once per 256 px.
+    for (uint gid = wg.x * 256 + tid; gid < gid_end; gid += p.wgs_per_row * 256) {
+        uint pix = bid * hw + gid;
+        uint x = gid % uint(p.W), y = gid / uint(p.W);
         float3 raw = rgb_load3(p.rgb, pix, p.rgb_fmt);
         float T = _app_has_bg() ? p.transmittance[pix] : 0.0f;
         bool drawn = false;
@@ -230,7 +232,8 @@ void appearance_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 _pp_apply_vjp(c_enc, px, center, size, pbuf, v, vc, vs);
                 v = vc;
                 [ForceUnroll]
-                for (int i = 0; i < kMaxParams; i++) vbuf[i] += vs[i];
+                for (int i = 0; i < kMaxParams; i++)
+                    vbuf[i] += _pp_finite(vs[i]) ? vs[i] : 0.0f;
             }
             if (kCsEnabled != 0)
                 v = working_to_display_bwd(c_pre, _app_matrix(p.cs_matrix),
@@ -241,7 +244,8 @@ void appearance_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 _pp_apply_vjp(c_bg, px, center, size, pbuf, v, vc, vs);
                 v = vc;
                 [ForceUnroll]
-                for (int i = 0; i < kMaxParams; i++) vbuf[i] += vs[i];
+                for (int i = 0; i < kMaxParams; i++)
+                    vbuf[i] += _pp_finite(vs[i]) ? vs[i] : 0.0f;
             }
         }
 
