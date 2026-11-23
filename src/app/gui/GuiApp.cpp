@@ -9735,6 +9735,13 @@ void GuiApp::draw_mesh_options() {
         if (ui::Combo(msg::mesh_method, &method, {&msg::mesh_method_opacity, &msg::mesh_method_tsdf}))
             _mesh_job.tsdf = method == 1;
         ui::help_on_hover(msg::mesh_method_help);
+        if (_mesh_job.tsdf) {
+            ImGui::SetNextItemWidth(px(120.0f));
+            ui::InputFloat(msg::mesh_tsdf_voxel, &_mesh_job.tsdf_voxel, 0.0f, 0.0f, "%.4g");
+            if (!std::isfinite(_mesh_job.tsdf_voxel) || _mesh_job.tsdf_voxel < 0.0f)
+                _mesh_job.tsdf_voxel = 0.0f;
+            ui::help_on_hover(msg::mesh_tsdf_voxel_help);
+        }
         ImGui::Unindent();
     }
 
