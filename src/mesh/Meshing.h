@@ -12,6 +12,7 @@
 #define SPIRULA_MESHING_H
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -96,6 +97,10 @@ struct MeshingConfig {
 
     // Told at every stage how far the run is and the memory it expects.
     MeshProgressSink on_progress;
+
+    // Camera `cam`'s ground labels at w x h (GroundSplit.h); false when it has
+    // none. Set, the run also writes <base>_ground and <base>_noground.
+    std::function<bool(int cam, int w, int h, std::vector<uint8_t>& out)> ground_labels;
 };
 
 // Full camera intrinsics/extrinsics for the rasterize-and-sample (dataset)

@@ -289,6 +289,21 @@ bool extract_opacity_field(OccupancyEvaluator& ev, const MeshingConfig& cfg,
     return true;
 }
 
+TsdfCamera tsdf_camera(const CameraParams& cams, int c, int W, int H) {
+    TsdfCamera tc{};
+    std::copy(cams.viewmats + 16 * c, cams.viewmats + 16 * (c + 1), tc.viewmat);
+    tc.fx = cams.intrins[4 * c];
+    tc.fy = cams.intrins[4 * c + 1];
+    tc.cx = cams.intrins[4 * c + 2];
+    tc.cy = cams.intrins[4 * c + 3];
+    tc.width = W;
+    tc.height = H;
+    tc.model = cams.camera_models[c];
+    tc.distortion = cams.distortions ? cams.distortions[c] : 0;
+    if (cams.dist_coeffs) std::copy(cams.dist_coeffs + 8 * c, cams.dist_coeffs + 8 * (c + 1), tc.dist);
+    return tc;
+}
+
 bool extract_tsdf(OccupancyEvaluator& ev, const CameraParams& cams, int num_cameras,
                   const MeshingConfig& cfg, MeshProgress& prog, Mesh& mesh) {
     const float voxel = cfg.tsdf_voxel;
@@ -311,18 +326,7 @@ bool extract_tsdf(OccupancyEvaluator& ev, const CameraParams& cams, int num_came
         }
         depth.resize((size_t)W * H);
         moments_to_depth(moments.data(), depth.size(), depth.data());
-        TsdfCamera tc{};
-        std::copy(cams.viewmats + 16 * c, cams.viewmats + 16 * (c + 1), tc.viewmat);
-        tc.fx = cams.intrins[4 * c];
-        tc.fy = cams.intrins[4 * c + 1];
-        tc.cx = cams.intrins[4 * c + 2];
-        tc.cy = cams.intrins[4 * c + 3];
-        tc.width = W;
-        tc.height = H;
-        tc.model = cams.camera_models[c];
-        tc.distortion = cams.distortions ? cams.distortions[c] : 0;
-        if (cams.dist_coeffs) std::copy(cams.dist_coeffs + 8 * c, cams.dist_coeffs + 8 * (c + 1), tc.dist);
-        vol.integrate(tc, depth.data(), cfg.tsdf_max_depth);
+        vol.integrate(tsdf_camera(cams, c, W, H), depth.data(), cfg.tsdf_max_depth);
     }
     if (cfg.verbose)
         mlog::out(mlog::Stage::Tsdf, mmsg::tsdf_fused,

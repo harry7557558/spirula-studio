@@ -11,6 +11,7 @@
 
 #include "mesh/MeshCheck.h"   // the triangle-pair test the edits share
 #include "mesh/Meshing.h"
+#include "mesh/Tsdf.h"
 
 #include <algorithm>
 #include <array>
@@ -221,6 +222,9 @@ bool extract_opacity_field(OccupancyEvaluator& ev, const MeshingConfig& cfg,
 // `cfg.tsdf_voxel`, and its zero level (docs/notes/tsdf.md).
 bool extract_tsdf(OccupancyEvaluator& ev, const CameraParams& cams, int num_cameras,
                   const MeshingConfig& cfg, MeshProgress& prog, Mesh& mesh);
+
+// Camera `c` of `cams` at its render size W x H.
+TsdfCamera tsdf_camera(const CameraParams& cams, int c, int W, int H);
 
 // ---------------------------------------------------------------------------
 // Merge (MeshMerge.cpp, docs/notes/mesh-merge.md)

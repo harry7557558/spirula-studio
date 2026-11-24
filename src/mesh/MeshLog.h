@@ -51,6 +51,7 @@ enum class Stage {
     Quality,
     Orient,
     Color,
+    Ground,
     Uv,
     Bake,
     Texture,
@@ -78,6 +79,7 @@ inline const spirula::i18n::Msg& stage_msg(Stage s) {
         case Stage::Quality:      return m::stage_quality;
         case Stage::Orient:       return m::stage_orient;
         case Stage::Color:        return m::stage_color;
+        case Stage::Ground:       return m::stage_ground;
         case Stage::Uv:           return m::stage_uv;
         case Stage::Bake:         return m::stage_bake;
         case Stage::Texture:      return m::stage_texture;

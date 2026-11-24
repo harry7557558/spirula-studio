@@ -22,6 +22,9 @@ constexpr double kPointCloud = 0.065e-6, kDelaunay = 0.85e-6, kOccupancy = 0.92e
 constexpr double kCutEdges = 0.16e-6, kMarching = 0.16e-6, kBisection = 0.25e-6;  // per edge and iteration
 constexpr double kMerge = 0.47e-6, kPass = 3.0e-6;                                // per face
 constexpr double kQuality = 1.4e-6, kOrient = 0.46e-6, kColor = 3.5e-6, kWrite = 0.5e-6;
+// Ground voting renders every camera and projects every vertex, as colouring
+// does; not measured on its own.
+constexpr double kGround = kColor;
 constexpr double kAtlas = 32e-6, kBakeTexel = 0.15e-6, kBakeFace = 3e-6;
 // TSDF, one run on an RTX 5070 laptop (998k-splat model, 488 cameras at
 // 2688x1512): fusion per camera pixel, extraction per raw face, raw faces per
@@ -60,6 +63,7 @@ MeshProgress::MeshProgress(const MeshingConfig& cfg, const MeshProgressSink& sin
     _on[(int)MeshPhase::Fuse] = _on[(int)MeshPhase::Extract] = false;
     _on[(int)MeshPhase::Quality] = _quality_iters > 0;
     _on[(int)MeshPhase::Color] = vertex_color;
+    _on[(int)MeshPhase::Ground] = (bool)cfg.ground_labels;
     _on[(int)MeshPhase::Atlas] = _on[(int)MeshPhase::Bake] = texture;
     const double side = cfg.texture_size > 0 ? cfg.texture_size : kAutoTextureMax;
     _texels = texture ? side * side : 0.0;
@@ -110,6 +114,7 @@ void MeshProgress::plan() {
     set(MeshPhase::Quality, kQuality * F[3] * _quality_iters);
     set(MeshPhase::Orient, kOrient * F[3]);
     set(MeshPhase::Color, kColor * F[3]);
+    set(MeshPhase::Ground, kGround * F[3]);
     set(MeshPhase::Write, kWrite * F[3]);
     set(MeshPhase::Atlas, kAtlas * F[3]);
     set(MeshPhase::Bake, kBakeTexel * _texels + kBakeFace * F[3]);

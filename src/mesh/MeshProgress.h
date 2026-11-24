@@ -21,7 +21,7 @@ using MeshProgressSink = std::function<void(const MeshProgressReport&)>;
 
 enum class MeshPhase {
     Fuse, Extract, PointCloud, Delaunay, Occupancy, CutEdges, Bisection, Marching, Merge,
-    Pass1, Pass2, Quality, Orient, Color, Write, Atlas, Bake, Count
+    Pass1, Pass2, Quality, Orient, Color, Ground, Write, Atlas, Bake, Count
 };
 
 class MeshProgress {

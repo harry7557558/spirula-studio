@@ -8,6 +8,7 @@
  */
 
 #include "mesh/Meshing.h"
+#include "mesh/GroundSplit.h"
 #include "mesh/MeshCheck.h"
 #include "mesh/MeshExport.h"
 #include "mesh/MeshStages.h"
@@ -177,10 +178,54 @@ constexpr int kMinCullPatch[2] = {64, 8};
 constexpr int kRepairRounds = 4;
 constexpr float kEarlyFixDeg = 5.0f;
 
+// Every camera's ground labels voted onto the mesh's vertices, then per face.
+// Empty when no camera had labels.
+std::vector<uint8_t> label_ground(const Mesh& mesh, OccupancyEvaluator& ev,
+                                  const CameraParams& cams, int num_cameras,
+                                  const MeshingConfig& cfg) {
+    auto t = Clock::now();
+    const std::vector<int>& sel = ev.selected_cameras();
+    const int n_cams = sel.empty() ? num_cameras : (int)sel.size();
+    std::vector<float> ground(mesh.V.size(), 0.0f), seen(mesh.V.size(), 0.0f);
+    std::vector<float> moments, depth;
+    std::vector<uint8_t> labels;
+    int masked = 0;
+    for (int ci = 0; ci < n_cams; ++ci) {
+        const int c = sel.empty() ? ci : sel[ci];
+        int W = 0, H = 0;
+        if (!ev.render_moments(c, moments, W, H)) break;
+        if (!cfg.ground_labels(c, W, H, labels) || labels.size() != (size_t)W * H) continue;
+        depth.resize((size_t)W * H);
+        moments_to_depth(moments.data(), depth.size(), depth.data());
+        vote_ground(tsdf_camera(cams, c, W, H), depth.data(), labels.data(), mesh,
+                    ground.data(), seen.data());
+        ++masked;
+    }
+    if (masked == 0) return {};
+    std::vector<uint8_t> faces = ground_faces(mesh, ground, seen, cfg.floater_min_faces);
+    if (cfg.verbose) {
+        long long n = 0;
+        for (uint8_t f : faces) n += f;
+        mlog::out(mlog::Stage::Ground, mmsg::ground_result,
+                  {n, (long long)faces.size(), masked, mlog::num(secs_since(t), 2)});
+    }
+    return faces;
+}
+
+// `mesh` as `r` asks, and with `ground` its two parts beside it.
+void write_with_parts(const Mesh& mesh, const MeshOutputRequest& r,
+                      const std::vector<uint8_t>& ground) {
+    write_mesh(mesh, r.mode, r.spec, r.base, /*verbose=*/true);
+    if (ground.size() != mesh.F.size()) return;
+    write_mesh(mesh_subset(mesh, ground, 1), r.mode, r.spec, r.base + "_ground", true);
+    write_mesh(mesh_subset(mesh, ground, 0), r.mode, r.spec, r.base + "_noground", true);
+}
+
 // Everything after extraction, whatever made the mesh: merge, culling,
 // cleanup, orientation, colour, export. False when --check found defects.
 bool finish_mesh(Mesh& mesh, OccupancyEvaluator& ev, MeshProgress& prog,
-                 const MeshingConfig& cfg, const float* cam_pos, int num_cameras,
+                 const MeshingConfig& cfg, const CameraParams& cams,
+                 const float* cam_pos, int num_cameras,
                  const std::vector<MeshOutputRequest>& outputs,
                  bool want_vertex, bool want_texture, Clock::time_point t0) {
     auto stage_check = [&](const std::string& tag) {
@@ -366,6 +411,13 @@ bool finish_mesh(Mesh& mesh, OccupancyEvaluator& ev, MeshProgress& prog,
                       {mlog::num(secs_since(t8), 2)});
     }
 
+    // ---- 7e. ground split: face labels survive the atlas, which keeps face order ----
+    std::vector<uint8_t> ground;
+    if (cfg.ground_labels && ev.has_render_cameras() && !mesh.F.empty()) {
+        prog.enter(MeshPhase::Ground);
+        ground = label_ground(mesh, ev, cams, num_cameras, cfg);
+    }
+
     // ---- 8. write everything the atlas does not touch ----
     // Before it, not after: baking splits the seam vertices, so V/F/C stop
     // describing the mesh a vertex-colored or plain file is meant to hold.
@@ -378,8 +430,7 @@ bool finish_mesh(Mesh& mesh, OccupancyEvaluator& ev, MeshProgress& prog,
                    report.nonmanifold_edges, report.misoriented_edges, report.duplicate_faces,
                    mlog::num(report.min_angle_deg, 2), report.under_5_deg, report.under_15_deg});
     for (const MeshOutputRequest& r : outputs)
-        if (r.mode != MeshColorMode::Texture)
-            write_mesh(mesh, r.mode, r.spec, r.base, /*verbose=*/true);
+        if (r.mode != MeshColorMode::Texture) write_with_parts(mesh, r, ground);
 
     if (want_texture && !mesh.V.empty()) {
         t8 = Clock::now();
@@ -448,8 +499,7 @@ bool finish_mesh(Mesh& mesh, OccupancyEvaluator& ev, MeshProgress& prog,
             mlog::out(mlog::Stage::Texture, mmsg::seconds,
                       {mlog::num(secs_since(t8), 2)});
         for (const MeshOutputRequest& r : outputs)
-            if (r.mode == MeshColorMode::Texture)
-                write_mesh(mesh, r.mode, r.spec, r.base, /*verbose=*/true);
+            if (r.mode == MeshColorMode::Texture) write_with_parts(mesh, r, ground);
     }
     prog.finish();
     mlog::out(mlog::Stage::Done, mmsg::done_summary,
@@ -583,7 +633,7 @@ bool generate_mesh(
     } else if (!extract_opacity_field(ev, cfg, prog, t0, mesh, cam_pos, cloud_cams)) {
         return false;
     }
-    return finish_mesh(mesh, ev, prog, cfg, cam_pos, cam_pos ? num_cameras : 0, outputs,
+    return finish_mesh(mesh, ev, prog, cfg, cams, cam_pos, cam_pos ? num_cameras : 0, outputs,
                        want_vertex, want_texture, t0);
 }
 
