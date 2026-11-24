@@ -9,6 +9,7 @@
 #include "dense/Artifact.h"
 #include "data/JsonWrite.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -548,6 +549,31 @@ int main() {
         expect(plan(every)[Step::Model].act == Act::Redo, "... and another pairing still is not");
     }
 
+    // ---- sequential-only settings under pair selection -------------------------
+    build(ws, made);
+    {
+        SfmJob j = made;
+        j.loop_closure = false;
+        j.overlap = 20;
+        expect(plan(j)[Step::Model].act == Act::Reuse,
+               "loop closure and overlap change nothing under pair selection");
+        DatasetRecord rec = read_dataset_record(ws.string());
+        StepRecord old = rec.step(Step::Model);
+        old.fields.push_back({"loop_closure", "", "on"});
+        old.fields.push_back({"prefilter_sequential", "", "off"});
+        write_step_record(ws.string(), Step::Model, old);
+        const DatasetPlan p = plan(made);
+        expect(p[Step::Model].act == Act::Reuse && p[Step::Model].changes.empty(),
+               "... nor does a record that still lists them");
+        SfmJob seq = made;
+        seq.pairs = kPairsSequential;
+        const StepFields f = model_fields(seq);
+        expect(std::count_if(f.begin(), f.end(), [](const StepField& x) {
+                   return x.key == "overlap" || x.key == "loop_closure";
+               }) == 2,
+               "... while sequential pairing records both");
+    }
+
     // ---- an option the panel edits off the table --------------------------------
     build(ws, made);
     {
@@ -612,12 +638,12 @@ int main() {
                    p[ModelPart::Mapping].why == Why::Matches,
                "another frontend extracts again, and the stages after it follow");
         j = made;
-        j.loop_closure = false;
+        j.pairs = kPairsExhaustive;
         p = plan(j);
         expect(p[ModelPart::Features].act == Act::Reuse &&
                    p[ModelPart::Matching].act == Act::Redo &&
                    p[ModelPart::Matching].changes.size() == 1 &&
-                   p[ModelPart::Matching].changes[0].key == "loop_closure" &&
+                   p[ModelPart::Matching].changes[0].key == "pairs" &&
                    p[ModelPart::Features].changes.empty(),
                "a pairing setting keeps the features and matches again, naming itself");
         j = made;
@@ -880,7 +906,7 @@ int main() {
         touch(ws / sfm::resume::kDir / sfm::resume::kExtractSig);
         touch(ws / sfm::resume::kDir / sfm::resume::kMatchSig);
         SfmJob j = made;
-        j.loop_closure = false;
+        j.pairs = kPairsExhaustive;
         StepRecorder rec(ws.string(), read_dataset_record(ws.string()));
         rec.begin(Step::Model, model_fields(j));
         DatasetPlan p = plan(j);
@@ -1046,7 +1072,7 @@ int main() {
         const DatasetRecord old = read_legacy_settings(ws.string(), j, colmap);
         expect(old.present && !colmap && j.quality == 3 && sfm_pairs(j.pairs) == kPairsPrefilter &&
                    j.camera_model == "thin-prism-fisheye" && j.metric_gps == 1 &&
-                   !j.prefilter_sequential && j.mask_features && j.prep.video_fps == 2.0f,
+                   j.mask_features && j.prep.video_fps == 2.0f,
                "the old stamps give back the settings they recorded");
         SfmJob d = dropped_images(ws, made);
         restore_record_inputs(old, d.prep, d.camera_model);

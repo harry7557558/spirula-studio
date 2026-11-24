@@ -688,15 +688,12 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         "--matcher", sfm_matcher_for(job.features, job.matcher),
         "--pairs", sfm_pick(kSfmPairs, sfm_pairs(job.pairs)),
     };
-    // Only when it says something: a run at the default passes nothing.
-    if (sfm_pairs(job.pairs) == kPairsSequential ||
-        (sequential_window_applies(job) && job.overlap != 10)) {
+    // Only where they mean something: they are in the match stage's signature.
+    if (sequential_pairing(job)) {
         argv.push_back("--overlap");
         argv.push_back(std::to_string(job.overlap));
+        if (!job.loop_closure) argv.push_back("--no-loop-closure");
     }
-    // Each is a no-op under the pair modes it does not belong to.
-    if (!job.loop_closure) argv.push_back("--no-loop-closure");
-    if (!job.prefilter_sequential) argv.push_back("--no-prefilter-sequential");
     if (job.init_focal_px > 0) {
         char buf[32];
         std::snprintf(buf, sizeof buf, "%g", job.init_focal_px);

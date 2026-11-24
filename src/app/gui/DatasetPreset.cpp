@@ -113,7 +113,6 @@ namespace {
     X("sfm_pairs",                  sfm.pairs)                                \
     X("sfm_overlap",                sfm.overlap)                              \
     X("sfm_loop_closure",           sfm.loop_closure)                         \
-    X("sfm_prefilter_sequential",   sfm.prefilter_sequential)                 \
     X("sfm_init_focal_px",          sfm.init_focal_px)                        \
     X("sfm_init_distortion",        sfm.init_distortion)                      \
     X("sfm_distortion_refine",      sfm.distortion_refine)                    \
@@ -159,13 +158,10 @@ namespace {
     /* end */
 
 // Keys an older build wrote, onto what replaced them. "sfm_data_type" was a
-// template: 1 stood for ordered video frames, 2 for per-image cameras without
-// file-order pairs, which those files also carry as their own settings.
+// template, 1 for ordered video frames; its other settings those files also
+// carry as their own.
 void read_retired_settings(const JsonValue& fields, DatasetSettings& s) {
-    if (const JsonValue* v = fields.find("sfm_data_type")) {
-        s.videos_in_order = v->as_int() == 1;
-        if (v->as_int() == 2) s.sfm.prefilter_sequential = false;
-    }
+    if (const JsonValue* v = fields.find("sfm_data_type")) s.videos_in_order = v->as_int() == 1;
     const std::pair<const char*, const char*> counts[] = {
         {"sfm_max_features", sfm_feature_count_flag(s.sfm.features)},
         {"sfm_max_image_size", "max-image-size"},
@@ -238,8 +234,6 @@ bool dataset_apply_preset(DatasetSettings& s, const std::string& name) {
         // Photographs from everywhere: no two share a lens, so no two share a
         // camera, and the wide baselines are what the learned frontend is for.
         s.sfm.camera_mode = 2;
-        // Downloaded photos are in no order, so file order links nothing.
-        s.sfm.prefilter_sequential = false;
         s.colmap.camera_mode = 2;
         s.sfm.features = 2;              // ALIKED-n32
         s.sfm.matcher = 1;               // LightGlue

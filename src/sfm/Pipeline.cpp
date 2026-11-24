@@ -2045,24 +2045,12 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
         pairs = prefilterPairs(feats, popt, sp);
         events::stage_end(Stage::Select);
         stats.select_seconds = now() - t0;
-        if (verbose)
+        if (verbose) {
             fprintf(stderr, "\n");
             L::err(Tag::Match, M::match_prefilter_kept,
                    {(long long)pairs.size(), (long long)stats.scored,
                     popt.num_features, popt.num_neighbors,
                     format_duration(stats.select_seconds)});
-        // The shortlist keeps each image's top-k by a subsampled score, and a
-        // weak but real link just below the cut is gone for good; the file
-        // order still knows it.
-        if (cfg.prefilter_sequential) {
-            const size_t sel = pairs.size();
-            const std::vector<std::pair<uint32_t, uint32_t>> win = sequentialPairs(
-                (uint32_t)n_images, cfg.overlap, cfg.quadratic_overlap, folderRuns(image_names));
-            pairs.insert(pairs.end(), win.begin(), win.end());
-            std::sort(pairs.begin(), pairs.end());
-            pairs.erase(std::unique(pairs.begin(), pairs.end()), pairs.end());
-            L::err(Tag::Match, M::match_sequential_added,
-                   {(long long)(pairs.size() - sel), (long long)sel, (long long)win.size()});
         }
     } else {
         pairs = mode == PairMode::Exhaustive
@@ -2085,12 +2073,13 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
             pairs.insert(pairs.end(), extra.begin(), extra.end());
             std::sort(pairs.begin(), pairs.end());
             pairs.erase(std::unique(pairs.begin(), pairs.end()), pairs.end());
-            if (verbose)
+            if (verbose) {
                 fprintf(stderr, "\n");
                 L::err(Tag::Match, M::match_loop_closure_added,
                        {(long long)(pairs.size() - seq), (long long)seq,
                         (long long)extra.size(),
                         format_duration(stats.select_seconds)});
+            }
         }
     }
     // makes the mapper trust the sequence pairs,
@@ -2138,7 +2127,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 mode == PairMode::Exhaustive ? "exhaustive"
                 : mode == PairMode::Sequential
                     ? (cfg.loop_closure ? "sequential + loop closure" : "sequential")
-                    : (cfg.prefilter_sequential ? "prefilter + sequential" : "prefilter")});
+                    : "prefilter"});
     if (verbose && mode == PairMode::Prefilter)
         L::err(Tag::Match, M::match_prefilter_params,
                {popt.num_features, popt.num_neighbors});
@@ -2707,7 +2696,11 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     mres.dir = rdir;
     mres.signature =
         extract_sig + match_settings + "features=" + featureDirDigest(featdir) + "\n";
-    const std::string old_match = resume::recorded(rdir / resume::kMatchSig);
+    std::string old_match = resume::recorded(rdir / resume::kMatchSig);
+    // From while --prefilter-sequential was a row; "off" matched what runs now.
+    const std::string retired = "\nprefilter-sequential=off\n";
+    if (const size_t at = old_match.find(retired); at != std::string::npos)
+        old_match.erase(at + 1, retired.size() - 1);
     // Recorded when --pairs defaulted to "auto"; the mode it resolved to is the
     // pairs-resolved line, which still has to agree.
     const auto as_auto = [](std::string sig) {

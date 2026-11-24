@@ -268,6 +268,14 @@ FieldResult setConfigField(SfmConfig& cfg, uint32_t cmd, const std::string& arg,
                            char** argv, int& i, std::set<std::string>& seen, std::string& error) {
     const std::string key = normalizeKey(arg);
     if (key.empty()) return FieldResult::Unknown;
+    // Retired: off was every run's default, on is --pairs sequential minus the mapper's order.
+    const bool pairing = cmd & (CMD_AUTO | CMD_MATCH);
+    if (pairing && key == "no-prefilter-sequential") return FieldResult::Ok;
+    if (pairing && key == "prefilter-sequential") {
+        error = "--prefilter-sequential is retired: use --pairs sequential, which also "
+                "matches the GPU pre-selection's pairs (--loop-closure)";
+        return FieldResult::Error;
+    }
 #define SFM_TRY_SET(member, name, cmds, tier, group, lo, hi, choices, help)                        \
     if ((uint32_t)(cmds) & cmd) {                                                                  \
         FieldResult r = trySetField(cfg.member, key, name, argc, argv, i, (double)(lo),            \

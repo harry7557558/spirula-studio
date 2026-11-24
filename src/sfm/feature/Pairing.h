@@ -6,9 +6,8 @@
 // generated here; Prefilter (GPU pair selection by mini-matching top-scale
 // subsets) needs the features and lives in sfm/feature/PairSelection.h.
 //
-// Sequential and Prefilter each miss what the other finds, so by default each
-// takes the other's list too: `--loop-closure` and `--prefilter-sequential`,
-// see matchFeatureDir.
+// Sequential also takes Prefilter's list by default (`--loop-closure`, see
+// matchFeatureDir), so a walk that comes back on itself still links up.
 #pragma once
 
 #include <algorithm>

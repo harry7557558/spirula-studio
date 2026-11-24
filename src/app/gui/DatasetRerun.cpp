@@ -333,7 +333,6 @@ std::string plan_key_label(const std::string& key) {
         {"camera_mode", &dmsg::camera_sharing}, {"pairs", &dmsg::image_matching},
         {"features", &dmsg::features},
         {"mapper", &dmsg::mapper_schedule}, {"loop_closure", &dmsg::loop_closure},
-        {"prefilter_sequential", &dmsg::prefilter_sequential},
         {"overlap", &dmsg::sequential_overlap}, {"focal_px", &dmsg::initial_focal_px},
         {"distortion_refine", &dmsg::sfm_distortion_refinement},
         {"final_free_rig", &dmsg::sfm_final_free_rig},

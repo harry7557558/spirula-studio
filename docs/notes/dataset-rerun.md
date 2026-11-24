@@ -76,9 +76,10 @@ same fields however the panel was arranged:
   not fields: asking for depth beside existing normals adds depth, it does not
   redo normals.
 
-A model record written before the capture type and the automatic pairing
-were dropped is read as what it ran (`migrate_model_fields()`): the capture
-type is no field, and "auto" compares equal to pair selection.
+An older model record is read as what it ran (`migrate_model_fields()`):
+the capture type is no field, "auto" compares equal to pair selection,
+`overlap` and `loop_closure` count only under sequential pairing, and the
+retired `prefilter_sequential` is dropped.
 
 A workspace written before the record carries `.spirula-frames` and
 `.spirula-recon`. The first can restore the old extraction settings, but is

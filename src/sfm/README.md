@@ -444,27 +444,21 @@ the count (exhaustive below 100 images, sequential for short video), which made
 one command line two different pipelines; `--pairs exhaustive` and `--pairs
 sequential` are still there to be asked for.
 
-Sequential pairing is a chain: image `i` against the next `--overlap`, and
-nothing else. A capture that walks around a subject and comes back has no pair
-crossing the seam, so any one weak step in the sequence cuts the view graph and
-the mapper reports models where there should be one. On a 262-frame walk around
-a plaza that was four models (144 / 74 / 19 / 12 images) against one with 254
-for the same frames matched by pair selection. Two options bridge the two modes:
+`--pairs sequential` is for frames in capture order: image `i` against the
+next `--overlap` in its folder, and the mapper reads file order as capture
+order when it looks for seams. A chain alone has no pair crossing the seam of
+a walk that comes back on itself, so one weak step cuts the view graph: a
+262-frame walk around a plaza came out as four models (144 / 74 / 19 / 12
+images) against one with 254 under pair selection. **`--loop-closure`** (on by
+default) adds the `prefilter` shortlist to the window, as COLMAP's
+`SequentialMatching.loop_detection` does with a vocabulary tree; on that
+capture it gave one model (249 images) for 1.6 s of selection and 2.5x the
+pairs. The window also helps the shortlist: on a 470-image `.insv` walk the
+shortlist held only 1540 of the window's 5990 pairs, and 3644 of the 4450 the
+window added verified (median 53 inliers, against 223 for the shortlist's own).
+`--pairs prefilter` itself ignores file order.
 
-- **`--loop-closure` (on by default) under `--pairs sequential`** unions the
-  `prefilter` shortlist into the temporal window, which is what COLMAP's
-  `SequentialMatching.loop_detection` does with a vocabulary tree. On that
-  capture it also produced one model (249 images), for 1.6 s of selection and
-  2.5x the pairs to match.
-- **`--prefilter-sequential` under `--pairs prefilter`** is the converse: pair
-  selection takes the sequential window too, so a weak link the content score
-  ranked just outside an image's top-k is still matched when the file order
-  says the two are neighbours. On a 470-image `.insv` walk the shortlist held
-  only 1540 of the window's 5990 pairs, and 3644 of the 4450 it added verified
-  (median 53 inliers, against 223 for the shortlist's own).
-
-Every sequential window runs per folder -- a rig's lenses, several clips --
-and, with `--quadratic-overlap` (on), also links each image to the ones 16,
+`--quadratic-overlap` (off by default) also links each image to the ones 16,
 32, 64 ... ahead, up to 2^(overlap-1), as COLMAP's `quadratic_overlap` does.
 
 Everything else has a default that a beginner should not have to touch.

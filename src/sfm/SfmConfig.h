@@ -87,22 +87,13 @@ struct SfmConfig {
     // only by what their flags say.
     std::string pairs = "prefilter";
     int overlap = 10;
-    // Sequential pairing is a chain: image i with the next `overlap`. A capture
-    // that walks around a subject and comes back has no link across the seam,
-    // so one weak step anywhere breaks the reconstruction into pieces (a
-    // 262-frame walk around a plaza came out as four models). This adds the
-    // pair-selection shortlist -- the same content-based scoring `--pairs
-    // prefilter` uses -- on top of the temporal window, which is what COLMAP's
-    // SequentialMatching.loop_detection does with a vocabulary tree.
-    // Sequential only; the other modes already consider every pair.
+    // Sequential only: adds the `--pairs prefilter` shortlist to the window, so a
+    // walk that comes back on itself links across the seam (COLMAP's
+    // loop_detection); see src/sfm/README.md.
     bool loop_closure = true;
     // Every sequential window also links i to i + 2^k for k < overlap
     // (COLMAP's SequentialMatching.quadratic_overlap).
     bool quadratic_overlap = false;
-    // The converse of loop_closure: pair selection also takes the sequential
-    // window, so a link the content score ranked just out of an image's top-k
-    // is still matched when the file order says the two are neighbours.
-    bool prefilter_sequential = false;
     // Match the rig-mates of every chosen pair of two rig frames, by what the
     // members' known rotations say faces what (sfm/feature/RigPairs.h).
     bool rig_pairs = true;
@@ -341,8 +332,6 @@ struct SfmConfig {
       loop_closure)                                                                                \
     F(quadratic_overlap, "quadratic-overlap", CMD_AUTO | CMD_MATCH, Tier::Advanced, "pipeline", 0, \
       0, "", quadratic_overlap)                                                                    \
-    F(prefilter_sequential, "prefilter-sequential", CMD_AUTO | CMD_MATCH, Tier::Advanced,          \
-      "pipeline", 0, 0, "", prefilter_sequential)                                                  \
     F(rig_pairs, "rig-pairs", CMD_AUTO | CMD_MATCH, Tier::Advanced, "pipeline", 0, 0, "",          \
       rig_pairs)                                                                                   \
     F(rig_pair_angle, "rig-pair-angle", CMD_AUTO | CMD_MATCH, Tier::Advanced, "pipeline", 0, 180,  \

@@ -133,9 +133,6 @@ struct SfmReconSettings {
     // so a capture that comes back on itself links across the seam instead of
     // breaking into one model per unbroken run of frames.
     bool loop_closure = true;
-    // Pair selection only: also match each image with its neighbours in file
-    // order, the converse of the above.
-    bool prefilter_sequential = false;
     float init_focal_px = 0.0f;       // 0 = guess from EXIF / image size
     // Starting distortion, "k1,k2,..." in the lens model's own order; empty
     // starts at zero.
@@ -218,11 +215,9 @@ struct SfmJob : SfmReconSettings {
     bool point_color_in_image_space = false;
 };
 
-// Whether a sequential window can run, and so whether `overlap` means
-// anything: named, or taken alongside pair selection.
-inline bool sequential_window_applies(const SfmReconSettings& j) {
-    const int pairs = sfm_pairs(j.pairs);
-    return pairs == kPairsSequential || (pairs == kPairsPrefilter && j.prefilter_sequential);
+// Whether `overlap` and `loop_closure` mean anything.
+inline bool sequential_pairing(const SfmReconSettings& j) {
+    return sfm_pairs(j.pairs) == kPairsSequential;
 }
 
 // What a learned frontend still has to fetch, in order; empty for SIFT with

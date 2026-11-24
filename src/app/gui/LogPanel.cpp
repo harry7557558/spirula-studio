@@ -110,7 +110,6 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     line("pairs", sfm_pick(kSfmPairs, sfm_pairs(j.pairs)));
     line("overlap", std::to_string(j.overlap));
     line("loop_closure", cfg_str(j.loop_closure));
-    // line("prefilter_sequential", cfg_str(j.prefilter_sequential));
     line("features", std::to_string(j.features));
     line("matcher", std::to_string(j.matcher));
     line("mapper", std::to_string(j.mapper));

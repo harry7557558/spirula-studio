@@ -260,8 +260,8 @@ bool soft_model_key(const std::string& key) {
 ModelPart field_part(const std::string& key) {
     static const char* const matching[] = {
         "lens",        "focal",        "camera_mode", "matcher",
-        "pairs",       "overlap",      "loop_closure", "prefilter_sequential",
-        "focal_px",    "distortion",   "sequence",    "rig",        "scan_views",
+        "pairs",       "overlap",      "loop_closure", "focal_px",
+        "distortion",  "sequence",     "rig",          "scan_views",
         "imu",         "gps",
     };
     static const char* const mapping[] = {
@@ -278,28 +278,28 @@ ModelPart field_part(const std::string& key) {
     return part;
 }
 
-// A model record from before the capture type and the automatic pairing went:
-// the first is no field, and what the second resolved to reads as pair
-// selection. A learned detector's feature count was filed under SIFT's key.
+// An older model record, read as what it ran: no capture type, "auto" as pair selection,
+// `overlap` / `loop_closure` only under sequential (`prefilter_sequential` only ever ran
+// off), and a capture-type record's learned-detector feature count under its own key.
 void migrate_model_fields(StepFields& fields) {
     auto value = [&](const char* key) {
         for (const StepField& f : fields)
             if (f.key == key) return f.value;
         return std::string();
     };
-    if (value("engine") != "builtin" || value("data_type").empty()) return;
-    const bool was_auto = value("pairs") == "auto";
-    const bool file_order = value("prefilter_sequential") == "on";
+    if (value("engine") != "builtin") return;
+    const bool typed = !value("data_type").empty();
+    const std::string pairs = value("pairs") == "auto" ? "prefilter" : value("pairs");
     const std::string detector = value("features");
     const char* count = detector.rfind("aliked", 0) == 0 ? "aliked_max_features"
                         : detector.rfind("loma", 0) == 0 ? "loma_max_features"
                                                           : "max_features";
     StepFields out;
     for (StepField& f : fields) {
-        if (f.key == "data_type") continue;
-        if (was_auto && f.key == "overlap" && !file_order) continue;
-        if (was_auto && f.key == "pairs") f.value = "prefilter";
-        if (f.key == "max_features") f.key = count;
+        if (f.key == "data_type" || f.key == "prefilter_sequential") continue;
+        if ((f.key == "overlap" || f.key == "loop_closure") && pairs != "sequential") continue;
+        if (f.key == "pairs") f.value = pairs;
+        if (typed && f.key == "max_features") f.key = count;
         out.push_back(std::move(f));
     }
     fields = std::move(out);
@@ -533,7 +533,6 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
     // What a flag the run left out stood for.
     job.pairs = kPairsPrefilter;
     job.overlap = 10;
-    job.prefilter_sequential = true;
     job.loop_closure = true;
     job.metric_gps = 0;
     job.sensor_gauge = job.exif_attitude = 2;
@@ -563,7 +562,6 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
         else if (flag == "--pairs") job.pairs = sfm_pairs(index_in(kSfmPairs, take(), 0));
         else if (flag == "--overlap") job.overlap = (int)to_float(take());
         else if (flag == "--no-loop-closure") job.loop_closure = false;
-        else if (flag == "--no-prefilter-sequential") job.prefilter_sequential = false;
         else if (flag == "--focal") job.init_focal_px = to_float(take());
         else if (flag == "--distortion") job.init_distortion = take();
         else if (flag == "--no-refine-extra-params")
@@ -826,9 +824,10 @@ StepFields model_fields(const SfmJob& job) {
     add(f, "features", "", sfm_pick(kSfmFeatures, job.features));
     add(f, "matcher", "", sfm_matcher_for(job.features, job.matcher));
     add(f, "pairs", "", sfm_pick(kSfmPairs, sfm_pairs(job.pairs)));
-    if (sequential_window_applies(job)) add(f, "overlap", "", num(job.overlap));
-    add(f, "loop_closure", "", onoff(job.loop_closure));
-    add(f, "prefilter_sequential", "", onoff(job.prefilter_sequential));
+    if (sequential_pairing(job)) {
+        add(f, "overlap", "", num(job.overlap));
+        add(f, "loop_closure", "", onoff(job.loop_closure));
+    }
     if (job.init_focal_px > 0) add(f, "focal_px", "", num(job.init_focal_px));
     if (!job.init_distortion.empty()) add(f, "distortion", "", job.init_distortion);
     add(f, "distortion_refine", "", num(job.distortion_refine));

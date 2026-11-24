@@ -190,21 +190,6 @@ SS_MSG(quadratic_overlap_help,
     TR("Sıralı pencere her görüntüyü dosya sırasında 16, 32, 64 ... uzaktaki "
        "görüntülerle de eşleştirir; COLMAP gibi 2^(overlap-1)'e kadar"));
 
-SS_MSG(prefilter_sequential_help,
-    EN("Also matches file-order neighbors within each folder during GPU pair selection, using --overlap and --quadratic-overlap. Preserves weak sequence links."),
-    JA("GPUペア選択時に、各フォルダのファイル順でも近傍を照合します。--overlap と --quadratic-overlap を使い、弱い連続リンクを補います。"),
-    ZH_HANS("GPU 像对筛选时，也按各文件夹中的文件顺序匹配邻居，使用 --overlap 和 --quadratic-overlap，保留较弱的序列连接。"),
-    ZH_HANT("GPU 影像對篩選時，也按各資料夾中的檔案順序比對鄰居，使用 --overlap 和 --quadratic-overlap，保留較弱的序列連接。"),
-    KO("GPU 쌍 선택 시 폴더별 파일 순서 이웃도 매칭합니다. --overlap과 --quadratic-overlap으로 약한 순차 연결을 보존합니다."),
-    DE("Matcht bei GPU-Paarauswahl auch Dateinachbarn je Ordner mit --overlap und --quadratic-overlap, um schwache Sequenzverbindungen zu erhalten."),
-    FR("Lors de la sélection GPU, apparie aussi les voisins par ordre de fichier avec --overlap et --quadratic-overlap pour garder les liens faibles."),
-    ES("En selección GPU, empareja también vecinos por orden de archivo con --overlap y --quadratic-overlap para conservar enlaces débiles."),
-    PT("Na seleção GPU, combina também vizinhos por ordem de ficheiro com --overlap e --quadratic-overlap para manter ligações fracas."),
-    IT("Nella selezione GPU abbina anche i vicini per ordine di file con --overlap e --quadratic-overlap, mantenendo i legami deboli."),
-    NL("Matcht bij GPU-paarselectie ook bestandsburen per map met --overlap en --quadratic-overlap om zwakke reeksverbindingen te behouden."),
-    RU("При GPU-отборе пар также сопоставляет соседние файлы в папке через --overlap и --quadratic-overlap, сохраняя слабые связи последовательности."),
-    TR("GPU çift seçiminde klasör içi dosya komşularını da --overlap ve --quadratic-overlap ile eşleştirerek zayıf sıralı bağlantıları korur."));
-
 SS_MSG(rig_pairs_help,
     EN("Also match the other lenses of each verified dual-fisheye pair.\n- cam0 to cam0 adds cam1 to cam1 for those frames.\n- cam0 to cam1 adds the reversed cam1 to cam0 pair."),
     JA("デュアル魚眼リグの検証済みペアで、もう一方のレンズも照合します。\n- cam0 同士なら同じフレームの cam1 同士も照合。\n- cam0 と cam1 なら逆の cam1 と cam0 も照合。"),

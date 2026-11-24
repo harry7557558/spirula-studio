@@ -280,14 +280,14 @@ void GuiApp::draw_sfm_advanced() {
 
     ImGui::SetNextItemWidth(px(kFieldW));
     if (builtin) {
-        // In the order worth trying; SfmJob::pairs keeps its stored numbering.
-        static const int kOrder[] = {kPairsPrefilter, kPairsExhaustive, kPairsSequential};
+        // Cheapest first; SfmJob::pairs keeps its stored numbering.
+        static const int kOrder[] = {kPairsPrefilter, kPairsSequential, kPairsExhaustive};
         int shown = 0;
         for (int i = 0; i < 3; i++)
             if (sfm_pairs(_sfm_job.pairs) == kOrder[i]) shown = i;
         if (ui::Combo(dmsg::image_matching, &shown,
-                      {&dmsg::matching_gpu_preselect, &dmsg::matching_every_pair,
-                       &dmsg::matching_neighbours}))
+                      {&dmsg::matching_gpu_preselect, &dmsg::matching_neighbours,
+                       &dmsg::matching_every_pair}))
             _sfm_job.pairs = kOrder[shown];
         ui::help_on_hover(dmsg::matching_help_builtin);
     } else {
@@ -308,15 +308,9 @@ void GuiApp::draw_sfm_advanced() {
     {
         ImGui::Indent();
         const int pairs = sfm_pairs(_sfm_job.pairs);
-        if (pairs == kPairsSequential) {
+        if (sequential_pairing(_sfm_job)) {
             ui::Checkbox(dmsg::loop_closure, &_sfm_job.loop_closure);
             ui::help_on_hover(dmsg::loop_closure_help_builtin);
-        }
-        if (pairs == kPairsPrefilter) {
-            ui::Checkbox(dmsg::prefilter_sequential, &_sfm_job.prefilter_sequential);
-            ui::help_on_hover(dmsg::prefilter_sequential_help);
-        }
-        if (sequential_window_applies(_sfm_job)) {
             ImGui::SetNextItemWidth(px(kFieldW));
             ui::InputInt(dmsg::sequential_overlap, &_sfm_job.overlap);
             ui::help_on_hover(dmsg::sequential_overlap_help);
