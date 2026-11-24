@@ -460,12 +460,9 @@ struct TrainConfig {
 // `spirula train <preset>`. "3dgs" is the base config and applies nothing.
 // ===========================================================================
 
-// Just the names, which are what the command line and the checkpoints spell.
-// The label and the sentence explaining each one are in
-// i18n/catalog/Train.h: this header is included nearly everywhere and has no
-// business dragging a translation catalog behind it. Both consumers
-// (app/cli/main.cpp, app/gui/GuiApp.cpp) static_assert that the two lists are
-// the same length.
+// Just the names the command line and checkpoints spell; labels and help are in
+// i18n/catalog/Train.h, kept out of this widely included header. app/cli/main.cpp
+// and app/gui/PresetPickers.cpp static_assert that the two lists match in length.
 struct TrainPresetInfo { const char* name; };
 inline constexpr TrainPresetInfo kTrainPresets[] = {
     {"3dgs"},

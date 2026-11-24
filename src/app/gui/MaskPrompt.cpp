@@ -17,10 +17,6 @@ namespace gui {
 
 namespace {
 
-// GuiApp.cpp's kOk and kErr, so the picker reads the same on both screens.
-const ImVec4 kPickerOk(0.35f, 0.85f, 0.45f, 1.0f);
-const ImVec4 kPickerErr(1.0f, 0.42f, 0.42f, 1.0f);
-
 // Terms stay in English for SAM 3; labels follow the interface language.
 const std::vector<MaskSubject>& subjects_impl() {
     static const std::vector<MaskSubject> v = {
@@ -239,7 +235,7 @@ void draw_mask_objects(MaskSettings& settings, long long frame, const std::strin
         ImGui::ColorButton("##col", ImGui::ColorConvertU32ToFloat4(col),
                            ImGuiColorEditFlags_NoTooltip |
                                ImGuiColorEditFlags_NoDragDrop,
-                           ImVec2(12, 12));
+                           ImVec2(px(12.0f), px(12.0f)));
         ImGui::SameLine();
         const std::string label =
             (here || elsewhere)
@@ -300,7 +296,7 @@ void draw_mask_model_picker(std::string& model_id, std::string* detector_id,
     const auto& catalog = model_catalog();
     for (size_t i = 0; i < catalog.size(); i++)
         if (model_id == catalog[i].id) model_idx = (int)i;
-    ImGui::SetNextItemWidth(px(260.0f));
+    ImGui::SetNextItemWidth(px(kFieldW));
     if (ui::BeginCombo(dmsg::mask_model, catalog[model_idx].label->get())) {
         for (size_t i = 0; i < catalog.size(); i++) {
             if (!detector_id && catalog[i].kind != MaskModelKind::Sam) continue;
@@ -324,7 +320,7 @@ void draw_mask_model_picker(std::string& model_id, std::string* detector_id,
             detector = &text_detectors().front();
             *detector_id = detector->id;
         }
-        ImGui::SetNextItemWidth(px(260.0f));
+        ImGui::SetNextItemWidth(px(kFieldW));
         if (ui::BeginCombo(dmsg::mask_text_detector, detector->label->get())) {
             for (const TextDetector& d : text_detectors())
                 if (item(*d.label, *d.blurb, detector_is_cached(d), &d == detector))
@@ -350,13 +346,13 @@ void draw_mask_model_picker(std::string& model_id, std::string* detector_id,
             if (ui::Button(dmsg::stop)) download.cancel();
             break;
         case PickerRow::Ready:
-            ui::TextColored(kPickerOk, dmsg::mask_model_ready);
+            ui::TextColored(kOk, dmsg::mask_model_ready);
             break;
         case PickerRow::None:
             break;
     }
     if (download.state() == FileDownload::State::Failed)
-        ui::TextColoredWrappedRaw(kPickerErr, download.status());
+        ui::TextColoredWrappedRaw(kErr, download.status());
 }
 
 }  // namespace gui

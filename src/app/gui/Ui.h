@@ -289,7 +289,7 @@ inline void help_on_hover_raw(const char* text,
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
                              ImGuiHoveredFlags_NoSharedDelay | extra) &&
         ImGui::BeginTooltip()) {
-        ImGui::PushTextWrapPos(gui::px(420.0f));
+        ImGui::PushTextWrapPos(gui::px(gui::kTooltipWrapW));
         ImGui::TextUnformatted(text);
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
@@ -312,7 +312,7 @@ inline void SetTooltipRaw(const char* s) { ImGui::SetTooltip("%s", s); }
 // SetTooltip for a sentence or more: wrapped at help_on_hover's width.
 inline void SetTooltipWrapped(const Msg& m) {
     if (!ImGui::BeginTooltip()) return;
-    ImGui::PushTextWrapPos(gui::px(420.0f));
+    ImGui::PushTextWrapPos(gui::px(gui::kTooltipWrapW));
     ImGui::TextUnformatted(m.get());
     ImGui::PopTextWrapPos();
     ImGui::EndTooltip();

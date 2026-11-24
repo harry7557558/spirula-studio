@@ -31,9 +31,6 @@ namespace gui::render {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
-const ImVec4 kErr(1.0f, 0.45f, 0.45f, 1.0f);
-const ImVec4 kOk(0.35f, 0.85f, 0.45f, 1.0f);    // GuiApp's, for a job done
-const ImVec4 kDim(0.62f, 0.64f, 0.68f, 1.0f);
 
 struct Resolution { int w, h; const Msg* name; };
 const Resolution kResolutions[] = {
@@ -1220,7 +1217,7 @@ void RenderSession::draw_effects_section(float full) {
         if (s.transition != Transition::Cut) {
             ImGui::SameLine();
             float d = (float)s.duration;
-            ImGui::SetNextItemWidth(px(120.0f));
+            ImGui::SetNextItemWidth(px(kCompactFieldW));
             if (ui::SliderFloatRaw("##dur", &d, 0.1f, 6.0f, "%.1f s")) {
                 s.duration = d;
                 project_changed();

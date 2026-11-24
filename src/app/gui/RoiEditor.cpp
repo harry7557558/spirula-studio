@@ -1866,7 +1866,7 @@ void RoiEditor::draw() {
             draw_stats();
         }
     } else if (!_status.empty()) {
-        ui::TextColoredWrappedRaw(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), _status);
+        ui::TextColoredWrappedRaw(kErr, _status);
     }
     ImGui::EndChild();
     ImGui::SameLine();
@@ -1920,9 +1920,9 @@ void RoiEditor::draw_file_row() {
         _confirm_open = true;
     }
     ImGui::EndDisabled();
-    if (!_status.empty()) ui::TextColoredWrappedRaw(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), _status);
-    if (!_editable) ui::TextColoredWrapped(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), rmsg::not_editable);
-    else if (dirty()) ui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), rmsg::unsaved);
+    if (!_status.empty()) ui::TextColoredWrappedRaw(kErr, _status);
+    if (!_editable) ui::TextColoredWrapped(kWarn, rmsg::not_editable);
+    else if (dirty()) ui::TextColored(kWarn, rmsg::unsaved);
     else if (!_notice.empty()) ui::TextDisabledWrapped(rmsg::saved_to, {_path});
 }
 

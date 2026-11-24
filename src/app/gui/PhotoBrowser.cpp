@@ -185,7 +185,7 @@ void PhotoBrowser::draw(float height, const std::function<void(size_t)>& info) {
     } else {
         ui::Text(pmsg::photo_count, {count_text((long long)_items.size())});
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(px(120.0f));
+        ImGui::SetNextItemWidth(px(kCompactFieldW));
         ui::SliderFloatRaw("##thumbsize", &_cell, 80.0f, 320.0f, "");
         ui::help_on_hover(pmsg::thumb_size_help);
     }
@@ -393,7 +393,7 @@ void PhotoBrowser::draw_single(float height, const std::function<void(size_t)>& 
     }
     if (!error.empty()) {
         ImGui::SetCursorScreenPos(ImVec2(at.x + px(8.0f), at.y + px(8.0f)));
-        ui::TextColoredWrappedRaw(ImVec4(0.95f, 0.45f, 0.40f, 1.0f), error);
+        ui::TextColoredWrappedRaw(kErr, error);
     } else if (!tex) {
         ImGui::SetCursorScreenPos(ImVec2(at.x + px(8.0f), at.y + px(8.0f)));
         ui::TextDisabled(pmsg::loading);

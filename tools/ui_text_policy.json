@@ -105,11 +105,11 @@
     },
     "Dataset.h:sfm_metric_gps_help": {
       "reason": "Combines GPS mode selection, altitude-induced tilt risk, minimum capture extent, unscaled fallback, and per-source automatic defaults. These are consequential choices; needs per-mode details or an explicit help view before removing information.",
-      "usage": "src/app/gui/GuiApp.cpp:8762 hover help for metric GPS alignment"
+      "usage": "src/app/gui/DatasetAdvanced.cpp:372 hover help for metric GPS alignment"
     },
     "Dataset.h:rig_dual_fisheye_help": {
       "reason": "Documents required folder/file-name layout and synchronized exposures, plus the rig constraints. Incorrect activation can misconstruct a scene; review a short tooltip plus setup instructions.",
-      "usage": "src/app/gui/GuiApp.cpp:5780 hover help for manual dual-fisheye rig setup"
+      "usage": "src/app/gui/DatasetBasics.cpp:459 hover help for manual dual-fisheye rig setup"
     },
     "Dataset.h:stencil_tool_pen_help": {
       "reason": "Shortcut reference covering construction, cancellation, anchor editing and handles. A compact gesture reference or explicit detailed help is preferable to deleting discoverable controls.",
@@ -117,23 +117,23 @@
     },
     "Dataset.h:pano360_output_help": {
       "reason": "Explains why perspective output avoids the dual-lens parallax seam and why a panorama can degrade reconstruction. Review the output tradeoff with a short summary and accessible details.",
-      "usage": "src/app/gui/GuiApp.cpp:5603 hover help for 360 output choice"
+      "usage": "src/app/gui/DatasetBasics.cpp:286 hover help for 360 output choice"
     },
     "Dataset.h:sfm_sensor_gauge_help": {
       "reason": "Combines IMU scale/up-axis semantics, confidence-based rejection, missing sensors and when to ignore corrupt telemetry. Needs per-choice details to preserve failure-mode guidance.",
-      "usage": "src/app/gui/GuiApp.cpp:8768 hover help for video IMU use"
+      "usage": "src/app/gui/DatasetAdvanced.cpp:378 hover help for video IMU use"
     },
     "Dataset.h:sfm_exif_attitude_help": {
       "reason": "Explains drone attitude orientation, bad up-axis estimates for downward-facing cameras, disagreement rejection and invalid EXIF override. Review how to retain this diagnostic guidance outside hover text.",
-      "usage": "src/app/gui/GuiApp.cpp:8774 hover help for EXIF camera attitude"
+      "usage": "src/app/gui/DatasetAdvanced.cpp:384 hover help for EXIF camera attitude"
     },
     "Dataset.h:photo_import_convert_help": {
       "reason": "Image conversion changes encoding, preserves transparency as a separate training mask, and exempts high-bit-depth/EXR and existing JPEG. Needs concise format-specific presentation without hiding conversion consequences.",
-      "usage": "src/app/gui/GuiApp.cpp:4856 photo-import mode help table"
+      "usage": "src/app/gui/DatasetSources.cpp:373 photo-import mode help table"
     },
     "Dataset.h:stencil_rows_help": {
       "reason": "Documents the non-obvious live inheritance between input/lens rows and when choosing a value breaks it. Needs a UI explanation of inheritance instead of losing behavior from the tooltip.",
-      "usage": "src/app/gui/GuiApp.cpp:2876 first-column stencil-row hover help"
+      "usage": "src/app/gui/MaskingOptions.cpp:156 first-column stencil-row hover help"
     },
     "Dataset.h:stencil_per_camera_help": {
       "reason": "Describes initialization from shared shapes and the destructive-looking transition back to one set, which retains the displayed camera's settings. Preserve this transition consequence in a clearer layout.",
@@ -145,7 +145,7 @@
     },
     "Dataset.h:colmap_distortion_refinement_help": {
       "reason": "Contains backend-specific optimization timing, stability guidance and lens-dependent automatic defaults. Prefer explanations attached to the individual choices rather than deleting the defaults.",
-      "usage": "src/app/gui/GuiApp.cpp:8847 distortion-refinement choice hover help"
+      "usage": "src/app/gui/DatasetAdvanced.cpp:458 distortion-refinement choice hover help"
     },
     "Dataset.h:geom_model_marigold_blurb": {
       "reason": "Describes model quality, measured runtime, depth scaling and installation size.",
@@ -153,11 +153,11 @@
     },
     "Dataset.h:rig_guess_help": {
       "reason": "Rig inference also removes unmatched folders from rigs. That potentially surprising configuration change and synchronization/name assumptions warrant human review before simplifying.",
-      "usage": "src/app/gui/GuiApp.cpp automatic rig grouping hover help"
+      "usage": "src/app/gui/DatasetBasics.cpp automatic rig grouping hover help"
     },
     "Dataset.h:rig_help": {
       "reason": "Explains fixed relative pose, same-letter grouping by filename and rigs spanning multiple input videos. These setup conventions need dedicated group/rig help to avoid silently losing requirements.",
-      "usage": "src/app/gui/GuiApp.cpp rig grouping hover help"
+      "usage": "src/app/gui/DatasetBasics.cpp rig grouping hover help"
     },
     "Dense.h:reference_coverage_help": {
       "reason": "Automatic reference selection is surface coverage rather than an image count, and zero changes the algorithm to all views. Needs detailed help or a per-mode explanation before compression.",

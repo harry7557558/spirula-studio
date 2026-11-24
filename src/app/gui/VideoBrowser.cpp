@@ -618,7 +618,7 @@ VideoBrowser::Result VideoBrowser::draw(float height, double& clip_start, double
         return r;
     }
     if (!f.error.empty()) {
-        ui::TextColoredWrappedRaw(ImVec4(0.95f, 0.45f, 0.40f, 1.0f), f.error);
+        ui::TextColoredWrappedRaw(kErr, f.error);
         return r;
     }
 
@@ -641,7 +641,7 @@ VideoBrowser::Result VideoBrowser::draw(float height, double& clip_start, double
             ui::TextDisabled(pmsg::lenses_side_by_side, {(long long)f.pictures.size()});
     }
     if (!_gate->allowed.load() && !_have_ffmpeg.load() && _src.builtin_decode) {
-        ui::TextColoredWrapped(ImVec4(0.95f, 0.75f, 0.30f, 1.0f), pmsg::video_needs_gpu);
+        ui::TextColoredWrapped(kWarn, pmsg::video_needs_gpu);
         if (ui::Button(pmsg::decode_on_gpu)) r.want_gpu = true;
         ui::help_on_hover(pmsg::decode_on_gpu_help);
     }

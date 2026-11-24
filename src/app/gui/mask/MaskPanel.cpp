@@ -749,7 +749,7 @@ void MaskSession::draw_revert_all_modal() {
     }
     if (!ui::BeginPopupModal(msg::revert_all_title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         return;
-    ImGui::PushTextWrapPos(px(460.0f));
+    ImGui::PushTextWrapPos(px(kModalWrapW));
     ui::Text(msg::revert_all_confirm);
     ImGui::Spacing();
     ui::Text(msg::corrected_count, {corrected_count()});
@@ -764,7 +764,7 @@ void MaskSession::draw_revert_all_modal() {
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ui::Button(dmsg::cancel, ImVec2(px(150.0f), 0))) ImGui::CloseCurrentPopup();
+    if (ui::Button(dmsg::cancel, ImVec2(px(kModalButtonW), 0))) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
 }
 
@@ -772,7 +772,7 @@ void MaskSession::draw_status() {
     // First, where a short window clips it last: a failed save's error.
     const std::string err = error();
     const std::string st = err.empty() ? status() : std::string();
-    if (!err.empty()) ui::TextColoredRaw(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), err);
+    if (!err.empty()) ui::TextColoredRaw(kErr, err);
     else if (!st.empty()) ui::TextDisabledRaw(st);
     else ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
     const int at = _slide_playing ? _slide_index : _idx;
@@ -868,7 +868,7 @@ void MaskSession::draw_sam_status() {
         ui::TextDisabledRaw(sam_status());
         ui::TextDisabledWrapped(msg::sam_cancel_slow);
     } else if (!sam_err.empty()) {
-        ui::TextColoredRaw(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), sam_err);
+        ui::TextColoredRaw(kErr, sam_err);
     } else if (const spirula::i18n::Msg* note = sam_empty_note()) {
         ui::TextDisabledWrapped(*note);
     } else if (sam_results() > 0) {
