@@ -347,7 +347,8 @@ const char* GuiApp::dir_key(PickAction a, FileDialog::Mode m) {
         case PickAction::OpenDataset:
         case PickAction::BatchDataset:
         case PickAction::SourceDataset:
-        case PickAction::MeshPhotos:        return "dataset";
+        case PickAction::MeshPhotos:
+        case PickAction::MeshGround:        return "dataset";
         case PickAction::SourceImages:
         case PickAction::BatchSourceImages: return "photos";
         case PickAction::SourceVideo:
@@ -516,6 +517,9 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
             break;
         case PickAction::MeshPhotos:
             _mesh_job.data_dir = path;
+            break;
+        case PickAction::MeshGround:
+            _mesh_job.ground_masks = path;
             break;
         case PickAction::LidarSource:
             if (_pick_lidar < 0) add_lidar_sources(paths);

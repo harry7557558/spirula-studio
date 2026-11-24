@@ -48,6 +48,7 @@ const StageCaption kStages[] = {
     {MStage::Quality,    &lmsg::mesh_stage_quality},
     {MStage::Orient,     &lmsg::mesh_stage_orient},
     {MStage::Color,      &lmsg::mesh_stage_color},
+    {MStage::Ground,     &lmsg::mesh_stage_ground},
     {MStage::Uv,         &lmsg::mesh_stage_uv},
     {MStage::Bake,       &lmsg::mesh_stage_bake},
     {MStage::Texture,    &lmsg::mesh_stage_texture},
@@ -229,6 +230,10 @@ void MeshRunner::run(MeshJob job) {
     if (job.use_data && job.tsdf) {
         argv.push_back("--method");
         argv.push_back("tsdf");
+    }
+    if (job.use_data && !job.ground_masks.empty()) {
+        argv.push_back("--ground-masks");
+        argv.push_back(job.ground_masks);
     }
     if (job.max_cameras > 0) {
         argv.push_back("--max-cameras");

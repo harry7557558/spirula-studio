@@ -132,7 +132,7 @@ private:
         PresetFile, DatasetPresetFile, MeshPresetFile, PresetSaveFolder,
         BatchDataset, BatchOutput, BatchPresetFile, BatchDatasetPresetFile,
         BatchMeshPresetFile, BatchSourceImages, BatchSourceVideo, BatchModel,
-        MeshSource, MeshPhotos, MeshOutput, AddSplatFile, SplatFolder,
+        MeshSource, MeshPhotos, MeshGround, MeshOutput, AddSplatFile, SplatFolder,
         EditSaveFile, EditSaveFolder, RenderProjectSave, RenderProjectOpen,
         RenderOutput, RenderAddModel, StencilFile, SeedPointcloud,
         ConfigPath, LidarSource, ResumeRun, SourceLut

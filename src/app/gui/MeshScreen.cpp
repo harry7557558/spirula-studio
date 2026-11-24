@@ -197,6 +197,16 @@ void GuiApp::draw_mesh_options() {
         if (ui::Combo(msg::mesh_method, &method, {&msg::mesh_method_opacity, &msg::mesh_method_tsdf}))
             _mesh_job.tsdf = method == 1;
         ui::help_on_hover(msg::mesh_method_help);
+        ImGui::SetNextItemWidth(field_width(msg::mesh_ground_masks));
+        ui::InputTextRaw("##meshground", &_mesh_job.ground_masks);
+        ImGui::SameLine();
+        if (ui::ButtonRaw("...##meshgroundpick", ImVec2(px(kBrowseButtonW), 0))) {
+            open_pick(PickAction::MeshGround, msg::mesh_pick_ground_masks.get(),
+                      FileDialog::Mode::Folder);
+        }
+        ImGui::SameLine();
+        ui::TextDisabled(msg::mesh_ground_masks);
+        ui::help_on_hover(msg::mesh_ground_masks_help);
         ImGui::Unindent();
     }
 
