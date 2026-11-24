@@ -44,38 +44,27 @@ same for the opacity field and both TSDF fusions (`src/mesh/GroundSplit.cpp`):
    nothing, so a wrong mask on a table cannot reach the floor under it.
 2. **Smoothing.** Each vertex's ground share is averaged with its faces'
    twice. Vertices no camera saw take their neighbours' share.
-3. **Faces.** A face is ground when its corners' mean share is at least 0.3
-   (`kGroundShare`), not a majority: see "Tuning".
-4. **Islands.** Connected faces of one label (sharing a vertex) under 200
-   faces (`kGroundIsland`) join the other label: a few mislabelled frames
-   leave speckles, not holes.
+3. **Faces.** A face is ground when its corners' mean share is at least 1/2.
+4. **Islands.** Connected faces of one label (sharing a vertex) under
+   `--floater-min-faces` faces join the other label: a few mislabelled
+   frames leave speckles, not holes.
 
 `ground_split` (both builds, no GPU) labels a floor with a table on it from
 eight cameras whose masks are 5% wrong, and checks that no vote reaches the
 floor under the table.
 
-## Tuning
+## One indoor capture
 
-One indoor 360 capture: 536 fisheye views at 1920x1920, a 5M-splat 2dgs
-model meshed with `--method tsdf --samples-per-gaussian 1` (3.6M faces, 7.5
-min, 2.3 GB peak; the ground stage 51 s). Masks from SAM 2.1 base+ with
-Grounding DINO tiny, prompt `floor`, 0.29 s a frame. The floor is one plane,
-so a plane fitted to the ground part scores the split: floor cover is the
-up-facing area within 1% of the room's extent of the plane that comes out
-ground, stray ground the ground area more than 3% off it.
+536 fisheye views at 1920x1920, a 5M-splat 2dgs model meshed with `--method
+tsdf --samples-per-gaussian 1` (3.6M faces, 7.5 min, 2.3 GB peak; the ground
+stage 51 s), masks from SAM 2.1 base+ with Grounding DINO tiny, prompt
+`floor`, 0.29 s a frame.
 
-- Visibility is not what misses floor: 0.4% of floor faces were seen by no
-  camera, and the median floor face had 117 views.
-- SAM's errors are one-sided. Off-floor surfaces almost never collect floor
-  votes (99.2% of their area under a 0.1 share), while missed floor mostly
-  lost narrowly: far and grazing views do not call it floor.
-
-| share | island | floor cover | stray ground |
-|---|---|---|---|
-| 0.5 | 10 | 80.7% | 0.28% |
-| 0.4 | 200 | 86.1% | 0.39% |
-| **0.3** | **200** | **89.8%** | **0.66%** |
-| 0.2 | 200 | 92.4% | 1.7% |
-
-Most of what 0.3 still leaves is a few patches SAM firmly rejects (median
-share 0.15), likely flat objects at floor height rather than floor.
+- Visibility does not lose floor: 0.4% of floor faces were seen by no camera,
+  and the median floor face had 117 views.
+- SAM misses floor more often than it calls something else floor, so a lower
+  share covers more of the floor plane: 0.3 covered 89.8% against 80.7%. It
+  was worse to look at all the same: what it added was the sides and bases of
+  objects on the floor (38% of it facing up and 32% steep, against 61% and
+  17% of the majority's ground), which a plane-distance score counts as
+  floor. The majority stays.

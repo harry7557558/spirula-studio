@@ -74,8 +74,7 @@ void vote_ground(const TsdfCamera& c, const float* depth, const uint8_t* labels,
 }
 
 std::vector<uint8_t> ground_faces(const MeshData& mesh, const std::vector<float>& ground,
-                                  const std::vector<float>& seen, float min_share,
-                                  int min_island) {
+                                  const std::vector<float>& seen, int min_island) {
     const size_t nv = mesh.V.size(), nf = mesh.F.size();
     std::vector<float> share(nv, -1.0f), next(nv);
     for (size_t v = 0; v < nv; ++v)
@@ -102,7 +101,7 @@ std::vector<uint8_t> ground_faces(const MeshData& mesh, const std::vector<float>
         float s = 0.0f, n = 0.0f;
         for (int k = 0; k < 3; ++k)
             if (share[(size_t)mesh.F[t][k]] >= 0.0f) { s += share[(size_t)mesh.F[t][k]]; n += 1.0f; }
-        label[t] = n > 0.0f && s >= min_share * n ? 1 : 0;
+        label[t] = n > 0.0f && s >= 0.5f * n ? 1 : 0;
     }
     if (min_island <= 1 || nf == 0) return label;
 
