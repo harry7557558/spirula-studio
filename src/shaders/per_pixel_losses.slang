@@ -145,7 +145,9 @@ float[RawLossIndex::length] per_pixel_losses(
     float median_depth,
     float3 median_normal,
     bool ref_alpha,
+    no_diff bool rgb_mask,
     no_diff bool has_mask,
+    no_diff bool alpha_mask,
     no_diff float saturation_threshold,
     no_diff float[LossWeightIndex::length] weights
 ) {
@@ -158,7 +160,8 @@ float[RawLossIndex::length] per_pixel_losses(
     // Per-pixel validity. 0 depth is the "no gt" sentinel; normal_mask is
     // gt_normal_valid, spelled out here because core/Interpolation.cuh is
     // CUDA-only. No mask means ref_alpha is false everywhere, not "empty".
-    bool mask = has_mask ? ref_alpha : true;
+    bool mask = has_mask ? rgb_mask : true;
+    bool keep = has_mask ? ref_alpha : true;  // GT geometry: never a preserved background
     // Both images clipped at the same ceiling: nothing about the pixel is
     // recoverable, so it leaves the loss the way a masked pixel does.
     if (saturation_threshold > 0.0f &&
@@ -168,7 +171,6 @@ float[RawLossIndex::length] per_pixel_losses(
     bool depth_mask = (ref_depth != 0.0f);
     bool normal_mask = (ref_normal.x + ref_normal.y + ref_normal.z > -2.366f &&
                         dot(ref_normal, ref_normal) > 0.25f);
-    bool alpha_mask = has_mask;
 
     // RGB - L1 and L2, plus YUV (BT.601) per-channel L1/L2, for training.
     // RgbL2 stays plain-RGB (PSNR calculation).
@@ -189,7 +191,7 @@ float[RawLossIndex::length] per_pixel_losses(
         clamp(l2_loss(render_rgb, ref_rgb), 0.0f, 1.0f);
 
     // Depth - Pearson correlation in log space
-    depth_mask &= mask;
+    depth_mask &= mask && keep;
     render_depth = float(depth_mask) * max(render_depth, 1e-4);
     ref_depth = float(depth_mask) * max(ref_depth, 1e-4);
     losses[RawLossIndex::DepthSupX] = render_depth;
@@ -199,7 +201,7 @@ float[RawLossIndex::length] per_pixel_losses(
     losses[RawLossIndex::DepthSupXY] = render_depth * ref_depth;
 
     // Normal - Supervision and regularization - Pairwise loss between different normals
-    normal_mask &= mask;
+    normal_mask &= mask && keep;
     bool render_normal_mask = true,
          depth_normal_mask = true;
     render_normal = normalize_normal(render_normal, render_normal_mask);
@@ -285,7 +287,9 @@ void per_pixel_losses_bwd(
     float median_depth,
     float3 median_normal,
     bool ref_alpha,
+    bool rgb_mask,
     bool has_mask,
+    bool alpha_mask,
     float saturation_threshold,
     no_diff float[LossWeightIndex::length] weights,
     float[RawLossIndex::length] v_losses,
@@ -331,7 +335,9 @@ void per_pixel_losses_bwd(
         dp_median_depth,
         dp_median_normal,
         ref_alpha,
+        rgb_mask,
         has_mask,
+        alpha_mask,
         saturation_threshold,
         weights,
         v_losses

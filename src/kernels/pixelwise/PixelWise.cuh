@@ -160,13 +160,16 @@ inline PpispParamSpec ppisp_param_spec(const std::string& param_type) {
 // Everything between the rasterizer and the bilateral grid (background blend,
 // PPISP either side of the display encode, the encode) as one launch each way.
 // The backward recomputes the stages instead of keeping an image per stage.
-enum class AppearanceBg : int { None = 0, Color = 1, Noise = 2, Image = 3 };
+enum class AppearanceBg : int { None = 0, Color = 1, Image = 2 };
 enum class AppearancePpisp : int { Off = 0, BeforeEncode = 1, AfterEncode = 2 };
 
 struct AppearanceChainParams {
     AppearanceBg bg = AppearanceBg::None;
     float bg_color[3] = {0.0f, 0.0f, 0.0f};   // Color: working space
-    // Noise: the draw blend_background_noise_forward makes from the same values.
+    int bg_noise = 0;                           // the draw, off bg_mask's segments (bit 1)
+    const uint8_t* bg_mask = nullptr;           // [B, mask_h, mask_w], nearest-sampled
+    int bg_mask_h = 0, bg_mask_w = 0;
+    // The draw blend_background_noise_forward makes from the same values.
     int bg_transfer = 0;
     int bg_is_linear = 0;
     int bg_blocky = 0;
@@ -192,6 +195,10 @@ struct AppearanceChainParams {
     const int32_t* cam_indices = nullptr;       // [B] parameter slot per image
     float overexposure_weight = 0.0f;           // backward only
 };
+
+__host__ __device__ inline bool appearance_has_bg(const AppearanceChainParams& p) {
+    return p.bg != AppearanceBg::None || p.bg_noise != 0;
+}
 
 
 /* == AUTO HEADER GENERATOR - DO NOT EDIT THIS LINE OR ANYTHING BELOW THIS LINE == */

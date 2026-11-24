@@ -26,6 +26,7 @@
 #include "data/RandomPoints.h"
 #include "data/ScenePartition.h"
 #include "data/Json.h"
+#include "data/JsonWrite.h"
 #include "data/RegionProgram.h"
 #include "data/RoiDocument.h"
 #include "data/LabelField.h"
@@ -651,7 +652,7 @@ build_loss_weights(const TrainConfig& c, int step) {
         warmup_ramp(step, c.median_warmup, c.median_warmup_schedule);
     const float alpha_reg_factor =
         warmup_ramp(step, c.alpha_reg_warmup, c.alpha_reg_warmup_schedule);
-    float mask = c.apply_loss_for_mask.value_or(false) ? 1.0f : 0.0f;
+    float mask = train_mask_applies_alpha_loss(c) ? 1.0f : 0.0f;
 
     float w_rgb_l1 = std::max(0.0f, c.l1_weight);
     float w_rgb_l2 = std::max(0.0f, c.l2_weight);
@@ -723,6 +724,7 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
             std::max(0.0f, 1.0f - 1.0f / std::max(c.color_shift_reg_ema_period, 1));
     }
     cfg.loss.input_depth_is_ray_depth = st.input_depth_is_ray_depth;
+    cfg.loss.segment_and_ignore_mask = train_mask_is_segment_and_ignore(c);
 
     // ---- optim ---------------------------------------------------------
     float means_lr = scheduled_lr(step, max_steps_lr, c.means_lr, c.means_lr_final);
@@ -908,13 +910,13 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.ppisp.run_before_color_space = c.apply_ppisp_before_color_space;
 
     // ---- background ----------------------------------------------------
-    if (c.background_mode == "noise" || c.background_mode == "pseudorandom" ||
-        c.background_mode == "random") {
+    if (c.background_transparency_suppression != "none") {
         float rw = std::min((float)step / std::max(c.background_noise_warmup, 1), 1.0f);
         cfg.background.randomize_weight =
             1.0f - (1.0f - c.background_noise_pre_warmup) * (1.0f - rw);
         cfg.background.match_luminance = c.background_match_luminance;
-    } else if (c.background_mode == "sh") {
+    }
+    if (c.background_mode == "skybox") {
         cfg.background.lr_dc = scheduled_lr(step, max_steps_lr, c.background_dc_lr);
         cfg.background.lr_sh = scheduled_lr(step, max_steps_lr, c.background_sh_lr);
     }
@@ -963,6 +965,59 @@ void save_config_json(const TrainConfig& c, const fs::path& out_dir,
 // ===========================================================================
 // TrainerSession
 // ===========================================================================
+
+static std::string utc_iso8601(std::chrono::system_clock::time_point t) {
+    const std::time_t tt = std::chrono::system_clock::to_time_t(t);
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &tt);
+#else
+    gmtime_r(&tt, &tm);
+#endif
+    char buf[32];
+    std::strftime(buf, sizeof buf, "%Y-%m-%dT%H:%M:%SZ", &tm);
+    return buf;
+}
+
+// Never throws: it runs inside the handlers that rethrow a run's own error.
+void TrainerSession::write_run_record(const char* status, const std::string& error) try {
+    if (_run_started == std::chrono::system_clock::time_point{}) return;
+    const bool running = !std::strcmp(status, "running");
+    auto str_or_null = [](const std::string& v) { return json_field::emit(v); };
+    JsonWriter w;
+    w.object();
+    w.field("status", status);
+    w.field_raw("error", str_or_null(error));
+    w.field("started", utc_iso8601(_run_started));
+    w.field_raw("ended", running ? std::string("null")
+                                 : json_quote(utc_iso8601(std::chrono::system_clock::now())));
+    w.field("training_time_s", elapsed_seconds());
+    w.field("start_step", start_step);
+    w.field("final_step", std::max(cur_step.load(), start_step));
+    w.field("num_iterations", cfg.num_iterations);
+    w.field("final_checkpoint", _final_saved);
+    w.field("num_splats", (long long)_live_splats.load());
+    w.field("device", _device_name);
+#ifdef SS_BACKEND_VULKAN
+    w.field("backend", "vulkan");
+#else
+    w.field("backend", "cuda");
+#endif
+    w.field_raw("spirula_version", str_or_null(app_version));
+    w.field("preset", preset);
+    w.field("data", fs::absolute(cfg.data).string());
+    w.field_raw("resume", str_or_null(cfg.resume));
+    w.field_raw("log", str_or_null(run_log));
+    if (!_earlier_runs.empty()) {
+        w.key("earlier_runs").array();
+        for (const JsonValue& r : _earlier_runs) json_write(w, r);
+        w.end();
+    }
+    w.end();
+    const std::string text = w.str();
+    write_file_atomic(out_dir / "run.json", text.data(), text.size());
+} catch (const std::exception&) {
+}
 
 void TrainerSession::log(const std::string& msg) {
     if (log_fn) { log_fn(msg); return; }
@@ -1136,11 +1191,26 @@ void TrainerSession::check_config() {
 // eval scores a render against, and what a soft edge renders as.
 void TrainerSession::set_alpha_config(DataManagerConfig& dm,
                                       const std::vector<uint8_t>& alpha) const {
-    if (cfg.load_masks) dm.alpha_masks = alpha;
-    if (cfg.background_mode == "color") {
+    if (train_mask_enabled(cfg)) dm.alpha_masks = alpha;
+    if (cfg.background_mode == "black" || cfg.background_mode == "color") {
         dm.composite_alpha = alpha;
-        for (int c = 0; c < 3; c++) dm.composite_color[c] = cfg.background_color[c];
+        for (int c = 0; c < 3; c++)
+            dm.composite_color[c] =
+                cfg.background_mode == "color" ? cfg.background_color[c] : 0.0f;
     }
+}
+
+static BackgroundSuppression background_suppression_from_name(const std::string& name) {
+    if (name == "noise") return BackgroundSuppression::Noise;
+    if (name == "pseudorandom") return BackgroundSuppression::Pseudorandom;
+    if (name == "random") return BackgroundSuppression::Random;
+    return BackgroundSuppression::None;
+}
+
+void TrainerSession::set_mask_classes(DataManagerConfig& dm) const {
+    dm.segment_and_ignore_masks = train_mask_is_segment_and_ignore(cfg);
+    dm.segment_masks = train_mask_applies_alpha_loss(cfg);
+    dm.segment_rgb = train_mask_preserves_background(cfg);
 }
 
 void TrainerSession::set_downscale_cache(DataManagerConfig& dm) const {
@@ -1277,16 +1347,17 @@ void TrainerSession::load_dataset() {
 
     // Warp-path guards, plus: a modality no weight reads is not loaded at all.
     alpha_images = probe_alpha_masks(ds.image_filenames);
+    const bool masks_on = train_mask_enabled(cfg);
     has_mask   = (!ds.mask_filenames.empty() || !alpha_images.empty()) &&
-                 cfg.load_masks;
-    if (!alpha_images.empty() && cfg.load_masks) {
+                 masks_on;
+    if (!alpha_images.empty() && masks_on) {
         const long long n = std::count(alpha_images.begin(), alpha_images.end(), 1);
         log(lfmt(ds.mask_filenames.empty() ? lmsg::alpha_masks_found
                                            : lmsg::alpha_masks_with_files,
                  {n, (long long)ds.num_cameras}));
     }
     // Alpha cut-outs treat excluded pixels as empty space.
-    if (!cfg.apply_loss_for_mask.has_value()) {
+    if (cfg.mask_mode == "auto" && masks_on && !cfg.apply_loss_for_mask.has_value()) {
         cfg.apply_loss_for_mask = !alpha_images.empty() && ds.mask_filenames.empty();
         if (*cfg.apply_loss_for_mask) log(lmsg::alpha_masks_cut_out.get());
     }
@@ -1460,6 +1531,15 @@ static float estimate_views_per_point(const ParsedDataset& ds, float quantile) {
 }
 
 void TrainerSession::setup_engine() {
+    try {
+        setup_engine_steps();
+    } catch (const std::exception& e) {
+        write_run_record("failed", e.what());
+        throw;
+    }
+}
+
+void TrainerSession::setup_engine_steps() {
 #ifndef SS_BACKEND_VULKAN
     check_cuda_runtime();
 #endif
@@ -1489,6 +1569,22 @@ void TrainerSession::setup_engine() {
     if (write_config_json) {
         save_config_json(cfg, out_dir, preset);
         save_scene_transform_json(ds, cfg, out_dir);
+        _run_started = std::chrono::system_clock::now();
+        _device_name = backend::device_info(backend::device_current()).name;
+        _final_saved = false;
+        _earlier_runs.clear();
+        try {
+            const JsonValue prev = json_parse_file((out_dir / "run.json").string());
+            if (const JsonValue* runs = prev.find("earlier_runs"); runs && runs->is_array())
+                _earlier_runs = runs->arr;
+            JsonValue last = prev;
+            last.obj.erase(std::remove_if(last.obj.begin(), last.obj.end(),
+                                          [](const auto& kv) { return kv.first == "earlier_runs"; }),
+                           last.obj.end());
+            if (last.is_object()) _earlier_runs.push_back(std::move(last));
+        } catch (const std::exception&) {
+        }
+        write_run_record("running");
     }
     log(lfmt(lmsg::output_directory, {fs::absolute(out_dir).string()}));
     _perf_dir.clear();
@@ -1553,23 +1649,17 @@ void TrainerSession::setup_engine() {
     }
 
     // Background blending.
-    if (cfg.background_mode == "noise")
-        engine_init_background_noise((int)color.splat_transfer,
-                                     color.splat_linear);
-    else if (cfg.background_mode == "pseudorandom")
-        engine_init_background_pseudorandom((int)color.splat_transfer,
-                                            color.splat_linear);
-    else if (cfg.background_mode == "random")
-        engine_init_background_random((int)color.splat_transfer,
-                                      color.splat_linear);
-    else if (cfg.background_mode == "color")
+    if (cfg.background_mode == "color")
         engine_init_background_color(cfg.background_color.data(),
                                      (int)color.splat_transfer,
                                      color.splat_linear);
-    else if (cfg.background_mode == "sh")
+    else if (cfg.background_mode == "skybox")
         engine_init_background_sh(cfg.background_sh_degree,
                                   (int)color.splat_transfer,
                                   color.splat_linear);
+    engine_init_background_suppression(
+        background_suppression_from_name(cfg.background_transparency_suppression),
+        (int)color.splat_transfer, color.splat_linear);
 
     // Output transfer / wide-gamut color space.
     const bool splat_cs_on = color.splat_on();
@@ -1592,10 +1682,9 @@ void TrainerSession::setup_engine() {
 
     // ---- DataManager ---------------------------------------------------
     const int64_t N = ds.num_cameras;
-    int64_t num_val = (int64_t)ds.val_indices.size();
-    int64_t num_train = N - num_val;
+    const int64_t num_train = N - (int64_t)ds.val_indices.size();
     // Batch-size policy.
-    double n_batch = std::max((double)num_train / std::max(cfg.max_batch_per_epoch, 1), 1.0);
+    const double n_batch = std::max((double)num_train / std::max(cfg.max_batch_per_epoch, 1), 1.0);
     int train_bs = std::max(1, (int)(n_batch + 0.5));
     if (cfg.min_renders_per_refine > 0.0f && num_train > 0) {
         // A splat seen by V cameras is rendered B * refine_every * V / N_train
@@ -1607,14 +1696,10 @@ void TrainerSession::setup_engine() {
         const int bs_old = train_bs;
         if (cfg.max_train_batch_size > 0)
             train_bs = std::max(1, std::min(std::max(train_bs, bs_need), cfg.max_train_batch_size));
-        n_batch = (double)train_bs;
         log(lfmt(lmsg::batch_from_renders,
                  {(double)v_q, (long long)bs_old, (long long)train_bs}));
     }
     _batches_per_epoch = (int)std::max<int64_t>(1, (num_train + train_bs - 1) / train_bs);
-    int val_bs = 1;
-    if (num_val > 0)
-        val_bs = std::max(1, (int)std::ceil(n_batch * (double)num_val / (double)num_train));
 
     DataManagerConfig dm;
     dm.cache_mode  = (cfg.cache_images == "disk") ? CacheMode::DISK : CacheMode::CPU;
@@ -1623,10 +1708,10 @@ void TrainerSession::setup_engine() {
     // all-white one becomes the post-split FOV mask (0 past the lens),
     // without which the unseen face regions train as black.
     dm.load_masks  = has_mask || post.any_fov_mask;
+    set_mask_classes(dm);
     dm.load_depths      = has_depth;
     dm.load_normals     = has_normal;
     dm.train_batch_size = train_bs;
-    dm.val_batch_size   = val_bs;
     dm.flip_mask = cfg.flip_mask;
     set_alpha_config(dm, alpha_images);
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
@@ -1847,7 +1932,7 @@ void TrainerSession::restore_checkpoint() {
     if (adapted) remove_tree(tmp);
     int bg_deg = 0;
     if (engine_has_background_sh(&bg_deg)) {
-        cfg.background_mode = "sh";
+        cfg.background_mode = "skybox";
         cfg.background_sh_degree = bg_deg;
     }
     log(lfmt(lmsg::resumed_from, {r.tar_path.string(), (long long)start_step}));
@@ -2039,6 +2124,17 @@ void TrainerSession::observe_memory(int step, int64_t splats_ran) {
 }
 
 void TrainerSession::train(const TrainerCallbacks& cb) {
+    try {
+        train_steps(cb);
+    } catch (const std::exception& e) {
+        write_run_record("failed", e.what());
+        throw;
+    }
+    write_run_record(std::max(cur_step.load(), start_step) < cfg.num_iterations ? "stopped"
+                                                                                 : "completed");
+}
+
+void TrainerSession::train_steps(const TrainerCallbacks& cb) {
     {
         std::lock_guard<std::mutex> lk(_time_mutex);
         _start_time = std::chrono::steady_clock::now();
@@ -2273,6 +2369,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         std::lock_guard<std::mutex> lk(engine_mutex);
         // A run stopped short is one to continue later, so its save must be resumable.
         save_checkpoint(step, cfg.save_full_checkpoint || step < cfg.num_iterations);
+        _final_saved = true;
         log(lfmt(lmsg::checkpoint_saved, {fs::absolute(out_dir).string()}));
     }
 
@@ -2323,6 +2420,9 @@ ViewerRenderConfig TrainerSession::make_viewer_config() const {
     vc.primitive = cfg.primitive;
     vc.packed = cfg.packed;
     vc.sh_degree_warmup_every = cfg.sh_degree_warmup_every;
+    vc.sh_degree = cfg.sh_degree;
+    vc.sb_lobes = cfg.sb_lobes;
+    vc.refinement_score = true;
     vc.relative_scale = cfg.relative_scale;
     vc.output_median = cfg.mean_median_depth_weight > 0.0f ||
                        cfg.median_depth_normal_reg_weight > 0.0f ||
@@ -2333,6 +2433,9 @@ ViewerRenderConfig TrainerSession::make_viewer_config() const {
                            cfg.normal_distortion_reg != 0.0f;
     const auto color = resolve_color(cfg);
     vc.color_space_on = color.splat_on();
+    vc.background_draw_on = cfg.background_transparency_suppression != "none";
+    // Segments are where background_mode is trained, so a view shows it there.
+    vc.background_base_view = has_mask && train_mask_applies_alpha_loss(cfg);
     vc.centers = dsparse::scene_centers(ds);
     vc.center_cameras = ds.num_cameras > 0;
     const auto nav = dsparse::navigation_hint(ds.c2w.data(), ds.num_cameras);
@@ -2445,13 +2548,13 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
     dm.seed = (uint64_t)std::max(cfg.sampling_seed,0);
     const std::vector<uint8_t> eval_alpha = probe_alpha_masks(eds.image_filenames);
     const bool eval_masks =
-        (!eds.mask_filenames.empty() || !eval_alpha.empty()) && cfg.load_masks;
+        (!eds.mask_filenames.empty() || !eval_alpha.empty()) && train_mask_enabled(cfg);
     dm.load_masks  = eval_masks || epost.any_fov_mask;
+    set_mask_classes(dm);
     set_alpha_config(dm, eval_alpha);
     dm.load_depths = false;
     dm.load_normals = false;
     dm.train_batch_size = 1;
-    dm.val_batch_size   = 1;
     dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
     dm.exif_quarter_turns = eds.exif_quarter_turns;
@@ -2741,7 +2844,8 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                 TorchTensorView{0, 0, {}}, TorchTensorView{0, 0, {}});
             engine_copy_gt_rgb_to_host(
                 TorchTensorView{(uint64_t)(uintptr_t)gt.data(), 4, {B, H, W, Cc}});
-            if (!cfg.apply_loss_for_mask.value_or(false)) {
+            if (!train_mask_applies_alpha_loss(cfg) ||
+                train_mask_is_segment_and_ignore(cfg)) {
                 auto ms = engine_get_gt_alpha_shape();
                 const int64_t mh = std::get<1>(ms), mw = std::get<2>(ms);
                 if (std::get<0>(ms) == B && mh > 0 && mw > 0) {
@@ -2754,7 +2858,7 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                             for (int64_t x = 0; x < W; ++x) {
                                 int64_t sy = std::min((int64_t)((y + 0.5) * mh / H), mh - 1);
                                 int64_t sx = std::min((int64_t)((x + 0.5) * mw / W), mw - 1);
-                                mask[(b*H+y)*W+x] = source[(b*mh+sy)*mw+sx];
+                                mask[(b*H+y)*W+x] = source[(b*mh+sy)*mw+sx] & 1;
                             }
                 }
             }

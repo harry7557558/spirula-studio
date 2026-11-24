@@ -663,22 +663,18 @@ void ColmapRunner::run(ColmapJob job) {
                 shared.push_back("--SiftExtraction.estimate_affine_shape");
                 shared.push_back("1");
             }
-            // COLMAP reads one mask tree, so the feature-only masks are
-            // intersected into a copy when training's are wanted there too.
+            // COLMAP keeps any nonzero pixel, so masks carrying the sky's 128
+            // band go in as a binary copy; without the checkbox, of the sky alone.
             std::string colmap_masks = have_masks && job.mask_features ? prep.mask_dir : "";
             const fs::path both = ws / ".colmap_masks";
             remove_tree(both);
-            if (!prep.feature_mask_dir.empty()) {
-                if (colmap_masks.empty()) {
-                    colmap_masks = prep.feature_mask_dir;
-                } else {
-                    std::string err;
-                    if (app::intersect_mask_trees(images, colmap_masks, prep.mask_dir_flipped,
-                                                  prep.feature_mask_dir, both.string(),
-                                                  &_cancel, err) < 0)
-                        return fail("could not write " + err);
-                    colmap_masks = both.string();
-                }
+            if (have_masks && prep.masks_segment) {
+                std::string err;
+                if (app::binary_mask_tree(images, prep.mask_dir, prep.mask_dir_flipped,
+                                          !job.mask_features, both.string(), &_cancel,
+                                          err) < 0)
+                    return fail("could not write " + err);
+                colmap_masks = both.string();
             }
             if (!colmap_masks.empty()) {
                 shared.push_back("--ImageReader.mask_path");

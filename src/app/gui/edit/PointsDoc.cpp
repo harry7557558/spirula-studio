@@ -4,7 +4,7 @@
 
 #include "i18n/catalog/Edit.h"
 #include "i18n/catalog/Dense.h"
-#include "dense/Generation.h"
+#include "dense/Clouds.h"
 
 #include <cstddef>
 #include <algorithm>
@@ -341,16 +341,13 @@ void PointsDoc::save(int target, const std::string& path,
             _ds.points.rgb.empty() ? nullptr : _ds.points.rgb.data(),
             _ds.points.num(), keep.data(), &moved, coordinates);
     };
-    std::string dense_dataset;
-    spirula::dense::ArtifactFiles dense;
-    if (spirula::dense::edited_artifact(path, dense_dataset, dense)) {
-        const fs::path part = dense.cloud.parent_path() / "roma-edit.part";
+    std::error_code ec;
+    if (spirula::dense::dense_dataset_of(path).empty()) write(path, spirula::PlyCoordinates::Float32);
+    else if (fs::equivalent(path, source_path(), ec)) {
+        const fs::path part = fs::path(path).parent_path() / ".edit.part";
         write(part.string(), spirula::PlyCoordinates::Float64);
-        spirula::dense::commit_edit(dense_dataset, dense, part, alive_count_of(kPoints));
-    } else {
-        write(path, spirula::dense::dense_dataset_of(path).empty()
-            ? spirula::PlyCoordinates::Float32 : spirula::PlyCoordinates::Float64);
-    }
+        spirula::dense::commit_edit(path, part);
+    } else write(path, spirula::PlyCoordinates::Float64);
     if (progress) (*progress)++;
 }
 

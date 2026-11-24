@@ -5,7 +5,6 @@
 #include "roma/model/Fetch.h"
 #include "dense/ConfigFields.h"
 #include "dense/Artifact.h"
-#include "dense/Versions.h"
 #include "data/SeedPointCount.h"
 
 #include "core/ColorBasis.h"
@@ -23,6 +22,7 @@
 #include "app/AppPaths.h"
 #include "app/CrashLog.h"
 #include "app/CubeLut.h"
+#include "app/RunLog.h"
 #include "app/DeviceIssue.h"
 #include "app/FramePick.h"
 #include "app/LogLuts.h"
@@ -103,6 +103,8 @@ namespace ldmsg = spirula::i18n::msg::lidar;
 namespace gmsg = spirula::i18n::msg::geometry;
 namespace tmsg = spirula::i18n::msg::train;
 namespace lmsg = spirula::i18n::msg::log;
+namespace runlog = spirula::runlog;
+using spirula::runlog::cfg_str;
 namespace rmsg = spirula::i18n::msg::render;
 namespace mmsg = spirula::i18n::msg::maskedit;
 namespace svmsg = spirula::i18n::msg::preview;
@@ -248,13 +250,9 @@ GuiApp::GuiApp() {
     // A saved reconstruction or dense seed invalidates the trainer's preview.
     _compare.set_on_model_saved([this](const std::string& saved) {
         if (_cfg.data.empty()) return;
-        std::string dataset;
-        spirula::dense::ArtifactFiles files;
         try {
             std::error_code ec;
-            if (fs::equivalent(saved, _cfg.data, ec) ||
-                (spirula::dense::edited_artifact(saved, dataset, files) &&
-                 fs::equivalent(dataset, _cfg.data, ec))) {
+            if (fs::equivalent(saved, _cfg.data, ec) || spirula::dense::is_dense_seed(_cfg.data, saved)) {
                 _parse_dirty = true;
                 _viewport.invalidate_framing();
             }
@@ -557,45 +555,6 @@ static std::tm local_tm(std::time_t t) {
     return tm;
 }
 
-// Local wall-clock stamp for log lines: [yyyy-MM-dd HH:mm:ss.fff].
-static std::string log_stamp() {
-    const auto now = std::chrono::system_clock::now();
-    const std::time_t t = std::chrono::system_clock::to_time_t(now);
-    const int ms = int(std::chrono::duration_cast<std::chrono::milliseconds>(
-                           now.time_since_epoch()).count() % 1000);
-    const std::tm tm = local_tm(t);
-    char date[32], frac[16];
-    std::strftime(date, sizeof(date), "[%Y-%m-%d %H:%M:%S", &tm);
-    std::snprintf(frac, sizeof(frac), ".%03d] ", ms);
-    return std::string(date) + frac;
-}
-
-// Run-start stamp for log file names: yyyyMMddHHmmss.
-static std::string run_log_stamp() {
-    const std::tm tm = local_tm(
-        std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
-    char buf[24];
-    std::strftime(buf, sizeof(buf), "%Y%m%d%H%M%S", &tm);
-    return buf;
-}
-
-// Open this run's log file: <dir>/logs/<kind>_<stamp>.log, where dir is the
-// folder the images folder lives in. A run that cannot name that folder keeps
-// its log on the panel only. Returns the file's path, empty when none.
-static fs::path open_run_log(std::ofstream& f, const std::string& dataset_dir,
-                             const char* kind, const std::string& stamp) {
-    if (f.is_open()) f.close();
-    f.clear();
-    if (dataset_dir.empty()) return {};
-    std::error_code ec;
-    const fs::path dir = fs::path(dataset_dir) / "logs";
-    fs::create_directories(dir, ec);
-    if (ec) return {};
-    const fs::path file = dir / (std::string(kind) + "_" + stamp + ".log");
-    f.open(file, std::ios::out | std::ios::app);
-    return file;
-}
-
 // Hand a value to the reconstruction engines through the process environment
 // (the SS_* namespace core/Env.h owns); the SfM subprocess inherits it too.
 // Empty clears.
@@ -608,46 +567,10 @@ static void set_ss_env(const char* suffix, const std::string& value) {
 #endif
 }
 
-// Mirror a log() message into the run's file, stamped the same way.
-static void file_log_line(std::ofstream& f, const std::string& s) {
-    if (!f.is_open()) return;
-    size_t at = 0;
-    do {
-        const size_t nl = s.find('\n', at);
-        f << log_stamp()
-          << s.substr(at, nl == std::string::npos ? nl : nl - at) << '\n';
-        at = nl == std::string::npos ? nl : nl + 1;
-    } while (at != std::string::npos);
-    f.flush();
-}
-
 static std::string cached_model_path(const std::string& id) {
     const ModelEntry* e = find_model(id);
     if (!e || !model_is_cached(*e)) return "";
     return model_path(*e);
-}
-
-// Value formatting for the settings snapshot.
-static std::string cfg_str(const std::string& v) { return v; }
-static std::string cfg_str(bool v) { return v ? "true" : "false"; }
-static std::string cfg_str(int v) { return std::to_string(v); }
-static std::string cfg_str(float v) {
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%.7g", double(v));
-    return buf;
-}
-template <typename T>
-static std::string cfg_str(const std::optional<T>& v) {
-    return v ? cfg_str(*v) : std::string("none");
-}
-template <typename T, size_t N>
-static std::string cfg_str(const std::array<T, N>& v) {
-    std::string s;
-    for (size_t i = 0; i < N; i++) {
-        if (i) s += ',';
-        s += cfg_str(v[i]);
-    }
-    return s;
 }
 
 static const char* photo_import_name(PhotoImport m) {
@@ -663,7 +586,7 @@ static const char* photo_import_name(PhotoImport m) {
 // One entry per SCREEN line: the panel clips with a list clipper and
 // compensates its scroll for trimmed lines, and both want a uniform height.
 void GuiApp::log(const std::string& s, bool detail) {
-    const std::string stamp = log_stamp();
+    const std::string stamp = runlog::line_stamp();
     size_t at = 0;
     do {
         const size_t nl = s.find('\n', at);
@@ -690,13 +613,14 @@ void GuiApp::clear_log() {
 void GuiApp::write_run_settings(std::ofstream& f) {
     if (!f.is_open()) return;
     std::string out;
-    auto section = [&out](const std::string& name) { out += "[" + name + "]\n"; };
+    auto section = [&out](const std::string& name) { out += runlog::section(name); };
     auto line = [&out](const std::string& k, const std::string& v) {
-        out += "  " + k + " = " + v + "\n";
+        out += runlog::entry(k, v);
     };
 
-    section(msg::runlog_section_run.get());
-    line("run_started", run_log_stamp());
+    out += runlog::run_heading();
+    line("run_started", runlog::file_stamp());
+    line("spirula_version", SS_VERSION);
     line("engine", effective_engine() == Engine::BuiltIn ? "builtin" : "colmap");
 #if defined(SS_BUILD_SAM) || defined(SS_TOOL_SFM) || defined(SS_BACKEND_VULKAN)
     line("native_device", _native_device_uuid.empty() ? "auto" : _native_device_uuid);
@@ -804,46 +728,23 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     line("max_size", std::to_string(_geometry.max_size));
     line("face_res", _geometry.face_res == 1 ? "source" : "output");
 
-    // The training config, grouped the way the options editor groups it.
-    for (int si = 0; si < kTrainNumSections; si++) {
-        const TrainConfig& c = _cfg;
-        std::string body;
-#define SS_SNAP_FIELD(type, member, default_, s, tier, choices)              \
-        if (!std::strcmp(s, kTrainSections[si]))                             \
-            body += std::string("  ") + #member + " = " +                    \
-                    cfg_str(c.member) + "\n";
-        SS_CONFIG_FIELDS(SS_SNAP_FIELD)
-#undef SS_SNAP_FIELD
-        if (!body.empty()) {
-            const Msg* label = tmsg::section_label(kTrainSections[si]);
-            section(i18n::format(
-                msg::runlog_section_train,
-                {label ? label->get() : kTrainSections[si]}));
-            out += body;
-        }
-    }
-
-    // A fixed-width rule, so the separator still reads as one whatever the
-    // translated label measures.
-    const std::string end = msg::runlog_settings_end.get();
-    const int fill = std::max(72 - i18n::display_width(end) - 2, 6);
-    out += std::string(fill / 2, '=') + " " + end + " " +
-           std::string(fill - fill / 2, '=') + "\n\n";
+    out += runlog::train_sections(_cfg);
+    out += runlog::settings_end();
     f << out;
     f.flush();
 }
 
 void GuiApp::append_logs() {
     for (auto& s : _runner.drain_log()) {
-        file_log_line(_train_log, s);
+        runlog::write_line(_train_log, s);
         log(s);
     }
     for (auto& l : _colmap.steps().drain()) {
-        file_log_line(_prep_log, l.text);
+        runlog::write_line(_prep_log, l.text);
         log(l.text, l.detail);
     }
     for (auto& l : _sfm.steps().drain()) {
-        file_log_line(_prep_log, l.text);
+        runlog::write_line(_prep_log, l.text);
         log(l.text, l.detail);
     }
     for (auto& s : _compare.drain_log()) log(s);
@@ -1433,13 +1334,11 @@ void GuiApp::launch_training(const TrainConfig& cfg, const std::string& preset) 
     app::set_crash_note("training " + cfg.data);
     close_mesh_preview();
     detach_session_views();
-    std::string data_dir = cfg.data;
-    if (fs::path(data_dir).filename() == "images")
-        data_dir = fs::path(data_dir).parent_path().string();
-    open_run_log(_train_log, data_dir, "train", run_log_stamp());
+    const fs::path log_file =
+        runlog::open(_train_log, runlog::dataset_dir(cfg.data), "train", runlog::file_stamp());
     set_ss_env("UNREG_LOG", "");
     write_run_settings(_train_log);
-    _runner.start_training(cfg, preset);
+    _runner.start_training(cfg, preset, log_file.string());
 }
 
 void GuiApp::start_training() {
@@ -4341,7 +4240,8 @@ void GuiApp::open_reconstruction(const std::string& workspace) {
     }
     std::error_code ec;
     std::vector<std::string> inputs;
-    for (const PrepInput& in : decode_record_inputs(read_dataset_record(workspace).inputs).rows)
+    for (const PrepInput& in :
+         decode_record_inputs(read_dataset_record(workspace).inputs, workspace).rows)
         if (!in.path.empty() && fs::exists(fs::u8path(in.path), ec)) inputs.push_back(in.path);
     forget_redo_requests();
     clear_lidar_sources();
@@ -4830,16 +4730,16 @@ bool GuiApp::launch_dataset_job() {
         // now: the rule's settings come back with the dataset.
         made[(int)Step::Frames] = made[(int)Step::Frames] || plan[Step::Frames].sort;
         write_record_settings(_workspace, dataset_settings_json(capture_dataset_settings()),
-                              encode_record_inputs({_sources, _mask.clicks}), made);
+                              encode_record_inputs({_sources, _mask.clicks}, _workspace), made);
     }
     if (!_workspace.empty()) {
         std::error_code ec;
         remember(RecentKind::Reconstruction, fs::absolute(fs::u8path(_workspace), ec).u8string());
     }
     _restored_ws = _workspace;
-    const std::string stamp = run_log_stamp();
+    const std::string stamp = runlog::file_stamp();
     const fs::path prep_log_file =
-        open_run_log(_prep_log,
+        runlog::open(_prep_log,
                      fs::path(planned_image_dir(_sources, _workspace,
                                                 _photo_import)).parent_path().string(),
                      "prep", stamp);
@@ -7183,7 +7083,7 @@ void GuiApp::continue_frame_review() {
     bool made[kNumSteps] = {};
     made[(int)Step::Frames] = true;
     write_record_settings(_workspace, dataset_settings_json(capture_dataset_settings()),
-                          encode_record_inputs({_sources, _mask.clicks}), made);
+                          encode_record_inputs({_sources, _mask.clicks}, _workspace), made);
     _sfm.continue_review();
 }
 
@@ -7779,7 +7679,7 @@ GuiApp::DatasetFolders GuiApp::workspace_folders(const WorkspaceState& prior) co
 int64_t GuiApp::starting_points() {
     std::error_code ec;
     const std::string seed = _cfg.seed_pointcloud.empty() && dense_cloud_present()
-        ? spirula::dense::artifact_files(_cfg.data).cloud.string()
+        ? spirula::dense::default_cloud(_cfg.data).ply.string()
         : _cfg.seed_pointcloud == spirula::dense::kSparseSeed ? std::string() : _cfg.seed_pointcloud;
     if (!seed.empty()) {
         fs::path p = seed;
@@ -11986,28 +11886,99 @@ void GuiApp::draw_preset_save_modal() {
 // generated editor does: a flag the user set by hand is off limits to the
 // macro options (see train_resolve_macros()).
 void GuiApp::draw_train_mask_mode(float width) {
-    bool cut_out = _cfg.apply_loss_for_mask.value_or(false);
-    const TrainRunner::Phase ph = _runner.phase();
-    if (!_cfg.apply_loss_for_mask.has_value() &&
-        (ph == TrainRunner::Phase::Ready || ph == TrainRunner::Phase::Training ||
-         ph == TrainRunner::Phase::Evaluating ||
-         ph == TrainRunner::Phase::Done))
-        if (auto* s = _runner.session())
-            cut_out = s->cfg.apply_loss_for_mask.value_or(false);
-    int mi = !_cfg.load_masks ? 2 : cut_out ? 1 : 0;
+    int mi = 0;
+    const ResolvedMaskMode m = resolve_train_mask_mode(_cfg);
+    if (m == ResolvedMaskMode::Off) mi = 3;
+    else if (m == ResolvedMaskMode::SegmentAndIgnore) mi = 2;
+    else if (m == ResolvedMaskMode::Segment) mi = 1;
+    else if (_cfg.mask_mode == "auto" && !_cfg.apply_loss_for_mask.has_value()) {
+        const TrainRunner::Phase ph = _runner.phase();
+        if (ph == TrainRunner::Phase::Ready || ph == TrainRunner::Phase::Training ||
+            ph == TrainRunner::Phase::Evaluating ||
+            ph == TrainRunner::Phase::Done)
+            if (auto* s = _runner.session())
+                if (s->cfg.apply_loss_for_mask.value_or(false)) mi = 1;
+    }
     ImGui::SetNextItemWidth(width);
     if (ui::Combo(msg::opt_mask_mode, &mi,
                   {&msg::opt_mask_mode_exclude,
                    &msg::opt_mask_mode_cut_out,
+                   &msg::opt_mask_mode_segment_and_ignore,
                    &msg::opt_mask_mode_off})) {
-        _cfg.load_masks = mi != 2;
+        static constexpr const char* kModes[4] = {
+            "ignore", "segment", "segment_and_ignore", "off"};
+        _cfg.mask_mode = kModes[mi];
+        _cfg.load_masks = mi != 3;
+        _cfg_ui.touched.insert("mask_mode");
         _cfg_ui.touched.insert("load_masks");
-        if (mi != 2) {
-            _cfg.apply_loss_for_mask = mi == 1;
+        if (mi != 3) {
+            _cfg.apply_loss_for_mask = (mi == 1 || mi == 2);
             _cfg_ui.touched.insert("apply_loss_for_mask");
         }
     }
     ui::help_on_hover_disabled(msg::opt_mask_mode_help);
+}
+
+// Under a transparency draw, background_mode shows on segments only: say so
+// when the dataset and the mask mode leave none. Decodes at most three masks.
+void GuiApp::draw_background_warning() {
+    if (_cfg.background_mode == "black" || _cfg.background_transparency_suppression == "none")
+        return;
+    const TrainRunner::Phase ph = _runner.phase();
+    auto* s = _runner.session();
+    if (!s || ph == TrainRunner::Phase::Loading || ph == TrainRunner::Phase::LoadError ||
+        s->cfg.data != _cfg.data)
+        return;
+    std::vector<const std::string*> files;
+    for (const std::string& f : s->ds.mask_filenames)
+        if (!f.empty()) files.push_back(&f);
+    const bool alpha = std::count(s->alpha_images.begin(), s->alpha_images.end(), 1) > 0;
+    const std::string& bg = _cfg.background_mode;
+    if (files.empty() && !alpha) {
+        ui::TextColoredWrapped(kWarn, msg::bg_unused_no_masks, {bg});
+        return;
+    }
+    // As TrainerCore resolves auto: cut out when the only masks are alpha.
+    ResolvedMaskMode m = resolve_train_mask_mode(_cfg);
+    if (_cfg.mask_mode == "auto" && _cfg.load_masks && !_cfg.apply_loss_for_mask.has_value())
+        m = alpha && files.empty() ? ResolvedMaskMode::Segment : ResolvedMaskMode::Ignore;
+    if (m == ResolvedMaskMode::Off || m == ResolvedMaskMode::Ignore) {
+        const Msg& mode = m == ResolvedMaskMode::Off ? msg::opt_mask_mode_off
+                                                     : msg::opt_mask_mode_exclude;
+        ui::TextColoredWrapped(kWarn, msg::bg_unused_mask_mode, {mode.get(), bg});
+        return;
+    }
+    const bool seg_ign = m == ResolvedMaskMode::SegmentAndIgnore;
+    if (!alpha) {
+        const std::string key = _cfg.data + '\n' + _cfg.mask_dir + '\n' +
+            std::to_string((int)seg_ign) + std::to_string((int)_cfg.flip_mask) + '\n' +
+            std::to_string(files.size());
+        if (key != _bg_segment_probe_key) {
+            _bg_segment_probe_key = key;
+            _bg_segment_probe_found = false;
+            const size_t num_picks = std::min(files.size(), (size_t)10);
+            for (size_t k = 0; k < num_picks && !_bg_segment_probe_found; k++) {
+                int w = 0, h = 0, ch = 0;
+                size_t file_idx = std::min(files.size() * k / num_picks, files.size() - 1);
+                stbi_uc* px = stbi_load(files[file_idx]->c_str(), &w, &h, &ch, 1);
+                if (!px) { _bg_segment_probe_found = true; break; }  // unknown: say nothing
+                for (size_t i = 0; i < (size_t)w * h && !_bg_segment_probe_found; i++) {
+                    const uint8_t v = px[i];
+                    _bg_segment_probe_found = seg_ign ? (v >= 128 && v <= 250)
+                                                      : ((v != 0) == _cfg.flip_mask);
+                }
+                stbi_image_free(px);
+            }
+        }
+        if (!_bg_segment_probe_found) {
+            ui::TextColoredWrapped(kWarn, seg_ign ? msg::bg_unused_no_grey
+                                                  : msg::bg_unused_no_masked, {bg});
+            return;
+        }
+    }
+    // As train_mask_preserves_background: unset is on for a skybox here.
+    if (bg == "skybox" && !_cfg.preserve_background.value_or(true))
+        ui::TextColoredWrapped(kWarn, msg::bg_skybox_untrained, {fld::preserve_background.get()});
 }
 
 bool GuiApp::dense_cloud_present() {
@@ -12030,7 +12001,7 @@ void GuiApp::refresh_dense_versions(const std::string& dataset, bool force) {
     _dense_versions_at = now;
     _dense_versions.clear();
     if (!dataset.empty())
-        for (const auto& v : spirula::dense::cloud_versions(dataset))
+        for (const auto& v : spirula::dense::clouds(dataset))
             _dense_versions.emplace_back(v.relative, v.current);
     _dense_version_index = 0;
     for (size_t i = 0; i < _dense_versions.size(); i++)
@@ -12091,7 +12062,7 @@ void GuiApp::draw_dense_versions() {
             const auto dataset = _dense_versions_dataset;
             _dense_deleted_path = (fs::path(dataset) / "dense" / path).lexically_normal().string();
             _dense_delete = std::async(std::launch::async, [dataset, path] {
-                spirula::dense::delete_cloud_version(dataset, path);
+                spirula::dense::delete_cloud(dataset, path);
             });
             ImGui::CloseCurrentPopup();
         }
@@ -12140,7 +12111,7 @@ const std::vector<GuiApp::SeedFile>& GuiApp::dataset_seed_files() {
         std::sort(out.begin(), out.end());
         return out;
     };
-    for (const auto& v : spirula::dense::cloud_versions(_cfg.data)) {
+    for (const auto& v : spirula::dense::clouds(_cfg.data)) {
         if (v.current) continue;
         const auto label = i18n::format(msg::seed_choice_dense_file, {v.relative});
         _seed_files.push_back({label, "dense/" + v.relative, true});
@@ -12196,13 +12167,13 @@ void GuiApp::draw_seed_cloud(TrainRunner::Phase ph) {
         else if (ids[at] == Dense || choice != Other) _cfg.seed_pointcloud.clear();
         _cfg_ui.touched.insert("seed_pointcloud");
     }
-    ui::help_on_hover(msg::seed_choice_help);
+    ui::help_on_hover_disabled(msg::seed_choice_help);
     if (ids[at] == Other) {
         ImGui::Indent();
         ImGui::SetNextItemWidth(px(-70.0f));
         if (ui::InputTextRaw("##seed_pointcloud", &_cfg.seed_pointcloud))
             _cfg_ui.touched.insert("seed_pointcloud");
-        ui::help_on_hover(fld::seed_pointcloud_help);
+        ui::help_on_hover_disabled(fld::seed_pointcloud_help);
         ImGui::SameLine();
         if (ui::ButtonRaw("...##seed_pointcloud_pick", ImVec2(60, 0))) {
             _seed_other = true;
@@ -12255,7 +12226,7 @@ void GuiApp::draw_dataset_aux(float width) {
             _cfg_ui.touched.insert("load_depths");
             _cfg_ui.touched.insert("depth_supervision_weight");
         }
-        ui::help_on_hover(msg::opt_dataset_depths_help);
+        ui::help_on_hover_disabled(msg::opt_dataset_depths_help);
     }
     if (!s->ds.normal_filenames.empty()) {
         bool on = _cfg.load_normals && (_cfg.normal_supervision_weight > 0.0f ||
@@ -12270,7 +12241,7 @@ void GuiApp::draw_dataset_aux(float width) {
             _cfg_ui.touched.insert("normal_supervision_weight");
             _cfg_ui.touched.insert("median_normal_supervision_weight");
         }
-        ui::help_on_hover(msg::opt_dataset_normals_help);
+        ui::help_on_hover_disabled(msg::opt_dataset_normals_help);
     }
 }
 
@@ -12279,16 +12250,15 @@ void GuiApp::draw_basic_options() {
     // scaled: at 200% the labels are twice the size and the box is not.
     const float w = px(170.0f);
 
-    // A macro option: one dropdown standing for the several flags
-    // train_resolve_macros() fills in behind it. The value written is the
-    // token the flag takes; what the user picks is the word for it.
+    // A dropdown over a flag's choices, the macro options among them. The value
+    // written is the token the flag takes; what the user picks is the word for it.
     auto macro_option = [&](const char* key, std::string& value,
                             const Msg& label, const Msg& help,
                             std::initializer_list<const char*> values) {
         ImGui::SetNextItemWidth(w);
         const bool open = ui::BeginComboRaw(ui::detail::label(label),
                                             gui::choice_display(key, value).c_str());
-        if (!open) { ui::help_on_hover(help); return; }
+        if (!open) { ui::help_on_hover_disabled(help); return; }
         for (const char* v : values) {
             bool sel = value == v;
             if (ui::SelectableRaw(gui::choice_display(key, v), sel)) {
@@ -12311,12 +12281,12 @@ void GuiApp::draw_basic_options() {
     }
     ImGui::SameLine();
     ui::Text(msg::opt_output_folder);
-    ui::help_on_hover(msg::opt_output_folder_help);
+    ui::help_on_hover_disabled(msg::opt_output_folder_help);
     ImGui::SetNextItemWidth(w);
     if (ui::InputTextWithHint(msg::opt_run_name, msg::opt_run_name_hint,
                               &_cfg.output_dir_name))
         _cfg_ui.touched.insert("output_dir_name");
-    ui::help_on_hover(msg::opt_run_name_help);
+    ui::help_on_hover_disabled(msg::opt_run_name_help);
     {
         std::string run = _cfg.output_dir_name.empty()
             ? fs::path(_cfg.data).stem().string() + "_<time>"
@@ -12336,12 +12306,12 @@ void GuiApp::draw_basic_options() {
     ImGui::SetNextItemWidth(w);
     if (ui::InputInt(msg::opt_steps, &_cfg.num_iterations))
         _cfg_ui.touched.insert("num_iterations");
-    ui::help_on_hover(msg::opt_steps_help);
+    ui::help_on_hover_disabled(msg::opt_steps_help);
 
     ImGui::SetNextItemWidth(w);
     if (ui::InputInt(msg::opt_max_splats, &_cfg.cap_max))
         _cfg_ui.touched.insert("cap_max");
-    ui::help_on_hover(msg::opt_max_splats_help);
+    ui::help_on_hover_disabled(msg::opt_max_splats_help);
 
     {
         // Primitive names are the config's own values, written into
@@ -12355,7 +12325,7 @@ void GuiApp::draw_basic_options() {
             _cfg.primitive = prims[pi];
             _cfg_ui.touched.insert("primitive");
         }
-        ui::help_on_hover(spirula::i18n::msg::field::primitive_help);
+        ui::help_on_hover_disabled(spirula::i18n::msg::field::primitive_help);
         // if (_cfg.primitive == "3dgut")
         //     ui::TextColoredWrapped(kWarn, msg::opt_primitive_3dgut_warn);
     }
@@ -12373,20 +12343,20 @@ void GuiApp::draw_basic_options() {
             _cfg_ui.touched.insert("train_resolution_divisor");
         }
     }
-    ui::help_on_hover(msg::opt_resolution_help);
+    ui::help_on_hover_disabled(msg::opt_resolution_help);
 #if 0
     ImGui::SetNextItemWidth(w);
     if (ui::InputInt(fld::max_resolution, &_cfg.max_resolution)) {
         _cfg.max_resolution = std::clamp(_cfg.max_resolution, 0, 32768);
         _cfg_ui.touched.insert("max_resolution");
     }
-    ui::help_on_hover(fld::max_resolution_help);
+    ui::help_on_hover_disabled(fld::max_resolution_help);
 #endif
 
 #if 0
     if (ui::Checkbox(fld::progressive_resolution, &_cfg.progressive_resolution))
         _cfg_ui.touched.insert("progressive_resolution");
-    ui::help_on_hover(fld::progressive_resolution_help);
+    ui::help_on_hover_disabled(fld::progressive_resolution_help);
     if (_cfg.progressive_resolution) {
         ImGui::Indent();
         // A manual schedule replaces the automatic stages these two shape.
@@ -12407,11 +12377,11 @@ void GuiApp::draw_basic_options() {
         ImGui::SetNextItemWidth(w);
         if (ui::InputText(fld::progressive_resolution_schedule, &_cfg.progressive_resolution_schedule))
             _cfg_ui.touched.insert("progressive_resolution_schedule");
-        ui::help_on_hover(fld::progressive_resolution_schedule_help);
+        ui::help_on_hover_disabled(fld::progressive_resolution_schedule_help);
 
         if (ui::Checkbox(fld::progressive_splat_budget, &_cfg.progressive_splat_budget))
             _cfg_ui.touched.insert("progressive_splat_budget");
-        ui::help_on_hover(fld::progressive_splat_budget_help);
+        ui::help_on_hover_disabled(fld::progressive_splat_budget_help);
         if (_cfg.progressive_splat_budget) draw_splat_budget(w);
         ImGui::Unindent();
     }
@@ -12420,7 +12390,7 @@ void GuiApp::draw_basic_options() {
     ImGui::SetNextItemWidth(w);
     if (ui::SliderInt(msg::opt_sh_degree, &_cfg.sh_degree, 0, 4))
         _cfg_ui.touched.insert("sh_degree");
-    ui::help_on_hover(msg::opt_sh_degree_help);
+    ui::help_on_hover_disabled(msg::opt_sh_degree_help);
 
 // #ifdef SS_BACKEND_VULKAN
 #if 0
@@ -12433,16 +12403,16 @@ void GuiApp::draw_basic_options() {
         if (!_cfg_ui.touched.count("sh_degree"))
             _cfg.sh_degree = _cfg.sb_lobes > 0 ? 0 : _defaults.sh_degree;
     }
-    ui::help_on_hover(fld::sb_lobes_help);
+    ui::help_on_hover_disabled(fld::sb_lobes_help);
 #endif
 
     if (ui::Checkbox(msg::opt_bilateral_grid, &_cfg.use_bilateral_grid))
         _cfg_ui.touched.insert("use_bilateral_grid");
-    ui::help_on_hover(msg::opt_bilateral_grid_help);
+    ui::help_on_hover_disabled(msg::opt_bilateral_grid_help);
 
     if (ui::Checkbox(msg::opt_ppisp, &_cfg.use_ppisp))
         _cfg_ui.touched.insert("use_ppisp");
-    ui::help_on_hover(msg::opt_ppisp_help);
+    ui::help_on_hover_disabled(msg::opt_ppisp_help);
 
     macro_option("calib_correction", _cfg.calib_correction, fld::calib_correction,
                  fld::calib_correction_help, {"off", "basic", "accurate"});
@@ -12462,6 +12432,26 @@ void GuiApp::draw_basic_options() {
     if (_cfg.distraction_robustness != "off")
         ui::TextColoredWrapped(kWarn, msg::opt_distraction_warn);
 #endif
+
+    ImGui::Spacing();
+
+    macro_option("background_mode", _cfg.background_mode, fld::background_mode,
+                 fld::background_mode_help, {"black", "color", "skybox"});
+    if (_cfg.background_mode == "color") {
+        ImGui::Indent();
+        ImGui::PushID("background_color");
+        if (gui::draw_color_field(_cfg.background_color))
+            _cfg_ui.touched.insert("background_color");
+        ImGui::PopID();
+        ui::help_on_hover_disabled(fld::background_color_help);
+        ImGui::Unindent();
+    }
+    macro_option("background_transparency_suppression",
+                 _cfg.background_transparency_suppression,
+                 fld::background_transparency_suppression,
+                 fld::background_transparency_suppression_help,
+                 {"none", "noise", "pseudorandom", "random"});
+    draw_background_warning();
 
     draw_dataset_aux(w);
 }

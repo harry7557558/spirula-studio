@@ -655,6 +655,29 @@ SS_MSG(mask_dir_help,
     TR("Görüntü maskelerini içeren alt klasör; COLMAP ve Metashape veri kümeleri "
        "için. Maskenin ne anlama geldiğini apply_loss_for_mask belirler."));
 
+SS_MSG(mask_mode,
+    EN("Mask mode"), JA("マスクモード"),
+    ZH_HANS("蒙版模式"), ZH_HANT("遮罩模式"),
+    KO("마스크 모드"), DE("Maskenmodus"),
+    FR("Mode de masque"), ES("Modo de máscara"),
+    PT("Modo de máscara"), IT("Modalità maschera"),
+    NL("Maskermodus"), RU("Режим маски"),
+    TR("Maske kipi"));
+SS_MSG(mask_mode_help,
+    EN("How image masks control the loss.\n- auto — uses load_masks and apply_loss_for_mask.\n- ignore / segment — binary keep vs. ignore or empty.\n- segment_and_ignore — 0-127 ignore, 128-250 empty, 251-255 keep."),
+    JA("マスクの損失への適用方法です。\n- auto — load_masks と apply_loss_for_mask に従います。\n- ignore / segment — 除外または空として学習します。\n- segment_and_ignore — 0-127無視、128-250空、251-255保持。"),
+    ZH_HANS("图像蒙版如何控制损失。\n- auto — 沿用 load_masks 与 apply_loss_for_mask。\n- ignore / segment — 二值忽略或训练为空。\n- segment_and_ignore — 0-127忽略，128-250空，251-255保留。"),
+    ZH_HANT("影像遮罩如何控制損失。\n- auto — 沿用 load_masks 與 apply_loss_for_mask。\n- ignore / segment — 二值忽略或訓練為空。\n- segment_and_ignore — 0-127忽略，128-250空，251-255保留。"),
+    KO("마스크의 손실 적용 방식입니다.\n- auto — load_masks 및 apply_loss_for_mask를 따릅니다.\n- ignore / segment — 무시 또는 빈 공간으로 학습합니다.\n- segment_and_ignore — 0-127 무시, 128-250 빈 공간, 251-255 유지."),
+    DE("Steuert die Maskenwirkung im Loss.\n- auto — nutzt load_masks und apply_loss_for_mask.\n- ignore / segment — auslassen oder als leer trainieren.\n- segment_and_ignore — 0-127 ignorieren, 128-250 leer, 251-255 behalten."),
+    FR("Contrôle l’effet des masques sur la perte.\n- auto — suit load_masks et apply_loss_for_mask.\n- ignore / segment — exclure ou entraîner comme vide.\n- segment_and_ignore — 0-127 ignorer, 128-250 vide, 251-255 garder."),
+    ES("Controla el efecto de las máscaras en la pérdida.\n- auto — usa load_masks y apply_loss_for_mask.\n- ignore / segment — omitir o entrenar como vacío.\n- segment_and_ignore — 0-127 ignorar, 128-250 vacío, 251-255 conservar."),
+    PT("Controla o efeito das máscaras na perda.\n- auto — usa load_masks e apply_loss_for_mask.\n- ignore / segment — omitir ou treinar como vazio.\n- segment_and_ignore — 0-127 ignorar, 128-250 vazio, 251-255 manter."),
+    IT("Controlla l’effetto delle maschere sulla perdita.\n- auto — usa load_masks e apply_loss_for_mask.\n- ignore / segment — esclude o addestra come vuoto.\n- segment_and_ignore — 0-127 ignora, 128-250 vuoto, 251-255 mantieni."),
+    NL("Bepaalt hoe maskers het verlies sturen.\n- auto — volgt load_masks en apply_loss_for_mask.\n- ignore / segment — overslaan of als leeg trainen.\n- segment_and_ignore — 0-127 negeren, 128-250 leeg, 251-255 behouden."),
+    RU("Определяет действие масок в функции потерь.\n- auto — использует load_masks и apply_loss_for_mask.\n- ignore / segment — исключить или обучать как пустоту.\n- segment_and_ignore — 0-127 игнор, 128-250 пусто, 251-255 сохранить."),
+    TR("Maskelerin kayba etkisini belirler.\n- auto — load_masks ve apply_loss_for_mask ayarını izler.\n- ignore / segment — yok say veya boş olarak eğit.\n- segment_and_ignore — 0-127 yok say, 128-250 boş, 251-255 tut."));
+
 SS_MSG(load_masks,
     EN("Use dataset masks"), JA("データセットのマスクを使う"),
     ZH_HANS("使用数据集的蒙版"), ZH_HANT("使用資料集的遮罩"),
@@ -708,6 +731,35 @@ SS_MSG(apply_loss_for_mask_help,
     NL("Oningesteld alleen aan bij uitsluitend alfamaskers.\n- Uit — gemaskeerde pixels tellen niet mee in het verlies.\n- Aan — leert gemaskeerde pixels als lege ruimte."),
     RU("Если не задано, включено только для масок из альфа-канала.\n- Выкл. — исключает пиксели маски из потерь.\n- Вкл. — обучает пиксели маски как пустые."),
     TR("Ayarlanmazsa yalnız alfa maskeleri için açıktır.\n- Kapalı — maskeli pikselleri kayıptan çıkarır.\n- Açık — maskeli pikselleri boş alan olarak eğitir."));
+
+SS_MSG(preserve_background,
+    EN("Train the background behind segments"),
+    JA("セグメントの背後の背景も学習"),
+    ZH_HANS("在分割区域训练背景"),
+    ZH_HANT("在分割區域訓練背景"),
+    KO("분할 영역의 배경도 학습"),
+    DE("Hintergrund hinter Segmenten trainieren"),
+    FR("Entraîner l’arrière-plan derrière les segments"),
+    ES("Entrenar el fondo tras los segmentos"),
+    PT("Treinar o fundo atrás dos segmentos"),
+    IT("Addestrare lo sfondo dietro i segmenti"),
+    NL("Achtergrond achter segmenten trainen"),
+    RU("Обучать фон за сегментами"),
+    TR("Bölütlerin arkasındaki arka planı eğit"));
+SS_MSG(preserve_background_help,
+    EN("Segments keep their color loss, so a skybox learns there. Unset: on, except `segment` without a skybox under transparency suppression."),
+    JA("セグメントにも色の損失を残し、そこでスカイボックスを学習します。未設定ならオン。ただし透明度抑制下のスカイボックスがない `segment` ではオフ。"),
+    ZH_HANS("分割区域保留颜色损失，让天空盒在此学习。未设置时开启；但 `segment` 没有透明抑制下的天空盒时关闭。"),
+    ZH_HANT("分割區域保留顏色損失，讓天空盒在此學習。未設定時開啟；但 `segment` 沒有透明抑制下的天空盒時關閉。"),
+    KO("분할 영역에 색 손실을 남겨 스카이박스가 그곳에서 학습합니다. 미설정이면 켜짐. 단, 투명도 억제 중 스카이박스가 없는 `segment`는 꺼짐."),
+    DE("Segmente behalten ihren Farbverlust, damit dort eine Skybox lernt. Ohne Wert an, außer bei `segment` ohne Skybox unter Transparenzunterdrückung."),
+    FR("Les segments gardent leur perte de couleur : un skybox y apprend. Par défaut actif, sauf `segment` sans skybox sous suppression de transparence."),
+    ES("Los segmentos conservan la pérdida de color y un skybox aprende ahí. Sin ajuste, activo salvo `segment` sin skybox con supresión de transparencia."),
+    PT("Os segmentos mantêm a perda de cor e um skybox aprende ali. Sem definição, ativo, exceto `segment` sem skybox com supressão de transparência."),
+    IT("I segmenti mantengono la perdita di colore e lì uno skybox impara. Senza valore attivo, tranne `segment` senza skybox con soppressione trasparenza."),
+    NL("Segmenten houden hun kleurverlies, zodat een skybox daar leert. Oningesteld aan, behalve `segment` zonder skybox onder transparantieonderdrukking."),
+    RU("Сегменты сохраняют потерю цвета, и там обучается скайбокс. Не задано: вкл., кроме `segment` без скайбокса при подавлении прозрачности."),
+    TR("Bölütler renk kaybını korur; gökyüzü kutusu orada öğrenir. Ayarlanmazsa açık; saydamlık bastırmalı gökyüzü kutusu olmayan `segment` hariç."));
 
 SS_MSG(flip_mask,
     EN("Flip masks"), JA("マスクを反転"),
@@ -2022,19 +2074,19 @@ SS_MSG(background_mode,
     KO("배경"), DE("Hintergrund"), FR("Arrière-plan"), ES("Fondo"),
     PT("Fundo"), IT("Sfondo"), NL("Achtergrond"), RU("Фон"), TR("Arka plan"));
 SS_MSG(background_mode_help,
-    EN("Fill pixels that splats do not cover.\n- color uses one chosen color. Black adds no cost.\n- noise, pseudorandom and random change pixels, tiles or the whole frame each step to discourage translucency.\n- sh learns a skybox for distant background."),
-    JA("スプラットが覆わない画素を何で埋めるかです。 `color` が通常の選択で、選んだ一つの色を使います。\n- 黒なら何の処理もしません。 `noise` と `pseudorandom` と `random` はどれも、覆われていない画素の色が毎ステップ変わるようにして半透明な面を抑えます。色のまとまりの大きさが違い、画素ごと、鮮やかなタイル、画面全体と大きくなります。\n- 大きいほど損失に平均化されず効き目が強くなります。 `sh` は空を学習し、遠くの背景を無視せず表現します。"),
-    ZH_HANS("用什么填充没有泼溅覆盖的像素。 `color` 是通常的选择，用你指定的一种颜色；黑色则完全不做处理。\n- `noise`、`pseudorandom` 和 `random` 都通过让未覆盖像素的颜色每步都变来抑制半透明表面；\n- 区别在于色块的大小，从逐像素到鲜艳的色块再到整帧一色，越大损失越难把它平均掉，压得也越狠。\n- `sh` 会学习一个天空盒，让远处背景被表示而不是被忽略。"),
-    ZH_HANT("用什麼填充沒有潑濺覆蓋的像素。 `color` 是通常的選擇，用你指定的一種顏色；黑色則完全不做處理。\n- `noise`、`pseudorandom` 和 `random` 都透過讓未覆蓋像素的顏色每步都變來抑制半透明表面；\n- 區別在於色塊的大小，從逐像素到鮮豔的色塊再到整幀一色，越大損失越難把它平均掉，壓得也越狠。\n- `sh` 會學習一個天空盒，讓遠處背景被表示而不是被忽略。"),
-    KO("스플랫이 덮지 않은 픽셀을 무엇으로 채울지입니다. `color`가 보통의 선택으로, 직접 고른 한 가지 색을 씁니다. 검정이면 아무 처리도 하지 않습니다.\n- `noise`와 `pseudorandom`과 `random`은 모두 덮이지 않은 픽셀의 색이 매 스텝 바뀌게 해서 반투명한 표면을 억제합니다.\n- 색 덩어리의 크기가 다른데, 픽셀 단위에서 선명한 타일, 화면 전체 한 색으로 커집니다.\n- 클수록 손실이 평균으로 지워 버리지 못해 더 세게 누릅니다.\n- `sh`는 스카이박스를 학습해 먼 배경을 무시하지 않고 표현합니다."),
-    DE("Was Pixel füllt, die kein Splat bedeckt. `color` ist die übliche Wahl: eine Farbe nach Wahl, und Schwarz kostet gar nichts. `noise`, `pseudorandom` und `random` entmutigen alle halbdurchsichtige Flächen, indem ein unbedecktes Pixel auf einer Farbe landet, die sich jeden Schritt ändert;\n- sie unterscheiden sich in der Fleckengröße -- pro Pixel, kräftige Kacheln oder eine Farbe für das ganze Bild -- und je größer, desto weniger kann der Verlust sie wegmitteln.\n- `sh` lernt eine Skybox, damit ferner Hintergrund dargestellt statt ignoriert wird."),
-    FR("Ce qui remplit les pixels qu'aucun splat ne couvre. `color` est le choix habituel : une couleur de votre choix, et le noir ne coûte rien.\n- `noise`, `pseudorandom` et `random` découragent tous les surfaces à demi transparentes en faisant tomber un pixel non couvert sur une couleur qui change à chaque étape ;\n- ils diffèrent par la taille des taches -- par pixel, tuiles vives, ou une seule couleur pour toute l'image -- et plus elles sont grandes, moins la perte peut les moyenner.\n- `sh` apprend une skybox pour que l'arrière-plan lointain soit représenté au lieu d'être ignoré."),
-    ES("Qué rellena los píxeles que ningún splat cubre. `color` es la elección habitual: un color que eliges, y el negro no cuesta nada.\n- `noise`, `pseudorandom` y `random` desincentivan las superficies semitransparentes haciendo que un píxel sin cubrir caiga sobre un color que cambia en cada paso;\n- se diferencian en el tamaño de las manchas -- por píxel, baldosas vivas o un solo color para todo el fotograma -- y cuanto mayores, menos puede promediarlas la pérdida.\n- `sh` aprende un cielo para que el fondo lejano quede representado en vez de ignorado."),
-    PT("O que preenche os pixels que nenhum splat cobre. `color` é a escolha habitual: uma cor à sua escolha, e o preto não custa nada. `noise`, `pseudorandom` e `random` desencorajam superfícies semitransparentes fazendo um pixel descoberto cair sobre uma cor que muda a cada passo;\n- diferem no tamanho das manchas -- por pixel, ladrilhos vivos ou uma só cor para o quadro inteiro -- e quanto maiores, menos a perda consegue mediá-las.\n- `sh` aprende um céu para que o fundo distante seja representado em vez de ignorado."),
-    IT("Che cosa riempie i pixel che nessuno splat copre. `color` è la scelta abituale: un colore a tua scelta, e il nero non costa nulla. `noise`, `pseudorandom` e `random` scoraggiano le superfici semitrasparenti facendo cadere un pixel scoperto su un colore che cambia a ogni passo;\n- differiscono per la dimensione delle chiazze -- per pixel, piastrelle vivaci o un solo colore per l'intero fotogramma -- e più sono grandi, meno la perdita può mediarle.\n- `sh` impara un cielo perché lo sfondo lontano sia rappresentato invece che ignorato."),
-    NL("Wat pixels vult die geen splat bedekt. `color` is de gebruikelijke keuze: een kleur naar keuze, en zwart kost helemaal niets.\n- `noise`, `pseudorandom` en `random` ontmoedigen allemaal halfdoorzichtige oppervlakken doordat een onbedekte pixel op een kleur valt die elke stap verandert;\n- ze verschillen in de grootte van de vlekken -- per pixel, felle tegels of één kleur voor het hele beeld -- en hoe groter, hoe minder het verlies ze kan wegmiddelen.\n- `sh` leert een skybox zodat verre achtergrond wordt weergegeven in plaats van genegeerd."),
-    RU("Чем заполняются пиксели, которые не покрыл ни один сплат. `color` — обычный выбор: любой заданный вами цвет, а чёрный не стоит ничего. `noise`, `pseudorandom` и `random` мешают полупрозрачным поверхностям: непокрытый пиксель попадает на цвет, меняющийся каждый шаг; они отличаются размером пятен — на пиксель, яркие плитки или один цвет на весь кадр — и чем крупнее, тем хуже функция потерь их усредняет.\n`sh` обучает скайбокс, чтобы дальний фон был представлен, а не проигнорирован."),
-    TR("Hiçbir splat'ın kaplamadığı pikselleri neyin dolduracağı. `color` alışılmış seçimdir: seçtiğiniz bir renk, siyah ise hiçbir şeye mal olmaz. `noise`, `pseudorandom` ve `random` yarı saydam yüzeyleri caydırır:\n- kaplanmamış bir piksel her adımda değişen bir renge düşer;\n- benek boyutlarıyla ayrılırlar -- piksel başına, canlı karolar ya da tüm kare için tek renk -- ve büyüdükçe kayıp bunları ortalamayla silemez. `sh` bir gökyüzü öğrenir, böylece uzak arka plan yok sayılmak yerine temsil edilir."));
+    EN("What fills pixels no splat covers.\n- `black` adds no cost.\n- `color` uses the color set below.\n- `skybox` learns an SH sky for distant background."),
+    JA("スプラットが覆わない画素を何で埋めるかです。\n- `black` は処理を追加しません。\n- `color` は下で選ぶ色を使います。\n- `skybox` は遠景用に SH の空を学習します。"),
+    ZH_HANS("用什么填充没有泼溅覆盖的像素。\n- `black` 不增加开销。\n- `color` 使用下方设置的颜色。\n- `skybox` 为远景学习一个 SH 天空。"),
+    ZH_HANT("用什麼填充沒有潑濺覆蓋的像素。\n- `black` 不增加開銷。\n- `color` 使用下方設定的顏色。\n- `skybox` 為遠景學習一個 SH 天空。"),
+    KO("스플랫이 덮지 않은 픽셀을 무엇으로 채울지입니다.\n- `black`은 비용이 없습니다.\n- `color`는 아래에서 고른 색을 씁니다.\n- `skybox`는 먼 배경용 SH 하늘을 학습합니다."),
+    DE("Was Pixel füllt, die kein Splat bedeckt.\n- `black` kostet nichts.\n- `color` nutzt die darunter gewählte Farbe.\n- `skybox` lernt einen SH-Himmel für fernen Hintergrund."),
+    FR("Ce qui remplit les pixels qu'aucun splat ne couvre.\n- `black` ne coûte rien.\n- `color` utilise la couleur choisie dessous.\n- `skybox` apprend un ciel SH pour l'arrière-plan lointain."),
+    ES("Qué rellena los píxeles que ningún splat cubre.\n- `black` no cuesta nada.\n- `color` usa el color elegido debajo.\n- `skybox` aprende un cielo SH para el fondo lejano."),
+    PT("O que preenche os pixels que nenhum splat cobre.\n- `black` não custa nada.\n- `color` usa a cor escolhida abaixo.\n- `skybox` aprende um céu SH para o fundo distante."),
+    IT("Che cosa riempie i pixel che nessuno splat copre.\n- `black` non costa nulla.\n- `color` usa il colore scelto sotto.\n- `skybox` impara un cielo SH per lo sfondo lontano."),
+    NL("Wat pixels vult die geen splat bedekt.\n- `black` kost niets.\n- `color` gebruikt de kleur hieronder.\n- `skybox` leert een SH-lucht voor verre achtergrond."),
+    RU("Чем заполняются пиксели, не покрытые сплатами.\n- `black` ничего не стоит.\n- `color` использует цвет, выбранный ниже.\n- `skybox` обучает SH-небо для дальнего фона."),
+    TR("Hiçbir splat'ın kaplamadığı pikselleri neyin dolduracağı.\n- `black` ek maliyet getirmez.\n- `color` aşağıda seçilen rengi kullanır.\n- `skybox` uzak arka plan için bir SH gökyüzü öğrenir."));
 
 SS_MSG(background_color,
     EN("Background color"), JA("背景色"), ZH_HANS("背景颜色"),
@@ -2078,6 +2130,35 @@ SS_MSG(background_color_help,
        "bedavadır: harmanlamayı tümüyle atlar. Yalnızca "
        "`color` arka planıyla kullanılır."));
 
+SS_MSG(background_transparency_suppression,
+    EN("Transparency suppression"),
+    JA("半透明の抑制"),
+    ZH_HANS("抑制半透明"),
+    ZH_HANT("抑制半透明"),
+    KO("반투명 억제"),
+    DE("Transparenz unterdrücken"),
+    FR("Suppression de la transparence"),
+    ES("Supresión de transparencia"),
+    PT("Supressão de transparência"),
+    IT("Soppressione della trasparenza"),
+    NL("Transparantie onderdrukken"),
+    RU("Подавление прозрачности"),
+    TR("Saydamlık bastırma"));
+SS_MSG(background_transparency_suppression_help,
+    EN("A background that changes every step, so half-transparent splats cost more. Not drawn on segments.\n- `noise`: per pixel\n- `pseudorandom`: bright tiles, stronger than `noise`\n- `random`: one color per frame, gentler than `noise`"),
+    JA("毎ステップ変わる背景で、半透明なスプラットの損失を大きくします。セグメントには描きません。\n- `noise`：画素ごと\n- `pseudorandom`：鮮やかなタイル。`noise` より強く抑制\n- `random`：フレーム全体で一色。`noise` より穏やか"),
+    ZH_HANS("每步变化的背景，使半透明泼溅代价更大。分割区域不绘制。\n- `noise`：逐像素\n- `pseudorandom`：鲜艳色块，比 `noise` 抑制更强\n- `random`：整帧一色，比 `noise` 更温和"),
+    ZH_HANT("每步變化的背景，使半透明潑濺代價更大。分割區域不繪製。\n- `noise`：逐像素\n- `pseudorandom`：鮮豔色塊，比 `noise` 抑制更強\n- `random`：整幀一色，比 `noise` 更溫和"),
+    KO("매 스텝 바뀌는 배경으로 반투명 스플랫의 손실을 키웁니다. 분할 영역에는 그리지 않습니다.\n- `noise`: 픽셀 단위\n- `pseudorandom`: 선명한 타일, `noise`보다 강함\n- `random`: 프레임 전체 한 색, `noise`보다 약함"),
+    DE("Ein Hintergrund, der sich jeden Schritt ändert, damit halbtransparente Splats mehr kosten. Nicht auf Segmenten.\n- `noise`: pro Pixel\n- `pseudorandom`: kräftige Kacheln, stärker als `noise`\n- `random`: eine Farbe pro Bild, sanfter als `noise`"),
+    FR("Un fond qui change à chaque étape, pour pénaliser les splats semi-transparents. Absent des segments.\n- `noise` : par pixel\n- `pseudorandom` : tuiles vives, plus fort que `noise`\n- `random` : une couleur par image, plus doux que `noise`"),
+    ES("Un fondo que cambia en cada paso para que los splats semitransparentes cuesten más. No en los segmentos.\n- `noise`: por píxel\n- `pseudorandom`: baldosas vivas, más fuerte que `noise`\n- `random`: un color por fotograma, más suave que `noise`"),
+    PT("Um fundo que muda a cada passo encarece splats semitransparentes. Ausente dos segmentos.\n- `noise`: por pixel\n- `pseudorandom`: ladrilhos vivos, mais forte que `noise`\n- `random`: uma cor por quadro, mais suave que `noise`"),
+    IT("Uno sfondo che cambia a ogni passo, così gli splat semitrasparenti costano di più. Non sui segmenti.\n- `noise`: per pixel\n- `pseudorandom`: tessere vivaci, più forte di `noise`\n- `random`: un colore per fotogramma, più mite di `noise`"),
+    NL("Een achtergrond die elke stap verandert, zodat halfdoorzichtige splats meer kosten. Niet op segmenten.\n- `noise`: per pixel\n- `pseudorandom`: felle tegels, sterker dan `noise`\n- `random`: één kleur per beeld, milder dan `noise`"),
+    RU("Фон, меняющийся каждый шаг, чтобы полупрозрачные сплаты обходились дороже. Не рисуется на сегментах.\n- `noise`: по пикселям\n- `pseudorandom`: яркие плитки, сильнее `noise`\n- `random`: один цвет на кадр, мягче `noise`"),
+    TR("Her adımda değişen bir arka plan; yarı saydam splatların bedeli artar. Bölütlere çizilmez.\n- `noise`: piksel başına\n- `pseudorandom`: canlı karolar, `noise`'dan güçlü\n- `random`: kare başına tek renk, `noise`'dan yumuşak"));
+
 SS_MSG(background_export_height,
     EN("Background export height"), JA("背景の出力高さ"), ZH_HANS("背景导出高度"),
     ZH_HANT("背景匯出高度"), KO("배경 내보내기 높이"), DE("Höhe des Hintergrundexports"),
@@ -2108,31 +2189,31 @@ SS_MSG(background_sh_degree,
     TR("Gökyüzü kutusu ayrıntısı"));
 SS_MSG(background_sh_degree_help,
     EN("How detailed the learned skybox may be. Higher captures finer sky and "
-       "distant scenery. Only used with the `sh` background."),
+       "distant scenery. Only used with the `skybox` background."),
     JA("学習するスカイボックスをどこまで細かくするかです。高いほど空や遠景を細"
-       "かく捉えます。背景が `sh` のときだけ使われます。"),
+       "かく捉えます。背景が `skybox` のときだけ使われます。"),
     ZH_HANS("学习到的天空盒可以有多细。数值越高，天空和远景越细腻。仅在背景为"
-            " `sh` 时使用。"),
+            " `skybox` 时使用。"),
     ZH_HANT("學習到的天空盒可以有多細。數值越高，天空和遠景越細緻。僅在背景為"
-            " `sh` 時使用。"),
+            " `skybox` 時使用。"),
     KO("학습한 스카이박스가 얼마나 세밀할 수 있는지입니다. 값이 클수록 하늘과"
-       " 먼 풍경을 더 곱게 담습니다. 배경이 `sh`일 때만 쓰입니다."),
+       " 먼 풍경을 더 곱게 담습니다. 배경이 `skybox`일 때만 쓰입니다."),
     DE("Wie fein die gelernte Skybox sein darf. Höher erfasst Himmel und ferne "
-       "Kulisse feiner. Wird nur mit dem Hintergrund `sh` verwendet."),
+       "Kulisse feiner. Wird nur mit dem Hintergrund `skybox` verwendet."),
     FR("Niveau de détail du skybox appris. Plus haut capte un ciel et des lointains "
-       "plus fins. Utilisé uniquement avec l'arrière-plan `sh`."),
+       "plus fins. Utilisé uniquement avec l'arrière-plan `skybox`."),
     ES("Cuánto detalle puede tener el skybox aprendido. Más alto capta un cielo "
-       "y un paisaje lejano más finos. Solo se usa con el fondo `sh`."),
+       "y un paisaje lejano más finos. Solo se usa con el fondo `skybox`."),
     PT("Quanto detalhe o skybox aprendido pode ter. Mais alto capta um céu e "
-       "um cenário distante mais finos. Só é usado com o fundo `sh`."),
+       "um cenário distante mais finos. Só é usado com o fundo `skybox`."),
     IT("Quanto può essere dettagliato lo skybox appreso. Più alto cattura cielo "
-       "e paesaggio lontano più fini. Usato solo con lo sfondo `sh`."),
+       "e paesaggio lontano più fini. Usato solo con lo sfondo `skybox`."),
     NL("Hoe gedetailleerd de geleerde skybox mag zijn. Hoger legt fijnere lucht "
-       "en verre omgeving vast. Wordt alleen bij achtergrond `sh` gebruikt."),
+       "en verre omgeving vast. Wordt alleen bij achtergrond `skybox` gebruikt."),
     RU("Насколько подробным может быть обученный скайбокс. Больше — тоньше передаётся "
-       "небо и дальний план. Используется только с фоном `sh`."),
+       "небо и дальний план. Используется только с фоном `skybox`."),
     TR("Öğrenilen gökyüzü kutusunun ne kadar ayrıntılı olabileceği. Yüksek değerler "
-       "gökyüzünü ve uzak manzarayı daha ince yakalar. Yalnızca `sh` arka planıyla "
+       "gökyüzünü ve uzak manzarayı daha ince yakalar. Yalnızca `skybox` arka planıyla "
        "kullanılır."));
 
 SS_MSG(background_noise_warmup,
@@ -2144,34 +2225,19 @@ SS_MSG(background_noise_warmup,
     NL("Opbouw van de achtergrondruis"), RU("Разгон фонового шума"),
     TR("Arka plan gürültüsü ısınması"));
 SS_MSG(background_noise_warmup_help,
-    EN("How many steps the background noise takes to reach full strength. Only "
-       "used with the `noise` / `pseudorandom` / `random` backgrounds."),
-    JA("背景ノイズが最大の強さになるまでのステップ数です。背景が `noise` / "
-       "`pseudorandom` / `random` のときだけ使われます。"),
-    ZH_HANS("背景噪声达到最大强度所需的步数。仅在背景为 `noise` / "
-            "`pseudorandom` / `random` 时使用。"),
-    ZH_HANT("背景雜訊達到最大強度所需的步數。僅在背景為 `noise` / "
-            "`pseudorandom` / `random` 時使用。"),
-    KO("배경 노이즈가 최대 세기에 이르기까지의 스텝 수입니다. 배경이 `noise` /"
-       " `pseudorandom` / `random`일 때만 쓰입니다."),
-    DE("Wie viele Schritte das Hintergrundrauschen braucht, um volle Stärke zu "
-       "erreichen. Wird nur mit den Hintergründen `noise` / `pseudorandom` / "
-       "`random` verwendet."),
-    FR("Combien d'étapes le bruit de fond met à atteindre sa pleine force. Utilisé "
-       "uniquement avec les arrière-plans `noise` / `pseudorandom` / `random`."),
-    ES("Cuántos pasos tarda el ruido de fondo en alcanzar toda su fuerza. Solo "
-       "se usa con los fondos `noise` / `pseudorandom` / `random`."),
-    PT("Quantos passos o ruído de fundo leva para atingir força total. Só é usado "
-       "com os fundos `noise` / `pseudorandom` / `random`."),
-    IT("Quanti passi impiega il rumore di fondo a raggiungere la piena forza. "
-       "Usato solo con gli sfondi `noise` / `pseudorandom` / `random`."),
-    NL("Hoeveel stappen de achtergrondruis nodig heeft om op volle sterkte te "
-       "komen. Wordt alleen bij de achtergronden `noise` / `pseudorandom` / "
-       "`random` gebruikt."),
-    RU("За сколько шагов фоновый шум набирает полную силу. Используется только "
-       "с фонами `noise` / `pseudorandom` / `random`."),
-    TR("Arka plan gürültüsünün tam güce ulaşması için gereken adım sayısı. Yalnızca "
-       "`noise` / `pseudorandom` / `random` arka planlarıyla kullanılır."));
+    EN("How many steps the background noise takes to reach full strength. Only used with transparency suppression on."),
+    JA("背景ノイズが最大の強さになるまでのステップ数です。半透明の抑制がオンのときだけ使われます。"),
+    ZH_HANS("背景噪声达到最大强度所需的步数。仅在开启抑制半透明时使用。"),
+    ZH_HANT("背景雜訊達到最大強度所需的步數。僅在開啟抑制半透明時使用。"),
+    KO("배경 노이즈가 최대 세기에 이르기까지의 스텝 수입니다. 반투명 억제가 켜져 있을 때만 쓰입니다."),
+    DE("Wie viele Schritte das Hintergrundrauschen braucht, um volle Stärke zu erreichen. Nur bei aktiver Transparenzunterdrückung."),
+    FR("Combien d'étapes le bruit de fond met à atteindre sa pleine force. Utilisé uniquement avec la suppression de la transparence."),
+    ES("Cuántos pasos tarda el ruido de fondo en alcanzar toda su fuerza. Solo se usa con la supresión de transparencia activa."),
+    PT("Quantos passos o ruído de fundo leva para atingir força total. Só é usado com a supressão de transparência ativa."),
+    IT("Quanti passi impiega il rumore di fondo a raggiungere la piena forza. Usato solo con la soppressione della trasparenza attiva."),
+    NL("Hoeveel stappen de achtergrondruis nodig heeft om op volle sterkte te komen. Alleen gebruikt als transparantie onderdrukt wordt."),
+    RU("За сколько шагов фоновый шум набирает полную силу. Используется только при включённом подавлении прозрачности."),
+    TR("Arka plan gürültüsünün tam güce ulaşması için gereken adım sayısı. Yalnızca saydamlık bastırma açıkken kullanılır."));
 
 SS_MSG(background_match_luminance,
     EN("Match background to image brightness"), JA("背景を画像の明るさに合わせる"),
@@ -2185,19 +2251,19 @@ SS_MSG(background_match_luminance,
     RU("Подогнать фон под яркость снимка"),
     TR("Arka planı görüntü parlaklığına uydur"));
 SS_MSG(background_match_luminance_help,
-    EN("Matches random background brightness to each photo’s exposure-corrected mean, reducing haze. Applies only to noise, pseudorandom and random backgrounds."),
-    JA("ランダム背景の明るさを写真ごとの露出補正済み平均に合わせ、かすみを抑えます。noise、pseudorandom、random の背景だけに適用します。"),
-    ZH_HANS("将随机背景亮度匹配到各照片经曝光校正后的平均值，减少雾状伪影。仅用于 noise、pseudorandom 和 random 背景。"),
-    ZH_HANT("將隨機背景亮度匹配到各照片經曝光校正後的平均值，減少霧狀偽影。僅用於 noise、pseudorandom 和 random 背景。"),
-    KO("무작위 배경 밝기를 각 사진의 노출 보정된 평균에 맞춰 안개를 줄입니다. noise, pseudorandom, random 배경에만 적용됩니다."),
-    DE("Passt die Helligkeit zufälliger Hintergründe an den belichtungskorrigierten Fotomittelwert an, gegen Dunst. Nur für noise, pseudorandom und random."),
-    FR("Adapte le fond aléatoire à la luminosité moyenne corrigée d’exposition de chaque photo pour réduire la brume. Fonds noise, pseudorandom et random seulement."),
-    ES("Ajusta el brillo del fondo aleatorio a la media corregida por exposición de cada foto para reducir neblina. Solo noise, pseudorandom y random."),
-    PT("Ajusta o brilho do fundo aleatório à média corrigida pela exposição de cada foto para reduzir névoa. Só noise, pseudorandom e random."),
-    IT("Adatta il fondo casuale alla luminosità media corretta per esposizione di ogni foto, riducendo la foschia. Solo noise, pseudorandom e random."),
-    NL("Stemt willekeurig achtergrondlicht af op de belichtingsgecorrigeerde fotogemiddelden, tegen nevel. Alleen bij noise, pseudorandom en random."),
-    RU("Согласует яркость случайного фона со средней яркостью фото с учётом экспозиции, уменьшая дымку. Только для noise, pseudorandom и random."),
-    TR("Rastgele arka plan parlaklığını fotoğrafın pozlama düzeltilmiş ortalamasına uydurarak sisi azaltır. Yalnız noise, pseudorandom ve random için."));
+    EN("Matches random background brightness to each photo’s exposure-corrected mean, reducing haze. Applies only with transparency suppression on."),
+    JA("ランダム背景の明るさを写真ごとの露出補正済み平均に合わせ、かすみを抑えます。半透明の抑制がオンのときだけ適用します。"),
+    ZH_HANS("将随机背景亮度匹配到各照片经曝光校正后的平均值，减少雾状伪影。仅在开启抑制半透明时使用。"),
+    ZH_HANT("將隨機背景亮度匹配到各照片經曝光校正後的平均值，減少霧狀偽影。僅在開啟抑制半透明時使用。"),
+    KO("무작위 배경 밝기를 각 사진의 노출 보정된 평균에 맞춰 안개를 줄입니다. 반투명 억제가 켜져 있을 때만 적용됩니다."),
+    DE("Passt die Helligkeit zufälliger Hintergründe an den belichtungskorrigierten Fotomittelwert an, gegen Dunst. Nur bei aktiver Transparenzunterdrückung."),
+    FR("Adapte le fond aléatoire à la luminosité moyenne corrigée d’exposition de chaque photo pour réduire la brume. Seulement avec la suppression de la transparence."),
+    ES("Ajusta el brillo del fondo aleatorio a la media corregida por exposición de cada foto para reducir neblina. Solo con la supresión de transparencia."),
+    PT("Ajusta o brilho do fundo aleatório à média corrigida pela exposição de cada foto para reduzir névoa. Só com a supressão de transparência."),
+    IT("Adatta il fondo casuale alla luminosità media corretta per esposizione di ogni foto, riducendo la foschia. Solo con la soppressione della trasparenza."),
+    NL("Stemt willekeurig achtergrondlicht af op de belichtingsgecorrigeerde fotogemiddelden, tegen nevel. Alleen als transparantie onderdrukt wordt."),
+    RU("Согласует яркость случайного фона со средней яркостью фото с учётом экспозиции, уменьшая дымку. Только при подавлении прозрачности."),
+    TR("Rastgele arka plan parlaklığını fotoğrafın pozlama düzeltilmiş ortalamasına uydurarak sisi azaltır. Yalnız saydamlık bastırma açıkken."));
 SS_MSG(noise_gate_peak_weight,
     EN("Hidden splats explore"), JA("隠れたスプラットも探索"),
     ZH_HANS("被遮挡的泼溅也探索"), ZH_HANT("被遮擋的潑濺也探索"),
@@ -8857,6 +8923,96 @@ SS_MSG(choice_none,
     PT("nenhum"),        IT("nessuno"),      NL("geen"),         RU("нет"),
     TR("yok"));
 
+SS_MSG(choice_black,
+    EN("black"),
+    JA("黒"),
+    ZH_HANS("黑色"),
+    ZH_HANT("黑色"),
+    KO("검정"),
+    DE("schwarz"),
+    FR("noir"),
+    ES("negro"),
+    PT("preto"),
+    IT("nero"),
+    NL("zwart"),
+    RU("чёрный"),
+    TR("siyah"));
+
+SS_MSG(choice_color,
+    EN("color"),
+    JA("単色"),
+    ZH_HANS("纯色"),
+    ZH_HANT("純色"),
+    KO("단색"),
+    DE("Farbe"),
+    FR("couleur"),
+    ES("color"),
+    PT("cor"),
+    IT("colore"),
+    NL("kleur"),
+    RU("цвет"),
+    TR("renk"));
+
+SS_MSG(choice_skybox,
+    EN("skybox"),
+    JA("スカイボックス"),
+    ZH_HANS("天空盒"),
+    ZH_HANT("天空盒"),
+    KO("스카이박스"),
+    DE("Skybox"),
+    FR("skybox"),
+    ES("skybox"),
+    PT("skybox"),
+    IT("skybox"),
+    NL("skybox"),
+    RU("скайбокс"),
+    TR("gökyüzü kutusu"));
+
+SS_MSG(choice_per_pixel,
+    EN("per pixel"),
+    JA("画素ごと"),
+    ZH_HANS("逐像素"),
+    ZH_HANT("逐像素"),
+    KO("픽셀 단위"),
+    DE("pro Pixel"),
+    FR("par pixel"),
+    ES("por píxel"),
+    PT("por pixel"),
+    IT("per pixel"),
+    NL("per pixel"),
+    RU("по пикселям"),
+    TR("piksel başına"));
+
+SS_MSG(choice_tiles,
+    EN("tiles"),
+    JA("タイル"),
+    ZH_HANS("色块"),
+    ZH_HANT("色塊"),
+    KO("타일"),
+    DE("Kacheln"),
+    FR("tuiles"),
+    ES("baldosas"),
+    PT("ladrilhos"),
+    IT("tessere"),
+    NL("tegels"),
+    RU("плитки"),
+    TR("karolar"));
+
+SS_MSG(choice_whole_frame,
+    EN("whole frame"),
+    JA("画面全体"),
+    ZH_HANS("整帧"),
+    ZH_HANT("整幀"),
+    KO("화면 전체"),
+    DE("ganzes Bild"),
+    FR("image entière"),
+    ES("fotograma entero"),
+    PT("quadro inteiro"),
+    IT("fotogramma intero"),
+    NL("heel beeld"),
+    RU("весь кадр"),
+    TR("tüm kare"));
+
 SS_MSG(choice_point_median,
     EN("point cloud median"), JA("点群の中央値"), ZH_HANS("点云中位数"),
     ZH_HANT("點雲中位數"), KO("점군 중앙값"), DE("Median der Punktwolke"),
@@ -9095,6 +9251,15 @@ inline constexpr ChoiceText kChoiceText[] = {
     {"quality", "medium", &choice_medium},
     {"quality", "high",   &choice_high},
     {"quality", "ultra",  &choice_ultra},
+
+    {"background_mode", "black",  &choice_black},
+    {"background_mode", "color",  &choice_color},
+    {"background_mode", "skybox", &choice_skybox},
+
+    {"background_transparency_suppression", "none",         &choice_none},
+    {"background_transparency_suppression", "noise",        &choice_per_pixel},
+    {"background_transparency_suppression", "pseudorandom", &choice_tiles},
+    {"background_transparency_suppression", "random",       &choice_whole_frame},
 
     {"floater_suppression", "off",    &choice_off},
     {"floater_suppression", "mild",   &choice_mild},

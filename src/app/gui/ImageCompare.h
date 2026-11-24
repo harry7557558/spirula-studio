@@ -94,6 +94,9 @@ private:
         std::vector<uint8_t> err_map;
         float err_mean = 0.0f, err_max = 0.0f;
         std::vector<uint8_t> mask;         // the same grid; empty when there is none
+        // A segment is marked too, except in segment_and_ignore, which only
+        // marks what it ignores.
+        bool mark_segments = true;
         int  src_w = 0, src_h = 0;
         std::vector<uint8_t> src;          // the file itself, when asked for
         float psnr = -1.0f;                // < 0 = no unmasked pixel to score

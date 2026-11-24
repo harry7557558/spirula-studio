@@ -181,7 +181,7 @@ GrayImage loadGrayImage(const std::string& path, int max_image_size, bool want_c
                         const std::string& mask_path,
                         const std::string& gamut, std::optional<bool> is_linear,
                         bool flip_mask, bool apply_exif_orientation,
-                        const std::string& feature_mask_path,
+                        bool mask_segment_only,
                         const colorspace::Exposure& exposure) {
     int w = 0, h = 0, chan = 0;
     // Force 3 channels; we do our own luma so behavior is decoder-independent.
@@ -251,13 +251,9 @@ GrayImage loadGrayImage(const std::string& path, int max_image_size, bool want_c
     // Kept at the mask file's own resolution: applyMask() samples it in uv, so
     // resampling it to match `img` would only lose detail (D39).
     if (!mask_path.empty()) {
-        img.mask = loadMask(mask_path);
+        img.mask = loadMask(mask_path, mask_segment_only);
         if (flip_mask) img.mask.invert();
     }
-    // Not over a first mask that failed to decode: the caller reports that by
-    // finding img.mask empty.
-    if (!feature_mask_path.empty() && (mask_path.empty() || !img.mask.empty()))
-        intersectMask(img.mask, loadMask(feature_mask_path));
     // ANDed with the files, unflipped, as the trainer reads it (data/DataManager.h).
     if (mask_path.empty() || !img.mask.empty()) intersectMask(img.mask, loadAlpha(path));
     img.exif = readExif(path);  // header bytes only; see sfm/core/Exif.h
@@ -265,7 +261,7 @@ GrayImage loadGrayImage(const std::string& path, int max_image_size, bool want_c
     return img;
 }
 
-Mask loadMask(const std::string& path) {
+Mask loadMask(const std::string& path, bool segment_only) {
     int w = 0, h = 0, chan = 0;
     // One channel: a mask is categorical, and every convention in the wild
     // (1-bit PNG, 8-bit gray, RGB white-on-black, RGBA alpha) reduces to the
@@ -281,7 +277,8 @@ Mask loadMask(const std::string& path) {
     m.width = w;
     m.height = h;
     m.bits.resize((size_t)w * h);
-    for (size_t i = 0; i < m.bits.size(); i++) m.bits[i] = px[i] != 0 ? 1 : 0;
+    for (size_t i = 0; i < m.bits.size(); i++)
+        m.bits[i] = (px[i] != 0 || segment_only) && !isSegmentByte(px[i]) ? 1 : 0;
     stbi_image_free(px);
 
     // An RGBA mask that is uniformly white in RGB carries its shape in alpha

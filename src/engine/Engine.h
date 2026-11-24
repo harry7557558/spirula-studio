@@ -189,7 +189,8 @@ std::map<std::string, float> engine_compute_loss_backward(
     // Color-shift regularizer for combined bilagrid + PPISP (see LossConfig).
     // Zero (default) disables the kernel launch entirely.
     float color_shift_reg_weight  = 0.0f,
-    float color_shift_reg_beta    = 0.0f
+    float color_shift_reg_beta    = 0.0f,
+    bool segment_and_ignore_mask  = false
 );
 
 // The densification error map for the last forward -- the buffer
@@ -276,17 +277,11 @@ void engine_calib_warp_align_to_gt(const float* est, const float* src, float* ou
                                    bool use_mask);
 
 // --- Background blending (applied BEFORE bilagrid/PPISP) ---
-// Exactly one of these init calls activates it; `--background-mode` picks.
+// A base fill (black, a color or an SH skybox) plus an optional randomized draw
+// against translucency, which a bound batch mask keeps off its segments.
 
-// Random color per pixel, warmup-weighted via cfg.background.randomize_weight.
-void engine_init_background_noise(int splat_transfer, bool splat_is_linear);
-// Same blend, but the draw is one of the 8 RGB cube corners per tile instead
-// of per-pixel noise: the extremes cost residual transparency the most, and a
-// tile survives the SSIM window that averages per-pixel noise back to grey.
-void engine_init_background_pseudorandom(int splat_transfer, bool splat_is_linear);
-// Same blend again over one cell covering the whole frame: a flat color that
-// changes every step, warmup-weighted like the other two.
-void engine_init_background_random(int splat_transfer, bool splat_is_linear);
+void engine_init_background_suppression(BackgroundSuppression kind,
+                                        int splat_transfer, bool splat_is_linear);
 // `color` is display-referred RGB in [0, 1]; the engine converts it once, and
 // all-black turns the background OFF instead of blending a no-op.
 void engine_init_background_color(const float color[3], int splat_transfer,
@@ -303,6 +298,10 @@ bool engine_has_background_sh(int* out_degree = nullptr);
 void engine_set_background_step_params(uint32_t seed, float randomize_weight,
                                        int num_loss_scales,
                                        int loss_scale_min_pixels);
+// Viewer renders between engine_background_view(true, ...) and (false, ...)
+// bind no mask and draw grey, or the base fill with `show_base`, or this
+// step's draw with `show_draw`.
+void engine_background_view(bool active, bool show_draw, bool show_base = false);
 
 // Adam step over the SH coefficient table. No-op for Noise mode or when SH
 // training was not enabled at init.
@@ -561,6 +560,22 @@ void engine_copy_render_depth_normal_to_host(TorchTensorView out); // [B,H,W,3]
 void engine_copy_render_normal_to_host(TorchTensorView out); // [B,H,W,3]
 // Whether forward_3dgs's output_normal gives this primitive a normal.
 bool engine_primitive_renders_normal(const std::string& primitive);
+
+// Stochastic (sort-free, Monte Carlo) viewer renders, forced on by
+// SS_VIEWER_STOCHASTIC=1 (docs/notes/stochastic-splats.md).
+bool engine_stochastic_enabled();
+// The next forward_3dgs renders one stochastic frame into `channel`'s running
+// average, which restarts when `key` (the caller's view and settings) or the
+// splats change. Channels are independent: one per pane, say.
+void engine_arm_stochastic(int channel, uint64_t key);
+// Frames the last forward averaged; 0 when it was not stochastic.
+uint32_t engine_stochastic_frames();
+// Frames after which a still view has converged (SS_VIEWER_STOCHASTIC_FRAMES),
+// and the samples a pixel each frame takes (SS_VIEWER_STOCHASTIC_SPP).
+uint32_t engine_stochastic_frame_target();
+uint32_t engine_stochastic_spp();
+// A pixel's samples split one uniform a splat (SS_VIEWER_STOCHASTIC_STRATIFIED).
+bool engine_stochastic_stratified();
 
 
 void engine_copy_render_to_host(

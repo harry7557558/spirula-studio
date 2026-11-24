@@ -15,6 +15,7 @@
 
 #include "app/AppPaths.h"
 #include "app/gui/Subprocess.h"
+#include "core/RelativePath.h"
 #ifdef SS_TOOL_SFM
 // The stage tags the child prints and the manifest it reads; a build without the
 // module has no child to run (see availability()).
@@ -458,12 +459,13 @@ void SfmRunner::apply_status(const RunStatus& st) {
 // sub-folder each input's frames went into. The focal is a fraction of the
 // width up to here: the width is not known until the frames exist.
 sfm::Manifest SfmRunner::build_manifest(const SfmJob& job, const PrepResult& prep) {
+    const std::string& ws = job.prep.workspace;
     sfm::Manifest man;
-    man.image_dir = prep.image_dir;
+    man.image_dir = spirula::relative_to_dir(prep.image_dir, ws);
     // Named here only when the reconstruction is to read them: the manifest is
     // the other way masks reach it, so leaving it in would undo --no-masks.
     if (!prep.mask_dir.empty() && job.mask_features) {
-        man.mask_dir = prep.mask_dir;
+        man.mask_dir = spirula::relative_to_dir(prep.mask_dir, ws);
         man.has_mask_flipped = true;
         man.mask_flipped = prep.mask_dir_flipped;
     }
@@ -502,7 +504,7 @@ sfm::Manifest SfmRunner::build_manifest(const SfmJob& job, const PrepResult& pre
     for (const PrepCapture& pc : prep.captures) {
         sfm::ManifestCapture c;
         c.prefix = pc.subdir;
-        c.telemetry = pc.path;
+        c.telemetry = spirula::relative_to_dir(pc.path, ws);
         c.fps = pc.fps;
         c.time_offset = pc.time_offset;
         for (const PrepInput& in : job.prep.inputs)
@@ -788,21 +790,19 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         argv.push_back("--point-color");
         argv.push_back("image");
     }
-    if (!prep.mask_dir.empty() && job.mask_features) {
+    // The sky's 128 band is dropped whatever the checkbox says: it is there
+    // only to be kept from the features.
+    if (!prep.mask_dir.empty() && (job.mask_features || prep.masks_segment)) {
         argv.push_back("--masks");
         argv.push_back(prep.mask_dir);
         // Only masks the run handed on untouched are still the other way
         // round; anything it wrote is in the usual convention.
         if (prep.mask_dir_flipped) argv.push_back("--flip-mask");
+        if (!job.mask_features) argv.push_back("--mask-segment-only");
     } else {
         // Otherwise `auto` picks up a stale masks/ sitting beside the images
         // from an earlier run with masking on.
         argv.push_back("--no-masks");
-    }
-    // Whatever the checkbox says: these exist only to be kept from the features.
-    if (!prep.feature_mask_dir.empty()) {
-        argv.push_back("--feature-masks");
-        argv.push_back(prep.feature_mask_dir);
     }
     for (const std::string& a : split_args(job.extra_args))
         argv.push_back(a);

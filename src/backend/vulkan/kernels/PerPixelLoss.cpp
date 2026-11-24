@@ -70,6 +70,7 @@ constexpr uint32_t kInRefAlpha = 1u << 14;
 constexpr uint32_t kInLossMap = 1u << 15;
 constexpr uint32_t kInRenderRgbFmtShift = 16;
 constexpr uint32_t kInRefRgbFmtShift = 18;
+constexpr uint32_t kInSegIgnMask = 1u << 20;
 // out_flags bits
 constexpr uint32_t kOutVRefDepth = 1u << 3;
 constexpr uint32_t kOutVRefNormal = 1u << 6;
@@ -107,8 +108,9 @@ struct MsZeroMaskedParams {
     uint64_t grad, mask;
     int32_t B, C, H, W;
     int32_t mH, mW;
+    int32_t ignore_only, _pad0;
 };
-static_assert(sizeof(MsZeroMaskedParams) == 2 * 8 + 6 * 4, "layout");
+static_assert(sizeof(MsZeroMaskedParams) == 2 * 8 + 8 * 4, "layout");
 
 struct MsPoolBoolParams {
     uint64_t src, dst;
@@ -303,7 +305,7 @@ PplParams build_ppl_params(
     const TorchTensorView& rgb_dist, const TorchTensorView& depth_dist,
     const TorchTensorView& normal_dist, const TorchTensorView& median_depth,
     const TorchTensorView& median_normal, const TorchTensorView& ref_alpha,
-    bool has_mask, float saturation_threshold,
+    bool has_mask, bool segment_and_ignore_mask, float saturation_threshold,
     const std::array<float, kNW>& loss_weights,
     const TorchTensorView& camera_indices
 ) {
@@ -331,6 +333,7 @@ PplParams build_ppl_params(
     set_in(median_depth, p.median_depth);
     set_in(median_normal, p.median_normal);
     if (_has(ref_alpha)) in_flags |= kInRefAlpha;
+    if (segment_and_ignore_mask) in_flags |= kInSegIgnMask;
     in_flags |= (uint32_t)pixel_format(render_rgb) << kInRenderRgbFmtShift;
     in_flags |= (uint32_t)pixel_format(ref_rgb) << kInRefRgbFmtShift;
     p.ref_alpha = vkk::or_fallback(std::get<0>(ref_alpha));
@@ -843,7 +846,7 @@ void avg_pool_downsample_masked_float_vk(const TorchTensorView& src,
 }
 
 void zero_masked_grad_vk(const TorchTensorView& grad,
-                         const TorchTensorView& mask) {
+                         const TorchTensorView& mask, bool ignore_only = false) {
     const auto& gs = std::get<2>(grad);
     const auto& ms = std::get<2>(mask);
     MsZeroMaskedParams p{};
@@ -855,6 +858,7 @@ void zero_masked_grad_vk(const TorchTensorView& grad,
     p.W = (int32_t)gs[2];
     p.mH = (int32_t)ms[1];
     p.mW = (int32_t)ms[2];
+    p.ignore_only = ignore_only ? 1 : 0;
     dispatch_tiles("multi_scale_loss.ms_zero_masked_grad", p.W, p.H, p.B, &p,
                    sizeof(p));
 }
@@ -980,7 +984,8 @@ LossValues compute_multi_scale_per_pixel_losses(
     int loss_map_mode,
     float robust_edge_aware_quantile,
     float nms_falloff,
-    PerPixelGrads& grads_out
+    PerPixelGrads& grads_out,
+    bool segment_and_ignore_mask
 ) {
     pool_begin_phase(PoolPhase::Loss);
     const auto _mode = densify_loss_map_base((DensifyLossMapMode)loss_map_mode);
@@ -1176,7 +1181,7 @@ LossValues compute_multi_scale_per_pixel_losses(
             depth_normal_s[scale], ref_normal_s[scale], render_Ts_s[scale],
             rgb_dist_s[scale], depth_dist_s[scale], normal_dist_s[scale],
             median_depth_s[scale], median_normal_s[scale], ref_alpha_s[scale],
-            has_mask, saturation_threshold, loss_weights_0, camera_indices);
+            has_mask, segment_and_ignore_mask, saturation_threshold, loss_weights_0, camera_indices);
         if (_per_pixel_write && loss_map_ptr) {
             fp.loss_map = (uint64_t)loss_map_ptr;
             fp.in_flags |= kInLossMap;
@@ -1249,7 +1254,7 @@ LossValues compute_multi_scale_per_pixel_losses(
                 ref_normal_s[scale], render_Ts_s[scale], rgb_dist_s[scale],
                 depth_dist_s[scale], normal_dist_s[scale],
                 median_depth_s[scale], median_normal_s[scale],
-                ref_alpha_s[scale], has_mask, saturation_threshold,
+                ref_alpha_s[scale], has_mask, segment_and_ignore_mask, saturation_threshold,
                 loss_weights_0, camera_indices);
             bp.losses = (uint64_t)v_raw_losses;
             uint32_t out_flags = 0;
@@ -1395,12 +1400,16 @@ LossValues compute_multi_scale_per_pixel_losses(
     }
 
     // Scale 0 leaves masked pixels zero; upsampled coarse scales need masking.
+    // An ignore pixel takes no alpha gradient either, unlike a cut-out's empty one.
     if (num_loss_scales > 1 && has_mask && _has(ref_alpha)) {
         const auto& ms = std::get<2>(ref_alpha);
         if (ms.size() >= 3 && ms[1] > 0 && ms[2] > 0) {
             if (_has(grads_out.v_render_rgb) &&
                 std::get<2>(grads_out.v_render_rgb)[0] == ms[0])
                 zero_masked_grad_vk(grads_out.v_render_rgb, ref_alpha);
+            if (segment_and_ignore_mask && _has(grads_out.v_render_Ts) &&
+                std::get<2>(grads_out.v_render_Ts)[0] == ms[0])
+                zero_masked_grad_vk(grads_out.v_render_Ts, ref_alpha, true);
             if (_has(loss_map_out) && std::get<2>(loss_map_out)[0] == ms[0])
                 zero_masked_grad_vk(loss_map_out, ref_alpha);
         }

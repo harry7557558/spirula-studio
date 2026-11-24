@@ -126,8 +126,8 @@ user sees in the preview is what gets written.
 - **clicked objects** (`MaskOptions::seeds`), described below;
 - **a second mask, for feature extraction only** (`MaskOptions::feature_text`,
   "sky; cloud"): matched from the same backbone pass -- the same Grounding
-  DINO pass, on SAM 2 -- with no margin, and written to `feature_masks/`,
-  which the reconstruction intersects with `masks/` and training never reads;
+  DINO pass, on SAM 2 -- with no margin. The dataset screen writes it into
+  `masks/` as 128, the trainer's segment class, which SfM always drops;
 - **two models that are not SAM**: `MaskOptions::detector` pairs a SAM
   checkpoint with Grounding DINO (`src/gdino/`), which finds every phrase's
   boxes in one pass for SAM to cut out -- text on SAM 2, lang-segment-anything

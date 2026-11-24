@@ -118,11 +118,88 @@ static void background_export_height() {
     }
 }
 
+static void mask_mode_resolution() {
+    TrainConfig cfg;
+    check(cfg.mask_mode == "auto", "mask_mode defaults to auto");
+    check(resolve_train_mask_mode(cfg) == ResolvedMaskMode::Ignore,
+          "default auto mask_mode resolves to ignore");
+    cfg.apply_loss_for_mask = true;
+    check(resolve_train_mask_mode(cfg) == ResolvedMaskMode::Segment,
+          "auto + apply_loss_for_mask=true resolves to segment");
+    cfg.mask_mode = "segment_and_ignore";
+    check(train_mask_is_segment_and_ignore(cfg) &&
+          train_mask_applies_alpha_loss(cfg) &&
+          train_mask_enabled(cfg),
+          "explicit segment_and_ignore overrides auto flags");
+    cfg.mask_mode = "ignore";
+    check(!train_mask_applies_alpha_loss(cfg) &&
+          train_mask_enabled(cfg),
+          "explicit ignore overrides apply_loss_for_mask preset");
+    cfg.mask_mode = "off";
+    check(!train_mask_enabled(cfg) &&
+          !train_mask_applies_alpha_loss(cfg),
+          "explicit off disables masks");
+
+    train_config_from_json(json_parse(R"({"mask_mode": "segment_and_ignore"})"), cfg);
+    check(spirula::train_config_error(cfg).empty(), "segment_and_ignore loads cleanly");
+    check(cfg.mask_mode == "segment_and_ignore", "mask_mode survives JSON load");
+    bool saved = false;
+    for (const auto& [key, value] : train_config_json_pairs(cfg))
+        if (std::string(key) == "mask_mode") saved = value == "\"segment_and_ignore\"";
+    check(saved, "mask_mode is serialized");
+
+    cfg.mask_mode = "bogus";
+    check(spirula::train_config_error(cfg).find("--mask-mode") != std::string::npos,
+          "invalid mask_mode is rejected");
+}
+
+static void background_options() {
+    TrainConfig cfg;
+    check(cfg.background_mode == "black" && cfg.background_transparency_suppression == "none",
+          "background defaults to black, no draw");
+    const struct { const char* old_mode; const char* mode; const char* draw; } legacy[] = {
+        {"sh", "skybox", "none"},       {"noise", "black", "noise"},
+        {"pseudorandom", "black", "pseudorandom"}, {"random", "black", "random"},
+        {"color", "color", "none"}};
+    for (const auto& l : legacy) {
+        TrainConfig c;
+        train_config_from_json(
+            json_parse(std::string("{\"background_mode\": \"") + l.old_mode + "\"}"), c);
+        check(c.background_mode == l.mode && c.background_transparency_suppression == l.draw &&
+                  spirula::train_config_error(c).empty(),
+              "a saved background_mode from before the split still loads");
+    }
+
+    cfg.mask_mode = "ignore";
+    cfg.preserve_background = true;
+    check(!train_mask_preserves_background(cfg), "preserve_background: no effect in ignore mode");
+    cfg.preserve_background.reset();
+    cfg.mask_mode = "segment";
+    check(!train_mask_preserves_background(cfg), "preserve_background: segment defaults off");
+    cfg.background_mode = "skybox";
+    cfg.background_transparency_suppression = "noise";
+    check(train_mask_preserves_background(cfg),
+          "preserve_background: segment defaults on for a skybox under a transparency draw");
+    cfg.background_transparency_suppression = "none";
+    check(!train_mask_preserves_background(cfg),
+          "preserve_background: a skybox without a transparency draw stays off");
+    cfg.mask_mode = "segment_and_ignore";
+    check(train_mask_preserves_background(cfg),
+          "preserve_background: segment_and_ignore defaults on");
+    cfg.preserve_background = false;
+    check(!train_mask_preserves_background(cfg), "preserve_background: explicit false wins");
+    cfg.mask_mode = "segment";
+    cfg.preserve_background = true;
+    check(train_mask_preserves_background(cfg), "preserve_background: explicit true wins");
+}
+
 int main() {
     presets();
+    background_options();
     saved_config();
     test_suppress_initial_scales();
     background_export_height();
+    mask_mode_resolution();
     if (failures) return 1;
     std::puts("train_config_test: OK");
     return 0;

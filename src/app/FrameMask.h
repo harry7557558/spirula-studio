@@ -57,8 +57,9 @@ std::string format_mask_shapes(const std::vector<MaskShape>& shapes);
 bool rasterize_frame_mask(const FrameMask& m, int width, int height,
                           std::vector<uint8_t>& out, std::string& error);
 
-// Any image file as a 0/255 stencil at its own size. Used for FrameMask::image
-// and to intersect with masks that are already on disk.
+// Any image file as 0/255 at its own size, keeping a mask's 128 band (the sky,
+// kMaskSegment) for the editor and the folds. Used for FrameMask::image and to
+// intersect with masks that are already on disk.
 bool load_stencil(const std::string& path, int& width, int& height,
                   std::vector<uint8_t>& out);
 
@@ -208,12 +209,25 @@ struct FrameStencilSinks {
 int64_t apply_frame_stencil(const FrameStencilRun& run,
                             const FrameStencilSinks& sinks, std::string& error);
 
-// Masks `a` and `b` intersected into `out`, one per image of `image_dir` that
-// has either, named <rel>/<stem>.png as every writer here names them. For a
-// reader that takes one mask tree: COLMAP. Returns how many, or -1.
-int64_t intersect_mask_trees(const std::string& image_dir, const std::string& a,
-                             bool flip_a, const std::string& b,
-                             const std::string& out, const std::atomic<bool>* cancel,
-                             std::string& error);
+// Mask bytes as the dataset screen writes them: the trainer's
+// segment_and_ignore convention (TrainConfig mask_mode). Binary readers take
+// the segment class, the sky, as keep; SfM and dense drop it.
+inline constexpr uint8_t kMaskIgnore = 0, kMaskSegment = 128, kMaskKeep = 255;
+
+// Marks `match` (mw x mh, 0 = matched, sampled nearest) into `mask` as
+// kMaskSegment wherever `mask` still keeps; ignore stays ignore.
+void fold_segment(std::vector<uint8_t>& mask, int w, int h, const std::vector<uint8_t>& match,
+                  int mw, int mh);
+
+// The mask at `path` as classes at w x h, kMaskKeep where there is no file.
+// `flip`: a binary mask painting what to REMOVE.
+std::vector<uint8_t> read_mask_classes(const std::string& path, int w, int h, bool flip);
+
+// `masks` as COLMAP reads them (nonzero = keep) into `out`, one per image of
+// `image_dir` that has one: segment dropped, and ignore too unless
+// `segment_only`. Returns how many, or -1.
+int64_t binary_mask_tree(const std::string& image_dir, const std::string& masks, bool flip,
+                         bool segment_only, const std::string& out,
+                         const std::atomic<bool>* cancel, std::string& error);
 
 }  // namespace app

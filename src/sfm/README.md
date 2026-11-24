@@ -297,7 +297,7 @@ spirula sfm auto IMAGES/ -o WORKSPACE/          # images -> sparse model
 spirula sfm auto -o ws/                         # ./images + ./masks, all defaults
 spirula sfm auto IMAGES/ -o ws/ --data-type video --quality medium
 spirula sfm auto IMAGES/ -o ws/ --masks MASKS/  # drop keypoints on masked pixels
-spirula sfm auto IMAGES/ -o ws/ --masks MASKS/ --feature-masks SKY/   # ... on either
+spirula sfm auto IMAGES/ -o ws/ --masks MASKS/ --mask-segment-only   # ... on 128 (sky) only
 spirula sfm auto IMAGES/ -o ws/ --camera-model opencv-fisheye
 
 spirula sfm extract IMAGES/ -o feats/

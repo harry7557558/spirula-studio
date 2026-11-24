@@ -109,7 +109,7 @@ bool _fs_mask_at(uint* masks, int Bm, int Hm, int Wm, int H, int W,
         ys = max(0, min(Hm - 1, int(floor(v + 0.5f))));
     }
     uint idx = (uint(b) * uint(Hm) + uint(ys)) * uint(Wm) + uint(xs);
-    return u8_load(masks, idx) != 0u;
+    return (u8_load(masks, idx) & 1u) != 0u;
 }
 
 // A pixel both images clip above carries no recoverable error, so it drops out

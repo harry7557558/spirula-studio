@@ -15,8 +15,8 @@ inline void tint_removed(uint8_t* px) {
     px[2] = (uint8_t)(px[2] / 3);
 }
 
-// Trained on, but kept out of feature extraction: amber hatching over a light
-// wash. Lightness and pattern tell it from the red, not hue alone, which a
+// Kept out of feature extraction, the sky's 128 band: amber hatching over a
+// light wash. Lightness and pattern tell it from the red, not hue alone, which a
 // red-green colour-blind eye does not separate from orange.
 inline void tint_features_only(uint8_t* px, int x, int y, int period) {
     static constexpr int kAmber[3] = {255, 176, 32};

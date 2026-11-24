@@ -43,6 +43,16 @@ struct ViewerRenderConfig {
     // Splat colours are stored in a linear and/or wide-gamut space, so the
     // render is converted to sRGB before display and `rgb_raw` is offered.
     bool  color_space_on = false;
+    // A transparency-suppression draw: `rgb` shows its grey mean, or the base
+    // background when background_base_view, and `rgb_raw` the draw itself.
+    bool  background_draw_on = false;
+    bool  background_base_view = false;
+    // The model's SH degree (< 0 unknown) and spherical-beta lobes: with
+    // neither, the view-dependent `sh` buffer would be black.
+    int   sh_degree = -1;
+    int   sb_lobes = 0;
+    // A training session's densify score; a file's view would be all black.
+    bool  refinement_score = false;
     // Viewer-client c2w remap into the training frame.
     float train_frame_scale = 1.0f;
     std::array<float, 16> train_to_normalized{1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
@@ -145,6 +155,9 @@ struct ViewResult {
     // across submit/try_get_result: a client that stops polling for a while
     // would otherwise charge its own absence to the render.
     double secs = 0.0;
+    // A stochastic render of a still view that more frames of the same request
+    // would refine.
+    bool refining = false;
 };
 
 class RenderWorker {
@@ -170,15 +183,19 @@ public:
     // training frame; null for none.
     void set_region_overlay(std::shared_ptr<const spirula::RegionOverlay> ov);
 
-    // Viewable buffer keys for this config (the Python /buffers set; the
-    // distortion buffers appear only when a distortion regularizer is
-    // configured -- they cost full-resolution VRAM to produce).
-    std::vector<std::string> buffer_keys() const;
+    // viewer_buffer_keys of this worker's config.
+    std::vector<std::string> buffer_keys(const std::string& primitive = "") const;
 
 private:
     struct Impl;
     std::unique_ptr<Impl> _impl;
 };
+
+// Viewable buffer keys for `cfg`, rendered as `primitive` ("" = the config's),
+// whichever renderer draws them. Distortion buffers need a distortion
+// regularizer: they cost full-resolution VRAM to produce.
+std::vector<std::string> viewer_buffer_keys(const ViewerRenderConfig& cfg,
+                                            const std::string& primitive = "");
 
 // One-shot upload of the post-split camera table for frustum annotation +
 // thumbnails. Call after engine_setup_data_manager, before rendering with

@@ -118,10 +118,14 @@ struct Fetched {
 CacheMode g_mode = CacheMode::CPU;
 
 Fetched fetch(const std::string& image, const std::string& mask, bool alpha,
-              bool flip, const float* over = nullptr, bool load_masks = true) {
+              bool flip, const float* over = nullptr, bool load_masks = true,
+              bool seg_ign = false, bool segment = false, bool segment_rgb = false) {
     DataManagerConfig cfg;
     cfg.cache_mode = g_mode;
     cfg.load_masks = load_masks;
+    cfg.segment_and_ignore_masks = seg_ign;
+    cfg.segment_masks = segment;
+    cfg.segment_rgb = segment_rgb;
     cfg.load_depths = cfg.load_normals = false;
     cfg.flip_mask = flip;
     if (alpha) cfg.alpha_masks = {1};
@@ -241,12 +245,71 @@ int main() {
               "probe: opaque alpha is no mask");
     }
 
+    std::vector<uint8_t> tri_pixels((size_t)W * H);
+    constexpr uint8_t kBands[6] = {0, 127, 128, 250, 251, 255};
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) tri_pixels[(size_t)y * W + x] = kBands[x % 6];
+    const std::string tri_mask = write_png(dir / "tri.png", W, H, 1, tri_pixels);
+
     for (CacheMode mode : {CacheMode::CPU, CacheMode::DISK}) {
         g_mode = mode;
         std::printf("-- %s cache\n", mode == CacheMode::CPU ? "cpu" : "disk");
         run_cases(rgba, small_image, large_image);
         std::printf("-- %s cache, EXR\n", mode == CacheMode::CPU ? "cpu" : "disk");
         run_cases(rgba_exr, small_image, large_image);
+        {
+            const Fetched m = fetch(rgb, tri_mask, false, false, nullptr, true, true);
+            bool ok = m.w == W && m.h == H;
+            for (int y = 0; y < H && ok; y++)
+                for (int x = 0; x < W; x++) {
+                    const uint8_t raw = kBands[x % 6];
+                    const uint8_t want = raw >= 251 ? 1 : (raw >= 128 ? 2 : 0);
+                    ok &= m.at(x, y) == want;
+                }
+            check(ok, "segment_and_ignore: 0-127->0, 128-250->2, 251-255->1");
+        }
+        {
+            const Fetched m = fetch(rgb, tri_mask, false, true, nullptr, true, true);
+            bool ok = m.w == W && m.h == H;
+            for (int y = 0; y < H && ok; y++)
+                for (int x = 0; x < W; x++) {
+                    const uint8_t raw = kBands[x % 6];
+                    const uint8_t c = raw >= 251 ? 1 : (raw >= 128 ? 2 : 0);
+                    const uint8_t want = (c == 0) ? 1 : (c == 1 ? 0 : 2);
+                    ok &= m.at(x, y) == want;
+                }
+            check(ok, "segment_and_ignore: flip swaps keep/ignore, preserves segment");
+        }
+        {
+            const Fetched m = fetch(rgba, tri_mask, true, false, nullptr, true, true);
+            bool ok = m.w == W && m.h == H;
+            for (int y = 0; y < H && ok; y++)
+                for (int x = 0; x < W; x++) {
+                    const uint8_t raw = kBands[x % 6];
+                    const uint8_t c = raw >= 251 ? 1 : (raw >= 128 ? 2 : 0);
+                    const uint8_t want = (c == 0) ? 0 : ((!want_alpha(x) || c == 2) ? 2 : 1);
+                    ok &= m.at(x, y) == want;
+                }
+            check(ok, "segment_and_ignore: alpha merges transparent as segment");
+        }
+        {
+            const Fetched m = fetch(rgb, tri_mask, false, false, nullptr, true, false, true);
+            bool ok = m.w == W && m.h == H;
+            for (int y = 0; y < H && ok; y++)
+                for (int x = 0; x < W; x++)
+                    ok &= m.at(x, y) == (kBands[x % 6] != 0 ? 1 : 2);
+            check(ok, "segment: a binary mask's 0 is a segment (2)");
+        }
+        {
+            const Fetched m = fetch(rgb, tri_mask, false, false, nullptr, true, true, true, true);
+            bool ok = m.w == W && m.h == H;
+            for (int y = 0; y < H && ok; y++)
+                for (int x = 0; x < W; x++) {
+                    const uint8_t raw = kBands[x % 6];
+                    ok &= m.at(x, y) == (raw >= 251 ? 1 : (raw >= 128 ? 3 : 0));
+                }
+            check(ok, "preserve_background: a segment keeps its RGB bit (3)");
+        }
     }
 
     fs::remove_all(dir);

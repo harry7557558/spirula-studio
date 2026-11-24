@@ -343,10 +343,10 @@ panorama and 2K photo pair.
   against the planned peak and capacity (docs/notes/memory-forecast.md).
   `dense_memory_plan_test` covers the plan; `resource_forecast_test` the risk
   rule and a torn report.
-- **Edits.** Saving a dense cloud from the point editor re-signs its manifest
-  and keeps the original as `roma.original.ply` (`commit_edit` in
-  `dense/Generation.h`). `dense_edit_test` covers both artifact layouts, a
-  second edit, and repairing a cloud an older build saved unsigned.
+- **Edits.** Saving a dense cloud from the point editor keeps the original as
+  `<name>.original.ply` and leaves the manifest alone (`commit_edit` in
+  `dense/Clouds.h`). `dense_edit_test` covers a second edit, external edits,
+  saved copies and deletion.
 
 ## Surface-driven pairing
 

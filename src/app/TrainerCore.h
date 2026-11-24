@@ -10,6 +10,7 @@
 #include "engine/Engine.h"
 #include "core/ColorSpace.h"
 #include "data/DatasetParser.h"
+#include "data/Json.h"
 #include "data/Region.h"
 #include "app/webviewer/RenderWorker.h"
 #include "config/TrainConfig.h"
@@ -228,7 +229,11 @@ public:
 
     // Output-dir / config.json overrides, for a front-end that owns them.
     std::string out_dir_override;      // "" = derive from cfg
+    // Also gates run.json (docs/run-records.md).
     bool        write_config_json = true;
+    // For run.json: the front end's <dataset>/logs/train_*.log, and its version.
+    std::string run_log;
+    std::string app_version;
 
     // Filled by load_dataset().
     ParsedDataset ds;
@@ -345,8 +350,19 @@ public:
     void log(const std::string& msg);
 
 private:
+    void setup_engine_steps();
+    void train_steps(const TrainerCallbacks& cb);
+    // <out_dir>/run.json. A no-op until setup_engine() has made out_dir.
+    void write_run_record(const char* status, const std::string& error = {});
+    std::chrono::system_clock::time_point _run_started{};
+    std::string _device_name;
+    bool _final_saved = false;
+    // The records a run.json already in out_dir held: a resume reuses the folder.
+    std::vector<JsonValue> _earlier_runs;
+
     // ds.points drawn at random when --random-init asks for it.
     void seed_at_random();
+    void set_mask_classes(DataManagerConfig& dm) const;
     void set_downscale_cache(DataManagerConfig& dm) const;
     void set_alpha_config(DataManagerConfig& dm,
                           const std::vector<uint8_t>& alpha) const;

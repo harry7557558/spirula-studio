@@ -97,6 +97,8 @@ struct LossConfig {
     // is converted from linear to ray depth in place (in set_training_data,
     // before the depth bilateral grid). True = already ray depth, no-op.
     bool  input_depth_is_ray_depth = true;
+    // 3-class masks in gt.alpha: 0=ignore, 1=keep, 2=segment.
+    bool  segment_and_ignore_mask = false;
 };
 
 
@@ -340,6 +342,13 @@ struct BilagridStepConfig {
 
 // Background blending step config. When mode=Noise, only `randomize_weight`
 // Adam over the per-band SH coefficients (index 0 = DC color, 1+ = bands).
+enum class BackgroundSuppression : int {
+    None = 0,
+    Noise = 1,         // a color per pixel
+    Pseudorandom = 2,  // an RGB cube corner per tile, which SSIM cannot average away
+    Random = 3,        // one color for the whole frame
+};
+
 struct BackgroundStepConfig {
     float    lr_dc           = 0.0f;
     float    lr_sh           = 0.0f;

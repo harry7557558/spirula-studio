@@ -461,13 +461,21 @@ __global__ void activate_kernel(
 __global__ void pointcloud_kernel(
     int num_kept, const int* __restrict__ kept,
     const float3* mean, const float3* ax0, const float3* ax1, const float3* ax2,
-    const float3* invs2, const float* k2, float min_axis_ratio, float* out
+    const float3* invs2, const float* k2, float min_axis_ratio,
+    int samples_per_gaussian, float* out
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= num_kept) return;
     int g = kept[i];
-    float k = sqrtf(k2[g]) * 2.5f;  // 2.5x the cutoff, for overlapping splats
     float3 m = mean[g];
+    if (samples_per_gaussian <= 1) {
+        const size_t base = (size_t)i * 3;
+        out[base + 0] = m.x;
+        out[base + 1] = m.y;
+        out[base + 2] = m.z;
+        return;
+    }
+    float k = sqrtf(k2[g]) * 2.5f;  // 2.5x the cutoff, for overlapping splats
     float3 is = invs2[g];
     float s0 = rsqrtf(is.x), s1 = rsqrtf(is.y), s2 = rsqrtf(is.z);
     float lo = min_axis_ratio * fmaxf(s0, fmaxf(s1, s2));
@@ -475,7 +483,7 @@ __global__ void pointcloud_kernel(
     float3 o1 = ax1[g] * (k * fmaxf(s1, lo));
     float3 o2 = ax2[g] * (k * fmaxf(s2, lo));
     float3 pts[7] = { m, m+o0, m-o0, m+o1, m-o1, m+o2, m-o2 };
-    long base = (long)i * 21;
+    const size_t base = (size_t)i * 21;
     for (int j = 0; j < 7; ++j) {
         out[base + 3*j + 0] = pts[j].x;
         out[base + 3*j + 1] = pts[j].y;
@@ -657,11 +665,12 @@ void launch_pointcloud(
     int num_kept, const int* kept,
     const float3* mean, const float3* ax0, const float3* ax1,
     const float3* ax2, const float3* invs2, const float* k2,
-    float min_axis_ratio, float* out
+    float min_axis_ratio, int samples_per_gaussian, float* out
 ) {
     if (num_kept <= 0) return;
     pointcloud_kernel<<<_LAUNCH_ARGS_1D(num_kept, 256)>>>(
-        num_kept, kept, mean, ax0, ax1, ax2, invs2, k2, min_axis_ratio, out);
+        num_kept, kept, mean, ax0, ax1, ax2, invs2, k2,
+        min_axis_ratio, samples_per_gaussian, out);
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 

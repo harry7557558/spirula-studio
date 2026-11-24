@@ -7,6 +7,7 @@
 //   3 kClampOutput           4 kCsEnabled                5 kCsTransfer
 //   6 kCsLinear              7 kBgTransfer               8 kBgLinear
 //   9 kMatchLuma: the background's power table is bound
+//  10 kBgDraw: the randomized draw   11 kBgMask: the draw skips segment pixels
 
 #define CudaDeviceExport ForceInline
 #include "int64_compat.slang"
@@ -27,12 +28,13 @@
 [SpecializationConstant] const int kBgTransfer = 0;
 [SpecializationConstant] const int kBgLinear = 0;
 [SpecializationConstant] const int kMatchLuma = 0;
+[SpecializationConstant] const int kBgDraw = 0;
+[SpecializationConstant] const int kBgMask = 0;
 
 #include "ppisp_apply.slang"
 
 static const int kBgColor = 1;
-static const int kBgNoise = 2;
-static const int kBgImage = 3;
+static const int kBgImage = 2;
 static const int kPpispBeforeEncode = 1;
 static const int kPpispAfterEncode = 2;
 
@@ -51,6 +53,7 @@ struct AppParams {
     float* ppisp_params;     // [N_cam, P]
     float* v_ppisp_params;   // [N_cam, P], bwd adds
     float4* intrins;         // [B,4]
+    uint* bg_mask;           // kBgMask: [B,mask_h,mask_w] u8 class flags
     float bg_r, bg_g, bg_b;  // kBgColor, working space
     float randomize_weight;
     uint seed, blocky, block_px;
@@ -61,6 +64,7 @@ struct AppParams {
                              // the batch; fwd: one flat axis over B*H*W
     uint rgb_fmt, out_fmt;   // core/PixelFormat.h
     uint raw16_on;
+    int mask_h, mask_w;
     uint _pad0;
 };
 
@@ -85,16 +89,34 @@ float3x3 _app_matrix(float* m) {
     return cm;
 }
 
+// Nearest, as core/Interpolation.cuh's nearest_sample_u8.
 [ForceInline]
-float3 _app_background(AppParams p, uint bid, uint gid, uint pix) {
+bool _app_segment(AppParams p, uint bid, uint gid) {
+    float u = (float(gid % uint(p.W)) + 0.5f) * float(p.mask_w) / float(p.W) - 0.5f;
+    float v = (float(gid / uint(p.W)) + 0.5f) * float(p.mask_h) / float(p.H) - 0.5f;
+    int x = max(0, min(p.mask_w - 1, int(floor(u + 0.5f))));
+    int y = max(0, min(p.mask_h - 1, int(floor(v + 0.5f))));
+    uint i = (bid * uint(p.mask_h) + uint(y)) * uint(p.mask_w) + uint(x);
+    return (u8_load(p.bg_mask, i) & 2u) != 0u;
+}
+
+// `drawn`: the randomized draw replaced the base here, so no v_bg flows back.
+[ForceInline]
+float3 _app_background(AppParams p, uint bid, uint gid, uint pix, out bool drawn) {
+    drawn = kBgDraw != 0 && !(kBgMask != 0 && _app_segment(p, bid, gid));
+    if (drawn)
+        return _bg_noise_color(p.blocky, p.block_px, p.seed, gid, bid, uint(p.W),
+                               p.randomize_weight,
+                               _bg_exponent(bid, uint(kMatchLuma), p.exponent_by_cam,
+                                            p.cam_indices),
+                               kBgTransfer, kBgLinear != 0);
     if (kBg == kBgColor) return float3(p.bg_r, p.bg_g, p.bg_b);
     if (kBg == kBgImage) return _app_ld3(p.bg_image, pix);
-    return _bg_noise_color(p.blocky, p.block_px, p.seed, gid, bid, uint(p.W),
-                           p.randomize_weight,
-                           _bg_exponent(bid, uint(kMatchLuma), p.exponent_by_cam,
-                                        p.cam_indices),
-                           kBgTransfer, kBgLinear != 0);
+    return float3(0.0f);
 }
+
+[ForceInline]
+bool _app_has_bg() { return kBg != 0 || kBgDraw != 0; }
 
 [ForceInline]
 float3 _app_encode(AppParams p, float3 c) {
@@ -113,8 +135,11 @@ void _app_load_params(AppParams p, uint bid, out int slot,
 
 [ForceInline]
 float3 _app_forward(AppParams p, float3 c, uint pix, uint bid, uint gid) {
-    if (kBg != 0)
-        c = blend_background(c, p.transmittance[pix], _app_background(p, bid, gid, pix));
+    if (_app_has_bg()) {
+        bool drawn;
+        c = blend_background(c, p.transmittance[pix],
+                             _app_background(p, bid, gid, pix, drawn));
+    }
     if (kPpisp != 0) {
         int slot;
         float pbuf[kMaxParams];
@@ -181,9 +206,10 @@ void appearance_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     if (inside) {
         float3 raw = rgb_load3(p.rgb, pix, p.rgb_fmt);
-        float T = kBg != 0 ? p.transmittance[pix] : 0.0f;
-        float3 bg = kBg != 0 ? _app_background(p, bid, gid, pix) : float3(0.0f);
-        float3 c_bg = kBg != 0 ? blend_background(raw, T, bg) : raw;
+        float T = _app_has_bg() ? p.transmittance[pix] : 0.0f;
+        bool drawn = false;
+        float3 bg = _app_has_bg() ? _app_background(p, bid, gid, pix, drawn) : float3(0.0f);
+        float3 c_bg = _app_has_bg() ? blend_background(raw, T, bg) : raw;
         float3 v = _app_ld3(p.out_rgb, pix);
 
         // Every stage is linear in the incoming gradient, so a zero one -- a
@@ -219,13 +245,13 @@ void appearance_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             }
         }
 
-        if (kBg != 0) {
+        if (_app_has_bg()) {
             float3 v_raw, v_bg;
             float v_T;
             blend_background_bwd(raw, T, bg, v, p.oe_scale, v_raw, v_T, v_bg);
             v = v_raw;
             p.v_transmittance[pix] = p.v_transmittance[pix] + v_T;
-            if (kBg == kBgImage) _app_st3(p.v_bg_image, pix, v_bg);
+            if (kBg == kBgImage) _app_st3(p.v_bg_image, pix, drawn ? float3(0.0f) : v_bg);
         } else if (p.oe_scale != 0.0f) {
             v += overexposure_grad(raw, p.oe_scale);
         }

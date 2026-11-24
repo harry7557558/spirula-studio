@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "sfm/core/Features.h"
+#include "sfm/core/IndexedJobs.h"
 #include "sfm/feature/Matcher.h"
 #include "sfm/feature/Pairing.h"
 
@@ -40,6 +41,7 @@ struct PairSelectionOptions {
     int batch_pairs = 256;
     int device = -1;
     std::string device_selector;   // canonical uuid:<hex>; "" = shared precedence
+    int num_threads = 0;          // host gather workers; 0 = automatic, capped at four
 };
 
 // Gather f's K best-ranked features (K = 0 or >= count keeps everything, but
@@ -76,6 +78,16 @@ inline FeatureSet topScaleSubset(const FeatureSet& f, uint32_t K) {
 }
 
 namespace detail {
+
+inline void gatherTopScaleSubsets(const std::vector<FeatureSet>& feats, uint32_t query_features,
+                                  uint32_t train_features, int num_threads,
+                                  std::vector<FeatureSet>& subsets) {
+    const size_t n = feats.size();
+    runIndexedJobs(n, num_threads, [&](size_t i) {
+        subsets[i] = topScaleSubset(feats[i], query_features);
+        if (train_features > 0) subsets[n + i] = topScaleSubset(feats[i], train_features);
+    });
+}
 
 // Both passes' counting matcher. No cross-check: the ratio test against a full-size
 // train side is selective enough, and skipping it skips the column reduction and
@@ -182,11 +194,9 @@ inline std::vector<std::pair<uint32_t, uint32_t>> prefilterPairs(
     size_t done_pairs = 0;
     if (coarse) {
         std::vector<FeatureSet> mini(n);
+        detail::gatherTopScaleSubsets(feats, opt.coarse_features, 0, opt.num_threads, mini);
         std::vector<const FeatureSet*> sets(2 * (size_t)n);
-        for (uint32_t i = 0; i < n; i++) {
-            mini[i] = topScaleSubset(feats[i], opt.coarse_features);
-            sets[i] = sets[(size_t)n + i] = &mini[i];
-        }
+        for (uint32_t i = 0; i < n; i++) sets[i] = sets[(size_t)n + i] = &mini[i];
         // Coarse sides are tens of KB, all resident; one direction per pair, a
         // block of rows at a time (every pair at once was 2 GB at 12k images). No
         // min_score: a shortlist applying it drops pairs not yet reliably scored.
@@ -214,16 +224,11 @@ inline std::vector<std::pair<uint32_t, uint32_t>> prefilterPairs(
     // ---- the deciding score ----------------------------------------------
     // Uncapped train sides borrow descriptors to avoid duplicating the full feature store.
     std::vector<FeatureSet> owned(n + (opt.train_features == 0 ? 0 : (size_t)n));
+    detail::gatherTopScaleSubsets(feats, opt.num_features, opt.train_features, opt.num_threads, owned);
     std::vector<const FeatureSet*> sets(2 * (size_t)n);
     for (uint32_t i = 0; i < n; i++) {
-        owned[i] = topScaleSubset(feats[i], opt.num_features);
         sets[i] = &owned[i];
-        if (opt.train_features == 0) {
-            sets[(size_t)n + i] = &feats[i];
-        } else {
-            owned[(size_t)n + i] = topScaleSubset(feats[i], opt.train_features);
-            sets[(size_t)n + i] = &owned[(size_t)n + i];
-        }
+        sets[(size_t)n + i] = opt.train_features == 0 ? &feats[i] : &owned[(size_t)n + i];
     }
 
     // One direction misses overlap that ranks highly in only one image.

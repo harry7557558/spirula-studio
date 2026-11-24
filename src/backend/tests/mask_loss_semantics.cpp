@@ -67,7 +67,9 @@ Outcome run(const std::vector<uint8_t>& mask, bool zero_depth, float w_alpha,
             int64_t Hm = H, int64_t Wm = W, float w_ssim = 0.0f,
             const std::vector<float>* rgb_in = nullptr, float w_rgb = 1.0f,
             float sat = -1.0f, const std::vector<float>* ref_in = nullptr,
-            int loss = 0, int map_mode = (int)DensifyLossMapMode::None) {
+            int loss = 0, int map_mode = (int)DensifyLossMapMode::None,
+            bool segment_and_ignore = false, float w_alpha_under = 0.0f,
+            int num_scales = 1) {
     std::vector<float> rgb((size_t)3 * NP, 0.5f), ref((size_t)3 * NP, 0.25f);
     if (rgb_in) rgb = *rgb_in;
     for (size_t i = 0; i < ref.size(); i++)
@@ -84,6 +86,7 @@ Outcome run(const std::vector<uint8_t>& mask, bool zero_depth, float w_alpha,
     std::array<float, (int)LossWeightIndex::length> weights{};
     weights[(int)LossWeightIndex::RgbSupL1] = w_rgb;
     weights[(int)LossWeightIndex::AlphaSup] = w_alpha;
+    weights[(int)LossWeightIndex::AlphaSupUnder] = w_alpha_under;
 
     std::vector<float> v_losses((size_t)LossIndex::length, 0.0f);
     v_losses[(int)LossIndex::RgbLoss] = 1.0f;
@@ -102,7 +105,7 @@ Outcome run(const std::vector<uint8_t>& mask, bool zero_depth, float w_alpha,
 
     auto once = [&]() {
         return compute_multi_scale_per_pixel_losses(
-            1, ttv(d_rgb, {B, H, W, 3}), ttv(d_ref, {B, H, W, 3}), ttv_null(),
+            num_scales, ttv(d_rgb, {B, H, W, 3}), ttv(d_ref, {B, H, W, 3}), ttv_null(),
             d_depth ? ttv(d_depth, {B, H, W, 1}) : ttv_null(), ttv_null(),
             ttv_null(), ttv_null(), ttv(d_Ts, {B, H, W, 1}), ttv_null(),
             ttv_null(), ttv_null(), ttv_null(), ttv_null(),
@@ -112,7 +115,7 @@ Outcome run(const std::vector<uint8_t>& mask, bool zero_depth, float w_alpha,
             /*has_mask=*/d_mask != nullptr, weights, w_ssim, loss, sat,
             ttv(d_v_losses, {(int64_t)LossIndex::length}), needs, B,
             ttv_null(), d_map ? ttv(d_map, {B, H, W, 1}) : ttv_null(), map_mode,
-            0.75f, 0.0f, grads);
+            0.75f, 0.0f, grads, segment_and_ignore);
     };
     once();  // the loss scalars are read one iteration behind
     LossValues lv = once();
@@ -566,6 +569,67 @@ int main() {
             worst = std::max(worst, (double)std::fabs(l1.v_render_rgb[i] -
                                                       l1_bt.v_render_rgb[i]));
         check(worst == 0.0, "ssim_lambda 0: ssim_blur_tolerant adds no gradient");
+    }
+
+    // segment_and_ignore: 0=ignore (no RGB/SSIM/alpha grad), 2=segment (no RGB/SSIM,
+    // alpha pushed empty), 1=keep (RGB/SSIM + alpha pushed solid). Check multi-scale too.
+    for (int scales : {1, 3}) {
+        std::vector<uint8_t> tri((size_t)NP, 0);
+        const int64_t x0 = W / 3, x1 = (2 * W) / 3;
+        for (int64_t y = 0; y < H; ++y)
+            for (int64_t x = 0; x < W; ++x)
+                tri[(size_t)(y * W + x)] = x < x0 ? 0 : (x < x1 ? 2 : 1);
+        Outcome out = run(tri, /*zero_depth=*/false, 1.0f, H, W, 0.2f,
+                          nullptr, 1.0f, -1.0f, nullptr, 0,
+                          (int)DensifyLossMapMode::None, true, 0.5f, scales);
+        bool ign_zero = true, seg_empty = true, keep_ok = true;
+        bool ign_rgb_zero = true, seg_rgb_zero = true, keep_rgb_nonzero = false;
+        for (int64_t y = 0; y < H; ++y) {
+            for (int64_t x = 0; x < W; ++x) {
+                const float gt_ts = out.v_render_Ts[(size_t)(y * W + x)];
+                const float gt_rgb = out.v_render_rgb[(size_t)(y * W + x) * 3];
+                if (x < x0) {
+                    ign_zero &= (gt_ts == 0.0f);
+                    ign_rgb_zero &= (gt_rgb == 0.0f);
+                } else if (x < x1) {
+                    if (scales == 1) seg_empty &= (gt_ts < 0.0f);
+                    else seg_empty &= (gt_ts <= 0.0f);
+                    seg_rgb_zero &= (gt_rgb == 0.0f);
+                } else {
+                    if (scales == 1) keep_ok &= (gt_ts > 0.0f);
+                    else keep_ok &= (gt_ts >= 0.0f);
+                    keep_rgb_nonzero |= (gt_rgb != 0.0f);
+                }
+            }
+        }
+        check(ign_zero && ign_rgb_zero,
+              scales == 1 ? "segment_and_ignore: ignore pixels take zero alpha & rgb grad"
+                          : "segment_and_ignore (multiscale): ignore pixels stay zero");
+        check(seg_empty && seg_rgb_zero,
+              scales == 1 ? "segment_and_ignore: segment pixels drive alpha empty, zero rgb grad"
+                          : "segment_and_ignore (multiscale): segment pixels stay rgb-zero");
+        check(keep_ok && keep_rgb_nonzero,
+              scales == 1 ? "segment_and_ignore: keep pixels get rgb + solid alpha grad"
+                          : "segment_and_ignore (multiscale): keep pixels get rgb grad");
+    }
+
+    // preserve_background: a segment (3) is still pushed empty, but keeps its
+    // colour gradient so the background trains behind it; GT depth does not.
+    for (int scales : {1, 3}) {
+        std::vector<uint8_t> tri((size_t)NP, 1);
+        for (int64_t y = 0; y < H; ++y)
+            for (int64_t x = 0; x < W / 2; ++x) tri[(size_t)(y * W + x)] = 3;
+        Outcome out = run(tri, false, 1.0f, H, W, 0.2f, nullptr, 1.0f, -1.0f, nullptr,
+                          0, (int)DensifyLossMapMode::None, true, 0.5f, scales);
+        bool seg_empty = true, seg_rgb = true;
+        for (int64_t y = 0; y < H; ++y)
+            for (int64_t x = 0; x < W / 2; ++x) {
+                seg_empty &= out.v_render_Ts[(size_t)(y * W + x)] <= 0.0f;
+                seg_rgb &= out.v_render_rgb[(size_t)(y * W + x) * 3] != 0.0f;
+            }
+        check(seg_empty && seg_rgb,
+              scales == 1 ? "preserved segment: alpha pushed empty, rgb still trained"
+                          : "preserved segment (multiscale): rgb still trained");
     }
 
     std::printf("%s\n", g_failures ? "FAILED" : "all ok");

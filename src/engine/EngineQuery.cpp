@@ -88,7 +88,7 @@ void engine_copy_render_to_host(
         // A training step's loss may have put v_rgb in the float32 raw render.
         const bool half = engine().fwd.raw_rgb16.data_ptr() != nullptr;
         pre = half ? engine().fwd.raw_rgb16 : engine().fwd.raw_rgb;
-        if (app.params.bg != AppearanceBg::None || half) {
+        if (appearance_has_bg(app.params) || half) {
             AppearanceChainParams p = app.params;
             p.cs_enabled = 0;
             p.ppisp = AppearancePpisp::Off;

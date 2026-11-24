@@ -20,6 +20,7 @@
 #include "kernels/loss/PerSplatLoss.cuh"
 #include "kernels/pixelwise/PixelWise.cuh"
 #include "primitives/Primitive.cuh"
+#include "engine/EngineConfig.h"
 
 // Explicit primitive -> rendered channel set. The only place the engine encodes
 // what each primitive renders; update here when adding a primitive. 3DGUT
@@ -219,9 +220,9 @@ struct GTData {
     // [B, H, W, 3] in the form it was decoded in when that needs no colour
     // conversion, else float32 (core/PixelFormat.h); never widened in place.
     TorchTensorView        rgb;
-    DeviceTensor3D<float>  depth;
-    DeviceTensor3D<float3> normal;
-    DeviceTensor3D<bool>   alpha;
+    DeviceTensor3D<float>   depth;
+    DeviceTensor3D<float3>  normal;
+    DeviceTensor3D<uint8_t> alpha;
     bool has_gt   = false;
     bool has_mask = false;
 };
@@ -460,14 +461,24 @@ struct BilagridNormal {
 // are the same stateless blend over a different draw; Sh is a trained skybox,
 // SH(world ray dir) + DC color, and carries the only persistent state here.
 struct EngineBackground {
-    enum class Mode { None = 0, Noise = 1, Sh = 2, Pseudorandom = 3,
-                      Color = 4, Random = 5 };
+    // The base fill; `suppress` draws over it outside a bound mask's segments.
+    enum class Mode { None = 0, Color = 1, Sh = 2 };
     Mode mode    = Mode::None;
-    bool enabled = false;
+    BackgroundSuppression suppress = BackgroundSuppression::None;
+    bool enabled = false;               // mode != None || suppress != None
 
     // Common config (set at init time)
-    int  splat_transfer = 0;             // noise mode: display -> working space
+    int  splat_transfer = 0;             // the draw: display -> working space
     bool splat_is_linear = false;
+
+    // engine_background_view: a viewer render binds no mask, and draws grey
+    // unless view_draw (the draw) or view_base (no draw, the base fill).
+    bool view_active = false;
+    bool view_draw   = false;
+    bool view_base   = false;
+
+    // What the last forward blended with, replayed by the per-stage backward.
+    AppearanceChainParams fwd_params;
 
     // Color mode: the user's colour. `color` is what the blend wants (working
     // space); `color_display` is what the viewer wants back, kept rather than
@@ -584,9 +595,9 @@ struct CalibWarpState {
     int64_t zeroed_rows = 0;
     // While gt points at the warped copies: the step's own ground truth.
     TorchTensorView src_gt;
-    DeviceTensor3D<float>  src_depth;
-    DeviceTensor3D<float3> src_normal;
-    DeviceTensor3D<bool>   src_alpha;
+    DeviceTensor3D<float>   src_depth;
+    DeviceTensor3D<float3>  src_normal;
+    DeviceTensor3D<uint8_t> src_alpha;
     bool swapped = false;
     bool active_this_step = false;
 };
@@ -769,6 +780,21 @@ struct EngineState {
     // once. Not a function-local static: engine_reset() frees the pool, and a
     // flag outliving it leaves the next scene reading the reallocated buffer.
     bool    v_losses_uploaded = false;
+
+    // Stochastic viewer renders (engine/EngineStochastic.cpp): a running sum per
+    // channel (engine_arm_stochastic), restarted whenever its key moves.
+    struct Stochastic {
+        struct Sum {
+            uint64_t key = 0;
+            uint32_t frames = 0;
+        };
+        std::map<int, Sum> sums;
+        bool     armed = false;
+        int      arm_channel = 0;
+        uint64_t arm_key = 0;
+        uint32_t last_frames = 0;  // what the last forward averaged; 0: not stochastic
+        uint64_t revision = 0;     // moves whenever the splats change outside a train step
+    } stochastic;
 
     WorldSplats    world;
     CameraTable    camera;

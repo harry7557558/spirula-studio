@@ -115,6 +115,7 @@ int auto_sh_value_bits(int64_t n, int num_sh) {
 
 void engine_scene_begin_3dgs(int slot, int64_t num_splats, int num_sh, int sb_lobes,
                              int sh_value_bits) {
+    ++engine().stochastic.revision;
     Scene& s = at(slot);
     if (num_splats < 0 || num_sh < 0)
         throw std::runtime_error("engine_scene_begin_3dgs: negative size");
@@ -163,6 +164,7 @@ void engine_scene_upload_3dgs(int slot, int64_t first, TorchTensorView means,
                               TorchTensorView quats, TorchTensorView scales,
                               TorchTensorView opacities, TorchTensorView features_dc,
                               TorchTensorView features_sh) {
+    ++engine().stochastic.revision;
     Scene& s = at(slot);
     const int64_t n = std::get<2>(means)[0];
     const auto& sh_shape = std::get<2>(features_sh);
@@ -282,6 +284,7 @@ void* scene_field(Scene& s, const std::string& field, size_t& elem_bytes,
 
 void engine_scene_update(int slot, const std::string& field,
                          TorchTensorView data) {
+    ++engine().stochastic.revision;
     Scene& s = at(slot);
     if (!s.loaded)
         throw std::runtime_error("engine_scene_update: slot holds no model");
@@ -331,6 +334,7 @@ void engine_scene_activate(int slot) {
     }
     if (s.has_bg_sh && s.bg_sh_coeffs.size() > 0) {
         engine().background.mode = EngineBackground::Mode::Sh;
+        engine().background.suppress = BackgroundSuppression::None;
         engine().background.enabled = true;
         engine().background.splat_transfer = s.bg_transfer;
         engine().background.splat_is_linear = s.bg_is_linear;
@@ -339,6 +343,7 @@ void engine_scene_activate(int slot) {
     } else {
         engine().background.enabled = false;
         engine().background.mode = EngineBackground::Mode::None;
+        engine().background.suppress = BackgroundSuppression::None;
         engine().background.sh_coeffs = DeviceVector<float3>{};
     }
 }
@@ -352,6 +357,7 @@ bool engine_scene_loaded(int slot) {
 // Idempotent, and it does NOT test `loaded`: an upload that threw half way
 // leaves buffers behind under this slot's name and nothing else frees them.
 void engine_scene_free(int slot) {
+    ++engine().stochastic.revision;
     Scene& s = at(slot);
     // Whatever is bound right now may be this slot's buffers, which are about
     // to be freed.
@@ -362,6 +368,7 @@ void engine_scene_free(int slot) {
         engine().background.sh_coeffs.data_ptr() == s.bg_sh_coeffs.data_ptr()) {
         engine().background.enabled = false;
         engine().background.mode = EngineBackground::Mode::None;
+        engine().background.suppress = BackgroundSuppression::None;
         engine().background.sh_coeffs = DeviceVector<float3>{};
     }
     DevicePool::global().free_dynamic_prefix(slot_prefix(slot));

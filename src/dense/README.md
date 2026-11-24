@@ -81,7 +81,7 @@ message in `i18n/catalog/Dense.h`, a round trip in
 | `src/dense/Filters.h/.cpp` | Two-image admission and its free-space grid, the depth-precision bar, far isolated points, the baseline limit, the written-cloud reprojection summary. |
 | `src/dense/DiskArray.h`, `DiskTable.h`, `ExternalSort.h` | Spill-to-disk arrays, a paged read-only table, stable external merge sort. |
 | `src/dense/DenseConfig.h/.cpp`, `ConfigFields.h` | The one settings struct, presets, the source-workflow setup, and the field table. |
-| `src/dense/Artifact.h`, `Generation.h` | Freshness probes, content verification, published generations and the current-generation record. |
+| `src/dense/Artifact.h`, `Clouds.h` | Freshness probes and input verification; finding, publishing, editing and deleting cloud versions under `dense/`. |
 | `src/dense/MemoryPlan.h/.cpp` | The host memory the run's budgets allow: the peak its memory report plans for. |
 | `src/app/DenseProcessing.cpp` | `run_dense`: parsing, view preparation, decoding, pair jobs, RoMa inference, caches, live snapshot, memory reporter, publication. |
 | `src/app/cli/dense_main.cpp` | `spirula dense`. The GUI runs this same command as a child process. |
@@ -114,7 +114,7 @@ parse dataset ──► prepare views ──► plan pairs ──► decode (wor
                         │
           fuse_surfaces (disk partitions + halos) ──► far isolated ──► optional exact outlier filter
                         │
-          PLY + manifest as a generation ──► current-generation record
+          dense/<date>_<preset>.ply + .json   (newest PLY is the default seed)
                         (the PLY is read back for the reprojection check first)
 ```
 
@@ -317,7 +317,7 @@ commit is also why `B` is held to a fifth of it. A completed reference's
 observation tiles are deleted as soon as it is refined, so disk use follows
 the references in flight rather than every pair matched.
 
-`MemoryReporter` (`DenseProcessing.cpp`) writes `dense/progress/memory.json`
+`MemoryReporter` (`DenseProcessing.cpp`) writes `dense/.work/progress/memory.json`
 twice a second, atomically, through the report every child shares
 (`app/RunReport.h`). Its planned peak is the budgets' ceiling with a tenth of
 it as sigma; the GUI draws it in a strip above the log with the same risk rule
@@ -329,24 +329,27 @@ on the device is device size minus our budget, not usage minus ours.
 
 ## Caches and publication
 
-Predictions are cached per directed pair under `dense/cache/pairs-v4/<inference>/`.
+Predictions are cached per directed pair under `dense/.work/cache/pairs-v4/<inference>/`.
 `<inference>` digests the checkpoint SHA-256, precision, grid sizes, direction
 and colour settings; each pair digests the two views' pixel identities (image
 content, matching space, EXIF turns, and for rectified mode the full face
 calibration). Geometry, masks, sampling and fusion changes therefore reuse
-predictions. Every file has a `.sha256` and is verified before use. A reverse
-prediction is reused only when it exists; a forward field is never inverted.
+predictions. A file is read only when its magic, dimensions and length match
+and every value is finite; there is no checksum. A reverse prediction is
+reused only when it exists; a forward field is never inverted. The cache only
+resumes an interrupted run: a successful one deletes all of `.work/cache`
+unless `keep_cache`.
 
-The final PLY and manifest are published in a generation directory, then one
-small current record is replaced atomically. Preview, planning and automatic
-training resolve that record; explicit PLY paths are opened directly. Output
-hashes and recorded byte counts do not gate externally edited clouds. A writer lock
+The final PLY moves to `dense/<date>_<preset>.ply` after its `.json` manifest.
+There is no current-version record: `clouds()` lists every plausible PLY under
+`dense/` (dot folders skipped) newest first, and the first is the default.
+Output contents and recorded byte counts never gate a cloud. A writer lock
 serializes runs. At startup, under that lock, `cleanup_abandoned_runs` deletes
 `run-*` work folders left by cancelled (force-killed) or crashed runs. Cleanup only touches validated, application-owned
 directories. Before publishing, every input is re-hashed. An edit that kept
 sizes and timestamps still fails the run.
 
-The live preview is `dense/progress/model.bin` (live-model protocol version 7,
+The live preview is `dense/.work/progress/model.bin` (live-model protocol version 7,
 `app/gui/SfmProgress.h`) over an append-only points file. Flag bit 16 marks
 legacy raw observations, bit 32 filtered points awaiting fusion. A separate
 file holds the final cloud.
@@ -364,7 +367,7 @@ file holds the final cloud.
 | `dense_pair_selection_test` | Ranking, bounded degree, sequences, explicit/exhaustive modes, cancellation. |
 | `dense_visibility_test` | Occlusion, samples without points, ten times the views not ten times the pairs, wide views needing fewer pairs than narrow ones. |
 | `dense_fusion_test` | Cell and partition boundaries, normals, depth layers, chain bounds, parallel/spilled equality. |
-| `dense_artifact_test` | Locking, cleanup, generations, interrupted publication, legacy adoption, external edits. |
+| `dense_artifact_test` | Locking, cleanup, named publication, newest default, older layouts, implausible and scratch PLYs, seed resolution. |
 | `dense_spill_test` | Spill arrays, external merge, sampler equivalence. |
 | `dense_memory_plan_test` | The host plan adds the matching budgets. The report and the risk rule are `resource_forecast_test`'s. |
 | `dense_filter_test` | Each point filter on inputs whose answer is known, then end to end through `Reconstruction`; each test names the wrong implementation it catches. |

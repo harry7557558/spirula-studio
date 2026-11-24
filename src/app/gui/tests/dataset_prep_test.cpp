@@ -1,7 +1,7 @@
 // dataset_prep_test -- where DatasetPrep (app/gui/DatasetPrep.h) meets the
 // folders beside images/: a re-run re-applies the mask editor's corrections
 // over the masks it rewrites, the camera scan never takes mask_edits/ or
-// feature_masks/ for a camera, and COLMAP's one mask tree is the two ANDed.
+// feature_masks/ for a camera, and the sky's 128 band survives every fold.
 // Real DatasetPrep::run, no model: the re-mask is the frame stencil, which is
 // also checked per camera folder. Built without SS_BUILD_SAM, so it also
 // checks that asking for a model fails; that `sparse/0` is not a dataset;
@@ -14,6 +14,8 @@
 #include "app/gui/FilmReel.h"
 #include "app/gui/PickSheet.h"
 #include "app/gui/mask/MaskLayer.h"
+#include "core/BufferedFile.h"
+#include "core/Sha256.h"
 #include "core/SourcePath.h"
 #include "data/ImageDiscovery.h"
 #include "external/stb_image_write.h"
@@ -23,18 +25,29 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <stdexcept>
 #include <vector>
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 namespace fs = std::filesystem;
 namespace mk = gui::mask;
 
 namespace {
+
+std::function<void(const fs::path&, uintmax_t)> source_hash_read_hook;
 
 // The blur rule at `px` (0 off), `by_hand` with the pause.
 void skip_blurry(gui::PrepJob& job, float px, bool by_hand = false) {
@@ -172,12 +185,12 @@ void test_rerun_reapplies_corrections() {
 }
 
 // A sibling holding the same PNGs under another name IS a camera, so only
-// the name guard keeps mask_edits/ and feature_masks/ out of the list.
+// the name guard keeps mask_edits/ and an older run's feature_masks/ out.
 void test_camera_scan_skips_mask_edits() {
     const fs::path root = scratch("scan");
     write_jpg(root / "cam0" / "f0.jpg", 16, 12, 0);
     write_jpg(root / "cam1" / "f0.jpg", 16, 12, 1);
-    for (const char* dir : {mk::kLayerDirName, gui::kFeatureMaskDirName, "lookalike"})
+    for (const char* dir : {mk::kLayerDirName, gui::kLegacyFeatureMaskDirName, "lookalike"})
         for (const char* f : {"cam0/f0.base.png", "cam0/f0.drop.png", "cam0/f0.keep.png"})
             write_png(root / dir / f, 16, 12, 255);
     write_png(root / image_discovery::kProgressiveCache / "images" / "4x3" / "cached.png", 4, 3, 127);
@@ -189,7 +202,7 @@ void test_camera_scan_skips_mask_edits() {
           "fixture: the layer PNGs under another name are taken for a camera: " + listed);
     bool edits = false;
     for (const std::string& c : cams)
-        edits |= c.rfind(mk::kLayerDirName, 0) == 0 || c.rfind(gui::kFeatureMaskDirName, 0) == 0;
+        edits |= c.rfind(mk::kLayerDirName, 0) == 0 || c.rfind(gui::kLegacyFeatureMaskDirName, 0) == 0;
     check(!edits, "camera scan: nothing under mask_edits/ or feature_masks/: " + listed);
     check(!gui::folder_has_images((root / image_discovery::kProgressiveCache).string()),
           "a cache-only folder is not a photo source");
@@ -275,50 +288,72 @@ void test_nested_input_stencils() {
           "nested: the folder inside it has its own input's shape only");
 }
 
-// feature_masks/ is the run's own, so a workspace holding only it is one to
-// resume and one "clear this project" empties; and COLMAP, which reads one
-// mask tree, gets it intersected with masks/ -- the flipped one read flipped.
-void test_feature_masks_workspace() {
+// The sky is masks/' 128 band. An older run's feature_masks/ is cleared but
+// not resumed; COLMAP gets a binary copy -- of the sky alone without the
+// checkbox -- and a stencil fold keeps the band.
+void test_segment_masks_workspace() {
     const int W = 8, H = 4;
-    const fs::path ws = scratch("featmasks");
+    const fs::path ws = scratch("segmasks");
     write_jpg(ws / "images" / "cam0" / "a.jpg", W, H, 0);
     write_jpg(ws / "images" / "cam0" / "b.jpg", W, H, 1);
-    write_jpg(ws / "images" / "cam0" / "c.jpg", W, H, 2);
     auto png = [&](const fs::path& p, const std::vector<uint8_t>& px) {
         std::error_code ec;
         fs::create_directories(p.parent_path(), ec);
         stbi_write_png(p.string().c_str(), W, H, 1, px.data(), W);
     };
-    png(ws / gui::kFeatureMaskDirName / "cam0" / "a.png", box(W, H, 0, 2, W, H));
-    png(ws / gui::kFeatureMaskDirName / "cam0" / "b.png", box(W, H, 0, 0, W, H));
+    png(ws / gui::kLegacyFeatureMaskDirName / "cam0" / "a.png", box(W, H, 0, 2, W, H));
     const gui::WorkspaceState st = gui::probe_workspace(ws.string(), {});
     const std::vector<std::string> arts = gui::workspace_artifacts(ws.string(), {});
-    check(st.masks && st.resumable(), "probe: feature_masks/ alone is resumable");
-    check(std::find(arts.begin(), arts.end(), (ws / gui::kFeatureMaskDirName).string()) !=
-              arts.end(),
-          "artifacts: feature_masks/ is the run's to clear");
+    check(!st.masks, "probe: a legacy feature_masks/ is not masks to resume");
+    check(std::find(arts.begin(), arts.end(),
+                    (ws / gui::kLegacyFeatureMaskDirName).string()) != arts.end(),
+          "artifacts: a legacy feature_masks/ is the run's to clear");
 
-    // masks/ marks what to REMOVE here: the left half of a, all of c.
-    png(ws / "masks" / "cam0" / "a.png", box(W, H, 0, 0, W / 2, H));
-    png(ws / "masks" / "cam0" / "c.png", box(W, H, 0, 0, W, H));
+    // a: left column ignored, top row sky, the rest kept. b has no mask.
+    std::vector<uint8_t> a((size_t)W * H, app::kMaskKeep);
+    std::vector<uint8_t> sky = box(W, H, 0, 1, W, H);
+    app::fold_segment(a, W, H, sky, W, H);
+    for (int y = 0; y < H; y++) a[(size_t)y * W] = app::kMaskIgnore;
+    app::fold_segment(a, W, H, sky, W, H);
+    check(at(a, W, 0, 0) == 0 && at(a, W, 3, 0) == 128 && at(a, W, 3, 2) == 255,
+          "fold: the sky marks only what is still kept");
+    png(ws / "masks" / "cam0" / "a.png", a);
     std::string err;
     const fs::path out = ws / ".colmap_masks";
-    const int64_t n = app::intersect_mask_trees(
-        (ws / "images").string(), (ws / "masks").string(), /*flip_a=*/true,
-        (ws / gui::kFeatureMaskDirName).string(), out.string(), nullptr, err);
-    check(n == 3, "intersect: one mask per image that has either: " + std::to_string(n));
+    for (const bool segment_only : {false, true}) {
+        const int64_t n = app::binary_mask_tree((ws / "images").string(),
+                                                (ws / "masks").string(), false, segment_only,
+                                                out.string(), nullptr, err);
+        int w = 0, h = 0;
+        std::vector<uint8_t> got;
+        app::load_stencil((out / "cam0" / "a.png").string(), w, h, got);
+        const uint8_t col0 = segment_only ? 255 : 0;
+        check(n == 1 && got.size() == a.size() && at(got, W, 0, 2) == col0 &&
+                  at(got, W, 3, 0) == 0 && at(got, W, 3, 2) == 255,
+              std::string("colmap copy, segment_only=") + (segment_only ? "1" : "0"));
+    }
+    const std::vector<uint8_t> flipped =
+        app::read_mask_classes((ws / "masks" / "cam0" / "a.png").string(), W, H, true);
+    check(at(flipped, W, 0, 2) == 255 && at(flipped, W, 3, 2) == 0,
+          "classes: a flipped mask reads as binary remove-masks");
+
+    // A stencil folded over masks/ keeps the band where it still keeps.
+    app::FrameStencilRun run;
+    run.image_dir = (ws / "images").string();
+    run.mask_dir = (ws / "masks").string();
+    run.skip_dirs = {run.mask_dir};
+    app::MaskShape half;
+    half.kind = app::MaskShape::Kind::Rect;
+    half.cx = 0.0f; half.cy = 0.0f; half.rx = 0.5f; half.ry = 1.0f;
+    run.stencil.mask.shapes.push_back(half);
+    app::FrameStencilSinks sinks;
+    check(app::apply_frame_stencil(run, sinks, err) == 2, "stencil: both frames written: " + err);
     int w = 0, h = 0;
-    std::vector<uint8_t> a, b, c;
-    app::load_stencil((out / "cam0" / "a.png").string(), w, h, a);
-    app::load_stencil((out / "cam0" / "b.png").string(), w, h, b);
-    app::load_stencil((out / "cam0" / "c.png").string(), w, h, c);
-    check(a.size() == (size_t)W * H && at(a, W, 6, 3) == 255 && at(a, W, 1, 3) == 0 &&
-              at(a, W, 6, 0) == 0,
-          "intersect: a keeps only the right half of its lower rows");
-    check(b.size() == (size_t)W * H && at(b, W, 0, 0) == 255 && at(b, W, 7, 3) == 255,
-          "intersect: b, with no masks/ file, is its feature mask");
-    check(c.size() == (size_t)W * H && at(c, W, 3, 2) == 0,
-          "intersect: c, with no feature mask, is its flipped mask");
+    std::vector<uint8_t> merged;
+    app::load_stencil((ws / "masks" / "cam0" / "a.png").string(), w, h, merged);
+    check(merged.size() == a.size() && at(merged, W, 1, 0) == 128 && at(merged, W, 1, 2) == 255 &&
+              at(merged, W, 0, 2) == 0 && at(merged, W, 6, 0) == 0,
+          "stencil: the sky survives a fold, outside the stencil is ignored");
 }
 
 void test_model_masking_needs_segmentation() {
@@ -777,6 +812,124 @@ void test_sort_folders_not_rig() {
           "days: the one smeared photograph moves aside, alone");
 }
 
+namespace gui {
+void source_hash_before_read(const fs::path& file, uintmax_t offset) {
+    if (source_hash_read_hook) source_hash_read_hook(file, offset);
+}
+}  // namespace gui
+
+static void test_source_hash_overlap() {
+    constexpr size_t chunk = spirula::kFileBufferBytes;
+    const fs::path root = scratch("source_hash_overlap").lexically_normal();
+    const fs::path source = root / "source.mp4", first = root / "first.mp4";
+    const fs::path lut = root / "look.cube";
+    std::vector<uint8_t> bytes(40u * (1u << 20) + 3);
+    for (size_t i = 0; i < bytes.size(); ++i)
+        bytes[i] = (uint8_t)(i ^ (i >> 8) ^ (i >> 16) ^ (i >> 24));
+
+    const auto write = [&](const fs::path& file, size_t size) {
+        std::ofstream out(file, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)size);
+        out.close();
+        if (!out) throw std::runtime_error("cannot write hash fixture");
+    };
+    const auto record = [&](const std::string& name, size_t size) {
+        spirula::Sha256 hash;
+        hash.update(bytes.data(), size);
+        return name + '\0' + std::to_string(size) + '\0' + hash.hex() + '\0';
+    };
+    const auto digest = [](const std::string& text) {
+        spirula::Sha256 hash;
+        hash.update(reinterpret_cast<const uint8_t*>(text.data()), text.size());
+        return hash.hex();
+    };
+    gui::PrepJob job;
+    job.workspace = (root / "dataset").string();
+    gui::PrepInput input;
+    input.path = source.string();
+    input.is_video = true;
+    input.lut = gui::kLutNone;
+    job.inputs = {input};
+    for (size_t size : {size_t{0}, size_t{1}, chunk - 1, chunk, chunk + 1, bytes.size()}) {
+        write(source, size);
+        check(gui::frame_source_identity(job, job.inputs[0], true) == digest(record(".", size)),
+              "legacy source digest at " + std::to_string(size) + " bytes");
+    }
+
+    write(source, chunk + 1);
+    write(first, 1);
+    write(lut, 65);
+    gui::PrepInput first_input = input;
+    first_input.path = first.string();
+    first_input.lut = lut.string();
+    job.inputs = {first_input, input};
+    const std::vector<std::string> expected = {
+        digest(record(".", 1) + record("../look.cube", 65)), digest(record(".", chunk + 1))};
+    std::string error;
+    check(gui::snapshot_frame_sources(job, error) && job.source_content == expected,
+          "snapshot retains input and file-backed LUT order");
+
+    const auto reject_mutation = [&](auto action, const char* what) {
+        bool changed = false;
+        source_hash_read_hook = [&](const fs::path& file, uintmax_t offset) {
+            if (file == source && offset == chunk) {
+                action(file);
+                changed = true;
+            }
+        };
+        const bool rejected = gui::frame_source_identity(job, job.inputs[1], true).empty();
+        source_hash_read_hook = {};
+        check(changed && rejected, what);
+    };
+    const auto stamp = fs::last_write_time(source);
+    reject_mutation([&](const fs::path& file) {
+        fs::last_write_time(file, stamp - std::chrono::hours(1));
+    }, "mtime change between chunk reads rejects the identity");
+    reject_mutation([&](const fs::path& file) {
+        fs::resize_file(file, chunk);
+    }, "truncation between chunk reads rejects a prefix digest");
+    write(source, chunk + 1);
+
+    struct ReaderError {};
+    source_hash_read_hook = [&](const fs::path& file, uintmax_t offset) {
+        if (file == source && offset == chunk) throw ReaderError{};
+    };
+    bool propagated = false;
+    try {
+        gui::frame_source_identity(job, job.inputs[1], true);
+    } catch (const ReaderError&) {
+        propagated = true;
+    }
+    source_hash_read_hook = {};
+    check(propagated, "reader exceptions reach the identity caller");
+
+    write(first, 2);
+
+#ifdef _WIN32
+    const HANDLE handle = CreateFileW(source.c_str(), GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    OVERLAPPED offset{};
+    offset.Offset = (DWORD)chunk;
+    const bool unreadable = handle != INVALID_HANDLE_VALUE &&
+        LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &offset);
+#else
+    bool unreadable = false;
+    source_hash_read_hook = [&](const fs::path& file, uintmax_t offset) {
+        if (file == source && offset == 0) unreadable = fs::remove(file);
+    };
+#endif
+    const bool rejected = !gui::snapshot_frame_sources(job, error);
+#ifdef _WIN32
+    if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle);
+#else
+    source_hash_read_hook = {};
+#endif
+    check(unreadable && rejected && error.find(input.path) != std::string::npos &&
+              job.source_content == expected,
+          "unreadable source rejects the snapshot without partial identities");
+    fs::remove_all(root);
+}
+
 void test_source_aware_video_resume() {
     const fs::path root = scratch("source_identity");
     const fs::path source = root / "source.mp4", ws = root / "dataset";
@@ -863,7 +1016,7 @@ void test_mask_output_ownership() {
     check(rejected(output), "two images with the same mask stem are rejected");
     check(rejected(masks / "." / "frame.png"), "lexical aliases cannot own the same mask");
     check(rejected(fs::relative(output, fs::current_path())), "relative and absolute owners collide");
-    check(!rejected(root / "feature_masks" / "frame.png"), "separate train and feature outputs are allowed");
+    check(!rejected(root / "other_masks" / "frame.png"), "another folder's mask is not a collision");
     check(!fs::exists(root / ".spirula-mask-attempts"), "ownership validation creates no scratch tree");
     std::string contents;
     { std::ifstream file(output); std::getline(file, contents); }
@@ -901,13 +1054,14 @@ void test_geometry_reel_outputs() {
 int main() {
     test_geometry_reel_outputs();
     test_mask_output_ownership();
+    test_source_hash_overlap();
     test_source_aware_video_resume();
     test_bare_model_is_not_a_dataset();
     test_rerun_reapplies_corrections();
     test_camera_scan_skips_mask_edits();
     test_per_camera_stencil();
     test_nested_input_stencils();
-    test_feature_masks_workspace();
+    test_segment_masks_workspace();
     test_model_masking_needs_segmentation();
     test_heif_folder();
     test_skipped_photos();

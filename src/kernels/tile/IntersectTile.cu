@@ -248,6 +248,12 @@ inline __device__ int footprint_tile(
                          {lo.x + bt.x, lo.y + bt.y});
 }
 
+// Whether the counting pass records the hit tiles of this range as a bit mask
+// (row-major in the range), which the write pass then reads instead of testing.
+inline __device__ bool footprint_masked(uint2 tile_min, uint2 tile_max) {
+    return (tile_max.x - tile_min.x) * (tile_max.y - tile_min.y) <= 32u;
+}
+
 // The tile range cut into blocks. Both passes walk it through these, so the
 // write pass emits exactly what the count pass counted.
 #define SS_FOOTPRINT_BLOCKS(tile_min, tile_max)                                     \
@@ -322,8 +328,10 @@ struct WidenToI64 {
     }
 };
 
+// Four blocks an SM: at the 127 registers nvcc picks, the exact count took 5.5
+// ms on a 10M-splat fisheye view against 4.2 here (6.6 at six blocks, spilling).
 template<bool is_counting_pass, bool is_ellipse>
-__global__ void intersect_tile_kernel(
+__global__ void __launch_bounds__(256, 4) intersect_tile_kernel(
     const uint32_t I,  // or 1 in packed mode
     const uint32_t N,  // or nnz in packed mode
     const int32_t *__restrict__ image_ids,  // [nnz], packed mode only
@@ -341,6 +349,9 @@ __global__ void intersect_tile_kernel(
     // both passes leave out so the raster gets an empty range for it.
     const int32_t *__restrict__ tile_active,
     int32_t *__restrict__ tiles_per_splat, // [..., N]
+    // [..., N]: an exact footprint's hit tiles where its box holds at most 32
+    // (footprint_masked), written by the counting pass for the write pass
+    uint32_t *__restrict__ tile_masks,
     int64_t *__restrict__ isect_ids,  // [n_isects]
     int32_t *__restrict__ flatten_ids,  // [n_isects]
     const int32_t n_isects,  // write pass: clamps the window below
@@ -433,6 +444,9 @@ __global__ void intersect_tile_kernel(
             const int block_height = ((int)tile_height + kIsectBlock - 1) / kIsectBlock;
             const float* tile_quads = fp.tile_quads + 12 * iid_c * (int64_t)(tile_width * tile_height);
             const float* block_quads = fp.block_quads + 12 * iid_c * (int64_t)(block_width * block_height);
+            const int bw = (int)tile_max.x - (int)tile_min.x;
+            const bool masked = footprint_masked(tile_min, tile_max);
+            uint32_t mask = 0u;
             int n = 0;
             SS_FOOTPRINT_BLOCKS(tile_min, tile_max) {
                 int4 box;
@@ -442,11 +456,15 @@ __global__ void intersect_tile_kernel(
                 for (int y = box.y; y < box.w; ++y)
                     for (int x = box.x; x < box.z; ++x) {
                         if (live && !live[(int64_t)y * tile_width + x]) continue;
-                        n += (cover == 2 ||
-                              footprint_tile(fs, fp, tile_quads, tile_width, bt, x, y) != 0) ? 1 : 0;
+                        if (cover != 2 && footprint_tile(fs, fp, tile_quads, tile_width, bt, x, y) == 0)
+                            continue;
+                        ++n;
+                        if (masked)
+                            mask |= 1u << ((y - (int)tile_min.y) * bw + (x - (int)tile_min.x));
                     }
             }
             tiles_per_splat[idx] = n;
+            if (masked) tile_masks[idx] = mask;
         }
         else if (tile_active == nullptr)
             tiles_per_splat[idx] = max(static_cast<int32_t>(
@@ -522,6 +540,18 @@ __global__ void intersect_tile_kernel(
                     ++cur_idx;
                 }
             }
+        }
+    }
+    else if (fp.means != nullptr && footprint_masked(tile_min, tile_max)) {
+        // The counting pass already ran the ray tests.
+        const int bw = (int)tile_max.x - (int)tile_min.x;
+        for (uint32_t m = tile_masks[idx]; m != 0u && cur_idx < max_idx; m &= m - 1u) {
+            const int b = __ffs(m) - 1;
+            const int64_t x = (int)tile_min.x + b % bw, y = (int)tile_min.y + b / bw;
+            int64_t tile_id = iid * tile_width * tile_height + y * tile_width + x;
+            isect_ids[cur_idx] = ((tile_id - key_tile_base) << 32) | (int64_t)depth_u32;
+            flatten_ids[cur_idx] = static_cast<int32_t>(idx);
+            ++cur_idx;
         }
     }
     else if (fp.means != nullptr) {
@@ -626,7 +656,7 @@ static constexpr int kMaskPad = 1;
 // unmasked, sampled exactly as the loss samples the mask (core/Interpolation.cuh).
 
 __global__ void tile_active_kernel(
-    const bool* __restrict__ mask,      // [I, H_mask, W_mask]
+    const uint8_t* __restrict__ mask,   // [I, H_mask, W_mask]
     const int I, const int H_mask, const int W_mask,
     const int width, const int height,
     const uint32_t tile_width, const uint32_t tile_height,
@@ -647,7 +677,7 @@ __global__ void tile_active_kernel(
             const int x = (int)tx * bt.ix + dx;
             if (x >= width) break;
             if (x < 0) continue;
-            if (nearest_sample_b(mask, b, x, y, width, height, W_mask, H_mask)) {
+            if (nearest_sample_u8(mask, b, x, y, width, height, W_mask, H_mask) & 1) {
                 live = true;
                 break;
             }
@@ -677,7 +707,7 @@ void compute_tile_active(
     const uint32_t tile_height = _CEIL_DIV((uint32_t)height, bt.iy);
     const uint32_t n_tiles = (uint32_t)I * tile_width * tile_height;
     tile_active_kernel<<<_LAUNCH_ARGS_1D(n_tiles, 256)>>>(
-        (const bool*)std::get<0>(mask), I, H_mask, W_mask, width, height,
+        (const uint8_t*)std::get<0>(mask), I, H_mask, W_mask, width, height,
         tile_width, tile_height, bt, tile_active);
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
@@ -865,13 +895,16 @@ std::tuple<
 
     uint32_t tile_width = 0, tile_height = 0, n_tiles = 0;
     const int32_t* active = tile_active;
-    DeviceVector<int32_t> tiles_per_splat, cum_tiles_per_splat;
+    DeviceVector<int32_t> tiles_per_splat, tile_masks;
     DeviceVector<int64_t> isect_ids_a, isect_ids_b;
     DeviceVector<int32_t> flatten_alt;
 
     // Tiles each splat touches in rows [row0, row1), and their exact total.
     auto count_rows = [&](int32_t row0, int32_t row1) -> int64_t {
         tiles_per_splat.resize(PoolSlot::IsectTilesPerSplat, total_count);
+        // The cumulative counts' slot holds the tile masks, and the scan runs
+        // in place in tiles_per_splat.
+        if (exact) tile_masks.resize(PoolSlot::IsectCumTiles, total_count);
         (by_ellipse ?
             intersect_tile_kernel<true, true> :
             intersect_tile_kernel<true, false>
@@ -890,6 +923,7 @@ std::tuple<
             tile_width, tile_height,
             active,
             tiles_per_splat.data_ptr(),
+            exact ? (uint32_t*)tile_masks.data_ptr() : nullptr,
             nullptr, nullptr, 0, bt, row0, row1, 0
         );
         CHECK_DEVICE_ERROR(cudaGetLastError());
@@ -925,7 +959,7 @@ std::tuple<
         // per attempt: an arena slot may be acquired only once per phase.
         pool_begin_phase(PoolPhase::TileIsect,
                          isect_reserve ? isect_reserve
-                                       : DevicePool::arena_span({count_span}));
+                                       : DevicePool::arena_span({count_span, count_span}));
         bt = bin_tile(macro_log2);
         tile_width = _CEIL_DIV(image_width, (uint32_t)bt.ix);
         tile_height = _CEIL_DIV(image_height, (uint32_t)bt.iy);
@@ -982,10 +1016,9 @@ std::tuple<
     // row1), whose tiles the keys count from tile0, into flatten_ids[base..].
     auto sort_rows = [&](int32_t row0, int32_t row1, uint32_t tile0,
                          uint32_t n_offsets, int32_t base, int32_t n) {
-        /* Inclusive prefix sum -> cumulative tile counts */
-        cum_tiles_per_splat.resize(PoolSlot::IsectCumTiles, total_count);
+        /* Inclusive prefix sum -> cumulative tile counts, in place */
         CUB_WRAPPER(cub::DeviceScan::InclusiveSum,
-            tiles_per_splat.data_ptr(), cum_tiles_per_splat.data_ptr(),
+            tiles_per_splat.data_ptr(), tiles_per_splat.data_ptr(),
             (int)total_count);
         CHECK_DEVICE_ERROR(cudaGetLastError());
         isect_ids_a.resize(PoolSlot::IsectIdsA, n);
@@ -995,12 +1028,14 @@ std::tuple<
         int tile_n_bits = 0;
         while ((1U << tile_n_bits) <= n_offsets) ++tile_n_bits;
         const int end_bit = 32 + tile_n_bits;
+        const int begin_bit = ellipse.by_tile_only ? 32 : 0;
         // CUB swaps the buffers once per pass and its pass count follows the
         // key bits: start where the last sort of this width says the result
         // lands in flatten_ids, and copy when it did not.
         static int8_t swaps[65] = {};
+        const int sorted_bits = end_bit - begin_bit;
         int32_t* const out = flatten_ids.data_ptr() + base;
-        const bool odd = swaps[end_bit] == 1;
+        const bool odd = swaps[sorted_bits] == 1;
         cub::DoubleBuffer<int64_t> d_keys(isect_ids_a.data_ptr(), isect_ids_b.data_ptr());
         cub::DoubleBuffer<int32_t> d_values(odd ? flatten_alt.data_ptr() : out,
                                             odd ? out : flatten_alt.data_ptr());
@@ -1017,10 +1052,11 @@ std::tuple<
             depths.data_ptr(),
             ellipse,
             fp,
-            cum_tiles_per_splat.data_ptr(),
+            tiles_per_splat.data_ptr(),
             tile_width, tile_height,
             active,
             nullptr,
+            exact ? (uint32_t*)tile_masks.data_ptr() : nullptr,
             d_keys.Current(),
             d_values.Current(),
             n, bt, row0, row1, (int64_t)tile0
@@ -1029,12 +1065,12 @@ std::tuple<
 
         /* Sort by (tile_id << 32 | depth) key */
         CUB_WRAPPER(cub::DeviceRadixSort::SortPairs,
-            d_keys, d_values, n, 0, end_bit);
+            d_keys, d_values, n, begin_bit, end_bit);
         CHECK_DEVICE_ERROR(cudaGetLastError());
         if (d_values.Current() != out) {
             cudaMemcpy(out, d_values.Current(), (size_t)n * sizeof(int32_t),
                        cudaMemcpyDeviceToDevice);
-            swaps[end_bit] = odd ? 0 : 1;
+            swaps[sorted_bits] = odd ? 0 : 1;
         }
 
         /* Compute per-tile start offsets */

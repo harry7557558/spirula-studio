@@ -54,8 +54,9 @@ public:
 
     // Async full run with the final config (re-parses the dataset so any
     // dataparser option changes apply). Replaces the session -- the caller
-    // must detach viewers from the previous one first.
-    void start_training(const TrainConfig& cfg, const std::string& preset);
+    // must detach viewers from the previous one first. run.json names `run_log`.
+    void start_training(const TrainConfig& cfg, const std::string& preset,
+                        const std::string& run_log = "");
 
     void set_paused(bool p);
     bool paused() const;

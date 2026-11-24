@@ -34,6 +34,9 @@ struct ProjEllipseView {
     // > 0: the kernel is cut at sigma = max_sigma (Primitive3DGS::kernel_vis), so no tile past
     // it is visited even where alpha would still exceed 1/255
     float max_sigma = 0.0f;
+    // Sort by tile alone: a tile's splats stay in flatten order, for a rasterizer
+    // that needs no depth order (the stochastic one).
+    bool by_tile_only = false;
 };
 
 // The two screen layouts as ellipse views. A 3DGUT row is no ellipse: it is

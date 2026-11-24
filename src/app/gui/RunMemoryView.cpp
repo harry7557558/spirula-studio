@@ -51,6 +51,7 @@ void RunMemoryView::poll_self(double work,
     r.host_available = spirula::availableRamBytes();
     r.host_total = spirula::physicalRamBytes();
     r.host_commit_free = spirula::availableCommitBytes();
+    r.host_swap_free = spirula::availableSwapBytes();
     spirula::RunReporter::Device d;
     const backend::MemoryUsage m = backend::memory_usage();
     if (device && device(d) && d.capacity > 0) {
@@ -76,9 +77,10 @@ void RunMemoryView::add(const RunReport& r, double work) {
 
     const double ours = (double)r.host_process, avail = (double)r.host_available;
     const double total = (double)r.host_total;
-    double limit = ours + avail;
-    const bool host_commit = commit > 0.0 && ours + commit < limit;
-    if (host_commit) limit = ours + commit;
+    const double swap = (double)r.host_swap_free;
+    double limit = ours + avail + swap;
+    const bool host_commit = commit > 0.0 && ours + commit + swap < limit;
+    if (host_commit) limit = ours + commit + swap;
     update(_ram, _ram_track, t, ours, std::max(0.0, total - ours - avail), total, limit,
            host_commit, r.host_peak, work);
 

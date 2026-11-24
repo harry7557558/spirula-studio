@@ -164,7 +164,7 @@ void GuiApp::draw_dense_options() {
         ui::TextColored(kOk, D::model_ready);
     }
     if (!_workspace.empty() && dense_completed(_workspace) && !dataset_busy()) {
-        if (ui::Button(D::preview)) request_open_splat(spirula::dense::artifact_files(_workspace).cloud.string());
+        if (ui::Button(D::preview)) request_open_splat(spirula::dense::default_cloud(_workspace).ply.string());
         ui::help_on_hover_disabled(D::preview_help);
     }
 

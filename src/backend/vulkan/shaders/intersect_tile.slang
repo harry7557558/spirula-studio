@@ -190,6 +190,9 @@ struct FootprintIO {
     float4* intrins;    // [I]
     float* tile_quads;  // [I, tile_h, tile_w, 4, 3], tile_quad_rays; unread when planar
     float* block_quads; // [I, block_h, block_w, 4, 3], the same per block
+    // [total]: a footprint's hit tiles where its range holds at most 32
+    // (footprint_masked), from the count pass for the write pass
+    uint* tile_masks;
     // footprint_planar_cov: 1 undistorted pinhole, 2 orthographic, whose
     // footprints are ellipses; 0 any other lens.
     uint32_t planar;
@@ -291,6 +294,12 @@ int footprint_tile(FootprintSplat s, float* tile_quads, bool planar, uint tile_w
     float2 lo = float2(float(x) * bt.x, float(y) * bt.y);
     return footprint_box(s, tile_quads + 12 * (y * int(tile_width) + x), planar, lo,
                          lo + float2(bt.x, bt.y));
+}
+
+// Whether the count pass records the range's hit tiles as a bit mask (row-major
+// in the range), which the write pass then reads instead of testing.
+bool footprint_masked(uint2 tile_min, uint2 tile_max) {
+    return (tile_max.x - tile_min.x) * (tile_max.y - tile_min.y) <= 32u;
 }
 
 // The tile range cut into blocks. Both passes walk it through these, so the
@@ -466,6 +475,9 @@ void intersect_tile_count(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 float* block_quads =
                     p.fp.block_quads + 12 * int(iid) * block_width * block_height;
                 bool planar = p.fp.planar != 0;
+                int bw = int(tile_max.x) - int(tile_min.x);
+                bool masked = footprint_masked(tile_min, tile_max);
+                uint mask = 0u;
                 SS_FOOTPRINT_BLOCKS(tile_min, tile_max) {
                     int4 box;
                     int cover = footprint_block(fs, block_quads, planar, p.tile_width, bt,
@@ -477,11 +489,16 @@ void intersect_tile_count(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                                 p.tile_active[tile_base + gindex_t(y) * p.tile_width +
                                               gindex_t(x)] == 0)
                                 continue;
-                            n += (cover == 2 || footprint_tile(fs, tile_quads, planar,
-                                                               p.tile_width, bt, x, y) != 0)
-                                     ? 1 : 0;
+                            if (cover != 2 && footprint_tile(fs, tile_quads, planar,
+                                                             p.tile_width, bt, x, y) == 0)
+                                continue;
+                            ++n;
+                            if (masked)
+                                mask |= 1u << uint((y - int(tile_min.y)) * bw +
+                                                   (x - int(tile_min.x)));
                         }
                 }
+                if (masked) p.fp.tile_masks[idx] = mask;
             } else if (sweep) {
                 n = count_ellipse_grid_overlaps(
                     xy, conic, kFootprint != 0,
@@ -558,7 +575,7 @@ void tile_active_map(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             int my = max(0, min(p.H_mask - 1, int(floor(v + 0.5f))));
             gindex_t mi = b * gindex_t(p.H_mask) * gindex_t(p.W_mask) +
                           gindex_t(my) * gindex_t(p.W_mask) + gindex_t(mx);
-            if (u8_load(p.mask, mi) != 0) { live = true; break; }
+            if ((u8_load(p.mask, mi) & 1u) != 0u) { live = true; break; }
         }
     }
     p.tile_active[t] = live ? 1 : 0;
@@ -661,7 +678,19 @@ void intersect_tile_write(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         if (p.max_sigma > 0.0f) reach = min(reach, p.max_sigma);
         conic = conic * (0.5f / reach);
     }
-    if (kFootprint != 0 && !sweep) {
+    if (kFootprint != 0 && !sweep && footprint_masked(tile_min, tile_max)) {
+        // The count pass already ran the ray tests.
+        int bw = int(tile_max.x) - int(tile_min.x);
+        for (uint m = p.fp.tile_masks[idx]; m != 0u && cur_idx < max_idx; m &= m - 1u) {
+            int b = firstbitlow(m);
+            gindex_t tile_id = iid * n_img_tiles +
+                              gindex_t(int(tile_min.y) + b / bw) * gindex_t(p.tile_width) +
+                              gindex_t(int(tile_min.x) + b % bw);
+            elem_at(p.isect_ids, cur_idx)[0] = u64key_make(tile_id - key_base, depth_u32);
+            elem_at(p.flatten_ids, cur_idx)[0] = int(idx);
+            ++cur_idx;
+        }
+    } else if (kFootprint != 0 && !sweep) {
         FootprintSplat fs = footprint_load(
             p.fp, p.proj_screen, p.row_stride, p.opac_off, p.conic_off, idx, p.N, uint(iid));
         int block_width = (int(p.tile_width) + kIsectBlock - 1) / kIsectBlock;

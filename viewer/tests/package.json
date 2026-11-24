@@ -1,0 +1,11 @@
+{
+  "name": "spirula-viewer-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node browser_smoke.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

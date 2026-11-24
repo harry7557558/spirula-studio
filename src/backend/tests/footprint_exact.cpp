@@ -202,24 +202,36 @@ int main(int argc, char** argv) {
             return img;
         };
 
-        for (int macro_log2 : macro_log2s) {
+        for (int macro_log2 : macro_log2s)
+        for (bool skip : {false, true}) {
+            // A tile-active map (every third tile off, as a mask would) binned
+            // against the reference with those tiles emptied.
+            const uint32_t tw = _CEIL_DIV(W, (uint32_t)bin_tile_x(macro_log2));
+            const uint32_t th = _CEIL_DIV(H, (uint32_t)bin_tile_y(macro_log2));
+            std::vector<int32_t> live(tw * th);
+            for (uint32_t t = 0; t < tw * th; t++) live[t] = skip && t % 3 == 1 ? 0 : 1;
+            int32_t* d_live = upload(live);
+
             // --- as the engine bins and culls ---
             int macro = macro_log2;
             auto isect = do_intersect_tile_generic(
                 aabb, depths, ellipse_view(splats_s, true),
                 footprint_view(in_splats, nullptr, vm_tv, dist_tv, model, tier, surfel != 0),
-                1, intr_tv, W, H, nullptr, nullptr, macro);
+                1, intr_tv, W, H, nullptr, skip ? d_live : nullptr, macro);
             const std::vector<float> binned =
                 render(splats_s, aabb, std::get<2>(isect), std::get<1>(isect), macro);
             const int64_t pairs = std::get<1>(isect).size();
+            backend::device_free(d_live);
+            if (macro != macro_log2) {
+                std::fprintf(stderr, "binning coarsened from %d to %d\n", macro_log2, macro);
+                return 1;
+            }
 
-            // --- every splat in every tile ---
-            const uint32_t tw = _CEIL_DIV(W, (uint32_t)bin_tile_x(macro));
-            const uint32_t th = _CEIL_DIV(H, (uint32_t)bin_tile_y(macro));
+            // --- every splat in every live tile ---
             std::vector<int32_t> ids, offsets(tw * th);
             for (uint32_t t = 0; t < tw * th; t++) {
                 offsets[t] = (int32_t)ids.size();
-                ids.insert(ids.end(), order.begin(), order.end());
+                if (live[t]) ids.insert(ids.end(), order.begin(), order.end());
             }
             int32_t* d_ids = upload(ids);
             int32_t* d_offsets = upload(offsets);
@@ -240,11 +252,11 @@ int main(int argc, char** argv) {
                 if (!(d <= kTolerance)) bad++;
                 if (!(d <= worst)) worst = d;
             }
-            std::printf("%-16s %-10s %s  %2d px tiles: %6lld pairs, %4zu drawn, %3d culled "
+            std::printf("%-16s %-10s %s  %2d px tiles%s: %6lld pairs, %4zu drawn, %3d culled "
                         "by the projection, max |diff| %.2e%s\n",
                         view.model, tier, surfel ? "2dgs " : "3dgut", bin_tile_x(macro),
-                        (long long)pairs, order.size(), culled, (double)worst,
-                        bad ? "  FAIL" : "");
+                        skip ? ", a third off" : "", (long long)pairs, order.size(), culled,
+                        (double)worst, bad ? "  FAIL" : "");
             ok = ok && bad == 0;
         }
         backend::device_free(d_box_all);

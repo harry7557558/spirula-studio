@@ -189,10 +189,8 @@ int main(int argc, char** argv) {
     // --- the randomized background modes, then the fixed colour ---
     // Three loss scales, so the cell size the noise draws is one of three.
     set_cams("PINHOLE", 1);
-    for (int mode = 0; mode < 3; mode++) {
-        if (mode == 0) engine_init_background_noise(0, false);
-        if (mode == 1) engine_init_background_pseudorandom(0, false);
-        if (mode == 2) engine_init_background_random(0, false);
+    for (int mode = 1; mode <= 3; mode++) {
+        engine_init_background_suppression((BackgroundSuppression)mode, 0, false);
         for (uint32_t seed : {7u, 8u, 9u}) {
             engine_set_background_step_params(seed, 0.6f, 3, 0);
             forward_3dgs("3dgs", 3, false, false, 0);
@@ -200,6 +198,15 @@ int main(int argc, char** argv) {
             pull(0, 0);
         }
     }
+    // A viewer frame draws the grey mean, the step's draw, or the base fill.
+    for (int view = 0; view < 3; view++) {
+        engine_background_view(true, view == 1, view == 2);
+        forward_3dgs("3dgs", 3, false, false, 0);
+        backend::device_synchronize();
+        engine_background_view(false, false);
+        pull(0, 0);
+    }
+    engine_init_background_suppression(BackgroundSuppression::None, 0, false);
     {
         const float color[3] = {0.2f, 0.65f, 0.9f};
         engine_init_background_color(color, /*transfer=*/0, /*linear=*/false);

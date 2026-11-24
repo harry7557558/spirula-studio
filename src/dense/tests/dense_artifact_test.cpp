@@ -18,25 +18,36 @@ void require(bool value, const char* message) {
 
 struct Fixture {
     fs::path root = fs::canonical(fs::temp_directory_path()) /
-        ("spirula-generations-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        ("spirula-dense-clouds-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     ~Fixture() { std::error_code error; fs::remove_all(spirula::long_path(root), error); }
 
-    ArtifactFiles stage(const std::string& name, const std::string& text) {
-        const auto directory = root / name;
+    // A staged run output: `count` binary float points and a finished manifest.
+    std::pair<fs::path, fs::path> stage(const std::string& name, int count) {
+        const auto directory = root / "staging" / name;
         fs::create_directories(directory);
-        ArtifactFiles files{directory / "roma.ply", directory / "manifest.json", name};
-        { std::ofstream output(files.cloud, std::ios::binary); output << text; }
-        JsonWriter manifest;
-        manifest.object().field("complete", true).field("cloud_sha256", spirula::sha256_file(files.cloud.string()))
-            .field("cloud_bytes", (long long)text.size()).key("statistics").object().field("exported", 1).end().end();
-        { std::ofstream output(files.manifest); output << manifest.str(); }
-        return files;
+        const auto cloud = directory / "roma.ply", manifest = directory / "manifest.json";
+        write_binary(cloud, count);
+        { std::ofstream output(manifest); output << "{\"complete\":true}"; }
+        return {cloud, manifest};
     }
 
-    ArtifactFiles publish(const ArtifactFiles& files, const std::function<void(const char*)>& hook = {}) {
-        return publish_generation(root.string(), files.generation, files.cloud, files.manifest, hook);
+    Cloud publish(const std::string& name, int count, const std::string& label = "balanced") {
+        const auto [cloud, manifest] = stage(name, count);
+        return publish_cloud(root.string(), label, cloud, manifest);
+    }
+
+    static void write_binary(const fs::path& path, int count, int drop_bytes = 0) {
+        std::ofstream output(path, std::ios::binary);
+        output << "ply\nformat binary_little_endian 1.0\nelement vertex " << count
+               << "\nproperty float x\nproperty float y\nproperty float z\n"
+                  "property uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n";
+        output << std::string((size_t)count * 15 - (size_t)drop_bytes, '\0');
     }
 };
+
+void set_age(const fs::path& path, int seconds_ago) {
+    fs::last_write_time(path, fs::file_time_type::clock::now() - std::chrono::seconds(seconds_ago));
+}
 
 struct WorkingDirectory {
     fs::path previous = fs::current_path();
@@ -64,71 +75,66 @@ int main() {
             std::printf("PASS cleanup rejects nested, root and parent redirects with target bytes preserved\n");
         }
         Fixture fixture;
-        require(automatic_seed(fixture.root.string()).empty(), "a dataset without a dense cloud got a seed");
-        const auto legacy = fixture.stage("dense", "old");
-        require(automatic_seed(fixture.root.string()) == artifact_files(fixture.root.string()).cloud.string(),
-                "a finished dense cloud was not the automatic seed");
+        const auto dataset = fixture.root.string();
+        const auto dense = fixture.root / "dense";
+        require(automatic_seed(dataset).empty() && clouds(dataset).empty(), "a dataset without a dense cloud got a seed");
         bool stopped = false;
         {
-            spirula::FileLock lock(fixture.root / "dense" / "run.lock");
-            try { spirula::FileLock second(fixture.root / "dense" / "run.lock"); }
+            fs::create_directories(work_root(dataset));
+            spirula::FileLock lock(work_root(dataset) / "run.lock");
+            try { spirula::FileLock second(work_root(dataset) / "run.lock"); }
             catch (const std::exception&) { stopped = true; }
             require(stopped, "two writers acquired the same dense run lock");
         }
-        { spirula::FileLock released(fixture.root / "dense" / "run.lock"); }
-        const auto owned = fixture.stage("owned", "temporary");
-        stopped = false;
-        try { spirula::remove_owned_directory(owned.cloud.parent_path(), fixture.root, "dense"); }
-        catch (const std::exception&) { stopped = true; }
-        require(stopped && fs::exists(legacy.cloud), "cleanup accepted an unrelated directory");
-        spirula::remove_owned_directory(owned.cloud.parent_path(), fixture.root, "owned");
-        require(!fs::exists(owned.cloud), "owned work was not removed");
-        require(artifact_complete(fixture.root.string()), "legacy artifact was not recognized");
-        const auto interrupted = fixture.stage("interrupted", "new");
-        stopped = false;
-        try { fixture.publish(interrupted, [](const char*) { throw std::runtime_error("interrupted"); }); }
-        catch (const std::exception&) { stopped = true; }
-        auto current = artifact_files(fixture.root.string());
-        require(stopped && current.generation.rfind("legacy-", 0) == 0 && artifact_available(current),
-                "interrupted migration lost the legacy cloud");
-        require(spirula::sha256_file(current.cloud.string()) == spirula::sha256_file(legacy.cloud.string()),
-                "legacy migration changed cloud bytes");
+        const auto first = fixture.publish("first", 4);
+        require(first.ply.parent_path() == dense && first.ply.extension() == ".ply" &&
+                first.relative.find("_balanced") != std::string::npos && fs::is_regular_file(first.manifest) &&
+                first.manifest.stem() == first.ply.stem(), "a published cloud is not a dated file with its manifest beside it");
+        const auto again = fixture.publish("again", 5);
+        require(again.ply != first.ply && fs::exists(first.ply), "a second publication in the same second overwrote the first");
+        set_age(first.ply, 100); set_age(again.ply, 50);
+        require(automatic_seed(dataset) == again.ply.string() && artifact_complete(dataset),
+                "the newest finished cloud was not the automatic seed");
+        set_age(again.ply, 200);
+        require(default_cloud(dataset).ply == first.ply, "the default did not follow modification time");
 
-        const auto first = fixture.publish(fixture.stage("first", "one"));
-        for (const char* phase : {"generation_cloud", "generation_manifest", "compatibility_cloud", "compatibility_manifest", "before_current"}) {
-            const auto next = fixture.stage(std::string("failure-") + phase, "two");
-            stopped = false;
-            try { fixture.publish(next, [&](const char* observed) {
-                if (std::string(observed) == phase) throw std::runtime_error("interrupted");
-            }); } catch (const std::exception&) { stopped = true; }
-            current = artifact_files(fixture.root.string());
-            require(stopped && current.generation == first.generation && artifact_available(current),
-                    "publication interruption exposed an inconsistent generation");
-            require(!fs::exists(fixture.root / "dense" / "generations" / next.generation),
-                    "publication interruption retained an abandoned generation");
-            require(automatic_seed(fixture.root.string()) == first.cloud.string(),
-                    "training seed resolved a partially replaced compatibility cloud");
-        }
-        const auto second = fixture.publish(fixture.stage("second", "two"));
+        fs::create_directories(dense / "generations" / "run-1");
+        Fixture::write_binary(dense / "generations" / "run-1" / "roma.ply", 3);
+        { std::ofstream(dense / "generations" / "run-1" / "manifest.json") << "{\"complete\":true}"; }
+        set_age(dense / "generations" / "run-1" / "roma.ply", 10);
+        const auto legacy = default_cloud(dataset);
+        require(legacy.relative == "generations/run-1/roma.ply" &&
+                legacy.manifest == dense / "generations" / "run-1" / "manifest.json" && artifact_complete(dataset),
+                "a cloud from the older generations layout was not found with its manifest");
+
+        fs::create_directories(dense / "mine");
+        Fixture::write_binary(dense / "mine" / "cleaned.ply", 2);
+        require(default_cloud(dataset).relative == "mine/cleaned.ply" && artifact_complete(dataset) &&
+                !artifact_complete(dataset, true), "a cloud without a manifest seeds training but must not count as reusable");
+        Fixture::write_binary(dense / "truncated.ply", 6, 1);
+        { std::ofstream(dense / "mesh.ply") << "ply\nformat ascii 1.0\nelement vertex 3\nproperty float x\n"
+              "property float y\nproperty float z\nelement face 1\nproperty list uchar int vertex_indices\nend_header\n"
+              "0 0 0\n1 0 0\n0 1 0\n3 0 1 2\n"; }
+        { std::ofstream(dense / "notes.ply") << "not a ply"; }
+        fs::create_directories(work_root(dataset) / "cache");
+        Fixture::write_binary(work_root(dataset) / "scratch.ply", 8);
+        for (const auto& c : clouds(dataset))
+            require(c.relative != "truncated.ply" && c.relative != "mesh.ply" && c.relative != "notes.ply" &&
+                    c.relative.rfind(".work", 0) != 0, "an implausible or scratch PLY was listed as a cloud");
+        require(clouds(dataset).size() == 4, "the cloud list missed a version");
+        require(dense_dataset_of(first.ply) == dataset && dense_dataset_of(dense / "mine" / "cleaned.ply") == dataset &&
+                dense_dataset_of(work_root(dataset) / "scratch.ply").empty() && dense_dataset_of(fixture.root / "x.ply").empty(),
+                "a cloud's dataset was not recovered from its path");
         {
             WorkingDirectory working(fixture.root.parent_path());
-            const auto relative = fixture.root.filename();
-            require(artifact_files(relative.string()).cloud == second.cloud &&
-                    resolve_seed_path(relative.string(), "dense/roma.ply") == (fixture.root / "dense/roma.ply").string() &&
-                    resolve_dense_file((relative / "dense" / "roma.ply").string()) == (fixture.root / "dense/roma.ply").string() &&
-                    resolve_seed_path(relative.string(), "dense/generations/first/roma.ply") == first.cloud.string(),
+            const auto relative = fixture.root.filename().string();
+            require(is_dense_seed(relative, "dense/mine/cleaned.ply") &&
+                    resolve_seed_path(relative, "dense/mine/cleaned.ply") == (dense / "mine" / "cleaned.ply").string() &&
+                    resolve_seed_path(relative, "elsewhere.ply") == "elsewhere.ply",
                     "relative dataset or seed did not resolve its explicit file");
         }
-        const auto abandoned = fixture.root / "dense" / "generations" / "abandoned";
-        fs::create_directories(abandoned); generation_marker(abandoned,".pending");
-        const auto unowned = fixture.root / "dense" / "generations" / "unowned";
-        fs::create_directories(unowned);
-        generation_marker(first.cloud.parent_path(),".pending");
-        cleanup_pending_generations(fixture.root.string());
-        require(!fs::exists(abandoned) && fs::exists(unowned) && artifact_available(first) && artifact_available(second),
-                "recovery cleanup removed published/unowned data or retained abandoned work");
         {
-            const auto cache = fixture.root / "dense" / "cache";
+            const auto cache = work_root(dataset) / "cache";
             const auto kept = cache / std::string(64, 'a'), emptied = cache / std::string(64, 'b');
             const auto pairs = cache / "pairs-v4" / "run-1", lookalike = cache / "notes" / "run-2";
             for (const auto& directory : {kept / "run-11" / "nested", emptied / "run-22", kept / "run-notdigits", pairs, lookalike})
@@ -153,7 +159,7 @@ int main() {
             // long-path manifest, so this process reaches such a path only in extended-length form.
             auto deep = fixture.root;
             while (deep.native().size() < 200) deep /= "a-long-dataset-folder-name";
-            const auto cache = spirula::long_path(deep / "dense" / "cache");
+            const auto cache = spirula::long_path(work_root(deep.string()) / "cache");
             require(spirula::long_path(cache) == cache, "long_path is not idempotent");
             const auto run = cache / std::string(64, 'c') / "run-7";
             const auto prediction = cache / "pairs-v4" / std::string(64, 'd') / (std::string(64, 'e') + ".roma");
@@ -169,42 +175,6 @@ int main() {
             spirula::remove_owned_directory(deep / "dense", deep, "dense");
             require(!fs::exists(spirula::long_path(deep / "dense")), "owned cleanup failed past MAX_PATH");
         }
-        require(artifact_files(fixture.root.string()).generation == "second" && artifact_complete(fixture.root.string()),
-                "successful generation did not become current");
-        require(is_dense_seed(fixture.root.string(), second.cloud.string()) &&
-                resolve_dense_file(second.cloud.string()) == second.cloud.string() &&
-                resolve_dense_file(legacy.cloud.string()) == legacy.cloud.string(),
-                "explicit cloud paths were redirected");
-        require(resolve_seed_path(fixture.root.string(), first.cloud.string()) == first.cloud.string(),
-                "an explicitly selected published generation was replaced by the current one");
-        { std::ofstream output(legacy.cloud); output << "edited compatibility cloud"; }
-        require(artifact_available(second) && resolve_dense_file(legacy.cloud.string()) == legacy.cloud.string(),
-                "compatibility export edits changed published generation contents");
-        { std::ofstream output(second.cloud); output << "bad"; }
-        stopped = false;
-        try { resolve_dense_file(second.cloud.string()); } catch (const std::exception&) { stopped = true; }
-        require(!stopped && artifact_complete(fixture.root.string()), "external dense cloud edit was refused");
-        { std::ofstream output(second.cloud); output << "two"; }
-        { std::ofstream output(second.manifest, std::ios::app); output << ' '; }
-        stopped = false;
-        try { artifact_files(fixture.root.string()); } catch (const std::exception&) { stopped = true; }
-        require(!stopped && artifact_complete(fixture.root.string()), "an unchanged manifest with external whitespace was refused");
-        const auto recovered = fixture.publish(fixture.stage("recovered", "three"));
-        require(artifact_available(recovered), "a new successful run could not replace a corrupt generation record");
-        {
-            std::ofstream output(fixture.root / "dense" / "current.json");
-            output << "{\"version\":1,\"generation\":\"../outside\",\"manifest_sha256\":\""
-                   << std::string(64, 'a') << "\"}";
-        }
-        require(!artifact_complete(fixture.root.string()), "generation traversal was accepted");
-        Fixture initial;
-        const auto first_failure = initial.stage("first-failure","first");
-        stopped = false;
-        try { initial.publish(first_failure,[](const char* phase) {
-            if (std::string(phase) == "before_current") throw std::runtime_error("interrupted");
-        }); } catch (const std::exception&) { stopped = true; }
-        require(stopped && !artifact_complete(initial.root.string()),
-                "interrupted first publication exposed compatibility aliases as a successful legacy generation");
         {
             Fixture linked;
             fs::create_directories(linked.root);
@@ -213,16 +183,14 @@ int main() {
             fs::create_directory_symlink(linked.root, link, link_error);
             if (!link_error) {
                 struct RemoveLink { fs::path path; ~RemoveLink() { std::error_code e; fs::remove(path, e); } } remove_link{link};
-                const auto staged = linked.stage("through-link", "linked");
-                const auto published = publish_generation(link.string(), staged.generation, staged.cloud, staged.manifest);
-                const auto pending = linked.root / "dense" / "generations" / "pending-through-link";
-                fs::create_directories(pending); generation_marker(pending, ".pending");
-                cleanup_pending_generations(link.string());
-                require(artifact_available(published) && !fs::exists(pending) && artifact_complete(link.string()),
-                        "a dataset reached through a linked parent folder could not publish or clean up");
+                const auto [cloud, manifest] = linked.stage("through-link", 2);
+                const auto published = publish_cloud(link.string(), "fast", cloud, manifest);
+                require(fs::is_regular_file(published.ply) && artifact_complete(link.string()) &&
+                        is_dense_seed(link.string(), published.ply.string()),
+                        "a dataset reached through a linked parent folder could not publish");
             }
         }
-        std::printf("PASS dense writer lock, owned cleanup, published generations, interrupted publication, legacy migration, external edits, seed resolution, linked datasets and recovery\n");
+        std::printf("PASS dense writer lock, owned cleanup, named publication, newest default, legacy and user clouds, implausible and scratch PLYs, seed resolution and linked datasets\n");
         return 0;
     } catch (const std::exception& error) { std::fprintf(stderr, "FAIL: %s\n", error.what()); return 1; }
 }

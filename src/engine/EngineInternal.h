@@ -11,6 +11,7 @@
 #include "core/Tensor.h"
 #include "kernels/loss/PerPixelLoss.cuh"   // LossIndex / LossValues / PerPixelGrads
 #include "kernels/pixelwise/PixelWise.cuh"      // PPISPRegLossIndex
+#include "kernels/raster/RasterizationStochastic.cuh"
 
 #include <array>
 #include <cstdint>
@@ -188,6 +189,14 @@ void _engine_bilagrid_tv_into(float* tv_buf3_device);
 int engine_resolve_num_loss_scales(int num_loss_scales,
                                    int loss_scale_min_pixels,
                                    int64_t H, int64_t W);
+
+// The armed stochastic frame of forward_3dgs: its channel's running sum, and
+// whether the sum carries on (engine/EngineStochastic.cpp).
+StochasticFrame _engine_stochastic_frame(const std::string& primitive, int sh_degree,
+                                         bool output_normal, bool depth_sorted);
+// Whether its tile lists are depth-sorted, which lets a walk end early
+// (SS_VIEWER_STOCHASTIC_SORTED).
+bool _engine_stochastic_depth_sorted();
 
 // Background blend: forward runs inside forward_3dgs, out of place, so viewer
 // renders blend too. The backward hook adds v_T, rewrites v_render_rgb, and

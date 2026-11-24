@@ -48,6 +48,7 @@ static const uint kInLossMap = 1u << 15;
 // core/PixelFormat.h formats of render_rgb and ref_rgb, two bits each.
 static const uint kInRenderRgbFmtShift = 16u;
 static const uint kInRefRgbFmtShift = 18u;
+static const uint kInSegIgnMask = 1u << 20;
 
 // out_flags bits (v_* buffer present), in PerPixelGrads field order.
 static const uint kOutVRenderRgb = 1u << 0;
@@ -265,14 +266,14 @@ void _ms_scatter_add_gt_normal(float* src, float* dst, int b, int x_dst,
 }
 
 [ForceInline]
-bool _ms_nearest_b(uint* src, int b, int x_dst, int y_dst, int W_dst,
-                   int H_dst, int W_src, int H_src) {
+uint _ms_nearest_u8(uint* src, int b, int x_dst, int y_dst, int W_dst,
+                    int H_dst, int W_src, int H_src) {
     float u = (float(x_dst) + 0.5f) * float(W_src) / float(W_dst) - 0.5f;
     float v = (float(y_dst) + 0.5f) * float(H_src) / float(H_dst) - 0.5f;
     int x = max(0, min(W_src - 1, int(floor(u + 0.5f))));
     int y = max(0, min(H_src - 1, int(floor(v + 0.5f))));
     uint plane = uint(b) * uint(H_src) * uint(W_src);
-    return _ms_load_u8(src, plane + uint(y) * uint(W_src) + uint(x)) != 0u;
+    return _ms_load_u8(src, plane + uint(y) * uint(W_src) + uint(x));
 }
 
 // Which accumulator row(s) a raw-loss index adds into (mirrors
@@ -298,7 +299,8 @@ void _ms_load_pixel(PplParams p, int batch_idx, gindex_t idx, int x_dst,
                     out float3 ref_normal_v, out float render_Ts,
                     out float3 rgb_dist, out float depth_dist,
                     out float3 normal_dist, out float median_depth,
-                    out float3 median_normal, out bool ref_alpha_v) {
+                    out float3 median_normal, out bool ref_alpha_v,
+                    out bool rgb_mask_v, out bool alpha_mask_v) {
     render_rgb = (p.in_flags & kInRenderRgb) != 0
         ? rgb_load3(p.render_rgb, idx, (p.in_flags >> kInRenderRgbFmtShift) & 3u)
         : float3(0.0f);
@@ -324,11 +326,18 @@ void _ms_load_pixel(PplParams p, int batch_idx, gindex_t idx, int x_dst,
     normal_dist = (p.in_flags & kInNormalDist) != 0 ? _ms_load_f3(p.normal_dist, idx) : float3(0.0f);
     median_depth = (p.in_flags & kInMedianDepth) != 0 ? p.median_depth[idx] : 0.0f;
     median_normal = (p.in_flags & kInMedianNormal) != 0 ? _ms_load_f3(p.median_normal, idx) : float3(0.0f);
+    bool seg_ign = (p.in_flags & kInSegIgnMask) != 0u;
     ref_alpha_v = false;
-    if ((p.in_flags & kInRefAlpha) != 0)
-        ref_alpha_v = _ms_nearest_b(p.ref_alpha, batch_idx, x_dst, y_dst,
-                                    p.W_render, p.H_render, p.W_ref_alpha,
-                                    p.H_ref_alpha);
+    rgb_mask_v = false;
+    alpha_mask_v = (p.has_mask != 0) && !seg_ign;
+    if ((p.in_flags & kInRefAlpha) != 0) {
+        uint m = _ms_nearest_u8(p.ref_alpha, batch_idx, x_dst, y_dst,
+                                p.W_render, p.H_render, p.W_ref_alpha,
+                                p.H_ref_alpha);
+        ref_alpha_v = (m == 1u);
+        rgb_mask_v = (m & 1u) != 0u;
+        if (seg_ign) alpha_mask_v = (p.has_mask != 0) && (m != 0u);
+    }
 }
 
 // One partial per wave and raw loss (256 / 8 waves at llvmpipe's width), so
@@ -356,18 +365,18 @@ void ppl_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         float3 render_rgb, ref_rgb, render_normal, depth_normal, ref_normal_v;
         float3 rgb_dist, normal_dist, median_normal;
         float render_depth, ref_depth_v, render_Ts, depth_dist, median_depth;
-        bool ref_alpha_v;
+        bool ref_alpha_v, rgb_mask_v, alpha_mask_v;
         _ms_load_pixel(p, int(batch_idx), idx, x_dst, y_dst, render_rgb,
                        ref_rgb, render_depth, ref_depth_v, render_normal,
                        depth_normal, ref_normal_v, render_Ts, rgb_dist,
                        depth_dist, normal_dist, median_depth, median_normal,
-                       ref_alpha_v);
+                       ref_alpha_v, rgb_mask_v, alpha_mask_v);
 
         losses = per_pixel_losses(
             render_rgb, ref_rgb, render_depth, ref_depth_v, render_normal,
             depth_normal, ref_normal_v, render_Ts, rgb_dist, depth_dist,
-            normal_dist, median_depth, median_normal, ref_alpha_v,
-            p.has_mask != 0, p.saturation_threshold, p.weights);
+            normal_dist, median_depth, median_normal, ref_alpha_v, rgb_mask_v,
+            p.has_mask != 0, alpha_mask_v, p.saturation_threshold, p.weights);
 
         if ((p.in_flags & kInLossMap) != 0) {
             p.loss_map[idx] = abs(
@@ -447,11 +456,12 @@ void ppl_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float3 render_rgb, ref_rgb, render_normal, depth_normal, ref_normal_v;
     float3 rgb_dist, normal_dist, median_normal;
     float render_depth, ref_depth_v, render_Ts, depth_dist, median_depth;
-    bool ref_alpha_v;
+    bool ref_alpha_v, rgb_mask_v, alpha_mask_v;
     _ms_load_pixel(p, int(batch_idx), idx, x_dst, y_dst, render_rgb, ref_rgb,
                    render_depth, ref_depth_v, render_normal, depth_normal,
                    ref_normal_v, render_Ts, rgb_dist, depth_dist, normal_dist,
-                   median_depth, median_normal, ref_alpha_v);
+                   median_depth, median_normal, ref_alpha_v, rgb_mask_v,
+                   alpha_mask_v);
 
     float3 v_render_rgb, v_ref_rgb, v_render_normal, v_depth_normal;
     float3 v_ref_normal, v_rgb_dist, v_normal_dist, v_median_normal;
@@ -460,8 +470,8 @@ void ppl_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     per_pixel_losses_bwd(
         render_rgb, ref_rgb, render_depth, ref_depth_v, render_normal,
         depth_normal, ref_normal_v, render_Ts, rgb_dist, depth_dist,
-        normal_dist, median_depth, median_normal, ref_alpha_v,
-        p.has_mask != 0, p.saturation_threshold, p.weights, v_losses,
+        normal_dist, median_depth, median_normal, ref_alpha_v, rgb_mask_v,
+        p.has_mask != 0, alpha_mask_v, p.saturation_threshold, p.weights, v_losses,
         v_render_rgb, v_ref_rgb,
         v_render_depth, v_ref_depth, v_render_normal, v_depth_normal,
         v_ref_normal, v_render_Ts, v_rgb_dist, v_depth_dist, v_normal_dist,
@@ -732,10 +742,10 @@ void ms_downsample_masked_f(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     for (int dy = 0; dy < 2; dy++)
         for (int dx = 0; dx < 2; dx++) {
             gindex_t i = base + ys[dy] * p.hsW + xs[dx];
-            bool valid = same_mask
-                ? (u8_load(p.mask, (uint)i) != 0u)
-                : _ms_nearest_b(p.mask, int(bid), int(xs[dx]), int(ys[dy]),
-                                p.hsW, p.hsH, p.mW, p.mH);
+            bool valid = (same_mask
+                ? u8_load(p.mask, (uint)i)
+                : _ms_nearest_u8(p.mask, int(bid), int(xs[dx]), int(ys[dy]),
+                                 p.hsW, p.hsH, p.mW, p.mH)) == 1u;
             for (int c = 0; c < p.C; c++) {
                 float v = rgb_load1(p.hs, i * p.C + c, p.hs_fmt);
                 box[c] += 0.25f * v;
@@ -758,6 +768,8 @@ struct MsZeroMaskedParams {
     uint* mask;
     int B, C, H, W;
     int mH, mW;
+    int ignore_only;  // zero only class 0, leaving a segment its alpha grad
+    int _pad0;
 };
 
 [shader("compute")]
@@ -769,11 +781,11 @@ void ms_zero_masked_grad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint bid = wg.z;
     if (yid >= uint(p.H) || xid >= uint(p.W)) return;
     gindex_t i = ((gindex_t)bid * p.H + yid) * (gindex_t)p.W + xid;
-    bool valid = (p.mH == p.H && p.mW == p.W)
-        ? (u8_load(p.mask, (uint)i) != 0u)
-        : _ms_nearest_b(p.mask, int(bid), int(xid), int(yid),
-                        p.W, p.H, p.mW, p.mH);
-    if (valid) return;
+    uint m = (p.mH == p.H && p.mW == p.W)
+        ? u8_load(p.mask, (uint)i)
+        : _ms_nearest_u8(p.mask, int(bid), int(xid), int(yid),
+                         p.W, p.H, p.mW, p.mH);
+    if (p.ignore_only != 0 ? m != 0u : (m & 1u) != 0u) return;
     for (int c = 0; c < p.C; c++)
         p.grad[i * p.C + c] = 0.0f;
 }
@@ -837,11 +849,17 @@ void ms_downsample_b(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         uint x0 = min(2 * xid, uint(p.hsW - 1)),
              x1 = min(2 * xid + 1, uint(p.hsW - 1));
         uint plane = bid * uint(p.hsH) * uint(p.hsW);
-        uint v = _ms_load_u8(p.src, plane + y0 * uint(p.hsW) + x0) +
-                 _ms_load_u8(p.src, plane + y0 * uint(p.hsW) + x1) +
-                 _ms_load_u8(p.src, plane + y1 * uint(p.hsW) + x0) +
-                 _ms_load_u8(p.src, plane + y1 * uint(p.hsW) + x1);
-        if (v >= 2u) out_w |= 1u << (8u * k);
+        uint c0 = _ms_load_u8(p.src, plane + y0 * uint(p.hsW) + x0);
+        uint c1 = _ms_load_u8(p.src, plane + y0 * uint(p.hsW) + x1);
+        uint c2 = _ms_load_u8(p.src, plane + y1 * uint(p.hsW) + x0);
+        uint c3 = _ms_load_u8(p.src, plane + y1 * uint(p.hsW) + x1);
+        uint n_keep = uint(c0 == 1u) + uint(c1 == 1u) + uint(c2 == 1u) + uint(c3 == 1u);
+        uint n_seg  = ((c0 >> 1u) & 1u) + ((c1 >> 1u) & 1u) + ((c2 >> 1u) & 1u) +
+                      ((c3 >> 1u) & 1u);
+        // One run's segments are all 2 or all 3.
+        uint seg = max(max(c0, c1), max(c2, c3)) >= 3u ? 3u : 2u;
+        uint out_c = n_keep >= 2u ? 1u : (n_seg >= 2u ? seg : 0u);
+        out_w |= out_c << (8u * k);
     }
     if (covered == 0xffffffffu) {
         p.dst[word] = out_w;

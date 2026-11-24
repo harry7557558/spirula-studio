@@ -16,6 +16,7 @@ namespace {
 // Mirror the params structs in shaders/intersect_tile.slang.
 struct FootprintIO {
     uint64_t means, quats, scales, gaussian_ids, viewmats, intrins, tile_quads, block_quads;
+    uint64_t tile_masks;
     uint32_t planar, _pad0;
 };
 
@@ -30,7 +31,7 @@ struct IsectCountParams {
     int32_t band_row0, band_row1;
     uint32_t _pad0;
 };
-static_assert(sizeof(IsectCountParams) == 6 * 8 + 9 * 8 + 16 * 4,
+static_assert(sizeof(IsectCountParams) == 6 * 8 + 10 * 8 + 16 * 4,
               "params layout must match the slang struct");
 
 struct IsectWriteParams {
@@ -45,7 +46,7 @@ struct IsectWriteParams {
     uint32_t key_tile_base;
     uint32_t _pad0;
 };
-static_assert(sizeof(IsectWriteParams) == 8 * 8 + 9 * 8 + 18 * 4,
+static_assert(sizeof(IsectWriteParams) == 8 * 8 + 10 * 8 + 18 * 4,
               "params layout must match the slang struct");
 
 struct TileQuadsParams {
@@ -238,7 +239,7 @@ std::tuple<
     // 4 = kFootprint (see intersect_tile.slang). Both passes must agree, so it
     // is settled by the count loop rather than by the caller's tile_active.
     backend::vk::SpecList mode_spec;
-    DeviceVector<int32_t> tiles_per_splat, cum_tiles_per_splat;
+    DeviceVector<int32_t> tiles_per_splat, tile_masks;
     DeviceVector<uint32_t> isect_total;
     DeviceVector<int64_t> isect_ids_a, isect_ids_b;
     DeviceVector<int32_t> flatten_alt;
@@ -247,6 +248,12 @@ std::tuple<
     // wrapped int32 prefix sum would drive the write pass off its buffers.
     auto count_rows = [&](int32_t row0, int32_t row1) -> int64_t {
         tiles_per_splat.resize(PoolSlot::IsectTilesPerSplat, total_count);
+        // The cumulative counts' slot holds the tile masks, and the scan runs
+        // in place in tiles_per_splat.
+        if (exact) {
+            tile_masks.resize(PoolSlot::IsectCumTiles, total_count);
+            fio.tile_masks = (uint64_t)tile_masks.data_ptr();
+        }
         isect_total.resize(PoolSlot::IsectTotal, 2);
         isect_total.zero();
         IsectCountParams cp{};
@@ -294,7 +301,7 @@ std::tuple<
         // per attempt: an arena slot may be acquired only once per phase.
         pool_begin_phase(PoolPhase::TileIsect,
                          isect_reserve ? isect_reserve
-                                       : DevicePool::arena_span({count_span}));
+                                       : DevicePool::arena_span({count_span, count_span}));
         tile_width = _CEIL_DIV(image_width, (uint32_t)bin_tile_x(macro_log2));
         tile_height = _CEIL_DIV(image_height, (uint32_t)bin_tile_y(macro_log2));
         n_tiles = intersect_check_tile_count(tile_width, tile_height, I);
@@ -346,10 +353,8 @@ std::tuple<
     // row1), whose tiles the keys count from tile0, into flatten_ids[base..].
     auto sort_rows = [&](int32_t row0, int32_t row1, uint32_t tile0,
                          uint32_t n_offsets, int32_t base, int32_t n) {
-        cum_tiles_per_splat.resize(PoolSlot::IsectCumTiles, total_count);
         backend::inclusive_sum<int32_t>(tiles_per_splat.data_ptr(),
-                                        cum_tiles_per_splat.data_ptr(),
-                                        total_count);
+                                        tiles_per_splat.data_ptr(), total_count);
         isect_ids_a.resize(PoolSlot::IsectIdsA, n);
         isect_ids_b.resize(PoolSlot::IsectIdsB, n);
         flatten_alt.resize(PoolSlot::IsectFlatB, n);
@@ -357,10 +362,11 @@ std::tuple<
         int tile_n_bits = 0;
         while ((1U << tile_n_bits) <= n_offsets) ++tile_n_bits;
         const int end_bit = 32 + tile_n_bits;
+        const int begin_bit = ellipse.by_tile_only ? 32 : 0;
         // One pass per 8 bits, each swapping the buffers: start in the one
         // that leaves the result in flatten_ids (backend/vulkan/SortScanVulkan.cpp).
         int32_t* const out = flatten_ids.data_ptr() + base;
-        const bool odd = ((end_bit + 7) / 8) & 1;
+        const bool odd = ((end_bit - begin_bit + 7) / 8) & 1;
         backend::DoubleBuffer<int64_t> d_keys(isect_ids_a.data_ptr(),
                                               isect_ids_b.data_ptr());
         backend::DoubleBuffer<int32_t> d_values(
@@ -371,7 +377,7 @@ std::tuple<
         wp.aabb = (uint64_t)aabb.data_ptr();
         wp.depths = (uint64_t)depths.data_ptr();
         wp.proj_screen = p_screen;
-        wp.cum_tiles = (uint64_t)cum_tiles_per_splat.data_ptr();
+        wp.cum_tiles = (uint64_t)tiles_per_splat.data_ptr();
         wp.isect_ids = (uint64_t)d_keys.current();
         wp.flatten_ids = (uint64_t)d_values.current();
         wp.tile_active = vkk::or_fallback(active);
@@ -397,7 +403,7 @@ std::tuple<
                            fold.per_row, fold.rows, 1, &wp, sizeof(wp));
 
         /* Sort by (tile_id << 32 | depth) key */
-        backend::sort_pairs(d_keys, d_values, n, 0, end_bit);
+        backend::sort_pairs(d_keys, d_values, n, begin_bit, end_bit);
         if (d_values.current() != out)
             throw std::runtime_error("tile intersect: sort left its result in the scratch buffer");
 

@@ -269,10 +269,14 @@ int main(int argc, char** argv) {
     // === 3. Point cloud, occupancy, bisection, color ===
     float* d_cloud = alloc<float>((size_t)nk * 21);
     meshing::launch_pointcloud(nk, d_kept, d_mean, d_ax0, d_ax1, d_ax2,
-                               d_invs2, d_k2, meshing::kSampleMinAxisRatio, d_cloud);
+                               d_invs2, d_k2, meshing::kSampleMinAxisRatio, 7, d_cloud);
+    float* d_cloud_1 = alloc<float>((size_t)nk * 3);
+    meshing::launch_pointcloud(nk, d_kept, d_mean, d_ax0, d_ax1, d_ax2,
+                               d_invs2, d_k2, meshing::kSampleMinAxisRatio, 1, d_cloud_1);
     backend::device_synchronize();
     if (check_error()) return 1;
     readback(acc, d_cloud, (int64_t)nk * 21);
+    readback(acc, d_cloud_1, (int64_t)nk * 3);
 
     // camera centers on a ring above the blob
     std::vector<float> campos(3 * NCAM);

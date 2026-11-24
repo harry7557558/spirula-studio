@@ -41,8 +41,7 @@ std::vector<KeyPoint2D> FilmReel::thin(const KeyPoint2D* pts, size_t count,
 }
 
 void FilmReel::add(const FilmFrame& f, const uint8_t* rgb, int w, int h,
-                   const uint8_t* mask, FramePoints points,
-                   const uint8_t* feature_mask) {
+                   const uint8_t* mask, FramePoints points) {
     Picture pic;
     std::vector<KeyPoint2D> pts;
     if (rgb) {
@@ -51,7 +50,7 @@ void FilmReel::add(const FilmFrame& f, const uint8_t* rgb, int w, int h,
             std::lock_guard<std::mutex> lk(_mu);
             target = _target;
         }
-        make_picture(rgb, w, h, mask, target, pic, feature_mask);
+        make_picture(rgb, w, h, mask, target, pic);
         pts = thin(points.pts, points.count, w, h);
     }
     append(f, std::move(pic), std::move(pts));
@@ -59,7 +58,7 @@ void FilmReel::add(const FilmFrame& f, const uint8_t* rgb, int w, int h,
 
 static void read_picture(const FilmFrame& f, int target, Picture& pic) {
     if (!f.panels.empty()) load_picture_row(f.panels, target, pic);
-    else load_picture(f.image_path, f.mask_path, target, pic, false, f.feature_mask_path);
+    else load_picture(f.image_path, f.mask_path, target, pic);
 }
 
 void FilmReel::add_loaded(const FilmFrame& f) {
@@ -224,8 +223,7 @@ void FilmReel::loader_loop() {
         try {
             if (!f.panels.empty()) {
                 load_picture_row(f.panels, target, pic);
-            } else if (load_picture(f.image_path, f.mask_path, target, pic, false,
-                                    f.feature_mask_path) &&
+            } else if (load_picture(f.image_path, f.mask_path, target, pic) &&
                        !f.points_path.empty()) {
                 std::vector<KeyPoint2D> kp;
                 if (read_keypoints_file(f.points_path, pic.src_w, pic.src_h, kp))

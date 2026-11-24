@@ -38,6 +38,7 @@ struct MeshingConfig {
     float merge_color = 0.05f;   // largest colour range (0-1 per channel) one vertex may merge; 0: any
     int   bisection_iters = 3;  // bisection steps per cut edge; a linear
                                 // interpolation finishes the crossing estimate
+    int   samples_per_gaussian = 7; // 7: center + 6 axis ends; 1: center only
     int   max_cameras = -1;      // cap on cameras used (k-means subset)
     int   max_grid_res = 512;    // per-axis cap on the acceleration grid
     float grid_cell_factor = 2.0f; // cell size = factor * mean Gaussian radius
@@ -143,9 +144,8 @@ public:
     OccupancyEvaluator(const OccupancyEvaluator&) = delete;
     OccupancyEvaluator& operator=(const OccupancyEvaluator&) = delete;
 
-    // Generate the 7-points-per-kept-Gaussian point cloud, interleaved (x,y,z).
-    // Size = 3 * num_points(). float here; the caller widens to double only at
-    // the Delaunay boundary (the one place that needs the extra precision).
+    // Sample cfg.samples_per_gaussian (1 or 7) points per kept Gaussian,
+    // interleaved (x,y,z), size = 3 * num_points().
     void generate_point_cloud(std::vector<float>& xyz_out);
 
     // Evaluate the occupancy field at host points [n*3] floats -> occ[n].
@@ -177,12 +177,17 @@ public:
     void merge_fields(const float* verts, int nv, float* dens_out, float* rgb_out,
                       const float* probes, int np, float* occ_out);
 
-    int num_points() const { return num_points_; }
+    int64_t num_points() const { return num_points_; }
     int num_kept()   const { return num_kept_; }
+    int64_t max_delaunay_points() const { return max_points_; }
 
     // True when the rasterize-and-sample (dataset / camera-intrinsics) path is
     // active, i.e. camera-based visibility culling is possible.
     bool has_render_cameras() const;
+
+    // Camera indices selected for rendering (all cameras, or the k-means
+    // medoids when cfg.max_cameras caps them). Empty without camera centers.
+    const std::vector<int>& selected_cameras() const;
 
     // Mark which mesh vertices are seen by >= 1 camera: a vertex is seen when it
     // projects in-frame AND the segment to that camera is not blocked by a mesh
@@ -201,8 +206,9 @@ public:
 private:
     struct Impl;
     Impl* impl_;
-    int num_points_ = 0;
+    int64_t num_points_ = 0;
     int num_kept_ = 0;
+    int64_t max_points_ = 0;
 };
 
 // Full pipeline entry point. Writes a binary PLY to output_path. False on

@@ -7,6 +7,7 @@
 #include "app/FrameLook.h"          // app::photo_turn
 #include "app/FrameMask.h"          // app::load_rgb, app::load_stencil
 #include "core/ImageFile.h"
+#include "sfm/core/Mask.h"          // sfm::isSegmentByte
 #include "external/stb_image.h"
 
 #include <algorithm>
@@ -110,36 +111,40 @@ void box_photo(const uint8_t* rgb, int w, int h, int step, Picture& out) {
     }
 }
 
-// What a block of the picture is drawn as; the higher one wins.
+// What a block of the picture is drawn as.
 enum : uint8_t { kMarkFeaturesOnly = 1, kMarkRemoved = 2 };
 
 // Marks each of `out`'s blocks in which fewer than half the source pixels are
-// kept. A mask of another size than its w x h image is sampled nearest: a
-// mask that came with the capture rather than one the run made.
+// kept: removed, or features-only where the segment band (sky) outnumbers 0.
+// A mask of another size than its w x h image is sampled nearest.
 void mark_blocks(const uint8_t* mask, int mw, int mh, int w, int h, int step,
-                 bool mask_flipped, uint8_t level, const Picture& out,
-                 std::vector<uint8_t>& marks) {
-    marks.resize((size_t)out.w * out.h, 0);
-    auto mark = [&](size_t i) { marks[i] = std::max(marks[i], level); };
+                 bool mask_flipped, const Picture& out, std::vector<uint8_t>& marks) {
+    marks.assign((size_t)out.w * out.h, 0);
+    // 0 keep, 1 segment, 2 removed; a flipped mask is binary.
+    auto cls = [&](uint8_t v) -> int {
+        if (mask_flipped) return v > 127 ? 2 : 0;
+        return v <= 127 ? 2 : sfm::isSegmentByte(v) ? 1 : 0;
+    };
     const bool same = mw == w && mh == h;
     if (same && step == 1) {
         for (size_t i = 0; i < (size_t)w * h; i++)
-            if ((mask[i] > 127) == mask_flipped) mark(i);
+            marks[i] = (uint8_t)cls(mask[i]);
         return;
     }
     for (int y = 0; y < out.h; y++) {
         const int sy1 = std::min(h, (y + 1) * step);
         for (int x = 0; x < out.w; x++) {
             const int sx1 = std::min(w, (x + 1) * step);
-            int n = 0, keep = 0;
+            int n = 0, count[3] = {0, 0, 0};
             for (int sy = y * step; sy < sy1; sy++) {
                 const int my = same ? sy : std::min(mh - 1, sy * mh / h);
                 const uint8_t* row = &mask[(size_t)my * mw];
                 for (int sx = x * step; sx < sx1; sx++, n++)
-                    keep += row[same ? sx : std::min(mw - 1, sx * mw / w)] > 127;
+                    count[cls(row[same ? sx : std::min(mw - 1, sx * mw / w)])]++;
             }
-            if (mask_flipped) keep = n - keep;
-            if (keep * 2 < n) mark((size_t)y * out.w + x);
+            if (count[0] * 2 < n)
+                marks[(size_t)y * out.w + x] =
+                    count[2] >= count[1] ? kMarkRemoved : kMarkFeaturesOnly;
         }
     }
 }
@@ -159,21 +164,18 @@ void tint_marked(const std::vector<uint8_t>& marks, Picture& out) {
 }  // namespace
 
 void make_picture(const uint8_t* rgb, int w, int h, const uint8_t* mask,
-                  int max_side, Picture& out, const uint8_t* feature_mask) {
+                  int max_side, Picture& out) {
     out = Picture{};
     if (!rgb || w <= 0 || h <= 0) return;
     const int step = size_picture(w, h, max_side, out);
     box_photo(rgb, w, h, step, out);
     std::vector<uint8_t> marks;
-    if (mask) mark_blocks(mask, w, h, w, h, step, false, kMarkRemoved, out, marks);
-    if (feature_mask)
-        mark_blocks(feature_mask, w, h, w, h, step, false, kMarkFeaturesOnly, out, marks);
+    if (mask) mark_blocks(mask, w, h, w, h, step, false, out, marks);
     tint_marked(marks, out);
 }
 
 bool load_picture(const std::string& image_path, const std::string& mask_path,
-                  int max_side, Picture& out, bool mask_flipped,
-                  const std::string& feature_mask_path) {
+                  int max_side, Picture& out, bool mask_flipped) {
     const auto fail = [&out] {
         out.rgb.clear();
         out.w = out.h = out.src_w = out.src_h = out.made_for = 0;
@@ -193,7 +195,7 @@ bool load_picture(const std::string& image_path, const std::string& mask_path,
         box_photo(rgb.get(), w, h, step, out);
     }
     std::vector<uint8_t> marks;
-    auto mark_file = [&](const std::string& path, bool flipped, uint8_t level) {
+    auto mark_file = [&](const std::string& path, bool flipped) {
         if (path.empty()) return;
         // stb's buffer in place, unless the mask needs what load_stencil adds:
         // an EXR or TIFF decode, or the EXIF turn a JPEG mask may carry.
@@ -201,16 +203,15 @@ bool load_picture(const std::string& image_path, const std::string& mask_path,
         StbPixels m(imagefile::handles(path) ? nullptr
                                              : stbi_load(path.c_str(), &mw, &mh, &comp, 1));
         if (m && app::photo_turn(path).identity()) {
-            mark_blocks(m.get(), mw, mh, w, h, step, flipped, level, out, marks);
+            mark_blocks(m.get(), mw, mh, w, h, step, flipped, out, marks);
             return;
         }
         m.reset();
         std::vector<uint8_t> stencil;
         if (app::load_stencil(path, mw, mh, stencil))
-            mark_blocks(stencil.data(), mw, mh, w, h, step, flipped, level, out, marks);
+            mark_blocks(stencil.data(), mw, mh, w, h, step, flipped, out, marks);
     };
-    mark_file(mask_path, mask_flipped, kMarkRemoved);
-    mark_file(feature_mask_path, false, kMarkFeaturesOnly);
+    mark_file(mask_path, mask_flipped);
     tint_marked(marks, out);
     return true;
 }

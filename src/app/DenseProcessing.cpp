@@ -27,6 +27,7 @@
 #include "nn/vk/Context.h"
 #include "nn/vk/Memory.h"
 #include "roma/model/Fetch.h"
+#include "sfm/core/Mask.h"
 #include "core/HostMemory.h"
 
 #include <chrono>
@@ -464,10 +465,12 @@ private:
         const auto c = camera(ds_, p.image);
         if (image.width != c.width || image.height != c.height) throw std::runtime_error("dense image size no longer agrees with the camera");
         std::vector<uint8_t> keep((size_t)image.width * image.height, 1);
-        auto intersect = [&](std::vector<uint8_t> values, int w, int h, bool invert) {
+        auto intersect = [&](std::vector<uint8_t> values, int w, int h, bool invert, bool band) {
             if (turns) turn_pixels(sfm::ExifTransform{turns, false}, 1, values, w, h);
             uint8_t pass[256];
-            for (int v = 0; v < 256; ++v) pass[v] = (uint8_t)((v / 255.0 >= config_.mask_threshold) != invert);
+            for (int v = 0; v < 256; ++v)
+                pass[v] = (uint8_t)((v / 255.0 >= config_.mask_threshold) != invert &&
+                                    !(band && sfm::isSegmentByte((uint8_t)v)));
             std::vector<int> columns((size_t)image.width);
             for (int x = 0; x < image.width; ++x) columns[x] = std::min(w - 1, (int)((x + 0.5) * w / image.width));
             for (int y = 0; y < image.height; ++y) {
@@ -478,15 +481,11 @@ private:
         };
         if (config_.use_masks && config_.alpha_masks) {
             int w, h; auto values = alpha(ds_.image_filenames[p.image], w, h);
-            if (!values.empty()) intersect(std::move(values), w, h, false);
+            if (!values.empty()) intersect(std::move(values), w, h, false, false);
         }
         if (config_.use_masks && config_.training_masks && !ds_.mask_filenames.empty() && !ds_.mask_filenames[p.image].empty()) {
-            int w, h; auto values = mask(ds_.mask_filenames[p.image], w, h); intersect(std::move(values), w, h, config_.invert_masks);
-        }
-        if (config_.use_masks && config_.feature_masks && !config_.feature_mask_dir.empty()) {
-            const auto name = dsparse::relative_under(ds_.image_filenames[p.image], (root_ / config_.image_dir).string());
-            const auto path = dsparse::find_aux_file((root_ / config_.feature_mask_dir).string(), name, "");
-            if (!path.empty()) { int w, h; auto values = mask(path, w, h); intersect(std::move(values), w, h, false); }
+            int w, h; auto values = mask(ds_.mask_filenames[p.image], w, h);
+            intersect(std::move(values), w, h, config_.invert_masks, true);
         }
         if (config_.use_masks && config_.mask_boundary) edt::apply_mask_boundary_offset_in_place(keep.data(), image.height, image.width, (float)config_.mask_boundary);
         auto source = std::make_shared<Source>();
@@ -744,9 +743,6 @@ fs::path sibling(fs::path path, const char* suffix) { path += suffix; return pat
 
 bool cached_prediction(const fs::path& path, const DenseConfig& config, roma::PairPrediction& p) {
     if (!config.resume || config.rebuild || !fs::is_regular_file(path)) return false;
-    std::ifstream checksum(sibling(path, ".sha256")); std::string expected;
-    checksum >> expected;
-    if (expected.size() != 64 || spirula::sha256_file(path.string()) != expected) return false;
     std::ifstream in(path, std::ios::binary);
     char magic[8]; in.read(magic, sizeof magic);
     if (!in || std::string(magic, sizeof magic) != "SSROMA03") return false;
@@ -762,10 +758,7 @@ void cache_prediction(const fs::path& path, const roma::PairPrediction& p) {
     out.flush();
     if (!out) throw std::runtime_error("cannot cache RoMa pair prediction: " + part.string());
     out.close();
-    const auto hash = spirula::sha256_file(part.string());
-    const fs::path hash_part = sibling(path, ".sha256.part");
-    write_text(hash_part, hash + "\n");
-    replace_file(part, path); replace_file(hash_part, sibling(path, ".sha256"));
+    replace_file(part, path);
 }
 
 }  // namespace
@@ -777,11 +770,17 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
     DensePerfLog perf(perf_dir);
     const auto start = std::chrono::steady_clock::now();
     const fs::path root = resolved_dataset(dataset_path);
+    const fs::path scratch = work_root(root.string());
     // Two 64-digit names nest under it, which overruns MAX_PATH below a long dataset path (issue 178).
-    const fs::path cache_root = spirula::long_path(root / "dense" / "cache");
+    const fs::path cache_root = spirula::long_path(scratch / "cache");
+    fs::create_directories(scratch);
+    FileLock run_lock(scratch / "run.lock");
+    std::error_code moved;
+    if (!fs::exists(cache_root, moved)) fs::rename(spirula::long_path(root / "dense" / "cache"), cache_root, moved);
+    // Scratch an older build kept directly in dense/.
+    try { remove_owned_directory(root / "dense" / "progress", root / "dense", "progress"); } catch (const std::exception&) {}
+    for (const char* name : {"run.lock", "job.json", "current.json"}) fs::remove(root / "dense" / name, moved);
     fs::create_directories(cache_root);
-    FileLock run_lock(root / "dense" / "run.lock");
-    cleanup_pending_generations(root.string());
     cleanup_abandoned_runs(cache_root);
     Fingerprints fingerprints(cache_root / "fingerprints.txt");
     std::string checkpoint_hash;
@@ -945,7 +944,7 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
     std::vector<std::string> input_paths = ds.image_filenames;
     input_paths.push_back(checkpoint);
     for (const auto& path : ds.mask_filenames) if (!path.empty()) input_paths.push_back(path);
-    for (const auto& path : {config.mask_dir, config.feature_mask_dir, config.pair_list, config.metashape_xml, config.metashape_psx})
+    for (const auto& path : {config.mask_dir, config.pair_list, config.metashape_xml, config.metashape_psx})
         if (!path.empty()) input_paths.push_back((root / path).string());
     if (!model_dir.empty()) input_paths.push_back(model_dir);
     for (const auto& entry : fs::directory_iterator(root)) {
@@ -998,7 +997,7 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
             pair_options.explicit_pairs.emplace_back(by_name[a], by_name[b]);
         }
     }
-    const fs::path dense = root / "dense", cache = cache_root / match_identity;
+    const fs::path cache = cache_root / match_identity;
     const fs::path predictions = cache_root / "pairs-v4" / inference_identity;
     fs::create_directories(predictions);
     fs::create_directories(cache);
@@ -1315,15 +1314,13 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
     const fs::path temporary_ply = work / "roma.ply", temporary_manifest = work / "manifest.json";
     result.statistics = reconstruction.finish(temporary_ply.string(), ds, progress);
     check_cancel(cancel);
-    result.cloud = (dense / "roma.ply").string(); result.manifest = (dense / "manifest.json").string();
     result.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     const double finish_seconds = result.seconds - prepare_seconds - match_seconds;
     const auto verification_start = std::chrono::steady_clock::now();
     JsonWriter manifest; manifest.object();
-    manifest.field("version", 2).field("complete", true).field("generation", work.filename().string());
+    manifest.field("version", 3).field("complete", true);
     manifest.field("reconstruction_revision",reconstruction_revision);
     manifest.field("coordinate_frame", "source file frame; seed_pointcloud compatible");
-    manifest.field("cloud", "roma.ply");
     manifest.field("cloud_bytes", (long long)fs::file_size(temporary_ply));
     if (initial_input_stamp != input_stamp(input_paths)) throw std::runtime_error("dense inputs changed during processing; rerun with stable inputs");
     if (initial_input_content != input_content_stamp(input_paths,[&] { check_cancel(cancel); }))
@@ -1407,26 +1404,23 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
     for (const auto count : result.statistics.reference_reprojection_histogram) manifest.value((long long)count);
     manifest.end().end().end();
     write_text(temporary_manifest, manifest.str());
-    const auto published = publish_generation(root.string(), work.filename().string(), temporary_ply, temporary_manifest,
-                                              [&](const char* phase) {
-        check_cancel(cancel);
-        if (std::string(phase) == "before_current" && config.keep_cache) {
-            jobs.reset(); remove_owned_directory(work,cache,work.filename().string());
-        }
-    });
-    result.cloud = published.cloud.string(); result.manifest = published.manifest.string();
+    check_cancel(cancel);
+    const auto published = publish_cloud(root.string(), config.preset, temporary_ply, temporary_manifest);
+    result.cloud = published.ply.string(); result.manifest = published.manifest.string();
     live.write(reconstruction, true);
-    if (!config.keep_cache) {
-        const auto allowed = cache_root;
-        if (cache.lexically_normal().parent_path() != allowed) throw std::runtime_error("invalid dense cache cleanup path");
+    jobs.reset();
+    // The pair cache only resumes an interrupted run, so a finished one drops all of it.
+    try {
+        if (config.keep_cache) remove_owned_directory(work, cache, work.filename().string());
+        else remove_owned_directory(cache_root, spirula::long_path(scratch), "cache");
+    } catch (const std::exception&) {}
+    if (!progress_dir.empty()) {
+        const auto shown = reconstruction.checkpoint().file;
         std::error_code error;
-        for (uint64_t i = 0; i < job_count; ++i) {
-            const auto job = job_at(i);
-            fs::remove(job.file, error); error.clear();
-            fs::remove(sibling(job.file, ".sha256"), error); error.clear();
-        }
-        jobs.reset();
-        try { remove_owned_directory(cache, allowed, match_identity); } catch (const std::exception&) {}
+        for (fs::directory_iterator it(progress_dir, error), end; !error && it != end; it.increment(error))
+            if (it->path().extension() == ".points" && it->path().filename() != shown) {
+                std::error_code ignored; fs::remove(it->path(), ignored);
+            }
     }
     result.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     if (progress) progress("complete", result.statistics.exported, result.statistics.exported);

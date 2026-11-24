@@ -27,6 +27,7 @@ struct RunReport {
     std::string phase;
     double work = -1.0;          // 0..1 of the run, -1 when it cannot say
     uint64_t host_process = 0, host_available = 0, host_total = 0, host_commit_free = 0;
+    uint64_t host_swap_free = 0;   // Linux only; Windows counts it in host_commit_free
     PlannedPeak host_peak;       // of host_process
     bool device_known = false;
     uint64_t device_ours = 0, device_others = 0, device_capacity = 0;

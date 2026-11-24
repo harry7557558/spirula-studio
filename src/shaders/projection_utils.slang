@@ -1039,9 +1039,8 @@ void evaluate_color_3dgs_vjp(
     v_ray_d = dp_ray_d.d;
 }
 
-// normal = -normalize(Sigma^-1 ray_d): the plane holding the depth of every ray
-// parallel to this one. It faces the ray with no test, and tends to the short
-// axis as the splat flattens (angle error ~ (thickness / width)^2).
+// The normal of the surface the splat's depth draws, facing the ray when depth > 0:
+// in its frame, rays from one centre peak on the sphere on diameter [mean, ray_o].
 [CudaDeviceExport]
 [Differentiable]
 void evaluate_color_3dgs_normal(
@@ -1054,7 +1053,7 @@ void evaluate_color_3dgs_normal(
     float3 grd = mul(iscl_rot, ray_d);
     float grd2 = dot(grd, grd);
     depth = -dot(gro, grd) / grd2;
-    float3 n = mul(grd, iscl_rot);
+    float3 n = mul(gro + 2.f * depth * grd, iscl_rot);
     normal = -n * rsqrt(dot(n, n));
 }
 
@@ -1197,6 +1196,31 @@ void evaluate_2dgs_vjp(
     v_rgb = dp_rgb.d;
     v_ray_o = dp_ray_o.d;
     v_ray_d = dp_ray_d.d;
+}
+
+
+// ================
+// Stochastic splats
+// ================
+
+// docs/notes/stochastic-splats.md. The PCG hash of Jarzynski & Olano 2020.
+[ForceInline]
+uint stochastic_pcg(uint v) {
+    uint state = v * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+// A draw for one splat at one pixel in one frame; stochastic_uniform(h, s) is
+// sample s's uniform in [0, 1). Every (pixel, splat, frame, sample) draws its own.
+[CudaDeviceExport]
+uint stochastic_hash(uint pixel, uint splat, uint frame) {
+    return stochastic_pcg(pixel ^ stochastic_pcg(splat ^ stochastic_pcg(frame)));
+}
+
+[CudaDeviceExport]
+float stochastic_uniform(uint h, uint sample) {
+    return float(stochastic_pcg(h + sample) >> 8u) * (1.0f / 16777216.0f);
 }
 
 

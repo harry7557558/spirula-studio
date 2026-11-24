@@ -139,7 +139,7 @@ int main(int argc, char** argv) {
                 (int)(bt ? PerceptualLoss::SsimBlurTolerant : PerceptualLoss::Ssim),
                 0.f, view(losses, 1, 1, (int)LossIndex::length), needs, 1, {},
                 view(map, h, w, 1), (int)DensifyLossMapMode::SsimContrastStruct,
-                0.9f, 0.f, grads);
+                0.9f, 0.f, grads, false);
         }
     };
     for (int i = 0; i < 3; ++i) one();

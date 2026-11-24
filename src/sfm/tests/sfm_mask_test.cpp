@@ -171,6 +171,23 @@ int cmdMaskSelftest(int, char**) {
             fs::create_directories(tmp / "decode");
             std::ofstream(tmp / "decode" / "junk.png", std::ios::binary) << "not an image";
         }
+        // The segment band (sky, 128) drops too; --mask-segment-only keeps 0.
+        {
+            std::vector<uint8_t> tri(64 * 48, 255);
+            for (int y = 0; y < 48; y++)
+                for (int x = 0; x < 64; x++)
+                    if (x < 16) tri[(size_t)y * 64 + x] = 0;
+                    else if (x < 32) tri[(size_t)y * 64 + x] = (uint8_t)(128 + (x % 3) * 61);
+            writePgm(tmp / "decode" / "tri.pgm", 64, 48, tri);
+            const double all = loadMask((tmp / "decode" / "tri.pgm").string()).keepFraction();
+            const double seg = loadMask((tmp / "decode" / "tri.pgm").string(), true).keepFraction();
+            printf("mask: 0/128/255 keep %.3f (expect 0.500), segment-only %.3f (expect 0.750)\n",
+                   all, seg);
+            if (std::fabs(all - 0.5) > 1e-6 || std::fabs(seg - 0.75) > 1e-6) {
+                printf("  FAIL: segment band decode\n");
+                fails++;
+            }
+        }
         Mask bad = loadMask((tmp / "decode" / "junk.png").string());
         if (!bad.empty()) { printf("  FAIL: undecodable mask did not come back empty\n"); fails++; }
         FeatureSet fs;
@@ -183,7 +200,7 @@ int cmdMaskSelftest(int, char**) {
         }
     }
 
-    // ---- 2b. --masks and --feature-masks intersect, at the finer grid ----
+    // ---- 2b. a mask and the image's alpha intersect, at the finer grid ----
     {
         auto grid = [](int w, int h, bool left_half) {
             Mask m;
@@ -214,25 +231,23 @@ int cmdMaskSelftest(int, char**) {
             fails++;
         }
 
-        // Through the loader: both files apply, and a first mask that will not
-        // decode is reported as such rather than hidden by the second.
+        // Through the loader: --mask-segment-only reaches the decode, and a
+        // mask that will not decode is reported as such.
         const fs::path d = tmp / "both";
         writePgm(d / "img.pgm", 64, 48, std::vector<uint8_t>((size_t)64 * 48, 128));
-        writePgm(d / "a.pgm", 64, 48, leftHalfMask(64, 48, 0.5));
         std::vector<uint8_t> top((size_t)64 * 48, 0);
         std::fill(top.begin(), top.begin() + (size_t)64 * 24, (uint8_t)255);
         writePgm(d / "b.pgm", 64, 48, top);
         std::ofstream(d / "junk.png", std::ios::binary) << "not an image";
         const std::string img = (d / "img.pgm").string();
-        GrayImage g = loadGrayImage(img, 0, false, (d / "a.pgm").string(), "", std::nullopt,
-                                    false, false, (d / "b.pgm").string());
-        GrayImage only = loadGrayImage(img, 0, false, "", "", std::nullopt, false, false,
-                                       (d / "b.pgm").string());
+        const std::string tri = (tmp / "decode" / "tri.pgm").string();
+        GrayImage g = loadGrayImage(img, 0, false, tri, "", std::nullopt, false, false, false);
+        GrayImage only = loadGrayImage(img, 0, false, tri, "", std::nullopt, false, false, true);
         GrayImage broken = loadGrayImage(img, 0, false, (d / "junk.png").string(), "",
-                                         std::nullopt, false, false, (d / "b.pgm").string());
-        if (std::fabs(g.mask.keepFraction() - 0.25) > 1e-6 ||
-            std::fabs(only.mask.keepFraction() - 0.5) > 1e-6 || !broken.mask.empty()) {
-            printf("  FAIL: loader with a feature mask kept %.3f / %.3f, broken %s\n",
+                                         std::nullopt, false, false, true);
+        if (std::fabs(g.mask.keepFraction() - 0.5) > 1e-6 ||
+            std::fabs(only.mask.keepFraction() - 0.75) > 1e-6 || !broken.mask.empty()) {
+            printf("  FAIL: loader with --mask-segment-only kept %.3f / %.3f, broken %s\n",
                    g.mask.keepFraction(), only.mask.keepFraction(),
                    broken.mask.empty() ? "empty" : "not empty");
             fails++;

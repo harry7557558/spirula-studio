@@ -94,6 +94,7 @@ list(APPEND SS_TOOL_SOURCES
      ${SS_SRC}/app/FrameSharpness.cpp
      ${SS_SRC}/app/Pano360.cpp
      ${SS_SRC}/app/AppPaths.cpp
+     ${SS_SRC}/app/RunLog.cpp
      ${SS_SRC}/app/CrashLog.cpp)
 if(WIN32)
     list(APPEND SS_TOOL_LIBS dbghelp)   # CrashLog.cpp's stack walk
@@ -487,6 +488,10 @@ set_property(TARGET subprocess_lifecycle_test PROPERTY CXX_STANDARD 17)
 target_compile_options(subprocess_lifecycle_test PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
 enable_testing()
+add_test(NAME data_manager_validation_test COMMAND data_manager_validation_test)
+set_tests_properties(data_manager_validation_test PROPERTIES
+    LABELS "cpu;headless" TIMEOUT 15)
+
 add_test(NAME subprocess_lifecycle_test COMMAND subprocess_lifecycle_test)
 set_tests_properties(subprocess_lifecycle_test PROPERTIES
     LABELS "cpu;headless" TIMEOUT 600)
@@ -744,6 +749,7 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/Pano360.cpp
         ${SS_FILM_REEL_SOURCES})
     ss_configure_app(dataset_prep_test)
+    target_compile_definitions(dataset_prep_test PRIVATE SS_SOURCE_HASH_TEST_HOOKS=1)
 
     if(SS_BUILD_SAM)
         get_target_property(SS_DATASET_PREP_TEST_SOURCES dataset_prep_test SOURCES)
@@ -760,6 +766,8 @@ if(SS_BUILD_GUI)
         target_compile_definitions(dataset_prep_streaming_test PRIVATE
             SS_BUILD_SAM=1 SS_HAVE_BLUR_GPU=1)
         target_link_libraries(dataset_prep_streaming_test PRIVATE ss_mask_worker ss_sam ss_blur)
+        add_test(NAME dataset_mask_resume_complete_test COMMAND dataset_prep_streaming_test --complete-only)
+        set_tests_properties(dataset_mask_resume_complete_test PROPERTIES LABELS "cpu;headless" TIMEOUT 30)
         if(SS_ENABLE_PATENTED)
             target_sources(dataset_prep_streaming_test PRIVATE
                 ${SS_SRC}/app/FrameDecodeVulkan.cpp)
