@@ -35,6 +35,7 @@
 #include "core/Env.h"
 #include "core/HardwareThreads.h"
 #include "core/ImageFile.h"
+#include "core/RelativePath.h"
 #include "sfm/core/Cancel.h"
 #include "sfm/core/Events.h"
 #include "sfm/core/Exif.h"
@@ -1589,14 +1590,15 @@ namespace {
 // The feature files as matching indexes them -- name, size and write time --
 // folded into one token, since its leftovers are indices into this set. The
 // write time is what sees a RE-extracted image: its size is the same budget.
-std::string featureDirDigest(const fs::path& featdir) {
+std::string featureDirDigest(const fs::path& featdir, bool legacy_full_paths = false) {
     std::vector<std::string> rows;
     std::error_code walk, ec;
     for (auto it = fs::recursive_directory_iterator(featdir, walk);
          !walk && it != fs::recursive_directory_iterator(); it.increment(walk))
         if (it->is_regular_file(ec))
             rows.push_back(
-                it->path().generic_string() + ":" +
+                (legacy_full_paths ? it->path() : relativeTo(it->path(), featdir)).generic_string() +
+                ":" +
                 std::to_string((uint64_t)fs::file_size(it->path(), ec)) + ":" +
                 std::to_string((int64_t)fs::last_write_time(it->path(), ec)
                                    .time_since_epoch()
@@ -2617,25 +2619,33 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // The signature is stored BEFORE the stage rather than after it, so that a
     // run interrupted half way through leaves files the next one may reuse.
     const fs::path rdir = resume::dir(_workspace);
-    std::string extract_sig =
-        stageSignature(cfg, CMD_EXTRACT) + resume::kSignedImages + _imagedir + "\n";
+    std::string extract_extra;
     if (int grid = experimentInt("SFM_SIFT_GRID", 0, 16))
-        extract_sig += "sift-grid=" + std::to_string(grid) + "\n";
-    if (experimentInt("SFM_PIXEL_CENTER", 0, 1)) extract_sig += "pixel-corners=1\n";
+        extract_extra += "sift-grid=" + std::to_string(grid) + "\n";
+    if (experimentInt("SFM_PIXEL_CENTER", 0, 1)) extract_extra += "pixel-corners=1\n";
+    const std::string extract_sig =
+        stageSignature(cfg, CMD_EXTRACT, _workspace) + resume::kSignedImages +
+        spirula::relative_to_dir(_imagedir, _workspace) + "\n" + extract_extra;
     // What the files on disk were recorded as made with, before this run
     // records itself: matches over kept features were made under it.
     const std::string old_extract = resume::recorded(rdir / resume::kExtractSig);
+    // Signatures from before workspace-relative paths carry them as given.
+    const bool legacy_sig =
+        old_extract != extract_sig &&
+        old_extract == stageSignature(cfg, CMD_EXTRACT) + resume::kSignedImages + _imagedir +
+                           "\n" + extract_extra;
+    const bool extract_current = old_extract == extract_sig || legacy_sig;
     std::error_code rm_ec;
     bool reuse = cfg.reuse && cfg.reuse_features != "redo";
     const bool keep_features = reuse && cfg.reuse_features == "keep";
-    if (!reuse || (!keep_features && old_extract != extract_sig)) {
+    if (!reuse || (!keep_features && !extract_current)) {
         // The pair list and the journal index the feature files, so they go
         // wherever those go.
         reuse = false;
         resume::clear(_workspace);
         fs::remove_all(featdir, rm_ec);
         fs::remove(matchpath, rm_ec);
-    } else if (old_extract != extract_sig && fs::is_directory(featdir, rm_ec) &&
+    } else if (!extract_current && fs::is_directory(featdir, rm_ec) &&
                !fs::is_empty(featdir, rm_ec)) {
         L::out(Tag::Extract, M::extract_kept_other_settings, {featdir.string()});
     }
@@ -2695,13 +2705,17 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // What this stage's output depends on: its own settings, the extraction
     // that produced its input, and the feature files themselves -- the pair
     // lists and the journal are indices into a particular set of those.
-    std::string match_settings = stageSignature(cfg, CMD_MATCH) + "pairs-resolved=" +
-                                       std::to_string((int)mode) + "\n";
+    std::string match_extra = "pairs-resolved=" + std::to_string((int)mode) + "\n";
     if (int expansion = experimentInt("SFM_PAIR_EXPAND", 0, 32))
-        match_settings += "pair-expansion=" + std::to_string(expansion) + "\n";
+        match_extra += "pair-expansion=" + std::to_string(expansion) + "\n";
     if (int essential = experimentInt("SFM_ESSENTIAL", 0, 3))
-        match_settings += "essential=" + std::to_string(essential) + "\n";
+        match_extra += "essential=" + std::to_string(essential) + "\n";
+    const std::string match_settings = stageSignature(cfg, CMD_MATCH, _workspace) + match_extra;
     const std::string features_before = "features=" + featureDirDigest(featdir) + "\n";
+    const std::string legacy_match =
+        legacy_sig ? old_extract + stageSignature(cfg, CMD_MATCH) + match_extra + "features=" +
+                         featureDirDigest(featdir, /*legacy_full_paths=*/true) + "\n"
+                   : std::string();
     // Kept features older than their image or mask are dated now, so the next
     // run counts them current as well.
     for (const fs::path& p : trusted)
@@ -2713,8 +2727,9 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     const std::string old_match = resume::recorded(rdir / resume::kMatchSig);
     // Matches over features kept under other extraction settings are still
     // theirs: the digest is of the files they index, as they were then.
-    const bool current =
-        old_match == mres.signature || old_match == old_extract + match_settings + features_before;
+    const bool current = old_match == mres.signature ||
+                         old_match == old_extract + match_settings + features_before ||
+                         (legacy_sig && old_match == legacy_match);
     if (cfg.reuse_matches == "redo") {
         resume::forget(rdir / resume::kMatchSig);
         resume::forget(rdir / resume::kMatchJournal);

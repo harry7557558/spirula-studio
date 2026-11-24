@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "core/RelativePath.h"
 #include "data/Yaml.h"
 #include "sfm/Pipeline.h"
 #include "sfm/core/Exif.h"
@@ -452,6 +453,45 @@ static int cmdManifestTest(int, char**) {
             catch (const std::exception&) { rejected = true; }
             check(rejected, "invalid or ambiguous full calibration is rejected");
         }
+    }
+
+    {
+        // Moving a dataset + sibling video keeps manifest paths and extract signatures working.
+        const std::filesystem::path old_parent = std::filesystem::path(dir) / "old_parent";
+        const std::filesystem::path old_ws = old_parent / "dataset";
+        const std::filesystem::path new_parent = std::filesystem::path(dir) / "new_parent";
+        const std::filesystem::path new_ws = new_parent / "dataset";
+        std::filesystem::create_directories(old_ws / "images", ec);
+        std::filesystem::create_directories(old_ws / "masks", ec);
+        write_file((old_parent / "video.OSV").string(), "v");
+
+        Manifest written;
+        written.image_dir = spirula::relative_to_dir((old_ws / "images").string(), old_ws.string());
+        written.mask_dir = spirula::relative_to_dir((old_ws / "masks").string(), old_ws.string());
+        written.captures.push_back(
+            {"", spirula::relative_to_dir((old_parent / "video.OSV").string(), old_ws.string()),
+             24.0, 0.0, true, true});
+        check(written.image_dir == "images" && written.mask_dir == "masks" &&
+                  written.captures[0].telemetry == "../video.OSV",
+              "manifest fields stored relative to workspace");
+        write_file((old_ws / ".spirula_manifest.yaml").string(), manifest_write(written));
+
+        std::filesystem::rename(old_parent, new_parent, ec);
+        const Manifest moved = manifest_read((new_ws / ".spirula_manifest.yaml").string());
+        SfmConfig moved_cfg;
+        std::string moved_images;
+        check(manifest_apply(moved, moved_cfg, {}, moved_images).empty(),
+              "moved relative manifest applies");
+        check(moved_images == (new_ws / "images").string() &&
+                  moved_cfg.mask_dir == (new_ws / "masks").string() &&
+                  moved_cfg.telemetry_inputs.size() == 1 &&
+                  moved_cfg.telemetry_inputs[0].path == (new_parent / "video.OSV").string(),
+              "moved relative manifest resolves images, masks, and sibling telemetry");
+        SfmConfig unmoved_cfg;
+        unmoved_cfg.mask_dir = (old_ws / "masks").string();
+        check(stageSignature(unmoved_cfg, CMD_EXTRACT, old_ws.string()) ==
+                  stageSignature(moved_cfg, CMD_EXTRACT, new_ws.string()),
+              "moved manifest produces identical extract signature");
     }
 
     std::filesystem::remove_all(dir, ec);

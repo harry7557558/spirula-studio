@@ -3,6 +3,7 @@
 // table in SfmConfig.h, so a new knob is one row and never a fourth edit.
 #include "sfm/SfmConfig.h"
 
+#include "core/RelativePath.h"
 #include "sfm/core/Log.h"
 #include "sfm/vk/VkContext.h"
 #include "i18n/catalog/SfmFields.h"
@@ -617,7 +618,8 @@ bool signatureOmitsUnset(const char* name) {
 
 }  // namespace
 
-std::string stageSignature(const SfmConfig& cfg, uint32_t cmd) {
+std::string stageSignature(const SfmConfig& cfg, uint32_t cmd,
+                           const std::string& workspace) {
     std::string out;
     auto appendParams = [&](const std::vector<double>& params) {
         char buf[32];
@@ -626,10 +628,16 @@ std::string stageSignature(const SfmConfig& cfg, uint32_t cmd) {
             out += buf;
         }
     };
+    auto fieldValue = [&](const char* name, std::string val) {
+        if (!workspace.empty() && !val.empty() && val != "none" &&
+            (std::strcmp(name, "masks") == 0 || std::strcmp(name, "feature-masks") == 0))
+            return spirula::relative_to_dir(val, workspace);
+        return val;
+    };
 #define SFM_SIG_FIELD(member, name, cmds, tier, group, lo, hi, choices, help)   \
     if (((uint32_t)(cmds) & cmd) && (tier) != Tier::Alias && signatureRelevant(name) && \
         !(signatureOmitsUnset(name) && valueString(cfg.member) == "none"))              \
-        out += std::string(name) + "=" + valueString(cfg.member) + "\n";
+        out += std::string(name) + "=" + fieldValue(name, valueString(cfg.member)) + "\n";
     SFM_CONFIG_FIELDS(SFM_SIG_FIELD)
 #undef SFM_SIG_FIELD
     // Per-group lenses reach the camera setup, and so verification, without
