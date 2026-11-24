@@ -288,7 +288,8 @@ duplicates across a boundary.
 ## Memory model
 
 The run sizes everything from one host budget, `B = image_cache_bytes` (auto:
-the smallest of physical RAM / 8, available RAM / 3 and available commit / 5).
+the smallest of RAM / 8, available RAM / 3 and available commit / 5, each
+capped by a cgroup or job memory limit).
 During matching, these coexist:
 
 | Working set | Bound |

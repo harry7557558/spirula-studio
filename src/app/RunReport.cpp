@@ -126,11 +126,12 @@ void RunReporter::stop() {
 void RunReporter::run() {
     std::unique_lock<std::mutex> lock(_mu);
     for (;;) {
+        const HostMemory host = hostMemory();
         _r.host_process = processRamBytes();
-        _r.host_available = availableRamBytes();
-        _r.host_total = physicalRamBytes();
-        _r.host_commit_free = availableCommitBytes();
-        _r.host_swap_free = availableSwapBytes();
+        _r.host_available = host.available;
+        _r.host_total = host.total;
+        _r.host_commit_free = host.commit;
+        _r.host_swap_free = host.swap;
         if (_device) {
             Device d;
             lock.unlock();

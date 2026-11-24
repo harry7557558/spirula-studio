@@ -64,19 +64,19 @@ SS_MSG(opt_worker_devices,
     TR("Virgülle ayrılmış her aygıt UUID'si için yalıtılmış işçi. Varsayılan: seri"));
 
 SS_MSG(opt_worker_memory,
-    EN("Shared worker task and warp memory budget in MiB. Default: half physical RAM, at least 4096 MiB"),
-    JA("ワーカーのタスクとワープ用共有メモリ予算 (MiB)。既定: 物理RAMの半分、最低4096 MiB"),
-    ZH_HANS("工作进程任务和变形计划的共享内存预算（MiB）。默认：物理内存的一半，至少 4096 MiB"),
-    ZH_HANT("工作行程任務和變形計畫的共享記憶體預算（MiB）。預設：實體記憶體的一半，至少 4096 MiB"),
-    KO("작업자 태스크와 워프의 공유 메모리 예산(MiB). 기본값: 물리 RAM의 절반, 최소 4096 MiB"),
-    DE("Gemeinsames Speicherbudget für Worker-Aufgaben und Warps in MiB. Standard: halber physischer RAM, mindestens 4096 MiB"),
-    FR("Budget mémoire partagé des tâches et déformations en Mio. Défaut : moitié de la RAM physique, au moins 4096 Mio"),
-    ES("Presupuesto compartido de tareas y deformaciones en MiB. Predeterminado: mitad de la RAM física, mínimo 4096 MiB"),
-    PT("Orçamento de memória partilhada para tarefas e deformações em MiB. Padrão: metade da RAM física, mínimo 4096 MiB"),
-    IT("Budget di memoria condiviso per attività e deformazioni in MiB. Predefinito: metà della RAM fisica, minimo 4096 MiB"),
-    NL("Gedeeld geheugenbudget voor workertaken en vervormingen in MiB. Standaard: helft van fysiek RAM, minimaal 4096 MiB"),
-    RU("Общий бюджет памяти задач и деформаций в МиБ. По умолчанию: половина физической RAM, минимум 4096 МиБ"),
-    TR("İşçi görevleri ve eğriltmeler için paylaşılan bellek bütçesi (MiB). Varsayılan: fiziksel RAM'in yarısı, en az 4096 MiB"));
+    EN("Shared worker task and warp memory budget in MiB. Default: half the RAM, at least 4096 MiB"),
+    JA("ワーカーのタスクとワープ用共有メモリ予算 (MiB)。既定: RAMの半分、最低4096 MiB"),
+    ZH_HANS("工作进程任务和变形计划的共享内存预算（MiB）。默认：内存的一半，至少 4096 MiB"),
+    ZH_HANT("工作行程任務和變形計畫的共享記憶體預算（MiB）。預設：記憶體的一半，至少 4096 MiB"),
+    KO("작업자 태스크와 워프의 공유 메모리 예산(MiB). 기본값: RAM의 절반, 최소 4096 MiB"),
+    DE("Gemeinsames Speicherbudget für Worker-Aufgaben und Warps in MiB. Standard: halber RAM, mindestens 4096 MiB"),
+    FR("Budget mémoire partagé des tâches et déformations en Mio. Défaut : moitié de la RAM, au moins 4096 Mio"),
+    ES("Presupuesto compartido de tareas y deformaciones en MiB. Predeterminado: mitad de la RAM, mínimo 4096 MiB"),
+    PT("Orçamento de memória partilhada para tarefas e deformações em MiB. Padrão: metade da RAM, mínimo 4096 MiB"),
+    IT("Budget di memoria condiviso per attività e deformazioni in MiB. Predefinito: metà della RAM, minimo 4096 MiB"),
+    NL("Gedeeld geheugenbudget voor workertaken en vervormingen in MiB. Standaard: helft van het RAM, minimaal 4096 MiB"),
+    RU("Общий бюджет памяти задач и деформаций в МиБ. По умолчанию: половина RAM, минимум 4096 МиБ"),
+    TR("İşçi görevleri ve eğriltmeler için paylaşılan bellek bütçesi (MiB). Varsayılan: RAM'in yarısı, en az 4096 MiB"));
 
 SS_MSG(opt_image_dir,
     EN("The folder holding the images, relative to the dataset or absolute. "

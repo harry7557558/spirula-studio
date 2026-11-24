@@ -781,6 +781,10 @@ small default buffer is not enough for these bulk paths.
   device allocation to the system commit limit (RAM + page file), so a small
   page file fails an allocation as out-of-memory with VRAM to spare; the
   forecast and the OOM error both account for it (`docs/notes/train-forecast.md`).
+- **Size host memory from `core/HostMemory.h`, not the OS.** `/proc/meminfo`
+  and `GlobalMemoryStatusEx` miss a cgroup (container, Slurm job) or job object
+  memory limit; `totalRamBytes`, `availableRamBytes`, `availableCommitBytes`
+  and `availableSwapBytes` apply it. `physicalRamBytes` is only the machine's.
 - **A kernel that fills the gaps between sorted keys is a scaling trap.** One
   thread per INPUT walking `[ids[i-1]+1, ids[i]]` is fine while the ids are
   dense and quadratic when they are not: `qgrad_camera_id_bounds` measured

@@ -4,15 +4,12 @@
 #include <vulkan/vulkan_metal.h>
 #endif
 
+#include "core/HostMemory.h"
 #include "nn/core/Error.h"
 #include "nn/core/Log.h"
 
 #include <algorithm>
 #include <cstring>
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 namespace nn {
 namespace vk {
@@ -123,11 +120,9 @@ std::string fmtBytes(uint64_t b) {
 // without this hint, so it is checked and reported at the point of failure.
 const char* oom_platform_hint() {
 #ifdef _WIN32
-    MEMORYSTATUSEX ms{};
-    ms.dwLength = sizeof(ms);
-    if (GlobalMemoryStatusEx(&ms)) {
+    if (const size_t commit = spirula::availableCommitBytes()) {
         static char buf[256];
-        const double free_gib = (double)ms.ullAvailPageFile / (1024.0 * 1024.0 * 1024.0);
+        const double free_gib = (double)commit / (1024.0 * 1024.0 * 1024.0);
         if (free_gib < 4.0) {
             std::snprintf(buf, sizeof buf,
                           " Windows has only %.1f GiB of commit charge left, and every GPU "

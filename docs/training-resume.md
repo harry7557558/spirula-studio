@@ -38,8 +38,8 @@ for that step. There is one PLY per checkpoint, without links or copies.
 Periodic saves capture the state before the next training step. When host
 memory headroom permits, they write that snapshot in the background while
 training continues; otherwise they stream bounded chunks synchronously.
-Host memory headroom is the smaller of free RAM and what the process's cgroup
-memory limit leaves, if one is set (Linux). If a background write is still
+Host memory headroom is the smaller of free RAM and what a memory limit on the
+process leaves: a cgroup on Linux, a job object on Windows. If a background write is still
 running when the next save is due, training waits for it, so saves never queue
 and only one snapshot is held at a time. The PLY writer filters and packs on the CPU and applies Y-up conversion as
 configured; Spirula reverses that conversion when decoding the PLY.

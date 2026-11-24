@@ -21,6 +21,12 @@ still free when that is lower. For VRAM it is 99% of the device less others,
 and on Windows also the job plus the free commit: WDDM charges device memory
 to commit (`docs/notes/train-forecast.md`).
 
+Capacity, free RAM, commit and swap all come from `core/HostMemory.h`, which
+caps the machine's numbers by a memory limit: a cgroup on Linux (a container,
+a Slurm job, `systemd-run -p MemoryMax=`) or a job object on Windows. Under
+one, the RAM bar is that limit wide and "others" is the rest of what is
+charged to it, or less free when the machine itself has less to spare.
+
 There is no "not settled yet" note anywhere. An estimate that cannot be
 trusted yet has a sigma that says so, because a wide band is seen and a line
 of small print is not.

@@ -286,12 +286,9 @@ static const char* snapshot_rejection(double peak, uint64_t bytes, uint64_t scra
 #ifdef _WIN32
     const uint64_t free = mem.has_commit ? mem.commit_free_bytes : 0;
 #else
-    uint64_t free = spirula::availableRamBytes();
+    const uint64_t free = spirula::availableRamBytes();
 #endif
     if (!free) return "headroom_unavailable";
-#ifdef __linux__
-    free = std::min<uint64_t>(free, spirula::cgroupRamHeadroomBytes());
-#endif
     const double growth = mem.has_process && std::isfinite(peak) ? peak - double(mem.process_bytes) : 0;
     if (bytes > free || scratch > free - bytes ||
         double(free - bytes - scratch) < std::max(double(kSnapshotHeadroom), growth))

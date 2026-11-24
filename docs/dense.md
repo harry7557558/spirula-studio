@@ -517,10 +517,11 @@ doubles. This optional pass must fit the host cache budget and otherwise
 fails with an actionable error. It does not silently disable filtering.
 `cpu_workers` bounds fingerprinting, view planning, reference refinement,
 and the outlier queries; zero chooses the hardware thread count.
-`image_cache_bytes=0` uses the smallest of one eighth of physical RAM, a
+`image_cache_bytes=0` uses the smallest of one eighth of RAM, a
 third of currently available RAM and a fifth of the available commit (what the
 operating system will still promise; on Windows a small page file puts it well
-below free RAM, and device memory counts against it too); a positive value is
+below free RAM, and device memory counts against it too), each capped by a
+cgroup (Linux) or job object (Windows) memory limit; a positive value is
 an explicit byte budget. The decoder worker count follows the CPU thread count and that budget
 divided by the largest source image's estimated working memory, with at least
 one worker. Decoded source RGB and masks are shared across all of its faces;
