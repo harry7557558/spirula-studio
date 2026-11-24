@@ -196,9 +196,10 @@ matching drop the 128 band whatever else they keep; `spirula sfm
 --mask-segment-only` drops nothing else. Training reads 128 as keep, and so
 still learns the sky, unless `--mask-mode segment_and_ignore` trains it as
 empty space. In that mode, sidecar bytes 0–127 mean ignore, 128–250 mean
-segment and 251–255 mean keep. Binary mask modes treat every nonzero sidecar
-byte as keep before applying `flip_mask`. Older datasets may carry a
-`feature_masks/` that nothing reads.
+segment and 251–255 mean keep. `mask_boundary_offset` moves only the edges of
+ignore there; where segment meets keep, the edge stays put. Binary mask modes
+treat every nonzero sidecar byte as keep before applying `flip_mask`. Older
+datasets may carry a `feature_masks/` that nothing reads.
 
 A segment is trained as empty space, and what shows through it is the
 background (`background_mode`: `black`, `color` or `skybox`).

@@ -119,8 +119,10 @@ CacheMode g_mode = CacheMode::CPU;
 
 Fetched fetch(const std::string& image, const std::string& mask, bool alpha,
               bool flip, const float* over = nullptr, bool load_masks = true,
-              bool seg_ign = false, bool segment = false, bool segment_rgb = false) {
+              bool seg_ign = false, bool segment = false, bool segment_rgb = false,
+              float boundary_offset = 0.0f) {
     DataManagerConfig cfg;
+    cfg.mask_boundary_offset = boundary_offset;
     cfg.cache_mode = g_mode;
     cfg.load_masks = load_masks;
     cfg.segment_and_ignore_masks = seg_ign;
@@ -250,6 +252,13 @@ int main() {
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W; x++) tri_pixels[(size_t)y * W + x] = kBands[x % 6];
     const std::string tri_mask = write_png(dir / "tri.png", W, H, 1, tri_pixels);
+    // Columns: keep, keep, segment, segment, ignore, ignore, keep, keep.
+    constexpr uint8_t kStripes[W] = {255, 255, 128, 128, 0, 0, 255, 255};
+    std::vector<uint8_t> stripe_pixels((size_t)W * H);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) stripe_pixels[(size_t)y * W + x] = kStripes[x];
+    const std::string stripe_mask = write_png(dir / "stripes.png", W, H, 1, stripe_pixels);
+    const float px15 = 1.5f / std::sqrt((float)(W * H));   // 1.5 pixels
 
     for (CacheMode mode : {CacheMode::CPU, CacheMode::DISK}) {
         g_mode = mode;
@@ -291,6 +300,18 @@ int main() {
                     ok &= m.at(x, y) == want;
                 }
             check(ok, "segment_and_ignore: alpha merges transparent as segment");
+        }
+        for (float sign : {-1.0f, 1.0f}) {
+            const Fetched m = fetch(rgb, stripe_mask, false, false, nullptr, true, true,
+                                    false, false, sign * px15);
+            constexpr uint8_t kShrunk[W] = {1, 1, 2, 0, 0, 0, 0, 1};
+            constexpr uint8_t kGrown[W] = {1, 1, 2, 2, 2, 1, 1, 1};
+            bool ok = m.w == W && m.h == H;
+            for (int y = 0; y < H && ok; y++)
+                for (int x = 0; x < W; x++)
+                    ok &= m.at(x, y) == (sign < 0 ? kShrunk : kGrown)[x];
+            check(ok, sign < 0 ? "segment_and_ignore: erosion grows ignore, keeps keep|segment edge"
+                               : "segment_and_ignore: dilation gives ignore to the nearer class");
         }
         {
             const Fetched m = fetch(rgb, tri_mask, false, false, nullptr, true, false, true);

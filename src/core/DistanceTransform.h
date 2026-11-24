@@ -113,6 +113,20 @@ inline void dt2d_squared(const uint8_t* mask, int h, int w, uint8_t src_value,
     }
 }
 
+// Squared distance from each pixel to the nearest one equal to `src_value`
+// (0 or 1); infinity when there is none.
+inline void squared_distance_to(const uint8_t* mask, int h, int w,
+                                uint8_t src_value, float* d2_out)
+{
+    const int mx = std::max(h, w);
+    std::unique_ptr<float[]>  cols(new float[(size_t)kColBlock * h]);
+    std::unique_ptr<float[]>  cols_out(new float[(size_t)kColBlock * h]);
+    std::unique_ptr<int[]>    v_buf(new int[mx]);
+    std::unique_ptr<double[]> z_buf(new double[(size_t)mx + 1]);
+    dt2d_squared(mask, h, w, src_value, d2_out,
+                 cols.get(), cols_out.get(), v_buf.get(), z_buf.get());
+}
+
 // Shrink (offset_px < 0) or dilate (offset_px > 0) a binary mask in place
 // by abs(offset_px) Euclidean pixels. Output: 1 where signed-distance <=
 // offset_px, signed-distance = (dist to foreground) - (dist to background).
@@ -121,19 +135,13 @@ inline void apply_mask_boundary_offset_in_place(uint8_t* mask, int h, int w,
 {
     if (offset_px == 0.0f || h <= 0 || w <= 0 || (h == 1 && w == 1)) return;
 
-    const int mx = std::max(h, w);
     // The row pass overwrites every distance; avoid zero-initializing it.
-    std::unique_ptr<float[]>  d2(new float[(size_t)h * w]);
-    std::unique_ptr<float[]>  cols(new float[(size_t)kColBlock * h]);
-    std::unique_ptr<float[]>  cols_out(new float[(size_t)kColBlock * h]);
-    std::unique_ptr<int[]>    v_buf(new int[mx]);
-    std::unique_ptr<double[]> z_buf(new double[(size_t)mx + 1]);
+    std::unique_ptr<float[]> d2(new float[(size_t)h * w]);
 
     // Inside pixels have zero foreground distance; outside pixels have zero
     // background distance. Only the opposite set matters for the chosen sign.
     const bool grow = offset_px > 0.0f;
-    dt2d_squared(mask, h, w, grow ? 1 : 0, d2.get(),
-                 cols.get(), cols_out.get(), v_buf.get(), z_buf.get());
+    squared_distance_to(mask, h, w, grow ? 1 : 0, d2.get());
 
     for (size_t i = 0; i < (size_t)h * w; ++i)
         mask[i] = grow ? (mask[i] || std::sqrt(d2[i]) <= offset_px)
