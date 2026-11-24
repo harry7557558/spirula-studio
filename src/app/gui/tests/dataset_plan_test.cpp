@@ -565,6 +565,8 @@ int main() {
             << "features=sift\n" << sfm::resume::kSignedImages << "../other/images\n";
         expect(plan(made, redo)[ModelPart::Features].why == Why::Moved,
                "... while a different workspace-relative images folder is treated as moved");
+        std::ofstream(ws / sfm::resume::kDir / sfm::resume::kExtractSig)
+            << "features=sift\n" << sfm::resume::kSignedImages << "images\n";
 
         SfmJob j = made;
         j.features = (int)std::size(kSfmFeatures) - 1;

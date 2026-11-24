@@ -121,6 +121,12 @@ static void testSignatures(int& fails) {
               "relative_to_dir strips trailing slash", fails);
         check(spirula::relative_to_dir("/tmp/old/video.OSV", "/tmp/old/dataset") == "../video.OSV",
               "relative_to_dir writes sibling file with ../", fails);
+        check(spirula::relative_to_dir("/tmp/old/videos/a.OSV", "/tmp/old/dataset") ==
+                  "../videos/a.OSV",
+              "relative_to_dir keeps a file under the dataset's parent relative", fails);
+        check(spirula::relative_to_dir("/home/u/Videos/a.OSV", "/tmp/old/dataset") ==
+                  fs::absolute("/home/u/Videos/a.OSV").lexically_normal().u8string(),
+              "relative_to_dir keeps a file further away absolute", fails);
     }
 }
 

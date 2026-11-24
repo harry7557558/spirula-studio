@@ -36,8 +36,9 @@ inline void match_drive_case(std::filesystem::path& path,
 
 }  // namespace detail
 
-// Relativize `path` against `base` using forward slashes; keeps an absolute
-// path only when no relative path exists (e.g., another drive).
+// `path` relative to `base` with forward slashes when it is inside `base` or its
+// parent, the folder a dataset moves with; absolute otherwise, since a file
+// further away usually stays put when the dataset is copied.
 inline std::string relative_to_dir(const std::string& path, const std::string& base) {
     namespace fs = std::filesystem;
     if (path.empty() || base.empty()) return path;
@@ -49,7 +50,9 @@ inline std::string relative_to_dir(const std::string& path, const std::string& b
     detail::match_drive_case(fp, fb);
     const fs::path rel = fp.lexically_relative(fb);
     if (rel.empty() || rel.is_absolute()) return fp.u8string();
-    return rel.generic_u8string();
+    int ups = 0;
+    for (const fs::path& part : rel) ups += part == "..";
+    return ups > 1 ? fp.u8string() : rel.generic_u8string();
 }
 
 // Resolve `path` against `base`. When `fallback_sibling_filename` is set and an
