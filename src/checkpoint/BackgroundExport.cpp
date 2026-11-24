@@ -157,17 +157,31 @@ bool render_background_sh_equirectangular(const float3* coeffs, int degree,
     return true;
 }
 
-bool export_background_sh_webp(const fs::path& out_path,
-                               const float3* coeffs, int degree,
-                               int width, int height,
-                               int transfer, bool is_linear, const float* color_matrix) {
+static bool encode_background_sh(std::vector<uint8_t>& encoded, const float3* coeffs, int degree,
+                                 int width, int height, int transfer,
+                                 bool is_linear, const float* color_matrix) {
     std::vector<uint8_t> rgb8;
     if (!render_background_sh_equirectangular(coeffs, degree, width, height,
                                               rgb8, transfer, is_linear, color_matrix))
         return false;
 
+    return spirula::encode_webp_lossless(rgb8.data(), rgb8.size(), width, height, 3, encoded);
+}
+
+bool export_background_sh_webp(std::ostream& out, const float3* coeffs, int degree,
+                               int width, int height, int transfer,
+                               bool is_linear, const float* color_matrix) {
     std::vector<uint8_t> encoded;
-    if (!spirula::encode_webp_lossless(rgb8.data(), rgb8.size(), width, height, 3, encoded))
+    return encode_background_sh(encoded, coeffs, degree, width, height, transfer, is_linear, color_matrix) &&
+        bool(out.write(reinterpret_cast<const char*>(encoded.data()), (std::streamsize)encoded.size()));
+}
+
+bool export_background_sh_webp(const fs::path& out_path,
+                               const float3* coeffs, int degree,
+                               int width, int height,
+                               int transfer, bool is_linear, const float* color_matrix) {
+    std::vector<uint8_t> encoded;
+    if (!encode_background_sh(encoded, coeffs, degree, width, height, transfer, is_linear, color_matrix))
         return false;
     std::error_code ec;
     if (!out_path.parent_path().empty()) {

@@ -19,7 +19,10 @@ namespace spirula {
 
 class TrainPerfLog {
 public:
-    ~TrainPerfLog() { if (_file) std::fclose(_file); }
+    ~TrainPerfLog() {
+        if (_file) std::fclose(_file);
+        if (_checkpoints) std::fclose(_checkpoints);
+    }
 
     // `session_dir` is empty without log_performance.
     void open(const std::filesystem::path& run_dir, const std::filesystem::path& session_dir) {
@@ -35,9 +38,18 @@ public:
         std::fprintf(_file, "unix_ms,step,steps,interval_s,step_s,data_wait_s,gpu_sampled_s,gpu_sampled_steps,"
                             "save_s,divisor,splats,vram_bytes,rss_bytes,paused\n");
         _last = std::chrono::steady_clock::now();
+        _checkpoints = std::fopen((dir / "checkpoint_saves.csv").string().c_str(), "w");
+        if (_checkpoints) std::fputs("step,path,reason\n", _checkpoints);
     }
 
     bool enabled() const { return _file != nullptr; }
+
+    void checkpoint(int step, bool overlapped, const char* reason) {
+        if (!_checkpoints) return;
+        std::fprintf(_checkpoints, "%d,%s,%s\n", step, overlapped ? "overlapped" : "synchronous", reason);
+        std::fflush(_checkpoints);
+    }
+
     static std::filesystem::path new_session_dir(const std::filesystem::path& run_dir) {
         char stamp[32];
         const std::time_t now = std::time(nullptr);
@@ -76,6 +88,7 @@ public:
 
 private:
     std::FILE* _file = nullptr;
+    std::FILE* _checkpoints = nullptr;
     std::chrono::steady_clock::time_point _last{};
     long long _steps = 0, _gpu_steps = 0;
     double _step_s = 0.0, _wait_s = 0.0, _gpu_s = 0.0, _save_s = 0.0;

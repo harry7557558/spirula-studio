@@ -2,6 +2,10 @@
 
 #include "core/Tensor.h"
 
+#include <functional>
+#include <future>
+#include <mutex>
+
 #include "kernels/tile/IntersectTile.cuh"
 #include "kernels/background/BackgroundSphericalHarmonics.cuh"
 #include "kernels/loss/PerSplatLoss.cuh"
@@ -793,6 +797,19 @@ void engine_save_checkpoint(
     bool y_up = false,
     std::string region_camera_hash = ""
 );
+
+struct CheckpointSubmission {
+    std::future<void> pending;
+    const char* reason;
+};
+
+// Captures under engine_mutex. An invalid future means the caller must save synchronously.
+CheckpointSubmission engine_try_save_checkpoint_async(
+    std::mutex& engine_mutex, double projected_device_peak,
+    const std::string& output_dir, bool full_dump, int step,
+    int background_export_height, const std::string& basename,
+    bool y_up, const std::string& region_camera_hash,
+    const std::function<void()>& writer_gate = {});
 
 // Requires seeded world buffers and initialized appearance channels; returns the saved step.
 int engine_load_checkpoint(std::string input_dir, bool restore_projective_depth = true);
