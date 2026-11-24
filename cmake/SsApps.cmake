@@ -599,6 +599,16 @@ if(SS_BUILD_GUI)
             ${SS_SRC}/app/gui/SfmProgress.cpp)
         ss_configure_app(sfm_live_preview_test)
         target_link_libraries(sfm_live_preview_test PRIVATE ss_sfm)
+
+        # The option table as the dataset panel reads it, against the real one.
+        add_executable(sfm_options_test
+            ${SS_SRC}/app/gui/tests/sfm_options_test.cpp
+            ${SS_SRC}/app/gui/SfmOptions.cpp)
+        ss_configure_app(sfm_options_test)
+        target_link_libraries(sfm_options_test PRIVATE ss_sfm)
+        target_compile_definitions(sfm_options_test PRIVATE SS_TOOL_SFM=1)
+        add_test(NAME sfm_options_test COMMAND sfm_options_test)
+        set_tests_properties(sfm_options_test PROPERTIES LABELS "cpu;headless" TIMEOUT 30)
     endif()
 
     add_executable(align_fit_test
@@ -652,6 +662,7 @@ if(SS_BUILD_GUI)
     add_executable(preset_roundtrip_test
         ${SS_SRC}/app/gui/tests/preset_roundtrip_test.cpp
         ${SS_SRC}/app/gui/DatasetPreset.cpp
+        ${SS_SRC}/app/gui/SfmOptions.cpp
         ${SS_SRC}/app/gui/MeshJob.cpp
         ${SS_SRC}/app/gui/MeshPreset.cpp
         ${SS_SRC}/app/gui/PresetFile.cpp
@@ -780,6 +791,7 @@ if(SS_BUILD_GUI)
     add_executable(dataset_plan_test
         ${SS_SRC}/app/gui/tests/dataset_plan_test.cpp
         ${SS_SRC}/app/gui/DatasetPlan.cpp
+        ${SS_SRC}/app/gui/SfmOptions.cpp
         ${SS_SRC}/app/gui/DatasetRecord.cpp
         ${SS_SRC}/app/gui/DatasetPrep.cpp
         ${SS_SRC}/app/gui/HeifPhoto.cpp

@@ -1,6 +1,8 @@
 // ModelCache.cpp -- see ModelCache.h.
 
 #include "app/gui/ModelCache.h"
+
+#include <algorithm>
 #include "i18n/catalog/Log.h"
 
 #include "app/AppPaths.h"
@@ -207,6 +209,24 @@ MaskModelFiles cached_mask_model(const std::string& id, const std::string& detec
     m.model = model_path(*e);
     if (d) m.detector = detector_path(*d);
     return m;
+}
+
+MaskQualityPick mask_models_for_quality(int quality) {
+    static const MaskQualityPick kPicks[] = {
+        {"sam2.1-tiny", "gdino-tiny"},
+        {"sam2.1-small", "gdino-tiny"},
+        {"sam2.1-base-plus", "gdino-base"},
+        {"sam2.1-large", "gdino-base"},
+    };
+    return kPicks[std::clamp(quality, 0, 3)];
+}
+
+void follow_mask_quality(int from, int to, std::string& model_id, std::string& detector_id) {
+    const MaskQualityPick was = mask_models_for_quality(from);
+    if (model_id != was.model || detector_id != was.detector) return;
+    const MaskQualityPick now = mask_models_for_quality(to);
+    model_id = now.model;
+    detector_id = now.detector;
 }
 
 bool file_is_cached(const std::string& path, uint64_t bytes) {

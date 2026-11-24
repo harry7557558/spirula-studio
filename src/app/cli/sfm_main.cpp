@@ -191,7 +191,7 @@ static const CommandInfo kCommands[] = {
      ownOptionsAuto,
      "  spirula-sfm auto images/ -o workspace/\n"
      "  spirula-sfm auto -o ws/                       # ./images and ./masks, all defaults\n"
-     "  spirula-sfm auto DATASET/ -o ws/ --data-type video --quality medium\n"
+     "  spirula-sfm auto DATASET/ -o ws/ --sequence . --quality medium\n"
      "  spirula-sfm auto images/ -o ws/ --camera-model opencv-fisheye --focal 520\n"
      "  spirula-sfm auto images/ -o ws/ --camera-model cam0=thin-prism-fisheye",
      /*exit_status=*/true},

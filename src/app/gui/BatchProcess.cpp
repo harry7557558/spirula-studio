@@ -468,7 +468,7 @@ void check_dataset_stage(const BatchRow& row, const BatchCapabilities& caps,
     // A preset that pairs frames in video order, pointed at photographs: it
     // still runs, and it picks the wrong pairing strategy. The other way round
     // is ordinary -- a video's order is off unless asked for.
-    if (!row.sources.empty() && !row.dataset_preset.path.empty() && s.sfm.data_type == 1) {
+    if (!row.sources.empty() && !row.dataset_preset.path.empty() && s.videos_in_order) {
         bool any_video = false;
         for (const std::string& p : row.sources)
             any_video = any_video || (!fs::is_directory(p, ec) && is_video_path(p));
@@ -758,7 +758,7 @@ bool batch_build_dataset_job(const BatchRow& row, const std::string& ffmpeg_exe,
         }
     }
     // A row has no Sequential switch to tick: a preset captured as video is it.
-    for (PrepInput& in : sources) in.sequential = in.is_video && settings.sfm.data_type == 1;
+    for (PrepInput& in : sources) in.sequential = in.is_video && settings.videos_in_order;
     resolve_source_lenses(sources, settings.sfm, settings.colmap);
     assign_source_subdirs(sources);
     refresh_subcameras(sources);

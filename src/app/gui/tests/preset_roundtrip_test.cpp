@@ -148,7 +148,7 @@ static void test_dataset_preset() {
     s.sfm.geometry.overwrite = true;
 
     s.sfm.quality = 1;
-    s.sfm.data_type = 2;
+    s.videos_in_order = true;
     s.sfm.camera_model = "opencv-fisheye";
     s.sfm.camera_mode = 2;
     s.sfm.pairs = 3;
@@ -159,8 +159,8 @@ static void test_dataset_preset() {
     s.sfm.distortion_refine = 2;
     s.sfm.final_per_image_intrinsics = true;
     s.sfm.final_free_rig = true;
-    s.sfm.max_features = 8192;
-    s.sfm.max_image_size = 2000;
+    s.sfm.options = {{"loma-max-features", "6000"}, {"max-image-size", "2000"},
+                     {"cross-check", "off"}};
     s.sfm.mapper = 1;
     s.sfm.features = (int)std::size(gui::kSfmFeatures) - 1;
     s.sfm.matcher = 1;
@@ -275,7 +275,7 @@ static void test_dataset_preset() {
     CHECK_EQ(b.sfm.geometry.overwrite, s.sfm.geometry.overwrite);
 
     CHECK_EQ(b.sfm.quality, s.sfm.quality);
-    CHECK_EQ(b.sfm.data_type, s.sfm.data_type);
+    CHECK_EQ(b.videos_in_order, s.videos_in_order);
     CHECK_EQ(b.sfm.camera_model, s.sfm.camera_model);
     CHECK_EQ(b.sfm.camera_mode, s.sfm.camera_mode);
     CHECK_EQ(b.sfm.pairs, s.sfm.pairs);
@@ -286,8 +286,7 @@ static void test_dataset_preset() {
     CHECK_EQ(b.sfm.distortion_refine, s.sfm.distortion_refine);
     CHECK_EQ(b.sfm.final_per_image_intrinsics, s.sfm.final_per_image_intrinsics);
     CHECK_EQ(b.sfm.final_free_rig, s.sfm.final_free_rig);
-    CHECK_EQ(b.sfm.max_features, s.sfm.max_features);
-    CHECK_EQ(b.sfm.max_image_size, s.sfm.max_image_size);
+    CHECK(b.sfm.options == s.sfm.options);
     CHECK_EQ(b.sfm.mapper, s.sfm.mapper);
     CHECK_EQ(b.sfm.features, s.sfm.features);
     CHECK_EQ(b.sfm.matcher, s.sfm.matcher);
@@ -377,6 +376,20 @@ static void test_mesh_preset() {
     CHECK(back.job.checkpoint.empty());
     CHECK(back.job.data_dir.empty());
     CHECK(back.job.output.empty());
+}
+
+// A file from before the capture type, the automatic pairing and the two
+// "0 = auto" boxes were replaced.
+static void test_retired_keys() {
+    gui::DatasetSettings s;
+    gui::read_dataset_settings_json(
+        json_parse("{\"sfm_data_type\": 1, \"sfm_pairs\": 0, \"sfm_features\": 2, "
+                   "\"sfm_max_features\": 3000, \"sfm_max_image_size\": 0}"),
+        s);
+    CHECK(s.videos_in_order);
+    CHECK_EQ(s.sfm.pairs, gui::kPairsPrefilter);
+    CHECK_EQ(s.sfm.options.count("aliked-max-features"), (size_t)1);
+    CHECK_EQ(s.sfm.options.count("max-image-size"), (size_t)0);
 }
 
 // A file a user has edited by hand must not reach a runner with a value
@@ -614,6 +627,7 @@ int main() {
     test_torn_overwrite();
     test_dataset_preset();
     test_mesh_preset();
+    test_retired_keys();
     test_sanitize();
     test_unknown_key_ignored();
     test_dense_draft_restore();

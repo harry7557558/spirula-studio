@@ -78,8 +78,8 @@ struct StencilFollow {
     bool areas = false;
 };
 
-// PrepInput::fps for "every frame" -- a 0 there already means "^". Everywhere
-// else, a rate of 0 is every frame.
+// PrepInput::fps for "every frame" -- a 0 there already means "^", the rate
+// and adaptive group of the row above. Everywhere else, a rate of 0 is every frame.
 inline constexpr float kFpsEveryFrame = -1.0f;
 
 // PrepInput::lut for "no LUT", where empty would find one (input_lut).
@@ -401,7 +401,7 @@ inline float input_fps(const std::vector<PrepInput>& inputs, float dataset_fps,
 
 // Rows extracted at one rate, named by the one that states it -- so an adaptive
 // plan can spend one budget over all of them and give the clip that moves more
-// the denser frames.
+// the denser frames. A row that states its own rate starts a group of its own.
 inline size_t fps_group(const std::vector<PrepInput>& inputs, size_t at) {
     size_t g = 0;
     for (size_t k = 1; k <= at && k < inputs.size(); k++)

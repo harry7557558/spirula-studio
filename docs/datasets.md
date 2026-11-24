@@ -865,7 +865,7 @@ rectilinear face would take 4/pi = 1.27x, and the extra goes to the corners.
 
 Ten views per frame multiply the image count, and the views of one frame share
 no features: they are held together by pairs across TIME, so pairing must stay
-content-based (`--pairs auto`, or COLMAP's vocabulary tree) rather than
+content-based (`--pairs prefilter`, or COLMAP's vocabulary tree) rather than
 sequential, which would give ten disconnected chains. The rig ties them
 together directly -- `docs/notes/sfm-rig-constraints.md`.
 

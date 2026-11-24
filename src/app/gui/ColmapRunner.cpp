@@ -517,7 +517,7 @@ void ColmapRunner::run(ColmapJob job) {
         const DatasetRecord rec = read_plan_record(ws.string(), pj);
         const PlanRequest req = job.request;
         DatasetPlan plan = plan_dataset(plan_job(job, pj), prior, rec, req);
-        if (!req.redo_frames && !plan[Step::Frames].can_keep)
+        if (!req.redo_frames && plan[Step::Frames].ask && !plan[Step::Frames].can_keep)
             return fail(spirula::i18n::msg::dataset::rerun_section_help.get());
         StepRecorder record(ws.string(), rec);
         auto say = [&](Step s) {

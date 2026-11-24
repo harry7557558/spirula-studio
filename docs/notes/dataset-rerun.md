@@ -47,7 +47,9 @@ runs.
 The fields are a step's *inputs*, normalized so that the same output gives the
 same fields however the panel was arranged:
 
-- Frames: per input that writes images, its path, rate and source identity;
+- Frames: per input that writes images, its path, rate and source identity
+  (and, with the adaptive rate on, a row that states the rate above it as its
+  own: it is measured alone rather than sharing that row's budget);
   the decoder, selection and unwrap settings only when a video is there to
   use them. Source identity covers the photo inventory or video and any
   file-backed video LUT (details below). Photos already gathered are kept
@@ -63,12 +65,20 @@ same fields however the panel was arranged:
   the lens and focal it gets; rigs and sequences as their member folders; per
   input, a sensor switched off on its row (`imu` / `attitude` / `gps`, listed
   only when off, so a record from before the switches compares equal); then
-  the engine's own settings. Folders, not input rows, because a video's one
+  the engine's own settings. Options the panel edits straight off `spirula
+  sfm`'s table (`SfmOptions.h`: image size, feature count, pair-selection
+  breadth, the selected detector's and matcher's knobs) are fields under their
+  flag's name, listed only where they differ from the default and only while
+  their owner is selected -- the same list the command line is built from. Folders, not input rows, because a video's one
   row and the same frames dropped back as a folder with two sub-folders are
   different rows over the same cameras.
 - Depth and normals: the model and its options. The kinds of map asked for are
   not fields: asking for depth beside existing normals adds depth, it does not
   redo normals.
+
+A model record written before the capture type and the automatic pairing
+were dropped is read as what it ran (`migrate_model_fields()`): the capture
+type is no field, and "auto" compares equal to pair selection.
 
 A workspace written before the record carries `.spirula-frames` and
 `.spirula-recon`. The first can restore the old extraction settings, but is
@@ -92,15 +102,22 @@ Per step, in order, the first that applies:
 | no record | **redo, ask**¹ | reuse | reuse | check maps, add what is missing² |
 | made from an older output of the step before | -- | redo | redo | redo |
 | record incomplete, same fields | finish | finish | finish | finish |
+| video frames with no timing, record incomplete | redo³ | -- | -- | -- |
 | fields differ | **redo, ask** | redo | **redo, ask** | redo |
 | same fields | reuse | reuse | reuse | reuse, or add kinds |
 
 ¹ External frame sources cannot be kept without a matching source record.
 Dataset images and photographs read in place are reused by the first row.
 ² Geometry reuse also requires each map's completion marker, below.
+³ An extraction that was interrupted: a video's frames cannot be told finished
+from half written, so they are made again -- without asking, since nothing
+finished is lost. The list says "the last run was interrupted".
 
 "Ask" is the confirmation before the run: frames re-extracted or a
-reconstruction rebuilt that nobody asked to redo. Its other answer -- keep
+reconstruction rebuilt that nobody asked to redo. It names those steps with
+what changed, and under them draws the whole plan with the panel's own rows
+(`GuiApp::draw_plan_rows`), so what follows from them -- masks, depth and
+normals -- is on screen before the button is. Its other answer -- keep
 them, run the rest -- is `PlanRequest::keep_built`, also a checkbox in the
 list, which turns both into **keep** until the output folder or the inputs
 change.

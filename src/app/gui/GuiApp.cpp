@@ -34,6 +34,7 @@
 #include "app/gui/Ui.h"
 #include "app/gui/ProgressView.h"
 #include "app/gui/SfmInProcess.h"
+#include "app/gui/SfmOptions.h"
 #include "app/gui/VramForecastView.h"
 #include "i18n/TimeFormat.h"
 #include "checkpoint/Resume.h"
@@ -150,6 +151,11 @@ std::string format_count(double n) {
     else if (n >= 1e3) std::snprintf(buf, sizeof buf, "%.1fk", n / 1e3);
     else std::snprintf(buf, sizeof buf, "%d", (int)n);
     return buf;
+}
+
+bool ends_with(const std::string& s, const char* tail) {
+    const size_t n = std::strlen(tail);
+    return s.size() >= n && s.compare(s.size() - n, n, tail) == 0;
 }
 
 // "General purpose (3dgs)" -- the translated label plus the name the command
@@ -656,10 +662,9 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     section(i18n::format(msg::runlog_section_recon, {"SfM"}));
     const SfmJob& j = _sfm_job;
     line("quality", std::to_string(j.quality));
-    line("data_type", std::to_string(j.data_type));
     line("camera_model", j.camera_model);
     line("camera_mode", std::to_string(j.camera_mode));
-    line("pairs", std::to_string(j.pairs));
+    line("pairs", sfm_pick(kSfmPairs, sfm_pairs(j.pairs)));
     line("overlap", std::to_string(j.overlap));
     line("loop_closure", cfg_str(j.loop_closure));
     // line("prefilter_sequential", cfg_str(j.prefilter_sequential));
@@ -671,8 +676,7 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     line("distortion_refine", std::to_string(j.distortion_refine));
     line("final_per_image_intrinsics", cfg_str(j.final_per_image_intrinsics));
     line("final_free_rig", cfg_str(j.final_free_rig));
-    line("max_features", std::to_string(j.max_features));
-    line("max_image_size", std::to_string(j.max_image_size));
+    for (const auto& [flag, value] : active_sfm_options(j)) line(sfm_option_field(flag), value);
     line("metric_gps", std::to_string(j.metric_gps));
     line("sensor_gauge", std::to_string(j.sensor_gauge));
     line("exif_attitude", std::to_string(j.exif_attitude));
@@ -922,6 +926,12 @@ DatasetSettings GuiApp::capture_dataset_settings() const {
     s.sfm.mask_features = _mask_features;
     s.sfm.geometry = _geometry;
     s.sfm.dense = _dense;
+    bool any_video = false, in_order = true;
+    for (const PrepInput& in : _sources) {
+        any_video = any_video || in.is_video;
+        in_order = in_order && (!in.is_video || in.sequential);
+    }
+    s.videos_in_order = any_video && in_order;
     return s;
 }
 
@@ -973,10 +983,9 @@ void GuiApp::apply_dataset_settings(const DatasetSettings& in) {
 
 void GuiApp::apply_dataset_preset(const DatasetPreset& p) {
     apply_dataset_settings(p.s);
-    // The rows' Sequential switches are not saved; a capture type of video
-    // frames is what stands for them, as a batch row reads it too.
+    // The rows' Sequential switches, as a batch row reads them too.
     for (PrepInput& in : _sources)
-        if (in.is_video) in.sequential = p.s.sfm.data_type == 1;
+        if (in.is_video) in.sequential = p.s.videos_in_order;
     _ds_presets.file = p.path;
     _ds_presets.builtin.clear();
     _ds_presets.display = p.name;
@@ -1811,7 +1820,7 @@ bool GuiApp::launch_batch_dataset(BatchTask& task, const BatchRow& row) {
     // The row's settings are the run's; the folder's record must not replace them.
     _restored_ws = workspace;
     _ws_state_at = -1.0;
-    if (!dataset_plan()[Step::Frames].can_keep) {
+    if (const StepPlan& frames = dataset_plan()[Step::Frames]; frames.ask && !frames.can_keep) {
         fail_batch_task(task, dmsg::rerun_section_help.get());
         return false;
     }
@@ -4690,7 +4699,8 @@ bool GuiApp::launch_dataset_job() {
     // Device choice must freeze before any preview, decode or child process starts.
     if (native_work_busy()) return false;
     _ws_state_at = -1.0;
-    if (!_redo_frames && !dataset_plan()[Step::Frames].can_keep) {
+    if (const StepPlan& frames = dataset_plan()[Step::Frames];
+        !_redo_frames && frames.ask && !frames.can_keep) {
         log(dmsg::rerun_section_help.get());
         return false;
     }
@@ -5024,9 +5034,6 @@ void GuiApp::draw_dataset_source() {
                 // preset carries and what every item of a batch starts from --
                 // so its own `fps` stays 0 and the rest follow it.
                 const bool head = i == first_video_row(_sources);
-                const float above =
-                    head ? 0.0f
-                         : input_fps(_sources, _sfm_job.prep.video_fps, i - 1);
                 if (_fps_text.size() != _sources.size()) {
                     _fps_text.assign(_sources.size(), std::string());
                     _fps_editing = -1;
@@ -5040,15 +5047,13 @@ void GuiApp::draw_dataset_source() {
                 else if (_fps_editing == (int)i) _fps_editing = -1;
                 if (ImGui::IsItemDeactivatedAfterEdit()) {
                     const std::optional<float> v = parse_fps(text);
-                    // A head row cannot be a caret: an unreadable answer there
-                    // leaves the rate where it was rather than at nothing.
-                    // Below it, that answer or the rate above is the caret.
+                    // An unreadable answer leaves a head row's rate alone and
+                    // is the caret below it. A number, even the rate above,
+                    // is the row's own rate and its own adaptive group.
                     if (head) {
                         if (v) _sfm_job.prep.video_fps = *v;
                     } else {
-                        s.fps = !v || *v == above ? 0.0f
-                                : *v > 0.0f       ? *v
-                                                  : kFpsEveryFrame;
+                        s.fps = !v ? 0.0f : *v > 0.0f ? *v : kFpsEveryFrame;
                     }
                     edited = true;
                 }
@@ -5065,7 +5070,7 @@ void GuiApp::draw_dataset_source() {
             }
             ImGui::BeginDisabled(dataset_locked(Stage::Features));
             if (ui::ToggleButton(dmsg::source_sequential, &s.sequential))
-                apply_capture_order(_sources, _sfm_job, _colmap_job);
+                apply_capture_order(_sources, _colmap_job);
             ImGui::EndDisabled();
             ui::help_on_hover(dmsg::source_sequential_help);
         }
@@ -5336,17 +5341,22 @@ void GuiApp::draw_dataset_basics() {
     // Quality means the same thing to both engines even though it moves
     // different knobs, so it is one control.
     ImGui::SetNextItemWidth(px(220.0f));
+    int& quality = builtin ? _sfm_job.quality : _colmap_job.quality;
+    const int quality_before = quality;
     if (builtin) {
-        ui::Combo(dmsg::quality, &_sfm_job.quality,
+        ui::Combo(dmsg::quality, &quality,
                   {&dmsg::quality_fast, &dmsg::quality_balanced,
                    &dmsg::quality_high_recommended, &dmsg::quality_maximum});
         ui::help_on_hover(dmsg::quality_help_builtin);
     } else {
-        ui::Combo(dmsg::quality, &_colmap_job.quality,
+        ui::Combo(dmsg::quality, &quality,
                   {&dmsg::quality_fast, &dmsg::quality_balanced,
                    &dmsg::quality_high});
         ui::help_on_hover(dmsg::quality_help_colmap);
     }
+    // The masking models go with it while they are the ones it picked.
+    if (quality != quality_before)
+        follow_mask_quality(quality_before, quality, _model_id, _mask_detector_id);
 
     // Lens model. The two engines spell the models differently; the labels
     // are the same either way, which is what the user is choosing between.
@@ -5398,38 +5408,12 @@ void GuiApp::draw_dataset_basics() {
         draw_source_cameras();
     }
 
-    int matcher_idx = _colmap_job.matcher - 1;
-    if (!builtin && (matcher_idx < 0 || matcher_idx > 2)) {
-        matcher_idx = (!_sources.empty() && _sources[0].is_video) ? 1 : 0;
-        _colmap_job.matcher = matcher_idx + 1;
-    }
-
     ImGui::SetNextItemWidth(px(220.0f));
     ui::Combo(dmsg::camera_sharing,
                 builtin ? &_sfm_job.camera_mode : &_colmap_job.camera_mode,
                 {&dmsg::camera_sharing_one, &dmsg::camera_sharing_folder,
                 &dmsg::camera_sharing_image});
     ui::help_on_hover(dmsg::camera_sharing_help);
-
-    ImGui::SetNextItemWidth(px(220.0f));
-    if (builtin) {
-        ui::Combo(dmsg::image_matching, &_sfm_job.pairs,
-                    {&dmsg::matching_automatic, &dmsg::matching_every_pair,
-                    &dmsg::matching_neighbours, &dmsg::matching_gpu_preselect});
-        ui::help_on_hover(dmsg::matching_help_builtin);
-    } else {
-        if (ui::Combo(dmsg::image_matching, &matcher_idx,
-                        {&dmsg::matching_exhaustive, &dmsg::matching_sequential,
-                        &dmsg::matching_vocab_tree}))
-            _colmap_job.matcher = matcher_idx + 1;
-        ui::help_on_hover(dmsg::matching_help_colmap);
-        if (_colmap_job.matcher == 2) {
-            ImGui::Indent();
-            ui::Checkbox(dmsg::loop_closure, &_colmap_job.seq_loop_closure);
-            ui::help_on_hover(dmsg::loop_closure_help_colmap);
-            ImGui::Unindent();
-        }
-    }
 
     ImGui::EndDisabled();
 
@@ -8144,6 +8128,8 @@ const Msg& plan_state(const StepPlan& s) {
                 case Why::Masks:     return dmsg::plan_redo_masked;
                 case Why::Moved:     return dmsg::plan_redo_moved;
                 case Why::Stale:     return dmsg::plan_redo_stale;
+                case Why::Resume:    return dmsg::plan_redo_interrupted;
+                case Why::Unrecorded: return dmsg::plan_redo_unrecorded;
                 default:             return dmsg::plan_redo_settings;
             }
     }
@@ -8201,18 +8187,22 @@ std::string plan_key_label(const std::string& key) {
         {"stencil", &dmsg::stencil_section}, {"scan_stencil", &dmsg::stencil_section},
         {"scan_photos", &ldmsg::use_scan_photos},
         {"camera_mode", &dmsg::camera_sharing}, {"pairs", &dmsg::image_matching},
-        {"data_type", &dmsg::capture_type}, {"features", &dmsg::features},
+        {"features", &dmsg::features},
         {"mapper", &dmsg::mapper_schedule}, {"loop_closure", &dmsg::loop_closure},
         {"prefilter_sequential", &dmsg::prefilter_sequential},
         {"overlap", &dmsg::sequential_overlap}, {"focal_px", &dmsg::initial_focal_px},
         {"distortion_refine", &dmsg::sfm_distortion_refinement},
         {"final_free_rig", &dmsg::sfm_final_free_rig},
         {"max_features", &dmsg::max_features_auto},
+        {"aliked_max_features", &dmsg::max_features_auto},
+        {"loma_max_features", &dmsg::max_features_auto},
         {"max_image_size", &dmsg::max_image_size_auto},
+        {"prefilter_neighbors", &dmsg::prefilter_neighbors},
         {"sensor_gauge", &dmsg::sfm_sensor_gauge}, {"metric_gps", &dmsg::sfm_metric_gps},
         {"exif_attitude", &dmsg::sfm_exif_attitude},
         {"masks_for_features", &dmsg::mask_for_features},
         {"decoder", &dmsg::use_ffmpeg}, {"adaptive_fps", &dmsg::adaptive_fps},
+        {"own_motion_budget", &dmsg::adaptive_fps},
         {"adaptive_range", &dmsg::adaptive_range},
         {"sharp_window", &dmsg::sharpness_window}, {"sync_tracks", &dmsg::sync_lenses},
         {"skip_blurry", &dmsg::skip_blurry}, {"blur_px", &dmsg::blur_px},
@@ -8255,19 +8245,10 @@ void plan_changes_tooltip(const StepPlan& s) {
 
 }  // namespace
 
-void GuiApp::draw_dataset_plan(const DatasetPlan& plan) {
-    // Its own ground, or it reads as the end of the form scrolled above it.
-    ImVec4 bg = ImGui::GetStyleColorVec4(ImGuiCol_FrameBg);
-    bg.w *= 0.5f;
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, bg);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(10.0f), px(6.0f)));
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, px(4.0f));
-    ImGui::BeginChild("##dsplan", ImVec2(0, 0),
-                      ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding,
-                      ImGuiWindowFlags_NoScrollbar);
-    ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor();
-
+// The plan as rows, for the panel and the confirmation alike so the two
+// cannot list different runs. True when a setting on screen differs from the
+// one something on disk was made with.
+bool GuiApp::draw_plan_rows(const DatasetPlan& plan, bool interactive) {
     const bool parts = plan_parts_shown(plan);
     const float indent = ImGui::GetStyle().IndentSpacing;
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -8299,7 +8280,7 @@ void GuiApp::draw_dataset_plan(const DatasetPlan& plan) {
         ImGui::PushID((int)part);
         ImGui::Indent(indent);
         bool run = makes(sp.act);
-        ImGui::BeginDisabled(sp.lock != Lock::None);
+        ImGui::BeginDisabled(!interactive || sp.lock != Lock::None);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
         if (ui::CheckboxRaw("##run", &run)) {
             if (_part_choice_for != _workspace) {
@@ -8310,7 +8291,8 @@ void GuiApp::draw_dataset_plan(const DatasetPlan& plan) {
         }
         ImGui::PopStyleVar();
         ImGui::EndDisabled();
-        if (sp.lock == Lock::None) ui::help_on_hover(dmsg::plan_part_toggle_help);
+        if (!interactive) {}
+        else if (sp.lock == Lock::None) ui::help_on_hover(dmsg::plan_part_toggle_help);
         else ui::help_on_hover_disabled(plan_lock_text(sp.lock));
         ImGui::SameLine();
         ui::TextDisabled(plan_part_name(part));
@@ -8329,6 +8311,23 @@ void GuiApp::draw_dataset_plan(const DatasetPlan& plan) {
         for (int q = 0; split && q < kNumModelParts; q++)
             if (plan[(ModelPart)q].act != Act::None) stage((ModelPart)q, plan[(ModelPart)q]);
     }
+    return differs;
+}
+
+void GuiApp::draw_dataset_plan(const DatasetPlan& plan) {
+    // Its own ground, or it reads as the end of the form scrolled above it.
+    ImVec4 bg = ImGui::GetStyleColorVec4(ImGuiCol_FrameBg);
+    bg.w *= 0.5f;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, bg);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(10.0f), px(6.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, px(4.0f));
+    ImGui::BeginChild("##dsplan", ImVec2(0, 0),
+                      ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding,
+                      ImGuiWindowFlags_NoScrollbar);
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor();
+
+    const bool differs = draw_plan_rows(plan, /*interactive=*/true);
     const bool keeping = _keep_built && _keep_built_for == _workspace;
     if (plan.ask() || keeping) {
         bool keep = keeping;
@@ -8377,13 +8376,18 @@ void GuiApp::draw_rebuild_confirm_modal() {
         ImGui::Unindent();
     }
     ImGui::PopTextWrapPos();
+    // Every step, not only the ones asked about: what follows from them runs too.
+    ImGui::Spacing();
+    ui::TextDisabled(dmsg::rebuild_whole_run);
+    draw_plan_rows(_rebuild_plan, /*interactive=*/false);
     ImGui::Spacing();
 
-    bool go = false;
+    bool go = false, consent = false;
     if (ui::Button(dmsg::rebuild_go, ImVec2(px(170.0f), 0))) {
         _keep_built = false;
         _keep_built_for.clear();
-        if (!_rebuild_plan[Step::Frames].can_keep) _redo_frames = true;
+        consent = !_rebuild_plan[Step::Frames].can_keep && !_redo_frames;
+        if (consent) _redo_frames = true;
         go = true;
     }
     ImGui::SameLine();
@@ -8404,7 +8408,8 @@ void GuiApp::draw_rebuild_confirm_modal() {
     if (go) {
         _rebuild_shown = false;
         ImGui::CloseCurrentPopup();
-        launch_dataset_job();
+        // A launch that did not start must not leave the consent armed.
+        if (!launch_dataset_job() && consent) _redo_frames = false;
     }
     ImGui::EndPopup();
 }
@@ -8582,15 +8587,84 @@ void GuiApp::draw_feature_download() {
         ui::TextColoredWrappedRaw(kErr, dl.status());
 }
 
+namespace {
+
+// One `spirula sfm` option (SfmOptions.h). The box shows what a run would use:
+// the default the quality and the frontend imply, or the value typed over it.
+void sfm_option_box(SfmReconSettings& job, const std::string& flag, const char* label,
+                    const Msg* help = nullptr) {
+    SfmOption row;
+    if (!find_sfm_option(flag, row)) return;
+    std::string value = sfm_option_value(job, flag);
+    const bool bounded = row.lo < row.hi;
+    bool changed = false;
+    ImGui::PushID(flag.c_str());
+    ImGui::SetNextItemWidth(px(260.0f));
+    switch (row.type) {
+        case SfmOptionType::Switch: {
+            bool on = value == "on";
+            changed = ui::CheckboxRaw(label, &on);
+            value = on ? "on" : "off";
+            break;
+        }
+        case SfmOptionType::Integer: {
+            int v = std::atoi(value.c_str());
+            changed = ui::InputIntRaw(label, &v);
+            if (bounded) v = (int)std::clamp((double)v, row.lo, row.hi);
+            value = std::to_string(v);
+            break;
+        }
+        case SfmOptionType::Real: {
+            double v = std::strtod(value.c_str(), nullptr);
+            changed = ui::InputDoubleRaw(label, &v, 0.0, 0.0, "%g");
+            if (bounded) v = std::clamp(v, row.lo, row.hi);
+            char text[32];
+            std::snprintf(text, sizeof text, "%g", v);
+            value = text;
+            break;
+        }
+        case SfmOptionType::Text:
+            if (row.choices.empty()) {
+                changed = ui::InputTextRaw(label, &value);
+            } else if (ui::BeginComboRaw(label, value.c_str())) {
+                for (const std::string& c : row.choices)
+                    if (ui::SelectableRaw(c, c == value)) {
+                        value = c;
+                        changed = true;
+                    }
+                ImGui::EndCombo();
+            }
+            break;
+    }
+    if (help) ui::help_on_hover(*help);
+    else if (row.help) ui::help_on_hover(*row.help);
+    if (changed) set_sfm_option(job, flag, value);
+    if (job.options.count(flag)) {
+        ImGui::SameLine();
+        if (ui::SmallButton(dmsg::option_default)) job.options.erase(flag);
+    }
+    ImGui::PopID();
+}
+
+// The selected detector's or matcher's own options, folded. `drawn` is one
+// the panel already has a box for.
+void sfm_owner_options(SfmReconSettings& job, const Msg& title, const std::string& owner,
+                       const std::string& drawn) {
+    std::vector<SfmOption> rows = sfm_owned_options(owner);
+    rows.erase(std::remove_if(rows.begin(), rows.end(),
+                              [&](const SfmOption& r) { return r.flag == drawn || ends_with(r.flag, "model"); }),
+               rows.end());
+    if (rows.empty() || !ui::TreeNode(title)) return;
+    for (const SfmOption& r : rows) sfm_option_box(job, r.flag, r.flag.c_str());
+    ImGui::TreePop();
+}
+
+}  // namespace
+
 void GuiApp::draw_sfm_advanced() {
     _ds_advanced = ui::CollapsingHeader(dmsg::section_advanced);
     if (!_ds_advanced) return;
 
-    ImGui::SetNextItemWidth(px(260.0f));
-    ui::Combo(dmsg::capture_type, &_sfm_job.data_type,
-              {&dmsg::capture_photos, &dmsg::capture_video,
-               &dmsg::capture_internet});
-    ui::help_on_hover(dmsg::capture_type_help);
     if (any_pano360(_sources)) draw_pano360_size();
 
     ImGui::SetNextItemWidth(px(260.0f));
@@ -8599,6 +8673,9 @@ void GuiApp::draw_sfm_advanced() {
                &dmsg::features_aliked_n32, &dmsg::features_loma_b128,
                &dmsg::features_loma_b});
     ui::help_on_hover(dmsg::features_help);
+    sfm_owner_options(_sfm_job, dmsg::sfm_detector_options,
+                      sfm_detector_owner(_sfm_job.features),
+                      sfm_feature_count_flag(_sfm_job.features));
 
     {
         // The middle entry is whichever learned matcher goes with the frontend
@@ -8621,6 +8698,8 @@ void GuiApp::draw_sfm_advanced() {
         ui::help_on_hover(_sfm_job.matcher == 2 ? dmsg::matcher_flexglue_help
                           : learned            ? dmsg::matcher_help
                                                : dmsg::matcher_needs_learned);
+        sfm_owner_options(_sfm_job, dmsg::sfm_matcher_options,
+                          sfm_matcher_owner(_sfm_job.features, _sfm_job.matcher), "");
         if (_sfm_job.matcher == 2 &&
             any_fisheye_or_pano_lens(_sources, _sfm_job.camera_model))
             ui::TextColoredWrapped(kWarn, dmsg::matcher_flexglue_wide_lens);
@@ -8632,21 +8711,68 @@ void GuiApp::draw_sfm_advanced() {
               {&dmsg::mapper_flat, &dmsg::mapper_bottom_up, &dmsg::mapper_global});
     ui::help_on_hover(dmsg::mapper_schedule_help);
 
-    // "Automatic" resolves to sequential for a short video and to pair
-    // selection at 100 images, so each is offered whenever it can be what runs.
-    if (_sfm_job.pairs == 2 || (_sfm_job.pairs == 0 && _sfm_job.data_type == 1)) {
-        ui::Checkbox(dmsg::loop_closure, &_sfm_job.loop_closure);
-        ui::help_on_hover(dmsg::loop_closure_help_builtin);
+    const bool builtin = effective_engine() == Engine::BuiltIn;
+    int matcher_idx = _colmap_job.matcher - 1;
+    if (!builtin && (matcher_idx < 0 || matcher_idx > 2)) {
+        matcher_idx = (!_sources.empty() && _sources[0].is_video) ? 1 : 0;
+        _colmap_job.matcher = matcher_idx + 1;
     }
-    if (_sfm_job.pairs == 0 || _sfm_job.pairs == 3) {
-        ui::Checkbox(dmsg::prefilter_sequential, &_sfm_job.prefilter_sequential);
-        ui::help_on_hover(dmsg::prefilter_sequential_help);
+
+    ImGui::SetNextItemWidth(px(260.0f));
+    if (builtin) {
+        // In the order worth trying; SfmJob::pairs keeps its stored numbering.
+        static const int kOrder[] = {kPairsPrefilter, kPairsExhaustive, kPairsSequential};
+        int shown = 0;
+        for (int i = 0; i < 3; i++)
+            if (sfm_pairs(_sfm_job.pairs) == kOrder[i]) shown = i;
+        if (ui::Combo(dmsg::image_matching, &shown,
+                      {&dmsg::matching_gpu_preselect, &dmsg::matching_every_pair,
+                       &dmsg::matching_neighbours}))
+            _sfm_job.pairs = kOrder[shown];
+        ui::help_on_hover(dmsg::matching_help_builtin);
+    } else {
+        if (ui::Combo(dmsg::image_matching, &matcher_idx,
+                        {&dmsg::matching_exhaustive, &dmsg::matching_sequential,
+                        &dmsg::matching_vocab_tree}))
+            _colmap_job.matcher = matcher_idx + 1;
+        ui::help_on_hover(dmsg::matching_help_colmap);
+        if (_colmap_job.matcher == 2) {
+            ImGui::Indent();
+            ui::Checkbox(dmsg::loop_closure, &_colmap_job.seq_loop_closure);
+            ui::help_on_hover(dmsg::loop_closure_help_colmap);
+            ImGui::Unindent();
+        }
     }
-    if (sequential_window_applies(_sfm_job)) {
-        ImGui::SetNextItemWidth(px(260.0f));
-        ui::InputInt(dmsg::sequential_overlap, &_sfm_job.overlap);
-        ui::help_on_hover(dmsg::sequential_overlap_help);
+
+    // Each belongs to one pair mode, and is offered while that one is chosen.
+    {
+        ImGui::Indent();
+        const int pairs = sfm_pairs(_sfm_job.pairs);
+        if (pairs == kPairsSequential) {
+            ui::Checkbox(dmsg::loop_closure, &_sfm_job.loop_closure);
+            ui::help_on_hover(dmsg::loop_closure_help_builtin);
+        }
+        if (pairs == kPairsPrefilter) {
+            ui::Checkbox(dmsg::prefilter_sequential, &_sfm_job.prefilter_sequential);
+            ui::help_on_hover(dmsg::prefilter_sequential_help);
+        }
+        if (sequential_window_applies(_sfm_job)) {
+            ImGui::SetNextItemWidth(px(260.0f));
+            ui::InputInt(dmsg::sequential_overlap, &_sfm_job.overlap);
+            ui::help_on_hover(dmsg::sequential_overlap_help);
+        }
+        if (pairs == kPairsPrefilter || (pairs == kPairsSequential && _sfm_job.loop_closure))
+            sfm_option_box(_sfm_job, "prefilter-neighbors",
+                        ui::detail::label(dmsg::prefilter_neighbors),
+                        &dmsg::prefilter_neighbors_help);
+        ImGui::Unindent();
     }
+
+    // What Quality picked, until typed over.
+    sfm_option_box(_sfm_job, sfm_feature_count_flag(_sfm_job.features),
+                   ui::detail::label(dmsg::max_features_auto), &dmsg::max_features_auto_help);
+    sfm_option_box(_sfm_job, "max-image-size", ui::detail::label(dmsg::max_image_size_auto),
+                   &dmsg::max_image_size_auto_help);
 
     ImGui::SetNextItemWidth(px(260.0f));
     ui::InputFloat(dmsg::initial_focal_px, &_sfm_job.init_focal_px, 0, 0, "%.4g");
@@ -8673,13 +8799,6 @@ void GuiApp::draw_sfm_advanced() {
     ui::Checkbox(dmsg::sfm_final_free_rig, &_sfm_job.final_free_rig);
     ui::help_on_hover(dmsg::sfm_final_free_rig_help);
 
-    ImGui::SetNextItemWidth(px(260.0f));
-    ui::InputInt(dmsg::max_features_auto, &_sfm_job.max_features);
-    ui::help_on_hover(dmsg::max_features_auto_help);
-    ImGui::SetNextItemWidth(px(260.0f));
-    ui::InputInt(dmsg::max_image_size_auto, &_sfm_job.max_image_size);
-    ui::help_on_hover(dmsg::max_image_size_auto_help);
-
     // ---- what the sensors are allowed to settle ----
     // GPS from a video's track or a photo's EXIF, a video's IMU, and a
     // drone's recorded attitude. Any one can be all an input has.
@@ -8705,19 +8824,6 @@ void GuiApp::draw_sfm_advanced() {
     ui::help_on_hover(dmsg::sfm_exif_attitude_help);
     ImGui::Spacing();
 
-    // Unticking it is what throws the resumable state away, so it asks first
-    // and the answer is remembered; ticking it back needs no ceremony.
-    if (ui::Checkbox(dmsg::keep_intermediate, &_sfm_job.keep_intermediate)) {
-        if (_sfm_job.keep_intermediate) save_settings();
-        else _drop_intermediate_open = true;
-    }
-    ui::help_on_hover(dmsg::keep_intermediate_help);
-
-    ImGui::SetNextItemWidth(-1);
-    ui::InputTextWithHintRaw("##sfmextra", dmsg::extra_sfm_flags_hint,
-                             &_sfm_job.extra_args);
-    ui::help_on_hover(dmsg::extra_sfm_flags_help);
-
     draw_color_space_options(/*with_point_color=*/true);
 
     ui::SeparatorText(dmsg::section_fallbacks);
@@ -8732,6 +8838,20 @@ void GuiApp::draw_sfm_advanced() {
 
     ui::Checkbox(dmsg::sfm_subprocess, &_sfm_job.subprocess);
     ui::help_on_hover(dmsg::sfm_subprocess_help);
+
+    ImGui::Spacing();
+    // Unticking it is what throws the resumable state away, so it asks first
+    // and the answer is remembered; ticking it back needs no ceremony.
+    if (ui::Checkbox(dmsg::keep_intermediate, &_sfm_job.keep_intermediate)) {
+        if (_sfm_job.keep_intermediate) save_settings();
+        else _drop_intermediate_open = true;
+    }
+    ui::help_on_hover(dmsg::keep_intermediate_help);
+
+    ImGui::SetNextItemWidth(-1);
+    ui::InputTextWithHintRaw("##sfmextra", dmsg::extra_sfm_flags_hint,
+                             &_sfm_job.extra_args);
+    ui::help_on_hover(dmsg::extra_sfm_flags_help);
 }
 
 // ---------------------------------------------------------------------------

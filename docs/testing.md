@@ -276,6 +276,8 @@ as GPU image caching. It runs without a GPU on either backend.
 | a mesh format, or which colors it carries | `mesh_format_roundtrip` — writes every format and reads it back through the other implementation |
 | the UV atlas | `uv_atlas_split` — tens of thousands of charts that fail to flatten and must split |
 | a preset field | `preset_roundtrip_test` |
+| a `spirula sfm` detector, matcher or pair-selection option, or a quality preset value | `sfm_options_test` — every such row needs an owner the dataset panel draws, and the panel's boxes read their defaults from the same table |
+| what a dataset run reuses or redoes | `dataset_plan_test` ([dataset reruns](notes/dataset-rerun.md)) |
 | a batch row's shape or training overrides | `batch_process_test` |
 | what a typed-in command line becomes, or what a message may carry into it | `command_argv_test` — the message stays one argument and stays JSON-safe |
 | the home screen's recent list, or how `gui.conf` stores it | `recent_list_test` |

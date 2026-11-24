@@ -67,7 +67,6 @@ SfmJob video_job(const fs::path& ws) {
     j.prep.mask_detector_path = "/cache/gdino.onnx";
     j.camera_model = "thin-prism-fisheye";
     j.camera_mode = 1;
-    j.data_type = 1;
     return j;
 }
 
@@ -523,10 +522,42 @@ int main() {
         StepRecorder rec(ws.string(), read_dataset_record(ws.string()));
         rec.begin(Step::Frames, frames_fields(made.prep));
         const DatasetPlan p = plan(made);
-        expect(p[Step::Frames].act == Act::Redo && p[Step::Frames].why == Why::Unrecorded,
+        expect(p[Step::Frames].act == Act::Redo && p[Step::Frames].why == Why::Resume &&
+                   !p[Step::Frames].can_keep,
                "interrupted video frames without timing are extracted again");
+        expect(!p.ask(), "... without asking: nothing finished is lost with them");
         expect(p[Step::Model].act == Act::Redo,
                "... and the model built from the frames before them is not trusted");
+    }
+
+    // ---- a record from before the capture type and automatic pairing went ------
+    build(ws, made);
+    {
+        DatasetRecord rec = read_dataset_record(ws.string());
+        StepRecord old = rec.step(Step::Model);
+        for (StepField& f : old.fields)
+            if (f.key == "pairs") f.value = "auto";
+        old.fields.push_back({"data_type", "", "video"});
+        old.fields.push_back({"overlap", "", "10"});
+        write_step_record(ws.string(), Step::Model, old);
+        const DatasetPlan p = plan(made);
+        expect(p[Step::Model].act == Act::Reuse && p[Step::Model].changes.empty(),
+               "a model recorded with a capture type and automatic pairing is still current");
+        SfmJob every = made;
+        every.pairs = kPairsExhaustive;
+        expect(plan(every)[Step::Model].act == Act::Redo, "... and another pairing still is not");
+    }
+
+    // ---- an option the panel edits off the table --------------------------------
+    build(ws, made);
+    {
+        SfmJob j = made;
+        j.options["prefilter-neighbors"] = "64";
+        const StepFields f = model_fields(j);
+        expect(std::any_of(f.begin(), f.end(), [](const StepField& x) {
+                   return x.key == "prefilter_neighbors" && x.value == "64";
+               }), "an option is a model field under its flag's name");
+        expect(plan(j)[Step::Model].act == Act::Redo, "... so changing it rebuilds");
     }
 
     // ---- the reconstruction's own stages ---------------------------------------
@@ -661,7 +692,7 @@ int main() {
                    p[ModelPart::Features].lock == Lock::Frontend,
                "feature points of another type are not kept");
         j = made;
-        j.max_features = 1000;
+        j.options["max-features"] = "1000";
         p = plan(j, keep_features);
         expect(p[ModelPart::Features].act == Act::Keep &&
                    p[ModelPart::Matching].act == Act::Reuse,
@@ -841,6 +872,41 @@ int main() {
         expect(plan(j)[Step::Dense].act == Act::None, "disabling dense keeps its artifact without running it");
     }
 
+    // ---- a rebuild cut short: only the stages it finished are the record's ------
+    build(ws, made);
+    {
+        touch(ws / "features" / "cam0" / "00010.jpg.bin");
+        touch(ws / "matches.bin");
+        touch(ws / sfm::resume::kDir / sfm::resume::kExtractSig);
+        touch(ws / sfm::resume::kDir / sfm::resume::kMatchSig);
+        SfmJob j = made;
+        j.loop_closure = false;
+        StepRecorder rec(ws.string(), read_dataset_record(ws.string()));
+        rec.begin(Step::Model, model_fields(j));
+        DatasetPlan p = plan(j);
+        expect(p[Step::Model].act == Act::Run && p[Step::Model].why == Why::Resume &&
+                   p[ModelPart::Features].act == Act::Run &&
+                   p[ModelPart::Matching].act == Act::Redo,
+               "cut short before a stage finished, nothing on disk is the new settings'");
+        rec.note(Step::Model, kMadeFeatures);
+        p = plan(j);
+        expect(p[ModelPart::Features].act == Act::Reuse &&
+                   p[ModelPart::Matching].act == Act::Run &&
+                   p[ModelPart::Matching].why == Why::Resume && !p.ask(),
+               "cut short while matching: the matches on disk are the last run's, "
+               "so matching is finished rather than reused");
+        PlanRequest keep;
+        keep.parts[(int)ModelPart::Matching] = PartChoice::Keep;
+        expect(plan(j, keep)[ModelPart::Matching].act == Act::Keep,
+               "... unless the user keeps them");
+        rec.note(Step::Model, kMadeMatches);
+        p = plan(j);
+        expect(p[ModelPart::Features].act == Act::Reuse &&
+                   p[ModelPart::Matching].act == Act::Reuse &&
+                   p[ModelPart::Mapping].act == Act::Run,
+               "cut short while mapping: both are the new settings' and only mapping is left");
+    }
+
     // ---- depth and normals ---------------------------------------------------
     build(ws, made);
     {
@@ -978,7 +1044,7 @@ int main() {
         SfmJob j;
         bool colmap = true;
         const DatasetRecord old = read_legacy_settings(ws.string(), j, colmap);
-        expect(old.present && !colmap && j.quality == 3 && j.data_type == 1 &&
+        expect(old.present && !colmap && j.quality == 3 && sfm_pairs(j.pairs) == kPairsPrefilter &&
                    j.camera_model == "thin-prism-fisheye" && j.metric_gps == 1 &&
                    !j.prefilter_sequential && j.mask_features && j.prep.video_fps == 2.0f,
                "the old stamps give back the settings they recorded");
@@ -1056,6 +1122,20 @@ int main() {
         expect(every_frame(j, j.inputs[1]) && !every_frame(j, j.inputs[0]) &&
                    fps_group(j.inputs, 1) == 1,
                "a row set to every frame opens a group of its own");
+        // Two clips at one rate, each adapting to its own motion (issue 404).
+        j.inputs[0].fps = 0.0f;
+        j.inputs[1].fps = 2.0f;
+        j.adaptive_fps = true;
+        PrepJob shared = j;
+        shared.inputs[1].fps = 0.0f;
+        expect(fps_group(j.inputs, 1) == 1 && fps_group(shared.inputs, 1) == 0 &&
+                   input_fps(j.inputs, j.video_fps, 1) == 2.0f,
+               "a row stating the rate above is its own adaptive group at that rate");
+        expect(!(frames_fields(j) == frames_fields(shared)),
+               "... which makes other frames than sharing the budget");
+        j.adaptive_fps = shared.adaptive_fps = false;
+        expect(frames_fields(j) == frames_fields(shared),
+               "... and the same ones when the rate is not adaptive");
     }
 
     {

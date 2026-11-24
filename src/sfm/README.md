@@ -54,7 +54,7 @@ images/ ──► extract ──► features/ ─┐
                                                             sparse/0 ► training
 ```
 
-`spirula sfm auto` runs all of it from two knobs, `--quality` and `--data-type`.
+`spirula sfm auto` runs all of it from one knob, `--quality`.
 
 `--progress-dir DIR` adds a second, optional output: `model.bin` (the poses and
 a subsample of the points as they stand, coloured) and `pairs.bin` (per binned
@@ -295,7 +295,7 @@ a variant that was trimmed out is a clear runtime error, not a crash.
 ```bash
 spirula sfm auto IMAGES/ -o WORKSPACE/          # images -> sparse model
 spirula sfm auto -o ws/                         # ./images + ./masks, all defaults
-spirula sfm auto IMAGES/ -o ws/ --data-type video --quality medium
+spirula sfm auto IMAGES/ -o ws/ --sequence . --quality medium   # frames in order
 spirula sfm auto IMAGES/ -o ws/ --masks MASKS/  # drop keypoints on masked pixels
 spirula sfm auto IMAGES/ -o ws/ --masks MASKS/ --mask-segment-only   # ... on 128 (sky) only
 spirula sfm auto IMAGES/ -o ws/ --camera-model opencv-fisheye
@@ -425,42 +425,43 @@ only the keypoint locations, so it takes any `--features`, SIFT included
 (`src/flexglue/README.md`).
 
 `--quality low|medium|high|extreme` sets the working resolution, the feature cap
-and the pair-selection breadth; `--data-type individual|video|internet` sets the
-pairing mode, the seed angle and how cameras are grouped. Both are applied
-*before* the table's overrides, so naming a flag explicitly always wins over the
-preset, and `auto` reports every field a preset moved:
+and the pair-selection breadth. It is applied *before* the table's overrides, so
+naming a flag explicitly always wins over the preset, and `auto` reports every
+field a preset moved:
 
 ```
   preset    : --max-image-size 3200 -> 1000
   preset    : --max-features 8192 -> 2048
 ```
 
-Sequential pairing — what `--data-type video` asks for — is a chain: image `i`
-against the next `--overlap`, and nothing else. A capture that walks around a
-subject and comes back has no pair crossing the seam, so any one weak step in
-the sequence cuts the view graph and the mapper reports models where there
-should be one. On a 262-frame walk around a plaza that was four models
-(144 / 74 / 19 / 12 images) against one with 254 for the same frames matched by
-pair selection. Two things fix it, and `auto` uses both:
+There is no capture-type switch. What `--data-type` used to bundle is said
+directly: `--sequence` declares frames taken in order (which also halves the
+seed pair's triangulation angle, as COLMAP does for video), `--camera-mode
+image` gives downloaded photos a camera each, and `--pairs` picks the pairing.
 
-- **At 100 images or more, `auto` retires the video preset for pair selection**,
-  the same cutoff and for the same reason as exhaustive: a capture that long
-  revisits places, and content-based selection is a fraction of the cost of
-  matching. `--pairs sequential` explicitly still means sequential.
-- **`--loop-closure` (on by default) covers the case below the cutoff**: it
-  unions the `prefilter` shortlist into the temporal window, which is what
-  COLMAP's `SequentialMatching.loop_detection` does with a vocabulary tree.
-  Forced on that same capture it also produced one model (249 images), for 1.6 s
-  of selection and 2.5x the pairs to match. `--no-loop-closure` is the old
-  behaviour.
-- **`--prefilter-sequential` (on by default) is the converse, above the
-  cutoff**: pair selection takes the sequential window too, so a weak link the
-  content score ranked just outside an image's top-k is still matched when the
-  file order says the two are neighbours. It applies to a folder of photos as
-  much as to video (named in shooting order, it is the same thing); the
-  `internet` preset turns it off. On a 470-image `.insv` walk the shortlist
-  held only 1540 of the window's 5990 pairs, and 3644 of the 4450 it added
-  verified (median 53 inliers, against 223 for the shortlist's own).
+`--pairs prefilter` is the default at every image count. It used to depend on
+the count (exhaustive below 100 images, sequential for short video), which made
+one command line two different pipelines; `--pairs exhaustive` and `--pairs
+sequential` are still there to be asked for.
+
+Sequential pairing is a chain: image `i` against the next `--overlap`, and
+nothing else. A capture that walks around a subject and comes back has no pair
+crossing the seam, so any one weak step in the sequence cuts the view graph and
+the mapper reports models where there should be one. On a 262-frame walk around
+a plaza that was four models (144 / 74 / 19 / 12 images) against one with 254
+for the same frames matched by pair selection. Two options bridge the two modes:
+
+- **`--loop-closure` (on by default) under `--pairs sequential`** unions the
+  `prefilter` shortlist into the temporal window, which is what COLMAP's
+  `SequentialMatching.loop_detection` does with a vocabulary tree. On that
+  capture it also produced one model (249 images), for 1.6 s of selection and
+  2.5x the pairs to match.
+- **`--prefilter-sequential` under `--pairs prefilter`** is the converse: pair
+  selection takes the sequential window too, so a weak link the content score
+  ranked just outside an image's top-k is still matched when the file order
+  says the two are neighbours. On a 470-image `.insv` walk the shortlist held
+  only 1540 of the window's 5990 pairs, and 3644 of the 4450 it added verified
+  (median 53 inliers, against 223 for the shortlist's own).
 
 Every sequential window runs per folder -- a rig's lenses, several clips --
 and, with `--quadratic-overlap` (on), also links each image to the ones 16,

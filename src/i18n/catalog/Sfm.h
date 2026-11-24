@@ -119,21 +119,6 @@ SS_MSG(run_quality,
     RU("Качество: {0}   Предел размера изображения: {1} px   Предел числа точек: {2}"),
     TR("Kalite: {0}   Görüntü boyutu sınırı: {1} px   Öznitelik sınırı: {2}"));
 
-SS_MSG(run_data_type,
-    EN("Capture type: {0}"),
-    JA("撮影の種類: {0}"),
-    ZH_HANS("拍摄类型: {0}"),
-    ZH_HANT("拍攝類型: {0}"),
-    KO("촬영 종류: {0}"),
-    DE("Aufnahmeart: {0}"),
-    FR("Type de prise de vue : {0}"),
-    ES("Tipo de captura: {0}"),
-    PT("Tipo de captura: {0}"),
-    IT("Tipo di ripresa: {0}"),
-    NL("Soort opname: {0}"),
-    RU("Тип съёмки: {0}"),
-    TR("Çekim türü: {0}"));
-
 SS_MSG(run_cameras,
     EN("Lens: {0}   Camera grouping: {1}"),
     JA("レンズ: {0}   カメラのまとめ方: {1}"),
@@ -1102,21 +1087,6 @@ SS_MSG(match_need_two,
     NL("Er zijn minstens 2 kenmerkbestanden nodig in {0}."),
     RU("В {0} нужно не менее 2 файлов признаков."),
     TR("{0} içinde en az 2 öznitelik dosyası gerekli."));
-
-SS_MSG(match_switch_to_selection,
-    EN("Images: {0}, at or above the exhaustive cutoff -- switching from {1} pairing to content-based pair selection. --pairs {1} forces the old behaviour."),
-    JA("画像 {0} 枚は総当たりの上限以上です。{1} のペア選択から内容に基づくペア選択に切り替えます。--pairs {1} を指定すると従来どおりになります。"),
-    ZH_HANS("图像 {0} 张，达到或超过穷举上限——从 {1} 配对切换到基于内容的配对选择。指定 --pairs {1} 可保持原行为。"),
-    ZH_HANT("影像 {0} 張，達到或超過窮舉上限——從 {1} 配對切換到基於內容的配對選擇。指定 --pairs {1} 可保持原行為。"),
-    KO("이미지 {0} 장으로 전수 비교 한계 이상입니다. {1} 짝짓기에서 내용 기반 선택으로 바꿉니다. --pairs {1} 을(를) 주면 이전 동작을 유지합니다."),
-    DE("{0} Bilder erreichen die Vollpaar-Grenze: wechselt von {1} zu inhaltsbasierter Auswahl. --pairs {1} erzwingt das bisherige Verhalten."),
-    FR("{0} images atteignent le seuil exhaustif : passage de {1} à la sélection par contenu. --pairs {1} impose le comportement précédent."),
-    ES("Imágenes: {0}, en el umbral exhaustivo o por encima: se pasa del emparejamiento {1} a una selección de pares basada en el contenido. --pairs {1} fuerza el comportamiento anterior."),
-    PT("Imagens: {0}, no limite exaustivo ou acima dele -- passando do pareamento {1} para uma seleção de pares baseada no conteúdo. --pairs {1} força o comportamento antigo."),
-    IT("Immagini: {0}, alla soglia esaustiva o oltre: si passa dall'accoppiamento {1} a una selezione di coppie basata sul contenuto. --pairs {1} impone il comportamento precedente."),
-    NL("Afbeeldingen: {0}, op of boven de uitputtende drempel -- er wordt van {1}-paarvorming overgestapt op inhoudsgebaseerde paarselectie. --pairs {1} dwingt het oude gedrag af."),
-    RU("Изображений: {0} — на пороге полного перебора или выше: переход от режима {1} к отбору пар по содержимому. --pairs {1} возвращает прежнее поведение."),
-    TR("Görüntü: {0}, tam tarama eşiğinde veya üzerinde -- {1} çift seçiminden içerik temelli çift seçimine geçiliyor. --pairs {1} eski davranışı zorlar."));
 
 SS_MSG(match_exhaustive_quadratic,
     EN("Images: {0} with exhaustive pairing means {1} pairs, which grows with the square "

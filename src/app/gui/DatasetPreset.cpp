@@ -2,12 +2,32 @@
 
 #include "app/gui/DatasetPreset.h"
 
+#include "app/gui/SfmOptions.h"
 #include "data/JsonField.h"
 #include "dense/ConfigFields.h"
 
 #include <algorithm>
 #include <filesystem>
 #include <stdexcept>
+
+namespace json_field {
+
+// Flag name to value text, as `spirula sfm` spells both.
+inline std::string emit(const gui::SfmOptionMap& v) {
+    JsonWriter w(/*pretty=*/false);
+    w.object();
+    for (const auto& [flag, value] : v) w.field(flag.c_str(), value);
+    w.end();
+    return w.str();
+}
+inline void assign(gui::SfmOptionMap& out, const JsonValue& v) {
+    if (!v.is_object()) return;
+    out.clear();
+    for (const auto& [flag, value] : v.obj)
+        if (value.type == JsonValue::Type::String) out[flag] = value.str;
+}
+
+}  // namespace json_field
 
 namespace gui {
 
@@ -87,7 +107,7 @@ namespace {
     X("geometry_overwrite",         sfm.geometry.overwrite)                   \
     /* ---- the built-in reconstruction ---- */                               \
     X("sfm_quality",                sfm.quality)                              \
-    X("sfm_data_type",              sfm.data_type)                            \
+    X("sfm_videos_in_order",        videos_in_order)                          \
     X("sfm_camera_model",           sfm.camera_model)                         \
     X("sfm_camera_mode",            sfm.camera_mode)                          \
     X("sfm_pairs",                  sfm.pairs)                                \
@@ -99,8 +119,7 @@ namespace {
     X("sfm_distortion_refine",      sfm.distortion_refine)                    \
     X("sfm_final_per_image_intrinsics", sfm.final_per_image_intrinsics)       \
     X("sfm_final_free_rig",         sfm.final_free_rig)                       \
-    X("sfm_max_features",           sfm.max_features)                         \
-    X("sfm_max_image_size",         sfm.max_image_size)                       \
+    X("sfm_options",                sfm.options)                              \
     X("sfm_mapper",                 sfm.mapper)                               \
     X("sfm_features",               sfm.features)                            \
     X("sfm_matcher",                sfm.matcher)                              \
@@ -138,6 +157,23 @@ namespace {
     X("colmap_final_bundle_adjust", colmap.final_bundle_adjust)               \
     X("colmap_vocab_tree_path",     colmap.vocab_tree_path)                   \
     /* end */
+
+// Keys an older build wrote, onto what replaced them. "sfm_data_type" was a
+// template: 1 stood for ordered video frames, 2 for per-image cameras without
+// file-order pairs, which those files also carry as their own settings.
+void read_retired_settings(const JsonValue& fields, DatasetSettings& s) {
+    if (const JsonValue* v = fields.find("sfm_data_type")) {
+        s.videos_in_order = v->as_int() == 1;
+        if (v->as_int() == 2) s.sfm.prefilter_sequential = false;
+    }
+    const std::pair<const char*, const char*> counts[] = {
+        {"sfm_max_features", sfm_feature_count_flag(s.sfm.features)},
+        {"sfm_max_image_size", "max-image-size"},
+    };
+    for (const auto& [key, flag] : counts)
+        if (const JsonValue* v = fields.find(key); v && v->as_int() > 0)
+            s.sfm.options[flag] = std::to_string(v->as_int());
+}
 
 template <typename T>
 void clamp_to(T& v, T lo, T hi) { v = std::clamp(v, lo, hi); }
@@ -201,8 +237,9 @@ bool dataset_apply_preset(DatasetSettings& s, const std::string& name) {
     if (name == "internet-photos") {
         // Photographs from everywhere: no two share a lens, so no two share a
         // camera, and the wide baselines are what the learned frontend is for.
-        s.sfm.data_type = 2;
         s.sfm.camera_mode = 2;
+        // Downloaded photos are in no order, so file order links nothing.
+        s.sfm.prefilter_sequential = false;
         s.colmap.camera_mode = 2;
         s.sfm.features = 2;              // ALIKED-n32
         s.sfm.matcher = 1;               // LightGlue
@@ -255,9 +292,8 @@ void sanitize_dataset_settings(DatasetSettings& s) {
 
     SfmJob& j = s.sfm;
     clamp_index(j.quality, kSfmQuality);
-    clamp_index(j.data_type, kSfmDataType);
     clamp_index(j.camera_mode, kSfmCameraMode);
-    clamp_index(j.pairs, kSfmPairs);
+    j.pairs = sfm_pairs(j.pairs);
     clamp_to(j.overlap, 1, 1000);
     clamp_to(j.distortion_refine, 0, 2);
     clamp_index(j.mapper, kSfmMapper);
@@ -266,8 +302,7 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     clamp_index(j.metric_gps, kSfmMetricGps);
     clamp_index(j.sensor_gauge, kSfmSensorGauge);
     clamp_index(j.exif_attitude, kSfmExifAttitude);
-    clamp_to(j.max_features, 0, 1000000);
-    clamp_to(j.max_image_size, 0, 32768);
+    sanitize_sfm_options(j.options);
     j.init_focal_px = std::max(0.0f, j.init_focal_px);
     clamp_choice(j.camera_model, kSfmCameraModels, kNumSfmCameraModels);
     // LightGlue only means something with a learned frontend, and the CLI
@@ -310,6 +345,7 @@ void read_dataset_settings_json(const JsonValue& fields, DatasetSettings& s) {
     if (const JsonValue* v = fields.find(key)) json_field::assign(s.member, *v);
     SS_DATASET_PRESET_FIELDS(SS_DS_LOAD)
 #undef SS_DS_LOAD
+    read_retired_settings(fields, s);
     sanitize_dataset_settings(s);
 }
 
@@ -342,6 +378,7 @@ DatasetPreset load_dataset_preset(const std::string& path) {
         json_field::assign(p.s.member, *v);
     SS_DATASET_PRESET_FIELDS(SS_DS_LOAD)
 #undef SS_DS_LOAD
+    read_retired_settings(*fields, p.s);
     sanitize_dataset_settings(p.s);
     if (p.name.empty()) p.name = std::filesystem::path(path).stem().string();
     return p;

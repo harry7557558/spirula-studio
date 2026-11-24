@@ -502,6 +502,7 @@ private:
     // panel as it stands; the runner asks the same question of the same job.
     const DatasetPlan& dataset_plan();
     void draw_dataset_plan(const DatasetPlan& plan);
+    bool draw_plan_rows(const DatasetPlan& plan, bool interactive);
     // A rebuild nobody asked for -- the frames or the reconstruction differ
     // from the panel -- is confirmed first, with the option to keep them.
     void draw_rebuild_confirm_modal();
@@ -1205,7 +1206,7 @@ private:
     // one). Not persisted, like every masking setting: a fresh session never
     // runs a model the last one happened to pick.
     std::string _model_id = "sam2.1-base-plus";
-    std::string _mask_detector_id = "gdino-tiny";   // its words (TextDetector)
+    std::string _mask_detector_id = "gdino-base";   // its words (TextDetector)
     std::string _mask_editor_model_id = "sam2.1-base-plus";
     ModelDownload _download;
     // The pick _download is fetching: with a detector it is three files,

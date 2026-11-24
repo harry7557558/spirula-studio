@@ -6,6 +6,7 @@
 #include "app/CubeLut.h"
 #include "app/FrameMask.h"
 #include "app/gui/ColmapRunner.h"
+#include "app/gui/SfmOptions.h"
 #include "app/gui/SfmRunner.h"
 #include "data/Yaml.h"
 #include "i18n/catalog/Log.h"
@@ -254,11 +255,11 @@ bool soft_model_key(const std::string& key) {
 }
 
 // The first `spirula sfm` stage whose signature (sfm::stageSignature) carries
-// what a model field becomes on its command line. Unlisted counts as
-// extraction: overstating the work beats hiding it.
+// what a model field becomes on its command line. An option is filed by its
+// table row; anything unlisted counts as extraction, which overstates the work.
 ModelPart field_part(const std::string& key) {
     static const char* const matching[] = {
-        "lens",        "focal",        "camera_mode", "data_type", "matcher",
+        "lens",        "focal",        "camera_mode", "matcher",
         "pairs",       "overlap",      "loop_closure", "prefilter_sequential",
         "focal_px",    "distortion",   "sequence",    "rig",        "scan_views",
         "imu",         "gps",
@@ -272,7 +273,36 @@ ModelPart field_part(const std::string& key) {
         if (key == k) return ModelPart::Matching;
     for (const char* k : mapping)
         if (key == k) return ModelPart::Mapping;
-    return ModelPart::Features;
+    ModelPart part = ModelPart::Features;
+    sfm_option_part(key, part);
+    return part;
+}
+
+// A model record from before the capture type and the automatic pairing went:
+// the first is no field, and what the second resolved to reads as pair
+// selection. A learned detector's feature count was filed under SIFT's key.
+void migrate_model_fields(StepFields& fields) {
+    auto value = [&](const char* key) {
+        for (const StepField& f : fields)
+            if (f.key == key) return f.value;
+        return std::string();
+    };
+    if (value("engine") != "builtin" || value("data_type").empty()) return;
+    const bool was_auto = value("pairs") == "auto";
+    const bool file_order = value("prefilter_sequential") == "on";
+    const std::string detector = value("features");
+    const char* count = detector.rfind("aliked", 0) == 0 ? "aliked_max_features"
+                        : detector.rfind("loma", 0) == 0 ? "loma_max_features"
+                                                          : "max_features";
+    StepFields out;
+    for (StepField& f : fields) {
+        if (f.key == "data_type") continue;
+        if (was_auto && f.key == "overlap" && !file_order) continue;
+        if (was_auto && f.key == "pairs") f.value = "prefilter";
+        if (f.key == "max_features") f.key = count;
+        out.push_back(std::move(f));
+    }
+    fields = std::move(out);
 }
 
 std::vector<FieldChange> diff(const StepFields& was, const StepFields& now,
@@ -337,6 +367,14 @@ void plan_parts(DatasetPlan& p, const PlanJob& job, const WorkspaceState& ws,
         return false;
     };
 
+    // An interrupted run's record holds the settings it started with; only
+    // the stages it finished were made with them, and what else is on disk is
+    // an earlier run's, which `spirula sfm` judges by its own signature.
+    auto unfinished = [&](const char* stage) {
+        return rr.present && !rr.complete &&
+               std::find(rr.made.begin(), rr.made.end(), stage) == rr.made.end();
+    };
+
     if (job.staged && makes(md.act)) {
         if (rr.present)
             for (const FieldChange& c : diff(rr.fields, job.model))
@@ -363,7 +401,7 @@ void plan_parts(DatasetPlan& p, const PlanJob& job, const WorkspaceState& ws,
         } else if (masks_feed && (makes(mk.act) || rr.masks_id != rec.step(Step::Masks).id)) {
             // An image is extracted again when its mask file is newer.
             set(fe, Act::Redo, Why::Masks);
-        } else if (!rr.complete && !ws.matched) {
+        } else if (unfinished(kMadeFeatures)) {
             set(fe, Act::Run, Why::Resume);
             fe.lock = Lock::Nothing;
         } else {
@@ -386,11 +424,13 @@ void plan_parts(DatasetPlan& p, const PlanJob& job, const WorkspaceState& ws,
             set(ma, Act::Reuse, Why::Unrecorded);
         } else if (!ma.changes.empty()) {
             set(ma, Act::Redo, Why::Settings);
+        } else if (unfinished(kMadeMatches)) {
+            set(ma, Act::Run, Why::Resume);
         } else {
             set(ma, Act::Reuse);
         }
         if (ma.lock == Lock::None && changed(ma, {"lens", "focal", "camera_mode", "focal_px",
-                                                  "distortion", "data_type", "scan_views"}))
+                                                  "distortion", "scan_views"}))
             ma.lock = Lock::Lens;
         choose(ModelPart::Matching, ma);
 
@@ -491,7 +531,7 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
                         SfmJob& job, StepFields& fields) {
     std::string manifest;
     // What a flag the run left out stood for.
-    job.pairs = 0;
+    job.pairs = kPairsPrefilter;
     job.overlap = 10;
     job.prefilter_sequential = true;
     job.loop_closure = true;
@@ -501,7 +541,7 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
     job.final_per_image_intrinsics = job.final_free_rig = false;
     job.init_focal_px = 0.0f;
     job.init_distortion.clear();
-    job.max_features = job.max_image_size = 0;
+    job.options.clear();
     job.image_gamut.clear();
     job.image_is_linear.reset();
     job.image_exposure.clear();
@@ -511,7 +551,7 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
         const std::string v = k + 1 < a.size() ? a[k + 1] : std::string();
         auto take = [&]() { k++; return v; };
         if (flag == "--quality") job.quality = index_in(kSfmQuality, take(), 2);
-        else if (flag == "--data-type") job.data_type = index_in(kSfmDataType, take(), 0);
+        else if (flag == "--data-type") take();
         else if (flag == "--camera-model") job.camera_model = take();
         else if (flag == "--camera-mode") job.camera_mode = index_in(kSfmCameraMode, take(), 1);
         else if (flag == "--mapper") job.mapper = index_in(kSfmMapper, take(), 0);
@@ -520,7 +560,7 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
             const std::string m = take();
             job.matcher = m == "bruteforce" ? 0 : m == "flexglue" ? 2 : 1;
         }
-        else if (flag == "--pairs") job.pairs = index_in(kSfmPairs, take(), 0);
+        else if (flag == "--pairs") job.pairs = sfm_pairs(index_in(kSfmPairs, take(), 0));
         else if (flag == "--overlap") job.overlap = (int)to_float(take());
         else if (flag == "--no-loop-closure") job.loop_closure = false;
         else if (flag == "--no-prefilter-sequential") job.prefilter_sequential = false;
@@ -533,9 +573,8 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
         else if (flag == "--final-free-rig") job.final_free_rig = true;
         else if (flag == "--manifest") manifest = take();
         else if (flag == "--max-features" || flag == "--aliked-max-features" ||
-                 flag == "--loma-max-features")
-            job.max_features = (int)to_float(take());
-        else if (flag == "--max-image-size") job.max_image_size = (int)to_float(take());
+                 flag == "--loma-max-features" || flag == "--max-image-size")
+            job.options[flag.substr(2)] = take();
         else if (flag == "--metric-gps") job.metric_gps = index_in(kSfmMetricGps, take(), 0);
         else if (flag == "--sensor-gauge") job.sensor_gauge = index_in(kSfmSensorGauge, take(), 2);
         else if (flag == "--exif-attitude")
@@ -677,6 +716,11 @@ StepFields frames_fields(const PrepJob& job) {
         const bool every = every_frame(job, in);
         rate = rate || !every;
         add(f, "fps", scope, every ? "every" : num(input_fps(job, in)));
+        // Listed only for a row repeating the rate above as its own choice,
+        // so a record from before that could be said compares equal.
+        if (job.adaptive_fps && !every && index > 0 && fps_group(job.inputs, index) == index &&
+            input_fps(job.inputs, job.video_fps, index - 1) == input_fps(job, in))
+            add(f, "own_motion_budget", scope, "on");
         if (in.clipped())
             add(f, "clip", scope,
                 num(in.clip_start) + "-" + (in.clip_end > 0.0 ? num(in.clip_end) : "end"));
@@ -778,11 +822,10 @@ StepFields model_fields(const SfmJob& job) {
     add(f, "camera_mode", "",
         sfm_pick(kSfmCameraMode, effective_camera_mode(p, job.camera_mode), 1));
     add(f, "quality", "", sfm_pick(kSfmQuality, job.quality, 2));
-    add(f, "data_type", "", sfm_pick(kSfmDataType, job.data_type));
     add(f, "mapper", "", sfm_pick(kSfmMapper, job.mapper));
     add(f, "features", "", sfm_pick(kSfmFeatures, job.features));
     add(f, "matcher", "", sfm_matcher_for(job.features, job.matcher));
-    add(f, "pairs", "", sfm_pick(kSfmPairs, job.pairs));
+    add(f, "pairs", "", sfm_pick(kSfmPairs, sfm_pairs(job.pairs)));
     if (sequential_window_applies(job)) add(f, "overlap", "", num(job.overlap));
     add(f, "loop_closure", "", onoff(job.loop_closure));
     add(f, "prefilter_sequential", "", onoff(job.prefilter_sequential));
@@ -791,8 +834,8 @@ StepFields model_fields(const SfmJob& job) {
     add(f, "distortion_refine", "", num(job.distortion_refine));
     add(f, "final_per_image_intrinsics", "", onoff(job.final_per_image_intrinsics));
     add(f, "final_free_rig", "", onoff(job.final_free_rig));
-    if (job.max_features > 0) add(f, "max_features", "", num(job.max_features));
-    if (job.max_image_size > 0) add(f, "max_image_size", "", num(job.max_image_size));
+    for (const auto& [flag, value] : active_sfm_options(job))
+        add(f, sfm_option_field(flag).c_str(), "", value);
     add(f, "metric_gps", "", sfm_pick(kSfmMetricGps, job.metric_gps));
     add(f, "sensor_gauge", "", sfm_pick(kSfmSensorGauge, job.sensor_gauge, 2));
     add(f, "exif_attitude", "", sfm_pick(kSfmExifAttitude, job.exif_attitude, 2));
@@ -956,6 +999,7 @@ DatasetRecord read_plan_record(const std::string& workspace, const PrepJob& job)
     DatasetRecord rec = read_dataset_record(workspace);
     if (!rec.steps[(int)Step::Frames].present)
         rec.steps[(int)Step::Frames] = legacy_frames(workspace, job);
+    migrate_model_fields(rec.steps[(int)Step::Model].fields);
     return rec;
 }
 
@@ -1050,9 +1094,13 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
                     return c.subdir == in.subdir && norm_path(c.path) == norm_path(in.path);
                 });
             if (!recorded) {
-                set(fr, Act::Redo, req.redo_frames ? Why::Requested : Why::Unrecorded);
+                // An extraction that never finished left nothing complete to
+                // lose, so making its frames again needs no asking.
+                const bool interrupted = rf.present && !rf.complete;
+                set(fr, Act::Redo,
+                    req.redo_frames ? Why::Requested : interrupted ? Why::Resume : Why::Unrecorded);
                 fr.can_keep = false;
-                fr.ask = !req.redo_frames;
+                fr.ask = !req.redo_frames && !interrupted;
                 break;
             }
         }
@@ -1461,6 +1509,13 @@ void StepRecorder::begin(Step s, StepFields fields, std::vector<std::string> mad
     if (s == Step::Dense) { r.model_id = _ids[(int)Step::Model]; r.masks_id = _ids[(int)Step::Masks]; }
     _ids[(int)s] = r.id;
     _open[(int)s] = r;
+    write_step_record(_ws, s, r);
+}
+
+void StepRecorder::note(Step s, const std::string& made) {
+    StepRecord& r = _open[(int)s];
+    if (!r.present || std::find(r.made.begin(), r.made.end(), made) != r.made.end()) return;
+    r.made.push_back(made);
     write_step_record(_ws, s, r);
 }
 
