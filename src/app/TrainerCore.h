@@ -213,9 +213,6 @@ struct TrainerCallbacks {
     // needs. true retries the decode, false stops the run (still saving a
     // checkpoint). Unset fails the run outright, which is what a script wants.
     std::function<bool(const std::string&)> on_data_error;
-
-    // Test gate invoked by the async writer before touching checkpoint files.
-    std::function<void()> checkpoint_writer_gate;
 };
 
 class TrainerSession {
@@ -388,8 +385,7 @@ private:
     std::deque<double> _step_latencies;    // last 100, seconds
     bool _diverged_loss_reported = false;
 
-    std::future<void> write_checkpoint(int step, bool full, bool periodic,
-                                       const std::function<void()>& writer_gate = {});
+    std::future<void> write_checkpoint(int step, bool full, bool periodic);
     void prune_checkpoints();
 
     void observe_memory(int step, int64_t splats_ran);

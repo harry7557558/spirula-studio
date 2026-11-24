@@ -1949,8 +1949,7 @@ void TrainerSession::save_checkpoint(int step, bool full) {
     prune_checkpoints();
 }
 
-std::future<void> TrainerSession::write_checkpoint(int step, bool full, bool periodic,
-                                                    const std::function<void()>& writer_gate) {
+std::future<void> TrainerSession::write_checkpoint(int step, bool full, bool periodic) {
     const std::string run_name = checkpoint_run_name(out_dir);
     std::string basename = run_name;
     if (!cfg.save_only_latest_checkpoint) {
@@ -1963,7 +1962,7 @@ std::future<void> TrainerSession::write_checkpoint(int step, bool full, bool per
     if (periodic) {
         const auto vram = _forecast.vram(false);
         auto save = engine_try_save_checkpoint_async(engine_mutex, vram.peak_mean,
-            root, full, step, cfg.background_export_height, basename, cfg.export_y_up, camera_hash, writer_gate);
+            root, full, step, cfg.background_export_height, basename, cfg.export_y_up, camera_hash);
         _perf.checkpoint(step, save.pending.valid(), save.reason);
         if (save.pending.valid()) return std::move(save.pending);
     }
@@ -2223,7 +2222,7 @@ void TrainerSession::train_steps(const TrainerCallbacks& cb) {
             if (periodic) {
                 // The one checkpoint kept is what a crash resumes from, so it carries the optimizer.
                 pending = write_checkpoint(step, cfg.save_full_checkpoint || cfg.save_only_latest_checkpoint,
-                                           true, cb.checkpoint_writer_gate);
+                                           true);
                 if (!pending.valid()) prune_checkpoints();
             }
             save_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
@@ -2322,7 +2321,8 @@ void TrainerSession::train_steps(const TrainerCallbacks& cb) {
                 return bytes;
             }, [] { return spirula::processRamBytes(); });
         }
-        if (save_s > 0.0) _forecast.add_save(save_s, splats_ran);
+        // A step that only collected a finished background write is not a save.
+        if (periodic && save_s > 0.0) _forecast.add_save(save_s, splats_ran);
         observe_memory(step, splats_ran);
         // SS_FORECAST_LOG=1: the forecast's state every 100 steps, English,
         // for checking it against how the run actually ends.

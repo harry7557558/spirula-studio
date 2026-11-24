@@ -6,14 +6,17 @@
 #include "external/stb_image_write.h"
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -239,6 +242,20 @@ void setup_data(const fs::path& root, bool missing = false) {
         viewmat, {20,20,8,8}, std::vector<float>(8,0), {}, {}, {}, {}, {}, {}, {}, {0}, {});
 }
 
+struct GateGuard {
+    ~GateGuard() { engine_set_checkpoint_writer_gate({}); }
+};
+
+void configure(spirula::TrainerSession& session, const fs::path& root) {
+    session.out_dir = root;
+    session.cfg.save_only_latest_checkpoint = true;
+    session.cfg.background_export_height = 16;
+    session.cfg.sh_degree = 1;
+    session.cfg.use_fused_proj_bwd_optim = false;
+    session.cfg.background_mode = "skybox";
+    session.cfg.background_sh_degree = 0;
+}
+
 void drain(const fs::path& root, bool fail, bool final_save, bool stop = true) {
     seed();
     fs::create_directory(root);
@@ -247,15 +264,9 @@ void drain(const fs::path& root, bool fail, bool final_save, bool stop = true) {
     const auto paths = products(root, stem);
 
     spirula::TrainerSession session;
-    session.out_dir = root;
+    configure(session, root);
     session.cfg.num_iterations = stop ? 16 : 5;
     session.cfg.steps_per_save = 4;
-    session.cfg.save_only_latest_checkpoint = true;
-    session.cfg.background_export_height = 16;
-    session.cfg.sh_degree = 1;
-    session.cfg.use_fused_proj_bwd_optim = false;
-    session.cfg.background_mode = "sh";
-    session.cfg.background_sh_degree = 0;
     session.save_checkpoint(0, true);
     const Bytes old = read(paths);
     const auto stale = root / (stem + "_step-000000000.tar");
@@ -266,11 +277,12 @@ void drain(const fs::path& root, bool fail, bool final_save, bool stop = true) {
     auto entered = writer_entered.get_future();
     auto released = release_writer.get_future();
     bool advanced = false;
-    callbacks.checkpoint_writer_gate = [&] {
+    GateGuard guard;
+    engine_set_checkpoint_writer_gate([&] {
         writer_entered.set_value();
         if (released.wait_for(std::chrono::seconds(30)) != std::future_status::ready)
             throw std::runtime_error("writer did not overlap the training step");
-    };
+    });
     callbacks.on_step = [&](const spirula::TrainerProgress& p) {
         if (p.step != 4) return;
         const bool writer_pending = entered.wait_for(std::chrono::seconds(10)) == std::future_status::ready;
@@ -294,6 +306,55 @@ void drain(const fs::path& root, bool fail, bool final_save, bool stop = true) {
         require(!fs::exists(stale), "successful drain did not prune the old checkpoint");
     }
     require(advanced && session.cur_step.load() == 5, "did not train the save-boundary step");
+    assert_clean(paths);
+}
+
+// A write still running at the next save step holds training there; saves never queue.
+void slow_writer(const fs::path& root) {
+    seed();
+    fs::create_directory(root);
+    setup_data(root);
+    const auto paths = products(root, root.filename().string());
+    spirula::TrainerSession session;
+    configure(session, root);
+    session.cfg.num_iterations = 7;
+    session.cfg.steps_per_save = 2;
+
+    std::atomic<int> writers{0};
+    std::atomic<bool> released{false};
+    std::promise<void> open;
+    const std::shared_future<void> gate = open.get_future().share();
+    std::future<void> releaser;
+    GateGuard guard;
+    engine_set_checkpoint_writer_gate([&] {
+        ++writers;
+        if (gate.wait_for(std::chrono::seconds(30)) != std::future_status::ready)
+            throw std::runtime_error("slow writer was never released");
+    });
+    bool held = false;
+    spirula::TrainerCallbacks callbacks;
+    callbacks.on_step = [&](const spirula::TrainerProgress& p) {
+        // Step 4 saves next: the step-2 write must still be gated when it comes due.
+        if (p.step == 3) {
+            releaser = std::async(std::launch::async, [&] {
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                released = true;
+                open.set_value();
+            });
+        }
+        if (p.step == 4) held = released.load();
+    };
+    session.train(callbacks);
+    require(held, "step 4 ran while the step-2 checkpoint was still being written");
+    require(writers == 3, "expected one background writer per periodic save");
+    require(ckpt::read_state_json(paths.back()).find("step")->as_int() == 7,
+            "final save did not follow the queued periodic saves");
+    std::ifstream perf(root / "checkpoint_saves.csv");
+    std::string header, row, rows;
+    std::getline(perf, header);
+    while (std::getline(perf, row)) rows += row + ";";
+    require(rows == "2,overlapped,snapshot;4,overlapped,snapshot;6,overlapped,snapshot;",
+            "a periodic save was skipped or fell back while the writer was slow");
     assert_clean(paths);
 }
 
@@ -351,6 +412,7 @@ int main() {
         drain(root / "stop-and-save", false, true);
         drain(root / "stop-with-failed-save", true, true);
         drain(root / "natural-end", false, true, false);
+        slow_writer(root / "slow-writer");
         final_collision(root / "no-step-resume", false);
         final_collision(root / "decline-retry", true);
     } catch (const std::exception& e) {

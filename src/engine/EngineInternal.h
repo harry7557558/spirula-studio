@@ -16,6 +16,7 @@
 #include <array>
 #include <cstdint>
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <string>
 
@@ -33,6 +34,10 @@ void engine_pca_reg_step(int step, const PcaRegConfig& cfg,
 // set to opacity on first use, freed once nothing can relocate. Idempotent
 // within a step (EngineDensify.cpp).
 void engine_max_weight_begin_step(int step, int max_steps, const DensifyConfig& cfg);
+
+// Tests only: runs on each background checkpoint writer before it opens a file.
+// A save submitted while one is set keeps that gate; pass {} to clear.
+void engine_set_checkpoint_writer_gate(std::function<void()> gate);
 
 // Hands the current image size's binning to the search (engine_bin_tile_observe);
 // a training step calls it before its forward, so the search starts coarse.

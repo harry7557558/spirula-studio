@@ -35,6 +35,8 @@ namespace {
 
 namespace fs = std::filesystem;
 
+std::function<void()> g_checkpoint_writer_gate;
+
 
 // Runtime scalars and layout validation; run configuration lives in config.json.
 static std::string _build_state_json(EngineState& s, int step, bool full) {
@@ -284,9 +286,12 @@ static const char* snapshot_rejection(double peak, uint64_t bytes, uint64_t scra
 #ifdef _WIN32
     const uint64_t free = mem.has_commit ? mem.commit_free_bytes : 0;
 #else
-    const uint64_t free = spirula::availableRamBytes();
+    uint64_t free = spirula::availableRamBytes();
 #endif
     if (!free) return "headroom_unavailable";
+#ifdef __linux__
+    free = std::min<uint64_t>(free, spirula::cgroupRamHeadroomBytes());
+#endif
     const double growth = mem.has_process && std::isfinite(peak) ? peak - double(mem.process_bytes) : 0;
     if (bytes > free || scratch > free - bytes ||
         double(free - bytes - scratch) < std::max(double(kSnapshotHeadroom), growth))
@@ -463,8 +468,7 @@ void engine_save_checkpoint(std::string output_dir, bool full_dump, int step,
 CheckpointSubmission engine_try_save_checkpoint_async(
     std::mutex& engine_mutex, double projected_device_peak,
     const std::string& output_dir, bool full_dump, int step, int background_export_height,
-    const std::string& basename, bool y_up, const std::string& region_camera_hash,
-    const std::function<void()>& writer_gate) try {
+    const std::string& basename, bool y_up, const std::string& region_camera_hash) try {
     validate_height(background_export_height);
     std::unique_lock<std::mutex> lock(engine_mutex);
     const auto sizing = [&] {
@@ -505,7 +509,8 @@ CheckpointSubmission engine_try_save_checkpoint_async(
     c.data.host = std::move(host);
     try {
         auto pending = std::async(std::launch::async, [snapshot = std::move(c.data), root = fs::absolute(output_dir),
-                          background_export_height, basename, y_up, region_camera_hash, writer_gate]() mutable {
+                          background_export_height, basename, y_up, region_camera_hash,
+                          writer_gate = g_checkpoint_writer_gate]() mutable {
             const auto data = std::move(snapshot);
             if (writer_gate) writer_gate();
             write_checkpoint(data, nullptr, root, background_export_height,
@@ -518,6 +523,10 @@ CheckpointSubmission engine_try_save_checkpoint_async(
     }
 } catch (const std::bad_alloc&) {
     return {{}, "allocation_failed"};
+}
+
+void engine_set_checkpoint_writer_gate(std::function<void()> gate) {
+    g_checkpoint_writer_gate = std::move(gate);
 }
 
 
