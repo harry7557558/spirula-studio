@@ -19,6 +19,7 @@ the detail.
 | [notes/2dgs.md](notes/2dgs.md) | the 2DGS surfel primitive: how it rides the eval3d path and 3DGS storage, the fragment, the preset weights and the measurements behind them |
 | [notes/mesh-field.md](notes/mesh-field.md) | the meshing field: the per-pixel depth profile, how the cameras' views are fused, the density term, sealing free space no camera connects to; what was tried |
 | [notes/tsdf.md](notes/tsdf.md) | TSDF meshing: adaptive fusion over the splat samples, the uniform-grid volume of the 2DGS paper, and how each compares with the opacity field |
+| [notes/ground-split.md](notes/ground-split.md) | Meshing the ground apart from the rest, from per-image ground masks voted onto the mesh |
 | [notes/mesh-merge.md](notes/mesh-merge.md) | the mesh merge: edge collapse under footprint, thickness and colour limits, its block-parallel queue, results |
 | [notes/mesh-check.md](notes/mesh-check.md) | `spirula mesh --check`: what counts as a bad mesh, where the mesher made them (crossings, duplicates, slivers, holes) and the cleanup that removes them, results |
 | [notes/spherical-beta.md](notes/spherical-beta.md) | spherical-beta lobes: the colour row they share with SH, training, rotation, the PLY layout, results |

@@ -17,6 +17,7 @@
 
 #include "backend/api/BackendRuntime.h"
 #include "checkpoint/SplatPly.h"
+#include "mesh/GroundSplit.h"
 #include "mesh/Meshing.h"
 #include "mesh/MeshCheck.h"
 #include "mesh/MeshImport.h"
@@ -25,10 +26,17 @@
 #include "data/ImageProbe.h"
 #include "data/Json.h"
 #include "data/SceneTransform.h"
+#include "external/stb_image.h"
 #include "i18n/catalog/Cli.h"
 #include "mesh/MeshLog.h"
+#ifdef SS_TOOL_SAM
+#include "app/FrameLook.h"
+#include "app/cli/ModelLicense.h"
+#include "sam/Masking.h"
+#endif
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -63,12 +71,17 @@ struct MeshCameras {
     std::vector<int32_t> models;       // [C] CameraModelType
     std::vector<int32_t> distortions;  // [C] CameraDistortionType
     std::string          model;        // the distinct models, for the log
+    std::vector<std::string> images, image_rel;   // [C], filled when ground is asked for
+    std::vector<char> resampled;             // [C] ParsedDataset::redistort applied
+    std::vector<std::string> ground_masks;   // [C], "" for none
+    std::vector<std::string> train_masks;    // [C], "" for none: where they ignore, no vote
+    bool flip_train_masks = false;
     int64_t num() const { return (int64_t)widths.size(); }
 };
 
 MeshCameras load_cameras(const JsonValue& run_cfg, const fs::path& run_dir,
                          const std::string& data_dir,
-                         const std::string& data_format_override) {
+                         const std::string& data_format_override, bool ground) {
     DatasetParserConfig pcfg;
     std::string data_format = data_format_override;
     // config.json is flat: one key per training flag, spelled as the flag is.
@@ -148,7 +161,104 @@ MeshCameras load_cameras(const JsonValue& run_cfg, const fs::path& run_dir,
             out.positions[i*3 + r] = ds.c2w[i*12 + r*4 + 3];
 
     out.model = meshing::camera_models_summary(out.models.data(), (int)C);
+    if (ground) {
+        const std::string image_root = (fs::path(data_dir) / pcfg.image_dir).string();
+        out.images = ds.image_filenames;
+        out.images.resize((size_t)C);
+        out.image_rel.resize((size_t)C);
+        for (int64_t i = 0; i < C; ++i) {
+            const std::string& img = out.images[(size_t)i];
+            out.image_rel[(size_t)i] = dsparse::relative_under(img, image_root);
+            if (out.image_rel[(size_t)i].empty())
+                out.image_rel[(size_t)i] = fs::path(img).filename().string();
+        }
+        out.train_masks = ds.mask_filenames;
+        out.train_masks.resize((size_t)C);
+        const JsonValue* flip = run_cfg.find("flip_mask");
+        out.flip_train_masks = flip && flip->type == JsonValue::Type::Bool && flip->as_bool();
+        out.resampled.assign((size_t)C, 0);
+        for (size_t i = 0; i < ds.redistort.size() && i < (size_t)C; ++i)
+            out.resampled[i] = ds.redistort[i].source_model >= 0;
+    }
     return out;
+}
+
+// Each camera's mask in `dir`; none for a resampled image, which no longer lines up.
+void find_ground_masks(MeshCameras& cams, const std::string& dir) {
+    cams.ground_masks = dsparse::find_aux_files(dir, cams.image_rel, "mask");
+    for (size_t i = 0; i < cams.resampled.size(); ++i)
+        if (cams.resampled[i]) cams.ground_masks[i].clear();
+}
+
+#ifdef SS_TOOL_SAM
+// SAM's mask of `prompt` for each camera's image, written to `dir` the way
+// --ground-masks finds it: prompted pixels black, the rest white.
+void write_ground_masks(const MeshCameras& cams, const std::string& prompt,
+                        const std::string& model, const std::string& detector,
+                        const fs::path& dir) {
+    if (!app::require_model_license(model)) throw std::runtime_error("--ground-model: no licence");
+    sam::MaskOptions mo;
+    mo.model = model;
+    mo.detector = detector;
+    mo.text = prompt;
+    mo.video = false;          // dataset images are not a sequence
+    mo.dilate_ratio = 0.0f;    // the default margin would grow the ground up every object
+    sam::Masker masker;
+    std::string error;
+    if (!masker.init(mo, error)) throw std::runtime_error(error);
+    mlog::out(mlog::Stage::Ground, mmsg::ground_masking,
+              {(long long)cams.images.size(), prompt, dir.string()});
+    const auto t0 = std::chrono::steady_clock::now();
+    for (size_t i = 0; i < cams.images.size(); ++i) {
+        if (cams.resampled[i]) continue;
+        sfm::ExifTransform turn;
+        nn::Image img = app::load_upright(cams.images[i], "", std::nullopt, {}, turn);
+        if (img.empty()) continue;
+        sam::Mask mask;
+        if (!masker.run(img, mask, nullptr)) throw std::runtime_error(masker.lastError());
+        app::turn_pixels(app::inverse_turn(turn), 1, mask.data, mask.width, mask.height);
+        const fs::path rel = fs::path(cams.image_rel[i]);
+        const fs::path path = dir / rel.parent_path() / (rel.stem().string() + ".png");
+        std::error_code ec;
+        fs::create_directories(path.parent_path(), ec);
+        if (!sam::save_mask_png(mask, path.string()))
+            throw std::runtime_error("cannot write " + path.string());
+    }
+    const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    mlog::out(mlog::Stage::Ground, mmsg::ground_masked,
+              {(long long)cams.images.size(), std::lround(secs)});
+}
+#endif
+
+// `path` as one byte per pixel at w x h, nearest sample; empty when unreadable.
+std::vector<uint8_t> read_gray_at(const std::string& path, int w, int h) {
+    int mw = 0, mh = 0, ch = 0;
+    stbi_uc* img = path.empty() ? nullptr : stbi_load(path.c_str(), &mw, &mh, &ch, 1);
+    if (!img) return {};
+    std::vector<uint8_t> out((size_t)w * h);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            const int sx = std::min(mw - 1, (int)((int64_t)x * mw / w));
+            const int sy = std::min(mh - 1, (int)((int64_t)y * mh / h));
+            out[(size_t)y * w + x] = img[(size_t)sy * mw + sx];
+        }
+    stbi_image_free(img);
+    return out;
+}
+
+// Camera `c`'s ground labels at w x h: black in its ground mask is ground, and
+// what its training mask ignores (the operator, say) casts no vote.
+bool read_ground_labels(const MeshCameras& cams, int c, int w, int h,
+                        std::vector<uint8_t>& out) {
+    if (c < 0 || (size_t)c >= cams.ground_masks.size()) return false;
+    out = read_gray_at(cams.ground_masks[(size_t)c], w, h);
+    if (out.empty()) return false;
+    for (uint8_t& v : out) v = v < 128 ? meshing::kGroundYes : meshing::kGroundNo;
+    // Training masks: 0 ignore, 128 segment, 255 keep; flipped, nonzero removes.
+    const std::vector<uint8_t> train = read_gray_at(cams.train_masks[(size_t)c], w, h);
+    for (size_t i = 0; i < train.size(); ++i)
+        if (cams.flip_train_masks ? train[i] != 0 : train[i] < 64) out[i] = meshing::kGroundUnknown;
+    return true;
 }
 
 // ===========================================================================
@@ -163,6 +273,8 @@ struct Options {
     std::string format = "ply";
     std::string color = "vertex";       // a list of none/vertex/texture
     std::string data_format;            // "" = config/auto
+    std::string ground_masks;
+    std::string ground_prompt, ground_model, ground_detector;
     // Canonical selector passed by GUI children; empty uses shared precedence.
     std::string device;
     std::optional<float> iso;           // default depends on cameras
@@ -223,6 +335,13 @@ void print_help(const char* argv0) {
     help_row("--tex-gutter-px <n>", mmsg::help_tex_gutter, {d.m.tex_gutter_px});
     help_row("--chart-angle-deg <a>", mmsg::help_chart_angle,
              {(double)d.m.chart_angle_deg});
+    std::printf("\n");
+    help_row("--ground-masks <dir>", mmsg::help_ground_masks);
+#ifdef SS_TOOL_SAM
+    help_row("--ground-prompt <text>", mmsg::help_ground_prompt);
+    help_row("--ground-model <file>", mmsg::help_ground_model);
+    help_row("--ground-detector <id>", mmsg::help_ground_detector);
+#endif
     std::printf("\n");
     help_row("--method <m>", mmsg::help_method, {"opacity"});
     help_row("--tsdf-voxel <v>", mmsg::help_tsdf_voxel, {(double)d.m.tsdf_voxel});
@@ -299,6 +418,10 @@ Options parse_args(int argc, char** argv) {
         if      (key == "data")            o.data = next();
         else if (key == "no_data")         o.no_data = true;
         else if (key == "data_format")     o.data_format = next();
+        else if (key == "ground_masks")    o.ground_masks = next();
+        else if (key == "ground_prompt")   o.ground_prompt = next();
+        else if (key == "ground_model")    o.ground_model = next();
+        else if (key == "ground_detector") o.ground_detector = next();
         else if (key == "device")          o.device = next();
         else if (key == "output")          o.output = next();
         else if (key == "format")          o.format = next();
@@ -346,6 +469,15 @@ Options parse_args(int argc, char** argv) {
     }
     if (o.checkpoint.empty())
         throw std::runtime_error("missing <checkpoint> argument (see --help)");
+    if (!o.ground_prompt.empty()) {
+#ifndef SS_TOOL_SAM
+        throw std::runtime_error("--ground-prompt: this build has no SAM (-DSS_BUILD_SAM=ON)");
+#endif
+        if (!o.ground_masks.empty())
+            throw std::runtime_error("--ground-prompt and --ground-masks: give one");
+        if (o.ground_model.empty())
+            throw std::runtime_error("--ground-prompt needs --ground-model");
+    }
     return o;
 }
 
@@ -441,8 +573,14 @@ int spirula_mesh_main(int argc, char** argv) {
                 throw std::runtime_error(dropped.empty()
                                              ? std::string("nothing to write")
                                              : dropped.front());
-            std::string err = meshing::check_mesh_outputs_safe(
-                outputs, {splat_ply.string()});
+            std::vector<meshing::MeshOutputRequest> all = outputs;
+            if (!o.ground_masks.empty() || !o.ground_prompt.empty())
+                for (const auto& r : outputs)
+                    for (const char* part : {"_ground", "_noground"}) {
+                        all.push_back(r);
+                        all.back().base += part;
+                    }
+            std::string err = meshing::check_mesh_outputs_safe(all, {splat_ply.string()});
             if (!err.empty()) throw std::runtime_error(err);
         }
         // Meshing reads geometry and DC colour only; skipping f_rest
@@ -472,7 +610,8 @@ int spirula_mesh_main(int argc, char** argv) {
             if (!data_dir.empty() && fs::exists(data_dir)) {
                 mlog::out(mlog::Stage::Loading, mmsg::reading_cameras,
                           {data_dir});
-                cams = load_cameras(run_cfg, run_dir, data_dir, o.data_format);
+                cams = load_cameras(run_cfg, run_dir, data_dir, o.data_format,
+                                    !o.ground_masks.empty() || !o.ground_prompt.empty());
                 mlog::out(mlog::Stage::Loading, mmsg::cameras_loaded,
                           {(long long)cams.num(), cams.widths[0],
                            cams.heights[0], cams.model});
@@ -487,6 +626,27 @@ int spirula_mesh_main(int argc, char** argv) {
             mlog::warn(mlog::Stage::Loading, cmsg::mesh_no_cameras);
 
         o.m.iso = o.iso.value_or(using_cameras ? 0.5f : 0.2f);
+
+#ifdef SS_TOOL_SAM
+        if (!o.ground_prompt.empty() && using_cameras) {
+            o.ground_masks = out_base + "_ground_masks";
+            write_ground_masks(cams, o.ground_prompt, o.ground_model, o.ground_detector,
+                               o.ground_masks);
+        }
+#endif
+        if (!o.ground_masks.empty() && using_cameras)
+            find_ground_masks(cams, fs::absolute(o.ground_masks).lexically_normal().string());
+        if (!o.ground_masks.empty()) {
+            const bool any = std::any_of(cams.ground_masks.begin(), cams.ground_masks.end(),
+                                         [](const std::string& p) { return !p.empty(); });
+            if (!any) {
+                mlog::fail(mlog::Stage::Ground, mmsg::ground_no_masks, {o.ground_masks});
+                return 1;
+            }
+            o.m.ground_labels = [&cams](int c, int w, int h, std::vector<uint8_t>& out) {
+                return read_ground_labels(cams, c, w, h, out);
+            };
+        }
 
 
         meshing::CameraParams cp;
