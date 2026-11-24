@@ -1996,7 +1996,8 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                     MatchStats& stats, VerifyCalibration* calib,
                     const MatchResume* res) {
     const MatchOptions& opt = cfg.match;
-    const PairSelectionOptions& popt = cfg.prefilter;
+    PairSelectionOptions popt = cfg.prefilter;
+    popt.num_threads = cfg.threads;
     const TwoViewOptions& tvopt = cfg.twoview;
     const bool verbose = !cfg.quiet;
     if (int rc = loadFeatureDir(featdir, cfg, /*with_descriptors=*/true, feats, db)) return rc;
