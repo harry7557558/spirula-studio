@@ -532,6 +532,7 @@ bool GuiApp::launch_batch_mesh(BatchTask& task, const BatchRow& row) {
     _runner.release_engine();
     job.device_uuid = _native_device_uuid;
     job.cuda_device = _cuda_device_index;
+    set_ground_model(job);
     _mesh_job = job;
     _mesh_shown_run = _mesh.run_id();   // a batch opens no preview
     _mesh.start(job);

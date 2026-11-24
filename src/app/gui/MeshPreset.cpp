@@ -19,6 +19,7 @@ namespace {
     X("max_cameras",       max_cameras)                                       \
     X("tsdf",              tsdf)                                              \
     X("ground_masks",      ground_masks)                                      \
+    X("ground_prompt",     ground_prompt)                                     \
     X("texture_size",      texture_size)                                      \
     X("iso",               iso)                                               \
     X("bisection_iters",   bisection_iters)                                   \

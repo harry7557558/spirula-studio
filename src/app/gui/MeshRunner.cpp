@@ -231,7 +231,12 @@ void MeshRunner::run(MeshJob job) {
         argv.push_back("--method");
         argv.push_back("tsdf");
     }
-    if (job.use_data && !job.ground_masks.empty()) {
+    if (job.use_data && !job.ground_prompt.empty() && !job.ground_model.empty()) {
+        argv.insert(argv.end(), {"--ground-prompt", job.ground_prompt,
+                                 "--ground-model", job.ground_model});
+        if (!job.ground_detector.empty())
+            argv.insert(argv.end(), {"--ground-detector", job.ground_detector});
+    } else if (job.use_data && !job.ground_masks.empty()) {
         argv.push_back("--ground-masks");
         argv.push_back(job.ground_masks);
     }

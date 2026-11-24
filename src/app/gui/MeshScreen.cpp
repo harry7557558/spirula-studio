@@ -99,7 +99,19 @@ void GuiApp::start_meshing() {
     _mesh_job.cuda_device = _cuda_device_index;
 #endif
     close_mesh_preview();
+    set_ground_model(_mesh_job);
     _mesh.start(_mesh_job);
+}
+
+void GuiApp::set_ground_model(MeshJob& job) const {
+    job.ground_model.clear();
+    job.ground_detector.clear();
+#ifdef SS_BUILD_SAM
+    if (job.ground_prompt.empty()) return;
+    const MaskModelFiles m = selected_mask_model();
+    job.ground_model = m.model;
+    job.ground_detector = m.detector;
+#endif
 }
 
 void GuiApp::close_mesh_preview() {
@@ -207,6 +219,15 @@ void GuiApp::draw_mesh_options() {
         ImGui::SameLine();
         ui::TextDisabled(msg::mesh_ground_masks);
         ui::help_on_hover(msg::mesh_ground_masks_help);
+#ifdef SS_BUILD_SAM
+        ImGui::SetNextItemWidth(field_width(msg::mesh_ground_prompt));
+        ui::InputTextRaw("##meshgroundprompt", &_mesh_job.ground_prompt);
+        ImGui::SameLine();
+        ui::TextDisabled(msg::mesh_ground_prompt);
+        ui::help_on_hover(msg::mesh_ground_prompt_help);
+        if (!_mesh_job.ground_prompt.empty() && selected_mask_model().empty())
+            ui::TextColored(kDim, msg::mesh_ground_model_missing);
+#endif
         ImGui::Unindent();
     }
 

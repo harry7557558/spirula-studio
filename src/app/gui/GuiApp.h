@@ -338,6 +338,8 @@ private:
     void sync_dataset_jobs();
     // The selected checkpoint and detector; empty paths until both are here.
     MaskModelFiles selected_mask_model() const;
+    // The selected model's files into `job` when it asks for a ground prompt.
+    void set_ground_model(MeshJob& job) const;
     // Fetch them (with consent), and whether a run would need them and not
     // find them. `detector_id` is ignored for an entry that takes none.
     void request_model_download(const std::string& id, const std::string& detector_id);
