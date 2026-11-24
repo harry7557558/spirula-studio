@@ -602,8 +602,9 @@ int cmd_track(const Options& o) {
         if (!o.out_dir.empty()) {
             std::error_code dec;
             fs::create_directories(o.out_dir, dec);
-            char path[512];
-            std::snprintf(path, sizeof path, "%s/frame_%05zu.png", o.out_dir.c_str(), f);
+            // Named after its frame, as training and `mesh --ground-masks` look masks up.
+            const std::string path =
+                (fs::path(o.out_dir) / (fs::path(files[f]).stem().string() + ".png")).string();
             if (o.overlay) {
                 sam::save_overlay_png(frame, r, path);
             } else {
