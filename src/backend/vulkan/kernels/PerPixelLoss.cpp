@@ -100,7 +100,7 @@ struct MsPoolMaskedParams {
     int32_t hsH, hsW;
     int32_t lsH, lsW;
     int32_t mH, mW;
-    uint32_t hs_fmt, ls_fmt, wgs_per_row, _pad0;
+    uint32_t hs_fmt, ls_fmt, wgs_per_row, classes;
 };
 static_assert(sizeof(MsPoolMaskedParams) == 3 * 8 + 12 * 4, "layout");
 
@@ -172,19 +172,30 @@ constexpr uint32_t kSsimHasLossMap = 1u << 3;
 constexpr uint32_t kSsimHasCov = 1u << 4;
 constexpr uint32_t kFlipMapFeatures = 1u << 5;
 
-struct CannyParams {
-    uint64_t img_in, mask_in, img_out;
-    int32_t B, H, W;
-    int32_t has_mask;
+struct CannyMask {
+    uint64_t pixels;
+    int32_t h, w;
 };
-static_assert(sizeof(CannyParams) == 3 * 8 + 4 * 4, "layout");
+
+CannyMask canny_mask(const TorchTensorView& mask) {
+    if (!std::get<0>(mask)) return {vkk::or_fallback(nullptr), 0, 0};
+    const auto& dims = std::get<2>(mask);
+    return {std::get<0>(mask), (int32_t)dims[1], (int32_t)dims[2]};
+}
+
+struct CannyParams {
+    uint64_t img_in, img_out;
+    CannyMask mask;
+    int32_t B, H, W, _pad;
+};
+static_assert(sizeof(CannyParams) == 48, "layout");
 
 struct ResidLumaParams {
-    uint64_t render, ref, mask_in, out;
-    int32_t B, H, W;
-    int32_t has_mask;
+    uint64_t render, ref, out;
+    CannyMask mask;
+    int32_t B, H, W, _pad;
 };
-static_assert(sizeof(ResidLumaParams) == 4 * 8 + 4 * 4, "layout");
+static_assert(sizeof(ResidLumaParams) == 56, "layout");
 
 struct TukeyParams {
     uint64_t data, c_buf;
@@ -732,22 +743,21 @@ TorchTensorView as_float_vk(const TorchTensorView& tv, const std::string& key) {
     return out;
 }
 
-void canny_edge_filter_vk(const TorchTensorView& rgb_in, uint64_t mask_ptr,
+void canny_edge_filter_vk(const TorchTensorView& rgb_in, const TorchTensorView& mask,
                           const TorchTensorView& img_out) {
     const auto& s = std::get<2>(rgb_in);
     CannyParams p{};
     p.img_in = std::get<0>(rgb_in);
-    p.mask_in = vkk::or_fallback(mask_ptr);
+    p.mask = canny_mask(mask);
     p.img_out = std::get<0>(img_out);
     p.B = (int32_t)s[0];
     p.H = (int32_t)s[1];
     p.W = (int32_t)s[2];
-    p.has_mask = mask_ptr != 0 ? 1 : 0;
     dispatch_tiles("canny.canny_rgb", p.W, p.H, p.B, &p, sizeof(p));
 }
 
 void robust_canny_residual_vk(const TorchTensorView& render,
-                              const TorchTensorView& ref, uint64_t mask_ptr,
+                              const TorchTensorView& ref, const TorchTensorView& mask,
                               float quantile, const TorchTensorView& img_out) {
     const auto& s = std::get<2>(render);
     int B = (int)s[0], H = (int)s[1], W = (int)s[2];
@@ -762,12 +772,11 @@ void robust_canny_residual_vk(const TorchTensorView& render,
     ResidLumaParams lp{};
     lp.render = std::get<0>(render);
     lp.ref = std::get<0>(ref);
-    lp.mask_in = vkk::or_fallback(mask_ptr);
+    lp.mask = canny_mask(mask);
     lp.out = (uint64_t)resid;
     lp.B = B;
     lp.H = H;
     lp.W = W;
-    lp.has_mask = mask_ptr != 0 ? 1 : 0;
     dispatch_tiles("canny.residual_luma", W, H, B, &lp, sizeof(lp));
 
     float* temp = DevicePool::global().acquire<float>(
@@ -786,12 +795,11 @@ void robust_canny_residual_vk(const TorchTensorView& render,
 
     CannyParams cp{};
     cp.img_in = (uint64_t)resid;
-    cp.mask_in = vkk::or_fallback(mask_ptr);
+    cp.mask = canny_mask(mask);
     cp.img_out = std::get<0>(img_out);
     cp.B = B;
     cp.H = H;
     cp.W = W;
-    cp.has_mask = mask_ptr != 0 ? 1 : 0;
     dispatch_tiles("canny.canny_scalar", W, H, B, &cp, sizeof(cp));
 }
 
@@ -822,7 +830,7 @@ void avg_pool_downsample_float_vk(const TorchTensorView& src,
 
 void avg_pool_downsample_masked_float_vk(const TorchTensorView& src,
                                          const TorchTensorView& mask,
-                                         const TorchTensorView& dst) {
+                                         const TorchTensorView& dst, PoolMaskClasses classes) {
     const auto& ss = std::get<2>(src);
     const auto& ds = std::get<2>(dst);
     const auto& ms = std::get<2>(mask);
@@ -838,6 +846,7 @@ void avg_pool_downsample_masked_float_vk(const TorchTensorView& src,
     p.lsW = (int32_t)ds[2];
     p.mH = (int32_t)ms[1];
     p.mW = (int32_t)ms[2];
+    p.classes = (uint32_t)classes;
     p.hs_fmt = (uint32_t)pixel_format(src);
     p.ls_fmt = (uint32_t)pixel_format(dst);
     vkk::dispatch_flat("multi_scale_loss.ms_downsample_masked_f", {},
@@ -1094,11 +1103,9 @@ LossValues compute_multi_scale_per_pixel_losses(
             }
         };
 
-        // Everything the loss compares pools over the same unmasked children,
-        // so a masked pixel reaches no coarse value -- which is what lets a
-        // fully-masked tile go unrendered (docs/datasets.md, "Skipping tiles").
         auto ds_m = [&](TorchTensorView& prev, TorchTensorView& curr,
                         const std::string& name, int C,
+                        PoolMaskClasses classes = PoolMaskClasses::Foreground,
                         PixelFormat f = PixelFormat::F32) {
             if (!_has(prev)) return;
             const TorchTensorView& mk = ref_alpha_s[sc - 1];
@@ -1112,19 +1119,23 @@ LossValues compute_multi_scale_per_pixel_losses(
             }
             curr = alloc_level(name, std::max((long)1, (long)pps[1] / 2),
                                std::max((long)1, (long)pps[2] / 2), C, f);
-            avg_pool_downsample_masked_float_vk(prev, mk, curr);
+            avg_pool_downsample_masked_float_vk(prev, mk, curr, classes);
         };
-        ds_m(render_rgb_s[sc - 1], render_rgb_s[sc], "rrgb", 3, rgb_level_fmt);
-        ds_m(ref_rgb_s[sc - 1], ref_rgb_s[sc], "frgb", 3, rgb_level_fmt);
+        ds_m(render_rgb_s[sc - 1], render_rgb_s[sc], "rrgb", 3, PoolMaskClasses::Rgb, rgb_level_fmt);
+        ds_m(ref_rgb_s[sc - 1], ref_rgb_s[sc], "frgb", 3, PoolMaskClasses::Rgb, rgb_level_fmt);
         ds_m(render_depth_s[sc - 1], render_depth_s[sc], "rd", 1);
         ds_geo(ref_depth_s[sc - 1], ref_depth_s[sc], "fd", 1);
         ds_m(render_normal_s[sc - 1], render_normal_s[sc], "rn", 3);
         ds_m(depth_normal_s[sc - 1], depth_normal_s[sc], "dn", 3);
         ds_geo(ref_normal_s[sc - 1], ref_normal_s[sc], "fn", 3);
-        ds_m(render_Ts_s[sc - 1], render_Ts_s[sc], "rT", 1);
-        ds_m(rgb_dist_s[sc - 1], rgb_dist_s[sc], "rgbd", 3);
-        ds_m(depth_dist_s[sc - 1], depth_dist_s[sc], "dd", 1);
-        ds_m(normal_dist_s[sc - 1], normal_dist_s[sc], "nd", 3);
+        const bool supervise_alpha = loss_weights_0[(int)LossWeightIndex::AlphaSup] != 0 ||
+                                     loss_weights_0[(int)LossWeightIndex::AlphaSupUnder] != 0;
+        const auto alpha_classes = !supervise_alpha ? PoolMaskClasses::Rgb :
+            (segment_and_ignore_mask ? PoolMaskClasses::Alpha : PoolMaskClasses::All);
+        ds_m(render_Ts_s[sc - 1], render_Ts_s[sc], "rT", 1, alpha_classes);
+        ds_m(rgb_dist_s[sc - 1], rgb_dist_s[sc], "rgbd", 3, PoolMaskClasses::Rgb);
+        ds_m(depth_dist_s[sc - 1], depth_dist_s[sc], "dd", 1, PoolMaskClasses::Rgb);
+        ds_m(normal_dist_s[sc - 1], normal_dist_s[sc], "nd", 3, PoolMaskClasses::Rgb);
         ds_m(median_depth_s[sc - 1], median_depth_s[sc], "md", 1);
         ds_m(median_normal_s[sc - 1], median_normal_s[sc], "mn", 3);
         ds_b(ref_alpha_s[sc - 1], ref_alpha_s[sc], "ra");
@@ -1329,12 +1340,12 @@ LossValues compute_multi_scale_per_pixel_losses(
             if (_mode == DensifyLossMapMode::EdgeAware) {
                 canny_edge_filter_vk(
                     as_float_vk(ref_rgb_s[scale], "ppl.f32.frgb.s" + std::to_string(scale)),
-                    std::get<0>(ref_alpha_s[scale]), loss_map_scale);
+                    ref_alpha_s[scale], loss_map_scale);
             } else if (_mode == DensifyLossMapMode::RobustEdgeAware) {
                 robust_canny_residual_vk(
                     as_float_vk(render_rgb_s[scale], "ppl.f32.rrgb.s" + std::to_string(scale)),
                     as_float_vk(ref_rgb_s[scale], "ppl.f32.frgb.s" + std::to_string(scale)),
-                    std::get<0>(ref_alpha_s[scale]),
+                    ref_alpha_s[scale],
                     robust_edge_aware_quantile, loss_map_scale);
             }
         }

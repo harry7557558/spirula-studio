@@ -630,7 +630,7 @@ std::string stageSignature(const SfmConfig& cfg, uint32_t cmd,
     };
     auto fieldValue = [&](const char* name, std::string val) {
         if (!workspace.empty() && !val.empty() && val != "none" &&
-            (std::strcmp(name, "masks") == 0 || std::strcmp(name, "feature-masks") == 0))
+            std::strcmp(name, "masks") == 0)
             return spirula::relative_to_dir(val, workspace);
         return val;
     };

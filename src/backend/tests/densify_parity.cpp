@@ -7,6 +7,8 @@
 // destinations, including masked stores to shared quantization words.
 
 #include <kernels/densify/Densify.cuh>
+#include <kernels/tile/IntersectTile.cuh>
+#include "shaders/aabb16.h"
 
 #include <array>
 #include <cmath>
@@ -68,11 +70,55 @@ void readback_codes(std::vector<int32_t>& codes, const uint8_t* d,
     }
 }
 
+static bool check_masked_radii() {
+    const float scale = -0.5f * std::log(2.0f * std::log(127.5f));
+    auto means = dv<float3>(upload(std::vector<float>(6, 0)), 2);
+    auto scales = dv<float3>(upload(std::vector<float>(6, scale)), 2);
+    auto opac = dv<float>(upload(std::vector<float>(2, 0)), 2);
+    auto radii = dv<float>(upload(std::vector<float>(2, 0)), 2);
+    auto* vm = upload<float>({1,0,0,0, 0,1,0,0, 0,0,1,0.5f, 0,0,0,1,
+                              1,0,0,0, 0,1,0,0, 0,0,1,2,    0,0,0,1});
+    auto* tiles = upload<int32_t>({0, 0, 1, 0});
+    const unsigned full = SS_AABB16_PACK(0u, 65535u);
+    const uint2 wide{full, full}, right{SS_AABB16_PACK(46000u, 65000u), full};
+    auto cams = dv<int32_t>(upload<int32_t>({1, 0, 1, 0}), 4);
+    auto ids = dv<int32_t>(upload<int32_t>({1, 1, 0, 0}), 4);
+
+    for (bool packed : {false, true}) {
+        auto* boxes = packed ? upload<uint2>({right, right, wide, wide}) :
+                               upload<uint2>({wide, right, wide, right});
+        DeviceTensor2D<uint2> aabb(TorchTensorView{(uint64_t)boxes, 4,
+                                                     {packed ? 4 : 2, packed ? 1 : 2, 2}});
+        radii.zero();
+        accumulate_active_radii(2, 2, means, scales, opac, {(uint64_t)vm, 4, {2, 16}},
+                                aabb, 16, 8, packed ? &cams : nullptr, packed ? &ids : nullptr,
+                                tiles, 0, radii);
+        std::vector<float> got;
+        readback_f(got, radii.data_ptr(), 2);
+        backend::device_free(boxes);
+        // Unit sphere at distance two in the active view. The nearer view is masked.
+        if (!(std::fabs(got[0] - (2 - std::sqrt(3.0f))) < 1e-5f && got[1] == 0))
+            return false;
+    }
+
+    auto visits = dv<uint32_t>(upload<uint32_t>({visit_step(0, false), visit_step(0, true)}), 2);
+    auto large = dv<float>(upload<float>({2, 2}), 2);
+    const float inf = std::numeric_limits<float>::infinity();
+    densify_clip_scale_tensor(2, large, scales, nullptr, visits, 1, inf, inf);
+    std::vector<float> clipped;
+    readback_f(clipped, (float*)scales.data_ptr(), 6);
+    return clipped[0] == scale && std::fabs(clipped[3] - (scale - std::log(2.0f))) < 1e-5f;
+}
+
 int main(int argc, char** argv) {
     if (argc != 3 ||
         (std::strcmp(argv[1], "dump") && std::strcmp(argv[1], "compare"))) {
         std::fprintf(stderr, "usage: %s dump|compare <ref.bin>\n", argv[0]);
         return 2;
+    }
+    if (!check_masked_radii()) {
+        std::fprintf(stderr, "masked camera radius or visit-gated clipping failed\n");
+        return 1;
     }
     const bool dumping = std::strcmp(argv[1], "dump") == 0;
 

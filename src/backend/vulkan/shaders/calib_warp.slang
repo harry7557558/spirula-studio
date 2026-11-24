@@ -129,7 +129,7 @@ bool cw_mask_ok(CalibWarpParams p, uint b, int x, int y) {
     int cy = min(max(y, 0), p.H - 1);
     int mx = (p.Wm == p.W) ? cx : min(int((float(cx) + 0.5f) * float(p.Wm) / float(p.W)), p.Wm - 1);
     int my = (p.Hm == p.H) ? cy : min(int((float(cy) + 0.5f) * float(p.Hm) / float(p.H)), p.Hm - 1);
-    return u8_load(p.mask, (gindex_t(b) * gindex_t(p.Hm) + gindex_t(my)) * gindex_t(p.Wm) + gindex_t(mx)) != 0u;
+    return (u8_load(p.mask, (gindex_t(b) * gindex_t(p.Hm) + gindex_t(my)) * gindex_t(p.Wm) + gindex_t(mx)) & 1u) != 0u;
 }
 
 // Catmull-Rom clamped to the four nearest taps; at mask boundaries only
@@ -243,12 +243,7 @@ void calib_warp_accum(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         int x = bx0 + idx % bw, y = by0 + idx / bw;
         CwCell c = cw_cell(x, y, W, H, n);
         if (c.i0 != ci || c.j0 != cj) continue;
-        if (p.has_mask != 0) {
-            int my = min(int((float(y) + 0.5f) * float(p.Hm) / float(H)), p.Hm - 1);
-            int mx = min(int((float(x) + 0.5f) * float(p.Wm) / float(W)), p.Wm - 1);
-            if ((u8_load(p.mask, (gindex_t(b) * gindex_t(p.Hm) + gindex_t(my)) * gindex_t(p.Wm) + gindex_t(mx)) & 1u) == 0u)
-                continue;
-        }
+        if (!cw_mask_ok(p, b, x, y)) continue;
         gindex_t pix = base + gindex_t(y) * gindex_t(W) + gindex_t(x);
         float e = cw_inv_depth(p, pix);
         float2 fl = cw_flow(p, row, c, e, scx, scy);
@@ -531,7 +526,7 @@ void calib_warp_aux_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         int ix = clamp(int(floor(sx + 0.5f)), 0, p.Wm - 1);
         int iy = clamp(int(floor(sy + 0.5f)), 0, p.Hm - 1);
         uint v = 0u;
-        if (p.cut_by_source == 0 || u8_load(p.gt, o) != 0u)
+        if (p.cut_by_source == 0 || (u8_load(p.gt, o) & 1u) != 0u)
             v = u8_load(p.gt, plane + gindex_t(iy) * gindex_t(p.Wm) + gindex_t(ix));
         u8_store(p.out, o, v);
         return;

@@ -103,7 +103,7 @@ __device__ __forceinline__ bool cw_mask_ok(const uint8_t* mask, int Hm, int Wm,
     const int cy = min(max(y, 0), H - 1);
     const int mx = (Wm == W) ? cx : min((int)(((float)cx + 0.5f) * Wm / W), Wm - 1);
     const int my = (Hm == H) ? cy : min((int)(((float)cy + 0.5f) * Hm / H), Hm - 1);
-    return mask[((size_t)b * Hm + my) * Wm + mx] != 0;
+    return (mask[((size_t)b * Hm + my) * Wm + mx] & 1) != 0;
 }
 
 // Catmull-Rom clamped to the four nearest taps; at mask boundaries only
@@ -241,11 +241,7 @@ __global__ void calib_warp_accum_kernel(
         const int x = bx0 + idx % bw, y = by0 + idx / bw;
         const CwCell c = cw_cell(x, y, W, H, n);
         if (c.i0 != ci || c.j0 != cj) continue;
-        if (mask != nullptr) {
-            const int my = min((int)(((float)y + 0.5f) * Hm / H), Hm - 1);
-            const int mx = min((int)(((float)x + 0.5f) * Wm / W), Wm - 1);
-            if (!(mask[((size_t)b * Hm + my) * Wm + mx] & 1)) continue;
-        }
+        if (!cw_mask_ok(mask, Hm, Wm, b, W, H, x, y)) continue;
         const size_t pix = base + (size_t)y * W + x;
         const float e = D == 4 ? cw_inv_depth(depth, Ts, pix) : 0.0f;
         const float2 fl = cw_flow(row, c, n, D, e, scx, scy);
@@ -521,7 +517,7 @@ __global__ void calib_warp_aux_fwd_kernel(
         const int ix = min(max((int)floorf(sx + 0.5f), 0), Wa - 1);
         const int iy = min(max((int)floorf(sy + 0.5f), 0), Ha - 1);
         ((uint8_t*)out_v)[plane + pix] =
-            cut_by_source && !src[plane + pix] ? 0 : src[plane + (size_t)iy * Wa + ix];
+            cut_by_source && !(src[plane + pix] & 1) ? 0 : src[plane + (size_t)iy * Wa + ix];
     } else {
         constexpr int Ch = Kind == 1 ? 1 : 3;
         const float* src = (const float*)src_v;

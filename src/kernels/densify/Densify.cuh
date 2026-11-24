@@ -372,7 +372,7 @@ void smoothed_laplacian_edge_filter_tensor(
 
 void canny_edge_filter_tensor(
     DeviceTensor3D<float3> img_in,
-    uint8_t* mask_in_ptr,
+    TorchTensorView mask,
     DeviceTensor3D<float> img_out
 );
 
@@ -380,7 +380,7 @@ void canny_edge_filter_tensor(
 void robust_canny_residual_tensor(
     DeviceTensor3D<float3> render,   // [B, H, W, 3]
     DeviceTensor3D<float3> ref,      // [B, H, W, 3]
-    uint8_t* mask_in_ptr,            // optional [B*H*W] mask; nullptr for none
+    TorchTensorView mask,
     float quantile,                  // Tukey cutoff = per-image q-quantile of |r|
     DeviceTensor3D<float> img_out    // [B, H, W, 1] -- written (not added)
 );

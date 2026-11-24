@@ -898,17 +898,10 @@ void active_radii_accum(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     float* vm = p.viewmats + cid * 16;
     float3 t = float3(vm[3], vm[7], vm[11]);
-    float3 campos = -float3(
-        vm[0] * t.x + vm[4] * t.y + vm[8] * t.z,
-        vm[1] * t.x + vm[5] * t.y + vm[9] * t.z,
-        vm[2] * t.x + vm[6] * t.y + vm[10] * t.z
-    );
+    float3x3 R = float3x3(vm[0], vm[1], vm[2], vm[4], vm[5], vm[6], vm[8], vm[9], vm[10]);
+    float3 campos = transform_ray_o(R, t);
     float3 mean = float3(p.means[3 * gid], p.means[3 * gid + 1], p.means[3 * gid + 2]);
     float3 sc = float3(p.scales[3 * gid], p.scales[3 * gid + 1], p.scales[3 * gid + 2]);
-    float opac = p.opacities[gid];
-    float extend = sqrt(2.0f * log(max(255.0f / (1.0f + exp(-opac)), 1.0f)));
-    float rad = exp(max(sc.x, max(sc.y, sc.z))) * extend;
-    float dist = length(mean - campos);
-    float r = rad / (max(dist, rad) + sqrt(max(dist * dist - rad * rad, 0.0f)));
+    float r = view_radius_3dgs(mean, sc, p.opacities[gid], campos);
     InterlockedMax(p.radii[gid], asuint(r));
 }

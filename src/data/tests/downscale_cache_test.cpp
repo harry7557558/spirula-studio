@@ -59,14 +59,16 @@ CacheMode g_mode = CacheMode::CPU;
 
 std::vector<uint8_t> fetch(const std::string& image, const fs::path& image_dir, bool cache,
                            const float* over = nullptr, int turns = 0, int cap = 0,
-                           const std::string& rounding = "floor", int progressive_divisor = 1) {
+                           const std::string& rounding = "floor", int progressive_divisor = 1,
+                           const std::string& mask = {}) {
     DataManagerConfig cfg;
     cfg.cache_mode = g_mode;
     if (progressive_divisor > 1) {
         cfg.resolution_stages = {{0, progressive_divisor}};
         cfg.cache_progressive_images = cache;
     }
-    cfg.load_masks = cfg.load_depths = cfg.load_normals = false;
+    cfg.load_masks = !mask.empty();
+    cfg.load_depths = cfg.load_normals = false;
     if (cache) {
         cfg.downscale_cache_divisor = progressive_divisor > 1 ? 0 : D;
         cfg.image_dir = image_dir.string();
@@ -86,7 +88,7 @@ std::vector<uint8_t> fetch(const std::string& image, const fs::path& image_dir, 
     double w = turns & 1 ? H : W, h = turns & 1 ? W : H;
     double fx = 10, fy = 10, cx = 4, cy = 3;
     dsparse::fit_camera_resolution(parser, image, {}, w, h, fx, fy, cx, cy, nullptr);
-    DataManager dm(cfg, {0}, {0}, {image}, {}, {}, {}, {(int)w}, {(int)h}, {}, {}, viewmat,
+    DataManager dm(cfg, {0}, {0}, {image}, {mask}, {}, {}, {(int)w}, {(int)h}, {}, {}, viewmat,
                    {10.0f, 10.0f, 4.0f, 3.0f}, std::vector<float>(8, 0.0f), {}, {}, {}, {},
                    {}, {}, {}, {0}, {});
     if (progressive_divisor > 1) return dm.next_train_step().subs[0]->rgb_buffer;
@@ -280,6 +282,18 @@ int main() {
         // The cache holds the file's own pixels; the turn comes from the original's EXIF.
         test_format(root, "png8_turned", png::encode(pattern<uint8_t>(3, 255).data(), W, H, 3, 8),
                     false, 0, nullptr, 1);
+        const fs::path images = root / "masked" / "images";
+        const auto src = images / "a.png", mask = root / "mask.png";
+        write_bytes(src, png::encode(pattern<uint8_t>(3, 255).data(), W, H, 3, 8));
+        std::vector<uint8_t> stripe(W * H);
+        for (int i = 0; i < W * H; ++i) stripe[i] = ((i % W) & 1) ? 0 : 255;
+        write_bytes(mask, png::encode(stripe.data(), W, H, 1, 8));
+        const auto direct = fetch(src.string(), images, false);
+        check(fetch(src.string(), images, true, nullptr, 0, 0, "floor", 1, mask.string()) == direct,
+              "sidecar mask leaves the RGB cache equal to a direct resize");
+        check(fs::exists(images.parent_path() / "images_2" / src.filename()),
+              "masked run writes the shared downscale cache");
+        check(fetch(src.string(), images, true) == direct, "mask-independent RGB survives cache reuse");
         test_existing(root);
         test_capped(root, "cap_png8", png::encode(pattern<uint8_t>(3, 255).data(), W, H, 3, 8), false);
         test_capped(root, "cap_png16", png::encode(pattern<uint16_t>(3, 65535).data(), W, H, 3, 16), true);

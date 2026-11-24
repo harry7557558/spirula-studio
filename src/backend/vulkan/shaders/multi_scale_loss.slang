@@ -721,7 +721,7 @@ struct MsPoolMaskedParams {
     int hsH, hsW;
     int lsH, lsW;
     int mH, mW;
-    uint hs_fmt, ls_fmt, wgs_per_row, _pad0;
+    uint hs_fmt, ls_fmt, wgs_per_row, classes;
 };
 
 [shader("compute")]
@@ -742,10 +742,11 @@ void ms_downsample_masked_f(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     for (int dy = 0; dy < 2; dy++)
         for (int dx = 0; dx < 2; dx++) {
             gindex_t i = base + ys[dy] * p.hsW + xs[dx];
-            bool valid = (same_mask
+            uint mask = same_mask
                 ? u8_load(p.mask, (uint)i)
                 : _ms_nearest_u8(p.mask, int(bid), int(xs[dx]), int(ys[dy]),
-                                 p.hsW, p.hsH, p.mW, p.mH)) == 1u;
+                                 p.hsW, p.hsH, p.mW, p.mH);
+            bool valid = (p.classes & (1u << mask)) != 0u;
             for (int c = 0; c < p.C; c++) {
                 float v = rgb_load1(p.hs, i * p.C + c, p.hs_fmt);
                 box[c] += 0.25f * v;

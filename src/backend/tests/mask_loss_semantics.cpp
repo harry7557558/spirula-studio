@@ -69,7 +69,7 @@ Outcome run(const std::vector<uint8_t>& mask, bool zero_depth, float w_alpha,
             float sat = -1.0f, const std::vector<float>* ref_in = nullptr,
             int loss = 0, int map_mode = (int)DensifyLossMapMode::None,
             bool segment_and_ignore = false, float w_alpha_under = 0.0f,
-            int num_scales = 1) {
+            int num_scales = 1, const std::vector<float>* transmittance = nullptr) {
     std::vector<float> rgb((size_t)3 * NP, 0.5f), ref((size_t)3 * NP, 0.25f);
     if (rgb_in) rgb = *rgb_in;
     for (size_t i = 0; i < ref.size(); i++)
@@ -78,7 +78,7 @@ Outcome run(const std::vector<uint8_t>& mask, bool zero_depth, float w_alpha,
     std::vector<float> Ts((size_t)NP, 0.5f);
     float* d_rgb = upload(rgb);
     float* d_ref = upload(ref);
-    float* d_Ts = upload(Ts);
+    float* d_Ts = upload(transmittance ? *transmittance : Ts);
     float* d_depth = zero_depth ? upload(std::vector<float>((size_t)NP, 0.0f))
                                 : nullptr;
     uint8_t* d_mask = mask.empty() ? nullptr : upload(mask);
@@ -611,6 +611,58 @@ int main() {
         check(keep_ok && keep_rgb_nonzero,
               scales == 1 ? "segment_and_ignore: keep pixels get rgb + solid alpha grad"
                           : "segment_and_ignore (multiscale): keep pixels get rgb grad");
+    }
+
+    for (auto mode : {DensifyLossMapMode::EdgeAware, DensifyLossMapMode::RobustEdgeAware}) {
+        auto map_for = [&](int64_t h, int64_t w) {
+            return run(half_mask(h, w), false, 0, h, w, 0, nullptr, 1, -1, nullptr,
+                       0, (int)mode).map;
+        };
+        const auto expected = map_for(H, W);
+        check(map_for(1, W / 2) == expected &&
+                  *std::max_element(expected.begin(), expected.end()) > 0,
+              "edge map samples a smaller mask on the render grid");
+    }
+
+    for (uint8_t kept : {1, 3}) {
+        std::vector<uint8_t> stripe(W);
+        std::vector<float> rgb(3 * NP, 0.5f), ref(3 * NP, 0.25f);
+        for (int x = 0; x < W; ++x) stripe[x] = x % 2 ? 0 : kept;
+        auto evaluate = [&] {
+            return run(stripe, false, 0.0f, 1, W, 0, &rgb, 1.0f, -1, &ref, 0,
+                       (int)DensifyLossMapMode::LossFull, true, 0, 3);
+        };
+        const Outcome baseline = evaluate();
+        for (int i = 0; i < NP; ++i)
+            if (!stripe[i % W]) std::fill_n(ref.begin() + 3 * i, 3, 1.0f);
+        const Outcome changed = evaluate();
+        check(changed.rgb_loss > 0 && std::fabs(changed.rgb_loss - baseline.rgb_loss) < 1e-6f,
+              "coarse RGB excludes ignored colours with a one-row mask");
+        bool ok = true;
+        for (int i = 0; i < NP; ++i) {
+            const bool valid = stripe[i % W] != 0;
+            ok &= (changed.map[i] > 0) == valid && (changed.v_render_rgb[3*i] != 0) == valid;
+        }
+        check(ok, "upsampled loss map and RGB gradient respect the full-resolution stripes");
+    }
+
+    {
+        std::vector<uint8_t> classes(W);
+        std::vector<float> ts(NP);
+        for (int x = 0; x < W; ++x) classes[x] = x % 2 ? 0 : 2;
+        for (int i = 0; i < NP; ++i) ts[i] = classes[i % W] ? 0.3f : 0.8f;
+        auto alpha_loss = [&] {
+            return run(classes, false, 1, 1, W, 0, nullptr, 0, -1, nullptr, 0,
+                       (int)DensifyLossMapMode::None, true, 0, 3, &ts).alpha_sup;
+        };
+        const float expected = alpha_loss();
+        for (int i = 0; i < NP; ++i)
+            if (!classes[i % W]) ts[i] = 0.1f;
+        check(expected > 0 && std::fabs(alpha_loss() - expected) < 1e-6f,
+              "coarse segment alpha excludes ignored children");
+        std::replace(classes.begin(), classes.end(), uint8_t{2}, uint8_t{3});
+        check(std::fabs(alpha_loss() - expected) < 1e-6f,
+              "preserving segment colour leaves alpha supervision unchanged");
     }
 
     // preserve_background: a segment (3) is still pushed empty, but keeps its

@@ -763,20 +763,9 @@ __global__ void active_radii_accum_kernel(
     if (!hit) return;
 
     const float* vm = viewmats + (size_t)cid * 16;
-    const float tx = vm[3], ty = vm[7], tz = vm[11];
-    const float3 campos = make_float3(
-        -(vm[0] * tx + vm[4] * ty + vm[8] * tz),
-        -(vm[1] * tx + vm[5] * ty + vm[9] * tz),
-        -(vm[2] * tx + vm[6] * ty + vm[10] * tz)
-    );
-    const float3 mean = means[gid];
-    const float3 sc = scales[gid];
-    const float opac = opacities[gid];
-    const float extend = sqrtf(2.0f * logf(fmaxf(255.0f / (1.0f + expf(-opac)), 1.0f)));
-    const float rad = expf(fmaxf(sc.x, fmaxf(sc.y, sc.z))) * extend;
-    const float dx = mean.x - campos.x, dy = mean.y - campos.y, dz = mean.z - campos.z;
-    const float dist = sqrtf(dx * dx + dy * dy + dz * dz);
-    const float r = rad / (fmaxf(dist, rad) + sqrtf(fmaxf(dist * dist - rad * rad, 0.0f)));
+    const float3x3 R = {vm[0], vm[1], vm[2], vm[4], vm[5], vm[6], vm[8], vm[9], vm[10]};
+    const float3 campos = SlangProjectionUtils::transform_ray_o(R, {vm[3], vm[7], vm[11]});
+    const float r = SlangProjectionUtils::view_radius_3dgs(means[gid], scales[gid], opacities[gid], campos);
     atomicMax(&radii[gid], r);
 }
 
