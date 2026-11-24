@@ -172,8 +172,9 @@ struct SfmReconSettings {
     // driver that resets under a long solve: a run falls back by itself when
     // the device fails, but only after paying for the failure.
     bool ba_cpu = false;
-    // Image size, feature count, pair-selection breadth and the selected
-    // detector's and matcher's own knobs, where they differ from the default.
+    // Image size, feature count, pair-selection breadth, the selected
+    // detector's and matcher's own knobs and the mapper's, where they differ
+    // from the default.
     SfmOptionMap options;
     // Extra flags typed by the user, appended verbatim: the escape hatch for
     // what the panel does not surface (`spirula sfm auto --help` lists it).

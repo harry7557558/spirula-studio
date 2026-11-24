@@ -489,7 +489,8 @@ bool apply_legacy_frames(const std::vector<std::string>& a, const PrepJob& now,
         else if (flag == "--range") j.adaptive_range = to_float(v);
         else if (flag == "--sharp") j.sharp_window = (int)to_float(v);
         else if (flag == "--sync") j.sync_tracks = v == "1";
-        else if (flag == "--max-frames") j.max_frames = (int)to_float(v);
+        else if (flag == "--max-frames")
+            j.max_frames = (int)to_float(v) == kRetiredMaxFrames ? 0 : (int)to_float(v);
         else if (flag == "--rotate") j.auto_rotate = v == "1";
         else if (flag == "--photos") j.photo_import = (PhotoImport)(int)to_float(v);
         else if (flag == "--360") j.pano.mode = (app::Pano360Mode)(int)to_float(v);
@@ -747,7 +748,7 @@ StepFields frames_fields(const PrepJob& job) {
     }
     add(f, "decoder", "", job.force_external_decode ? "ffmpeg" : "auto");
     add(f, "frame_indices", "", kStreamingFrameExtraction ? "source" : "candidates");
-    add(f, "max_frames", "", num(job.max_frames));
+    if (job.max_frames > 0) add(f, "max_frames", "", num(job.max_frames));
     add(f, "auto_rotate", "", onoff(job.auto_rotate));
     if (rate) {
         add(f, "sharp_window", "", num(job.sharp_window));
@@ -998,6 +999,13 @@ DatasetRecord read_plan_record(const std::string& workspace, const PrepJob& job)
     DatasetRecord rec = read_dataset_record(workspace);
     if (!rec.steps[(int)Step::Frames].present)
         rec.steps[(int)Step::Frames] = legacy_frames(workspace, job);
+    StepFields& frames = rec.steps[(int)Step::Frames].fields;
+    const std::string retired_cap = num(kRetiredMaxFrames);
+    frames.erase(std::remove_if(frames.begin(), frames.end(),
+                                [&](const StepField& f) {
+                                    return f.key == "max_frames" && f.value == retired_cap;
+                                }),
+                 frames.end());
     migrate_model_fields(rec.steps[(int)Step::Model].fields);
     return rec;
 }

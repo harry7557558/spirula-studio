@@ -114,7 +114,7 @@ struct ColmapJob {
     bool sync_tracks = true;
     bool auto_rotate = true;
     app::Pano360Options pano;            // see PrepJob
-    int max_frames = 100000;
+    int max_frames = 0;                  // see PrepJob
 
     // Advanced
     int max_num_features = 0;            // 0 = per-quality default

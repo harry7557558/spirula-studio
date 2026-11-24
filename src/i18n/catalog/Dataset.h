@@ -7538,6 +7538,21 @@ SS_MSG(sfm_matcher_options,
     RU("Параметры сопоставителя"),
     TR("Eşleştirici seçenekleri"));
 
+SS_MSG(sfm_mapper_options,
+    EN("Mapper options"),
+    JA("マッパーのオプション"),
+    ZH_HANS("建图器选项"),
+    ZH_HANT("建圖器選項"),
+    KO("매퍼 옵션"),
+    DE("Mapper-Optionen"),
+    FR("Options du mapper"),
+    ES("Opciones del mapeador"),
+    PT("Opções do mapeador"),
+    IT("Opzioni del mapper"),
+    NL("Mapper-opties"),
+    RU("Параметры маппера"),
+    TR("Haritalayıcı seçenekleri"));
+
 SS_MSG(option_default,
     EN("Default"),
     JA("既定値"),

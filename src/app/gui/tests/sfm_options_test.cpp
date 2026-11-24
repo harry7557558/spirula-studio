@@ -1,11 +1,12 @@
 // SfmOptions against the real option table: what the panel shows for each
-// quality and frontend, which overrides reach a run, and that every detector
-// and matcher row is filed where the panel will find it.
+// quality and frontend, which overrides reach a run, and that every detector,
+// matcher and mapper row is filed where the panel will find it.
 
 #include "app/gui/SfmOptions.h"
 #include "sfm/SfmConfig.h"
 
 #include <cstdio>
+#include <iterator>
 #include <set>
 
 using namespace gui;
@@ -105,6 +106,40 @@ int main() {
                "the quality preset moves the extraction, so it is filed there");
     }
 
+    // ---- the mapper's fold --------------------------------------------------
+    {
+        auto flags = [](int mapper) {
+            std::set<std::string> out;
+            for (const SfmOption& r : sfm_mapper_options(mapper)) out.insert(r.flag);
+            return out;
+        };
+        const std::set<std::string> flat = flags(0), bup = flags(1), global = flags(2);
+        expect(flat.count("min-tri-angle") && bup.count("min-tri-angle") &&
+                   global.count("min-tri-angle") && flat.count("bup-rounds"),
+               "every schedule offers the rows they share");
+        expect(bup.count("bup-atom-size") && !flat.count("bup-atom-size") &&
+                   !global.count("bup-atom-size"),
+               "an atom's options only under bottom-up");
+        bool apart = true;
+        for (const char* f : {"mapper", "refine-extra-params", "final-extra-params",
+                              "final-per-image-intrinsics", "ba-real", "ba-real-coarse",
+                              "metric-gps", "sensor-gauge", "exif-attitude", "telemetry"}) {
+            SfmOption row;
+            apart = apart && find_sfm_option(f, row) && !bup.count(f);
+        }
+        expect(apart, "... and none the panel or the manifest sets");
+
+        SfmReconSettings s;
+        set_sfm_option(s, "bup-atom-size", "96");
+        set_sfm_option(s, "min-tri-angle", "2");
+        expect(active_sfm_options(s).size() == 1, "an atom's override stays behind under flat");
+        s.mapper = 1;
+        expect(active_sfm_options(s).size() == 2, "... and reaches a bottom-up run");
+        ModelPart part = ModelPart::Features;
+        expect(sfm_option_part("bup_atom_size", part) && part == ModelPart::Mapping,
+               "it is the mapping's");
+    }
+
     // ---- every detector and matcher row has somewhere to be drawn ------------
     {
         const std::set<std::string> owners = {"sift", "aliked", "loma", "bruteforce",
@@ -130,6 +165,17 @@ int main() {
                 selectable.insert(sfm_matcher_owner(features, matcher));
             }
         expect(selectable == owners, "... and each of those can be selected on the panel");
+
+        bool scheduled = true;
+        for (const sfm::FieldInfo& f : sfm::configFields()) {
+            if (std::string(f.group).rfind("mapper/", 0) != 0) continue;
+            bool known = false;
+            for (int m = 0; m < (int)std::size(kSfmMapper); m++)
+                known = known || sfm::fieldOwner(f) == sfm_mapper_owner(m);
+            if (!known) std::printf("      --%s names no mapper schedule\n", f.name);
+            scheduled = scheduled && known;
+        }
+        expect(scheduled, "every mapper/ row names a schedule the panel offers");
     }
 
     if (g_failures) {

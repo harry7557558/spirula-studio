@@ -7,6 +7,8 @@
 #endif
 
 #include <algorithm>
+#include <cstring>
+#include <iterator>
 
 namespace gui {
 
@@ -19,6 +21,8 @@ std::string sfm_matcher_owner(int features, int matcher) {
     const std::string m = sfm_matcher_for(features, matcher);
     return m.rfind("loma", 0) == 0 ? "loma" : m;
 }
+
+std::string sfm_mapper_owner(int mapper) { return sfm_pick(kSfmMapper, mapper); }
 
 const char* sfm_feature_count_flag(int features) {
     const std::string owner = sfm_detector_owner(features);
@@ -116,7 +120,8 @@ bool owner_selected(const SfmReconSettings& s, const std::string& owner) {
     if (owner == "prefilter")
         return pairs == kPairsPrefilter || (pairs == kPairsSequential && s.loop_closure);
     return owner == sfm_detector_owner(s.features) ||
-           owner == sfm_matcher_owner(s.features, s.matcher);
+           owner == sfm_matcher_owner(s.features, s.matcher) ||
+           owner == sfm_mapper_owner(s.mapper);
 }
 
 }  // namespace
@@ -125,6 +130,29 @@ std::vector<SfmOption> sfm_owned_options(const std::string& owner) {
     std::vector<SfmOption> out;
     for (const sfm::FieldInfo& f : sfm::configFields())
         if (offered(f) && sfm::fieldOwner(f) == owner) out.push_back(row_of(f));
+    return out;
+}
+
+std::vector<SfmOption> sfm_mapper_options(int mapper) {
+    // SfmRunner::recon_args writes these from the panel's own controls, and
+    // the telemetry goes in the manifest.
+    static const char* const kElsewhere[] = {
+        "mapper", "refine-extra-params", "final-extra-params", "final-per-image-intrinsics",
+        "ba-real", "ba-real-coarse", "metric-gps", "sensor-gauge", "exif-attitude",
+        "telemetry",
+    };
+    const std::string schedule = sfm_mapper_owner(mapper);
+    std::vector<SfmOption> out;
+    for (const sfm::FieldInfo& f : sfm::configFields()) {
+        const std::string group = f.group;
+        if (!offered(f) || group.substr(0, group.find('/')) != "mapper") continue;
+        const std::string owner = sfm::fieldOwner(f);
+        if (!owner.empty() && owner != schedule) continue;
+        if (std::any_of(std::begin(kElsewhere), std::end(kElsewhere),
+                        [&](const char* n) { return std::strcmp(n, f.name) == 0; }))
+            continue;
+        out.push_back(row_of(f));
+    }
     return out;
 }
 
@@ -173,6 +201,7 @@ bool sfm_option_part(const std::string& field, ModelPart& part) {
 #else  // no reconstruction module: no table to check against
 
 std::vector<SfmOption> sfm_owned_options(const std::string&) { return {}; }
+std::vector<SfmOption> sfm_mapper_options(int) { return {}; }
 bool find_sfm_option(const std::string&, SfmOption&) { return false; }
 std::string sfm_option_default(const SfmReconSettings&, const std::string&) { return {}; }
 SfmOptionMap active_sfm_options(const SfmReconSettings& s) { return s.options; }

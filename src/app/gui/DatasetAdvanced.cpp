@@ -206,11 +206,10 @@ void sfm_option_box(SfmReconSettings& job, const std::string& flag, const char* 
     ImGui::PopID();
 }
 
-// The selected detector's or matcher's own options, folded. `drawn` is one
-// the panel already has a box for.
-void sfm_owner_options(SfmReconSettings& job, const Msg& title, const std::string& owner,
-                       const std::string& drawn) {
-    std::vector<SfmOption> rows = sfm_owned_options(owner);
+// The selected detector's, matcher's or mapper's options, folded. `drawn` is
+// one the panel already has a box for.
+void sfm_options_fold(SfmReconSettings& job, const Msg& title, std::vector<SfmOption> rows,
+                      const std::string& drawn = "") {
     rows.erase(std::remove_if(rows.begin(), rows.end(),
                               [&](const SfmOption& r) { return r.flag == drawn || ends_with(r.flag, "model"); }),
                rows.end());
@@ -233,9 +232,9 @@ void GuiApp::draw_sfm_advanced() {
                &dmsg::features_aliked_n32, &dmsg::features_loma_b128,
                &dmsg::features_loma_b});
     ui::help_on_hover(dmsg::features_help);
-    sfm_owner_options(_sfm_job, dmsg::sfm_detector_options,
-                      sfm_detector_owner(_sfm_job.features),
-                      sfm_feature_count_flag(_sfm_job.features));
+    sfm_options_fold(_sfm_job, dmsg::sfm_detector_options,
+                     sfm_owned_options(sfm_detector_owner(_sfm_job.features)),
+                     sfm_feature_count_flag(_sfm_job.features));
 
     {
         // The middle entry is whichever learned matcher goes with the frontend
@@ -258,8 +257,8 @@ void GuiApp::draw_sfm_advanced() {
         ui::help_on_hover(_sfm_job.matcher == 2 ? dmsg::matcher_flexglue_help
                           : learned            ? dmsg::matcher_help
                                                : dmsg::matcher_needs_learned);
-        sfm_owner_options(_sfm_job, dmsg::sfm_matcher_options,
-                          sfm_matcher_owner(_sfm_job.features, _sfm_job.matcher), "");
+        sfm_options_fold(_sfm_job, dmsg::sfm_matcher_options,
+                         sfm_owned_options(sfm_matcher_owner(_sfm_job.features, _sfm_job.matcher)));
         if (_sfm_job.matcher == 2 &&
             any_fisheye_or_pano_lens(_sources, _sfm_job.camera_model))
             ui::TextColoredWrapped(kWarn, dmsg::matcher_flexglue_wide_lens);
@@ -270,6 +269,7 @@ void GuiApp::draw_sfm_advanced() {
     ui::Combo(dmsg::mapper_schedule, &_sfm_job.mapper,
               {&dmsg::mapper_flat, &dmsg::mapper_bottom_up, &dmsg::mapper_global});
     ui::help_on_hover(dmsg::mapper_schedule_help);
+    sfm_options_fold(_sfm_job, dmsg::sfm_mapper_options, sfm_mapper_options(_sfm_job.mapper));
 
     const bool builtin = effective_engine() == Engine::BuiltIn;
     int matcher_idx = _colmap_job.matcher - 1;

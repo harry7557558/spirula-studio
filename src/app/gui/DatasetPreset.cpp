@@ -157,11 +157,13 @@ namespace {
     X("colmap_vocab_tree_path",     colmap.vocab_tree_path)                   \
     /* end */
 
-// Keys an older build wrote, onto what replaced them. "sfm_data_type" was a
-// template, 1 for ordered video frames; its other settings those files also
-// carry as their own.
+// Keys and defaults an older build wrote, onto what replaced them.
+// "sfm_data_type" was a template, 1 for ordered video frames; its other
+// settings those files also carry as their own.
 void read_retired_settings(const JsonValue& fields, DatasetSettings& s) {
     if (const JsonValue* v = fields.find("sfm_data_type")) s.videos_in_order = v->as_int() == 1;
+    // The frame cap every file carried before it was off by default.
+    if (s.sfm.prep.max_frames == kRetiredMaxFrames) s.sfm.prep.max_frames = 0;
     const std::pair<const char*, const char*> counts[] = {
         {"sfm_max_features", sfm_feature_count_flag(s.sfm.features)},
         {"sfm_max_image_size", "max-image-size"},
@@ -264,7 +266,7 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     clamp_to(p.sharp_window, 1, 1000);
     p.blur_px = std::clamp(p.blur_px, 1.0f, 40.0f);
     clamp_to(p.similar_bits, 0, 32);
-    clamp_to(p.max_frames, 1, 1000000);
+    clamp_to(p.max_frames, 0, 1000000);
     clamp_to(p.mask_detect_every, 1, 1000);
     clamp_to(p.mask_memory_frames, 0, 64);
 

@@ -67,9 +67,10 @@ same fields however the panel was arranged:
   only when off, so a record from before the switches compares equal); then
   the engine's own settings. Options the panel edits straight off `spirula
   sfm`'s table (`SfmOptions.h`: image size, feature count, pair-selection
-  breadth, the selected detector's and matcher's knobs) are fields under their
-  flag's name, listed only where they differ from the default and only while
-  their owner is selected -- the same list the command line is built from. Folders, not input rows, because a video's one
+  breadth, the selected detector's and matcher's knobs, the mapper's) are
+  fields under their flag's name, listed only where they differ from the
+  default and only while their owner is selected -- the same list the command
+  line is built from. Folders, not input rows, because a video's one
   row and the same frames dropped back as a folder with two sub-folders are
   different rows over the same cameras.
 - Depth and normals: the model and its options. The kinds of map asked for are
@@ -79,7 +80,8 @@ same fields however the panel was arranged:
 An older model record is read as what it ran (`migrate_model_fields()`):
 the capture type is no field, "auto" compares equal to pair selection,
 `overlap` and `loop_closure` count only under sequential pairing, and the
-retired `prefilter_sequential` is dropped.
+retired `prefilter_sequential` is dropped. A frames record's `max_frames` of
+100000, the cap every run carried while it was on by default, reads as no cap.
 
 A workspace written before the record carries `.spirula-frames` and
 `.spirula-recon`. The first can restore the old extraction settings, but is

@@ -1,10 +1,11 @@
 #pragma once
 
 // `spirula sfm` options the panel edits straight off the option table
-// (sfm/SfmConfig.h): image size, feature count, pair-selection breadth and the
-// selected detector's and matcher's own knobs. An option here needs no member,
-// preset key, command-line code or plan field of its own -- SfmJob::options
-// holds what differs from the default and this file is every consumer.
+// (sfm/SfmConfig.h): image size, feature count, pair-selection breadth, the
+// selected detector's and matcher's own knobs and the mapper's. An option here
+// needs no member, preset key, command-line code or plan field of its own --
+// SfmJob::options holds what differs from the default and this file is every
+// consumer.
 
 #include "app/gui/SfmRunner.h"
 
@@ -22,7 +23,7 @@ struct SfmOption {
     double lo = 0, hi = 0;            // lo >= hi: unbounded
     std::vector<std::string> choices;
     const spirula::i18n::Msg* help = nullptr;
-    std::string owner;                // "sift", "lightglue", "prefilter"; "" = shared
+    std::string owner;                // "sift", "lightglue", "prefilter", "bottom-up"; "" = shared
     ModelPart part = ModelPart::Features;   // the first stage it reaches
 };
 
@@ -31,9 +32,13 @@ struct SfmOption {
 std::vector<SfmOption> sfm_owned_options(const std::string& owner);
 bool find_sfm_option(const std::string& flag, SfmOption& out);
 
-// Which owner's rows the selected detector and matcher read.
+// Which owner's rows the selected detector, matcher and mapper schedule read.
 std::string sfm_detector_owner(int features);
 std::string sfm_matcher_owner(int features, int matcher);
+std::string sfm_mapper_owner(int mapper);
+// The mapper section's rows for that schedule, less those the panel or the
+// manifest sets: the ones it shares and its own.
+std::vector<SfmOption> sfm_mapper_options(int mapper);
 // The selected detector's feature-count flag: their budgets are not comparable.
 const char* sfm_feature_count_flag(int features);
 

@@ -390,6 +390,13 @@ static void test_retired_keys() {
     CHECK_EQ(s.sfm.pairs, gui::kPairsPrefilter);
     CHECK_EQ(s.sfm.options.count("aliked-max-features"), (size_t)1);
     CHECK_EQ(s.sfm.options.count("max-image-size"), (size_t)0);
+
+    // The frame cap every file carried while it was on by default is off.
+    CHECK_EQ(s.sfm.prep.max_frames, 0);
+    gui::read_dataset_settings_json(json_parse("{\"max_frames\": 100000}"), s);
+    CHECK_EQ(s.sfm.prep.max_frames, 0);
+    gui::read_dataset_settings_json(json_parse("{\"max_frames\": 500}"), s);
+    CHECK_EQ(s.sfm.prep.max_frames, 500);
 }
 
 // A file a user has edited by hand must not reach a runner with a value

@@ -257,6 +257,10 @@ struct PrepCapture {
 // moved aside since. A run that keeps the frames takes both out again.
 inline constexpr const char* kSkippedListFile = ".spirula-skipped";
 
+// The frame cap presets and records carried while it was on by default. It
+// never bound in practice, so it reads as no cap.
+inline constexpr int kRetiredMaxFrames = 100000;
+
 struct PrepJob {
     std::vector<PrepInput> inputs;   // in the order the user added them
     // Drawn areas for a laser scan's photographs, by scan file: given to the
@@ -324,7 +328,7 @@ struct PrepJob {
     bool  sort_frames = false;
     // Every track keeps the same instants in the streaming extraction path.
     bool  sync_tracks = true;
-    int   max_frames = 100000;
+    int   max_frames = 0;           // per video track; 0 = no cap
     // Turn every extracted frame by the rotation the capture asks for, so a
     // portrait clip lands upright and the written files need no metadata read
     // to be shown the right way up.

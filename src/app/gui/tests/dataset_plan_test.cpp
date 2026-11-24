@@ -549,6 +549,20 @@ int main() {
         expect(plan(every)[Step::Model].act == Act::Redo, "... and another pairing still is not");
     }
 
+    // ---- frames from while the frame cap was on by default ---------------------
+    build(ws, made);
+    {
+        StepRecord old = read_dataset_record(ws.string()).step(Step::Frames);
+        old.fields.push_back({"max_frames", "", "100000"});
+        write_step_record(ws.string(), Step::Frames, old);
+        expect(read_plan_record(ws.string(), made.prep).step(Step::Frames).fields ==
+                   frames_fields(made.prep),
+               "frames cut under the old default cap read as uncapped");
+        SfmJob capped = made;
+        capped.prep.max_frames = 500;
+        expect(plan(capped)[Step::Frames].changes.size() == 1, "... and a cap set now is a change");
+    }
+
     // ---- sequential-only settings under pair selection -------------------------
     build(ws, made);
     {

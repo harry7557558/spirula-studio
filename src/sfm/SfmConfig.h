@@ -533,25 +533,25 @@ struct SfmConfig {
     F(mapper_mode, "mapper", CMD_AUTO | CMD_MAP, Tier::Basic, "mapper", 0, 0, "flat|bottom-up|global", \
       mapper)                                                                                      \
     F(bup.partition.leaf_max_images, "bup-atom-size", CMD_AUTO | CMD_MAP, Tier::Advanced,          \
-      "mapper", 8, 100000, "", bup_atom_size)                                                      \
-    F(bup.partition.overlap, "bup-overlap", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0,       \
-      100000, "", bup_overlap)                                                                     \
+      "mapper/bottom-up", 8, 100000, "", bup_atom_size)                                            \
+    F(bup.partition.overlap, "bup-overlap", CMD_AUTO | CMD_MAP, Tier::Advanced,                    \
+      "mapper/bottom-up", 0, 100000, "", bup_overlap)                                              \
     F(assemble.max_rounds, "bup-rounds", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 1, 100, "", \
       bup_rounds)                                                                                  \
-    F(bup.atom.threads, "bup-atom-threads", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 1024, \
-      "", bup_atom_threads)                                                                        \
-    F(bup.atom.ba_growth, "bup-atom-ba-growth", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 1,   \
-      1000000, "", bup_atom_ba_growth)                                                             \
+    F(bup.atom.threads, "bup-atom-threads", CMD_AUTO | CMD_MAP, Tier::Advanced,                    \
+      "mapper/bottom-up", 0, 1024, "", bup_atom_threads)                                           \
+    F(bup.atom.ba_growth, "bup-atom-ba-growth", CMD_AUTO | CMD_MAP, Tier::Advanced,                \
+      "mapper/bottom-up", 1, 1000000, "", bup_atom_ba_growth)                                      \
     F(assemble.joint_every, "bup-joint-every", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 1,    \
       100, "", bup_joint_every)                                                                    \
     F(bup.atom.tight_final_ba, "bup-atom-tight-final", CMD_AUTO | CMD_MAP, Tier::Advanced,         \
-      "mapper", 0, 0, "", bup_atom_tight_final)                                                    \
+      "mapper/bottom-up", 0, 0, "", bup_atom_tight_final)                                          \
     F(assemble.coarse_joint_ba, "bup-coarse-ba", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0,  \
       0, "", bup_coarse_ba)                                                                        \
-    F(bup.atom.init_trials, "bup-atom-init-trials", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper",  \
-      1, 1000, "", bup_atom_init_trials)                                                           \
+    F(bup.atom.init_trials, "bup-atom-init-trials", CMD_AUTO | CMD_MAP, Tier::Advanced,            \
+      "mapper/bottom-up", 1, 1000, "", bup_atom_init_trials)                                       \
     F(bup.atom.min_model_fraction, "bup-atom-min-fraction", CMD_AUTO | CMD_MAP, Tier::Advanced,    \
-      "mapper", 0, 1, "", bup_atom_min_fraction)                                                   \
+      "mapper/bottom-up", 0, 1, "", bup_atom_min_fraction)                                         \
     F(assemble.joint_intrinsics, "bup-joint-intrinsics", CMD_AUTO | CMD_MAP, Tier::Advanced,       \
       "mapper", 0, 0, "", bup_joint_intrinsics)                                                    \
     F(assemble.grow_every, "bup-grow-every", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 100, \
@@ -690,7 +690,7 @@ void applySequenceDefaults(SfmConfig& cfg, const std::set<std::string>& seen,
                            std::vector<PresetChange>& moved);
 
 // One row of the table at run time, for an editor that is not a macro
-// expansion (the GUI's per-detector and per-matcher options).
+// expansion (the GUI's option folds).
 enum class FieldType { Switch, Integer, Real, Text };
 struct FieldInfo {
     const char* name;
@@ -705,9 +705,9 @@ struct FieldInfo {
 const std::vector<FieldInfo>& configFields();
 // The `auto` row of that name, or null. Aliases resolve like any other row.
 const FieldInfo* findConfigField(const std::string& name);
-// A group spelled "base/owner" files its row under one detector, matcher or
-// pair mode, which an editor offers only while that one is selected: "sift"
-// of "features/sift". Empty for a row every frontend shares.
+// A group spelled "base/owner" files its row under one detector, matcher, pair
+// mode or mapper schedule, which an editor offers only while that one is
+// selected: "sift" of "features/sift". Empty for a row they all share.
 std::string fieldOwner(const FieldInfo& f);
 // The first stage whose signature carries the row: CMD_EXTRACT, CMD_MATCH or
 // CMD_MAP. A row only `auto` has (--quality) counts from extraction.
