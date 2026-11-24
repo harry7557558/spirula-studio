@@ -3,6 +3,7 @@
 #include "data/CameraMath.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numeric>
 
@@ -25,40 +26,6 @@ int find_root(std::vector<int>& parent, int x) {
 }
 
 }  // namespace
-
-void drop_label_edges(std::vector<uint8_t>& labels, int w, int h, int radius) {
-    if (radius <= 0 || w <= 0 || h <= 0) return;
-    // Pixels of class `cls` within `radius`, by running counts: rows, then columns.
-    auto within = [&](uint8_t cls) {
-        std::vector<uint8_t> rows((size_t)w * h, 0), out((size_t)w * h, 0);
-        #pragma omp parallel for schedule(static)
-        for (int y = 0; y < h; ++y) {
-            const uint8_t* l = &labels[(size_t)y * w];
-            int count = 0;
-            for (int x = 0; x < std::min(w, radius + 1); ++x) count += l[x] == cls;
-            for (int x = 0; x < w; ++x) {
-                rows[(size_t)y * w + x] = count > 0;
-                if (x + radius + 1 < w) count += l[x + radius + 1] == cls;
-                if (x - radius >= 0) count -= l[x - radius] == cls;
-            }
-        }
-        #pragma omp parallel for schedule(static)
-        for (int x = 0; x < w; ++x) {
-            int count = 0;
-            for (int y = 0; y < std::min(h, radius + 1); ++y) count += rows[(size_t)y * w + x];
-            for (int y = 0; y < h; ++y) {
-                out[(size_t)y * w + x] = count > 0;
-                if (y + radius + 1 < h) count += rows[(size_t)(y + radius + 1) * w + x];
-                if (y - radius >= 0) count -= rows[(size_t)(y - radius) * w + x];
-            }
-        }
-        return out;
-    };
-    const std::vector<uint8_t> near_yes = within(kGroundYes), near_no = within(kGroundNo);
-    for (size_t p = 0; p < labels.size(); ++p)
-        if ((labels[p] == kGroundNo && near_yes[p]) || (labels[p] == kGroundYes && near_no[p]))
-            labels[p] = kGroundUnknown;
-}
 
 void vote_ground(const TsdfCamera& c, const float* depth, const uint8_t* labels,
                  const MeshData& mesh, float* ground, float* seen) {
@@ -155,6 +122,68 @@ std::vector<uint8_t> ground_faces(const MeshData& mesh, const std::vector<float>
     for (size_t t = 0; t < nf; ++t)
         if (size[(size_t)find_root(parent, (int)t)] < min_island) label[t] ^= 1;
     return label;
+}
+
+void grow_ground(const MeshData& mesh, std::vector<uint8_t>& label, double max_deg) {
+    const size_t nf = mesh.F.size();
+    std::vector<std::array<double, 3>> n(nf);
+    for (size_t t = 0; t < nf; ++t) {
+        const auto &a = mesh.V[(size_t)mesh.F[t][0]], &b = mesh.V[(size_t)mesh.F[t][1]],
+                   &c = mesh.V[(size_t)mesh.F[t][2]];
+        const double u[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+        const double v[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+        n[t] = {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
+        const double l = std::sqrt(n[t][0] * n[t][0] + n[t][1] * n[t][1] + n[t][2] * n[t][2]);
+        for (double& x : n[t]) x = l > 0.0 ? x / l : 0.0;
+    }
+    // Faces sharing an edge: sort the edges, equal neighbours are a pair.
+    struct Edge { int a, b, face; };
+    std::vector<Edge> edges;
+    edges.reserve(nf * 3);
+    for (size_t t = 0; t < nf; ++t)
+        for (int k = 0; k < 3; ++k) {
+            const int a = mesh.F[t][k], b = mesh.F[t][(k + 1) % 3];
+            edges.push_back({std::min(a, b), std::max(a, b), (int)t});
+        }
+    std::sort(edges.begin(), edges.end(), [](const Edge& x, const Edge& y) {
+        return x.a != y.a ? x.a < y.a : x.b < y.b;
+    });
+    std::vector<int> first(nf + 1, 0), next_face;   // adjacency as CSR
+    std::vector<std::pair<int, int>> pairs;
+    for (size_t i = 0; i + 1 < edges.size(); ++i)
+        if (edges[i].a == edges[i + 1].a && edges[i].b == edges[i + 1].b)
+            pairs.push_back({edges[i].face, edges[i + 1].face});
+    std::vector<Edge>().swap(edges);
+    for (const auto& p : pairs) { first[(size_t)p.first + 1]++; first[(size_t)p.second + 1]++; }
+    for (size_t t = 0; t < nf; ++t) first[t + 1] += first[t];
+    next_face.resize((size_t)first[nf]);
+    std::vector<int> fill(first.begin(), first.end() - 1);
+    for (const auto& p : pairs) {
+        next_face[(size_t)fill[(size_t)p.first]++] = p.second;
+        next_face[(size_t)fill[(size_t)p.second]++] = p.first;
+    }
+
+    // Each grown face keeps the normal of the labelled face it came from, so
+    // the growth cannot bend round a rounded corner a few degrees at a time.
+    const double cos_max = std::cos(max_deg * 3.14159265358979323846 / 180.0);
+    std::vector<int> seed(nf, -1), front, grown;
+    for (size_t t = 0; t < nf; ++t)
+        if (label[t]) { seed[t] = (int)t; front.push_back((int)t); }
+    while (!front.empty()) {
+        grown.clear();
+        for (int f : front)
+            for (int i = first[(size_t)f]; i < first[(size_t)f + 1]; ++i) {
+                const int h = next_face[(size_t)i];
+                if (seed[(size_t)h] >= 0) continue;
+                const auto& sn = n[(size_t)seed[(size_t)f]];
+                const auto& hn = n[(size_t)h];
+                if (sn[0] * hn[0] + sn[1] * hn[1] + sn[2] * hn[2] < cos_max) continue;
+                seed[(size_t)h] = seed[(size_t)f];
+                label[(size_t)h] = 1;
+                grown.push_back(h);
+            }
+        front.swap(grown);
+    }
 }
 
 MeshData mesh_subset(const MeshData& mesh, const std::vector<uint8_t>& face_label,

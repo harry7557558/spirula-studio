@@ -178,8 +178,8 @@ constexpr int kMinCullPatch[2] = {64, 8};
 constexpr int kRepairRounds = 4;
 constexpr float kEarlyFixDeg = 5.0f;
 
-// Mask edges cast no vote within this share of the image's longer side.
-constexpr double kGroundEdge = 0.01;
+// Ground spreads over faces within this angle of it: across the floor, not up a leg.
+constexpr double kGroundGrowDeg = 20.0;
 
 // Every camera's ground labels voted onto the mesh's vertices, then per face.
 // Empty when no camera had labels.
@@ -198,7 +198,6 @@ std::vector<uint8_t> label_ground(const Mesh& mesh, OccupancyEvaluator& ev,
         int W = 0, H = 0;
         if (!ev.render_moments(c, moments, W, H)) break;
         if (!cfg.ground_labels(c, W, H, labels) || labels.size() != (size_t)W * H) continue;
-        drop_label_edges(labels, W, H, std::max(1, (int)std::lround(kGroundEdge * std::max(W, H))));
         depth.resize((size_t)W * H);
         moments_to_depth(moments.data(), depth.size(), depth.data());
         vote_ground(tsdf_camera(cams, c, W, H), depth.data(), labels.data(), mesh,
@@ -207,6 +206,7 @@ std::vector<uint8_t> label_ground(const Mesh& mesh, OccupancyEvaluator& ev,
     }
     if (masked == 0) return {};
     std::vector<uint8_t> faces = ground_faces(mesh, ground, seen, cfg.floater_min_faces);
+    grow_ground(mesh, faces, kGroundGrowDeg);
     if (cfg.verbose) {
         long long n = 0;
         for (uint8_t f : faces) n += f;

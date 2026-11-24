@@ -10,6 +10,7 @@
 #include "core/SourcePath.h"
 #include "mesh/GroundSplit.h"
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -105,29 +106,35 @@ void render(const TsdfCamera& c, const double eye[3], std::vector<float>& depth,
 
 }  // namespace
 
-void test_drop_label_edges() {
-    const int w = 20, h = 10;
-    std::vector<uint8_t> l((size_t)w * h, meshing::kGroundNo);
-    for (int y = 0; y < h; ++y)
-        for (int x = 10; x < w; ++x) l[(size_t)y * w + x] = meshing::kGroundYes;
-    l[(size_t)5 * w + 3] = meshing::kGroundYes;                 // a speck
-    for (int x = 15; x < w; ++x) l[(size_t)0 * w + x] = meshing::kGroundUnknown;
-    meshing::drop_label_edges(l, w, h, 2);
-    auto at = [&](int x, int y) { return l[(size_t)y * w + x]; };
-    for (int y = 0; y < h; ++y) {
-        for (int x = 8; x <= 11; ++x) CHECK(at(x, y) == meshing::kGroundUnknown);
-        CHECK(at(7, y) == meshing::kGroundNo);
-        CHECK(at(12, y) == meshing::kGroundYes);
-    }
-    for (int y = 3; y <= 7; ++y)
-        for (int x = 1; x <= 5; ++x) CHECK(at(x, y) == meshing::kGroundUnknown);
-    CHECK(at(0, 0) == meshing::kGroundNo);
-    // An unknown region is no edge: only the class next to it is kept as it was.
-    CHECK(at(16, 1) == meshing::kGroundYes);
+// A strip that runs flat, tilts by 10 degrees, then turns up into a wall: ground
+// seeded on the flat part spreads over the tilt and stops at the wall.
+void test_grow_ground() {
+    const double tilt = 10.0 * 3.14159265358979 / 180.0;
+    std::vector<std::array<double, 2>> xz;   // the strip's profile, a point per column
+    for (int u = 0; u <= 10; ++u) xz.push_back({0.1 * u, 0.0});
+    for (int u = 1; u <= 5; ++u) xz.push_back({1.0 + 0.1 * u * std::cos(tilt), 0.1 * u * std::sin(tilt)});
+    const auto top = xz.back();
+    for (int u = 1; u <= 5; ++u) xz.push_back({top[0], top[1] + 0.1 * u});
+    MeshData m;
+    const int rows = 4;
+    for (const auto& p : xz)
+        for (int r = 0; r <= rows; ++r) m.V.push_back({(float)p[0], (float)(0.1 * r), (float)p[1]});
+    std::vector<int> column;   // the profile segment each face lies on
+    for (int u = 0; u + 1 < (int)xz.size(); ++u)
+        for (int r = 0; r < rows; ++r) {
+            const int a = u * (rows + 1) + r, b = a + rows + 1;
+            m.F.push_back({a, b, b + 1});
+            m.F.push_back({a, b + 1, a + 1});
+            column.insert(column.end(), {u, u});
+        }
+    std::vector<uint8_t> label(m.F.size(), 0);
+    label[0] = 1;
+    meshing::grow_ground(m, label, 20.0);
+    for (size_t t = 0; t < label.size(); ++t) CHECK(label[t] == (column[t] < 15 ? 1 : 0));
 }
 
 int main() {
-    test_drop_label_edges();
+    test_grow_ground();
     MeshData mesh;
     add_grid(mesh, kFloor, 0.0, 81);
     const size_t floor_faces = mesh.F.size();
@@ -142,10 +149,10 @@ int main() {
         const double eye[3] = {3.0 * std::cos(a), 3.0 * std::sin(a), 6.0};
         const TsdfCamera c = look_at(eye, at, 320, 240, 200.0);
         render(c, eye, depth, label);
-        meshing::drop_label_edges(label, c.width, c.height, 1);
         meshing::vote_ground(c, depth.data(), label.data(), mesh, ground.data(), seen.data());
     }
-    const std::vector<uint8_t> faces = meshing::ground_faces(mesh, ground, seen, 20);
+    std::vector<uint8_t> faces = meshing::ground_faces(mesh, ground, seen, 20);
+    meshing::grow_ground(mesh, faces, 20.0);
     CHECK(faces.size() == mesh.F.size());
 
     size_t floor_ok = 0, floor_seen = 0, table_ok = 0;
