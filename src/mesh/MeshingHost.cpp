@@ -202,7 +202,7 @@ std::vector<uint8_t> label_ground(const Mesh& mesh, OccupancyEvaluator& ev,
         ++masked;
     }
     if (masked == 0) return {};
-    std::vector<uint8_t> faces = ground_faces(mesh, ground, seen, cfg.floater_min_faces);
+    std::vector<uint8_t> faces = ground_faces(mesh, ground, seen);
     if (cfg.verbose) {
         long long n = 0;
         for (uint8_t f : faces) n += f;

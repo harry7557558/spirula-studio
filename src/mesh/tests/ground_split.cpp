@@ -121,7 +121,7 @@ int main() {
         render(c, eye, depth, label);
         meshing::vote_ground(c, depth.data(), label.data(), mesh, ground.data(), seen.data());
     }
-    const std::vector<uint8_t> faces = meshing::ground_faces(mesh, ground, seen, 20);
+    const std::vector<uint8_t> faces = meshing::ground_faces(mesh, ground, seen);
     CHECK(faces.size() == mesh.F.size());
 
     size_t floor_ok = 0, floor_seen = 0, table_ok = 0;
