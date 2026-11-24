@@ -24,6 +24,10 @@ the inference layer, which needs a Vulkan driver, and meshing doesn't: a CUDA
 build meshes from masks made by any build, and one built with
 `-DSS_BUILD_SAM=ON` makes them itself.
 
+The dataset's own training masks are left as they are and still apply:
+where one ignores a pixel (the operator of a 360 capture, say), that pixel
+casts no ground vote, whatever the ground mask says there.
+
 A mask is resampled to the camera's render size by nearest sample. A camera
 whose image the parser had to resample (`ParsedDataset::redistort`) and a
 camera without a mask cast no vote.

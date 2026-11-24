@@ -66,6 +66,8 @@ struct MeshCameras {
     std::vector<int32_t> distortions;  // [C] CameraDistortionType
     std::string          model;        // the distinct models, for the log
     std::vector<std::string> ground_masks;   // [C], "" for none
+    std::vector<std::string> train_masks;    // [C], "" for none: where they ignore, no vote
+    bool flip_train_masks = false;
     int64_t num() const { return (int64_t)widths.size(); }
 };
 
@@ -82,8 +84,7 @@ MeshCameras load_cameras(const JsonValue& run_cfg, const fs::path& run_dir,
     };
     pcfg.recon_dir  = dp_str("colmap_recon_dir", "");
     pcfg.image_dir  = dp_str("image_dir", "images");
-    // Meshing reads no training mask: the mask lookup finds the ground masks.
-    pcfg.mask_dir   = ground_masks.empty() ? dp_str("mask_dir", "masks") : ground_masks;
+    pcfg.mask_dir   = dp_str("mask_dir", "masks");
     pcfg.metashape_xml = dp_str("metashape_xml", "");
     pcfg.metashape_ply = dp_str("metashape_ply", "");
     pcfg.metashape_psx = dp_str("metashape_psx", "");
@@ -154,8 +155,18 @@ MeshCameras load_cameras(const JsonValue& run_cfg, const fs::path& run_dir,
 
     out.model = meshing::camera_models_summary(out.models.data(), (int)C);
     if (!ground_masks.empty()) {
-        out.ground_masks = ds.mask_filenames;
-        out.ground_masks.resize((size_t)C);
+        const std::string image_root = (fs::path(data_dir) / pcfg.image_dir).string();
+        std::vector<std::string> rel((size_t)C);
+        for (int64_t i = 0; i < C; ++i) {
+            const std::string& img = ds.image_filenames[(size_t)i];
+            rel[(size_t)i] = dsparse::relative_under(img, image_root);
+            if (rel[(size_t)i].empty()) rel[(size_t)i] = fs::path(img).filename().string();
+        }
+        out.ground_masks = dsparse::find_aux_files(ground_masks, rel, "mask");
+        out.train_masks = ds.mask_filenames;
+        out.train_masks.resize((size_t)C);
+        const JsonValue* flip = run_cfg.find("flip_mask");
+        out.flip_train_masks = flip && flip->type == JsonValue::Type::Bool && flip->as_bool();
         // A resampled image no longer lines up with its mask.
         for (size_t i = 0; i < ds.redistort.size() && i < (size_t)C; ++i)
             if (ds.redistort[i].source_model >= 0) out.ground_masks[i].clear();
@@ -163,23 +174,34 @@ MeshCameras load_cameras(const JsonValue& run_cfg, const fs::path& run_dir,
     return out;
 }
 
-// Camera `c`'s ground mask at w x h, nearest sample: black is ground.
-bool read_ground_labels(const MeshCameras& cams, int c, int w, int h,
-                        std::vector<uint8_t>& out) {
-    if (c < 0 || (size_t)c >= cams.ground_masks.size() || cams.ground_masks[(size_t)c].empty())
-        return false;
+// `path` as one byte per pixel at w x h, nearest sample; empty when unreadable.
+std::vector<uint8_t> read_gray_at(const std::string& path, int w, int h) {
     int mw = 0, mh = 0, ch = 0;
-    stbi_uc* img = stbi_load(cams.ground_masks[(size_t)c].c_str(), &mw, &mh, &ch, 1);
-    if (!img) return false;
-    out.resize((size_t)w * h);
+    stbi_uc* img = path.empty() ? nullptr : stbi_load(path.c_str(), &mw, &mh, &ch, 1);
+    if (!img) return {};
+    std::vector<uint8_t> out((size_t)w * h);
     for (int y = 0; y < h; ++y)
         for (int x = 0; x < w; ++x) {
             const int sx = std::min(mw - 1, (int)((int64_t)x * mw / w));
             const int sy = std::min(mh - 1, (int)((int64_t)y * mh / h));
-            out[(size_t)y * w + x] =
-                img[(size_t)sy * mw + sx] < 128 ? meshing::kGroundYes : meshing::kGroundNo;
+            out[(size_t)y * w + x] = img[(size_t)sy * mw + sx];
         }
     stbi_image_free(img);
+    return out;
+}
+
+// Camera `c`'s ground labels at w x h: black in its ground mask is ground, and
+// what its training mask ignores (the operator, say) casts no vote.
+bool read_ground_labels(const MeshCameras& cams, int c, int w, int h,
+                        std::vector<uint8_t>& out) {
+    if (c < 0 || (size_t)c >= cams.ground_masks.size()) return false;
+    out = read_gray_at(cams.ground_masks[(size_t)c], w, h);
+    if (out.empty()) return false;
+    for (uint8_t& v : out) v = v < 128 ? meshing::kGroundYes : meshing::kGroundNo;
+    // Training masks: 0 ignore, 128 segment, 255 keep; flipped, nonzero removes.
+    const std::vector<uint8_t> train = read_gray_at(cams.train_masks[(size_t)c], w, h);
+    for (size_t i = 0; i < train.size(); ++i)
+        if (cams.flip_train_masks ? train[i] != 0 : train[i] < 64) out[i] = meshing::kGroundUnknown;
     return true;
 }
 
