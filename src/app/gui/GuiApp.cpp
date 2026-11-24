@@ -9867,8 +9867,7 @@ void GuiApp::draw_mesh() {
             request_open_splat(out);
         }
         ImGui::SameLine();
-        // Same message as the button that started this run, so it needs its
-        // own ImGui ID (a label IS the ID -- see AGENTS.md).
+        // The start button and this button share a message ID.
         ImGui::PushID("again");
         if (ui::Button(msg::mesh_start)) close_mesh_preview();
         ImGui::PopID();

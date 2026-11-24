@@ -1,963 +1,167 @@
-# AGENTS.md — orientation for humans and coding agents
+# AGENTS.md
 
-Read this first. Detail lives in `docs/`; this file is the map and the rules.
+## Project objectives
 
-If you are an agent writing code here, the one section you are most likely to
-get wrong is **[Comments](#comments--write-fewer-and-shorter)**. Read it before
-you write your first comment, not after the review.
+Spirula Studio is a native Gaussian splatting application for turning photos
+and video into splats, meshes, and renders. Aim for fast end-to-end workflows,
+low peak RAM and VRAM on large scenes, and reliable operation across supported
+GPUs. Make the desktop and CLI easy to use with clear defaults, actionable errors,
+and predictable handling of saved work.
 
-## What this project is
+Keep native application code in C++ and preserve compatibility with existing
+datasets, presets, and checkpoints. Share implementations across entry points,
+including dataset parsing, training, checkpoint resume, and evaluation.
+A checkout must build with its committed generated sources without Python.
+Python tools are for development and reference work. Keep PyTorch, Nerfstudio,
+and gsplat out of the native build and runtime dependencies.
 
-**Spirula Studio**, a 3D Gaussian Splatting trainer, formerly spirulae-splat.
-It began as a Nerfstudio/gsplat fork and is now a **standalone C++ codebase**:
-one executable, `spirula`, with two interchangeable compute backends (CUDA and
-Vulkan via Slang). There is no Python package, no pybind module and no PyTorch
-anywhere — the trainer, the dataset parsers, the viewer, resume, meshing and
-eval are all native. **Both backends must keep working** on every change.
-
-The repository directory keeps the old name (the GitHub Pages URL under
-`viewer/` depends on it); nothing else does.
-
-Direction of travel, so you don't push the wrong way:
-
-- Everything goes in C++. Don't add a Python package, a binding layer, or a
-  build-time dependency on Python. The codegen tools under `tools/codegen/`
-  are Python, but they are dev-time only and their output is committed, so a
-  fresh checkout builds without a Python interpreter.
-- Don't add a second implementation of anything. Dataset parsing, the viewer
-  server, the training driver, checkpoint resume and the eval metrics each
-  exist exactly once.
-- `nerfstudio` / `gsplat` / `torch` are **not** dependencies and must not be
-  reintroduced.
-- `reference/python/` holds hand-run tools that are on no code path (LPIPS
-  scoring for builds without the inference layer, the benchmark driver, the
-  pose-normalization reference). Nothing there may be imported by anything,
-  and nothing in the build may need it.
+For performance-sensitive changes, compare wall time, peak RAM and VRAM, and
+output quality on a representative workload. Count temporary allocations and
+concurrent workers in resource budgets. See the [performance recorder](tools/perf/README.md).
 
 ## Repo map
 
-```
-CMakeLists.txt              running order only; the logic is in cmake/
-cmake/                      build modules (options, backends, apps) + sources.txt,
-                              the source list BOTH build systems read
-build_develop.bash/.bat     the dev build entry points — USE THESE
-AGENTS.md  CLAUDE.md        this file (CLAUDE.md is a pointer to it)
-docs/                       architecture, build, backends, codegen, testing, notes
-src/                        ALL native code (see below)
-assets/fonts/               the five embedded UI faces + the full-CJK face
-                              table (assets/fonts/README.md). The CJK subsets
-                              are GENERATED from the catalogs -- see below
-tools/codegen/              the four codegen tools (see "Codegen" below)
-tools/guictl.py             drive the GUI from a script -- list the widgets on
-                              screen, click them, read the framebuffer back.
-                              tools/gui_mcp.py is the same surface as an MCP
-                              server; docs/notes/gui-automation.md
-reference/scripts/          dataset preprocessing CLI tools (Python, standalone,
-                              run by hand; nothing in the build uses them)
-reference/python/           hand-run tools on NO code path: eval_lpips.py,
-                              benchmark.py, camera_utils.py (the unported
-                              orientation_method / center_method reference,
-                              docs/notes/pose-normalization.md)
-viewer/                     standalone WebGL2 + WASM viewer, independent of training
-                              (published as the online viewer -- the GitHub Pages
-                               URL depends on this directory name)
-                              (build-time exception: compiles src/data/parsers/*.cpp
-                               in place)
-```
-
-`src/` is the include root: every local include is path-qualified relative to
-it (`#include "core/Common.cuh"`, `#include "backend/api/BackendTypes.h"`), so
-a file's include lines tell you which subsystems it depends on.
-
-```
+```text
+cmake/                 build options, targets, and shared training source list
+docs/                  architecture, build, testing, and subsystem notes
 src/
-├── core/                   Tensor.h, Camera.h, Common.cuh, GradQuant.cuh, …
-│                             GraphCut.h -- the normalized cut the SfM mapper
-│                             and the scene partitioner both use; HostMemory.h
-│                             -- physical, available and per-process RAM;
-│                             ColorBasis.h -- what a splat's colour row holds
-│                             (SH bands, then spherical-beta lobes)
-│                             the types and device helpers everything uses
-├── primitives/             Primitive*.cuh — 3DGS / Mip / 3DGUT traits
-│                             (compile-time types, not runtime branches)
-├── kernels/                one directory per family; each holds the launchers
-│   │                         (<Name>.cu), the GENERATED declaration header
-│   │                         (<Name>.cuh) and the device body (<Name>_kernel.cuh)
-│   ├── projection/  raster/  tile/
-│   ├── pixelwise/  ppisp/  bilagrid/     (bilagrid is 42 files, see docs/notes/)
-│   ├── optim/  densify/  loss/  background/  visualize/
-├── engine/                 Engine*.cpp/.h — the training engine
-│                             (process-global singleton)
-├── data/                   DataManager (image cache / prefetch / warp),
-│   │                         E57Reader (laser scans: points + registered images),
-│   │                         PointCloudFile (E57 / LAS / PLY points, streamed)
-│   │                         Region.h / LabelField.h / RegionProgram.h (regions
-│   │                         of space with an inside test on host and device,
-│   │                         and the labelled seed field that gives every point
-│   │                         one owner), RegionMesh.h (a region's boundary as
-│   │                         triangles, for drawing), ScenePartition.h (split a scene into
-│   │                         parts that train separately -- READ
-│   │                         docs/notes/scene-partition.md), RoiDocument.h (the
-│   │                         ROI editor's shape list, and which <dataset>/roi/*.json
-│   │                         a run trains in -- docs/notes/roi-editor.md)
-│   └── parsers/              COLMAP / Nerfstudio / Metashape readers
-├── mesh/                   meshing pipeline: Delaunay3D, UV, export/import, and
-│                             MeshingDevice.h -- the DEVICE SEAM the portable
-│                             host driver (OccupancyEvaluator.cpp,
-│                             MeshingRasterHost.cpp) reaches the kernels
-│                             through, so meshing runs on BOTH backends
-├── sfm/                    structure from motion -- Vulkan-only, self-contained
-│                             (images in, a COLMAP sparse/ model out)
-│                             -- READ src/sfm/README.md
-├── nn/                     the reusable GPU inference layer: its own Vulkan
-│                             runtime (nn/vk/), tensor + ops + Slang kernels,
-│                             host image I/O. Knows nothing about any model.
-│                             -- READ src/nn/README.md
-├── sam/                    SAM 2 / SAM 3 segmentation, on top of nn/, and
-│                             Masking.h, the ONE mask policy every model goes
-│                             through -- READ src/sam/README.md
-├── swin/                   the Swin backbone gdino/ and birefnet/ share
-├── gdino/                  Grounding DINO: text -> boxes, which gives SAM 2
-│                             words (lang-segment-anything) -- src/gdino/README.md
-├── birefnet/               BiRefNet: the main subject's mask, no prompt
-│                             -- src/birefnet/README.md
-├── aliked/                 ALIKED keypoints + LightGlue, on top of nn/
-│                             -- READ src/aliked/README.md
-├── loma/                   LoMa: DaD keypoints + DeDoDe descriptors + the LoMa
-│                             matcher, on top of nn/. The other learned SfM
-│                             frontend -- READ src/loma/README.md
-├── roma/                   native RoMa v2 dense correspondence inference on nn/
-│                             -- READ src/roma/README.md
-├── blur/                   the frame blur measure (app/FrameSharpness.h) on nn/'s
-│                             device; EdgeWidth.h is the part both copies share
-├── lpips/                  LPIPS (AlexNet + VGG16) for the eval pass, on top of
-│                             nn/ -- READ src/lpips/README.md
-├── dense/                  fixed-camera reconstruction, disk-backed observations,
-│                             fusion and source-frame PLY -- READ src/dense/README.md
-│                             (its own library, ss_dense, outside the engine: the
-│                              trainer reads only the header-only Artifact.h)
-├── metric3d/               Metric3D v2 depth + normals, on top of nn/
-│                             -- READ src/metric3d/README.md
-├── moge/                   MoGe-2 point maps + normals + a sky mask, on top of
-│                             nn/. The DEFAULT geometry model
-│                             -- READ src/moge/README.md
-├── marigold/               Marigold v2 depth + normals: a 20B diffusion
-│                             transformer, installed by streaming 45 GB into
-│                             11 GB of NF4, its blocks streamed to the device
-│                             beside the compute -- READ src/marigold/README.md
-├── video/                  container demux (HEIC stills too) +
-│                             VK_KHR_video_decode_*, and the
-│                             VK_KHR_video_encode_* encoder behind `spirula
-│                             encode`, on top of nn/. PATENT-GATED: compiled
-│                             only with SS_ENABLE_PATENTED=ON -- READ
-│                             src/video/README.md
-├── backend/                the backend seam — READ backend/README.md
-│   ├── api/                backend-neutral launch declarations (GENERATED forwarders)
-│   ├── cuda/  common/      CUDA runtime shim, SortScan (declaration in
-│   │                         common/, CUB implementation in cuda/), Profiler
-│   ├── vulkan/             the whole Vulkan backend: runtime + kernels/ +
-│   │                         shaders/ (its own entry points and SPIR-V build)
-│   │                         — READ backend/vulkan/README.md
-│   └── tests/              native cross-backend parity tests
-├── shaders/                Slang device math SHARED by both backends — compiled
-│                             twice, to src/generated/*.cuh and to SPIR-V
-├── app/                    the ONE application, `spirula` -- every tool below in
-│   │                         one executable, dispatched on argv[1]
-│   ├── Tools.h  Main.cpp   the subcommand table and the only main()
-│   ├── cli/                main.cpp (`spirula train`), mesh_main.cpp (mesh),
-│   │                         sfm_main.cpp (sfm), sam_main.cpp (sam),
-│   │                         geometry_main.cpp (depth + normals)
-│   │                         dense_main.cpp (RoMa point cloud; docs/dense.md)
-│   ├── FrameExtract.{h,cpp}  video -> sharp frames (`spirula sam extract` also
-│   │                         masks them in the same pass; the GUI masks after),
-│   │                         decoded by Vulkan Video or ffmpeg (FrameDecode.h)
-│   ├── CubeLut.{h,cpp}     the colour LUT a log clip's frames are baked through;
-│   │                         LogLuts.{h,cpp} the built-in ones, formulas
-│   │                         fitted by tools/fit_log_luts.py -- docs/notes/log-luts.md
-│   ├── E57Dataset.{h,cpp}  an E57 scan written out as a Nerfstudio dataset
-│   │                         with no SfM (`spirula e57`) -- docs/datasets.md
-│   ├── LidarAlign.{h,cpp}  a reconstruction fitted onto a laser scan (Sim3:
-│   │                         anchors, then point-to-plane ICP), and scans in
-│   │                         frames of their own placed through it
-│   ├── LidarDataset.{h,cpp} the dataset that makes (`spirula lidar`, the
-│   │                         dataset screen's Align step): one COLMAP model in
-│   │                         the scan frame, scan seeds with tracks, depth +
-│   │                         normals -- docs/notes/lidar-alignment.md
-│   ├── ScanDepth.{h,cpp}   depth, normal and colour maps of a camera,
-│   │                         rendered from a scan's points
-│   ├── Pano360.{h,cpp}     a 360 camera's own frame layout (the GoPro MAX
-│   │                         .360 EAC packing) and the views a dataset wants
-│   │                         out of it -- one implementation, both decode paths
-│   ├── WriterPool.h        threads that encode/write images while the GPU runs
-│   │                         the next frame; every masking loop uses it
-│   ├── AppPaths.{h,cpp}    the config / cache directories and this exe's own path
-│   ├── CrashLog.{h,cpp}    the stack trace every tool leaves in <config>/crash.log
-│   │                         when it faults -- armed for all of them in Main.cpp
-│   ├── gui/                Dear ImGui desktop app (`spirula` with no arguments)
-│   │                         SourcePreview.h: the dataset screen's look at an
-│   │                         input before it runs -- frames and the clip, photos,
-│   │                         GPS/IMU, scans -- docs/notes/source-preview.md
-│   │   └── edit/             selecting parts of a model (by region, by
-│   │                           attribute, by colour), deleting them, and
-│   │                           placing the whole model: one document /
-│   │                           selection / tool seam over splats, sparse
-│   │                           points and meshes
-│   │                           -- docs/notes/gui-editing-plan.md,
-│   │                              docs/notes/scene-transform.md
-│   │   └── render/           photos and videos of a model: keyframed
-│   │                           camera moves, lenses, transitions, and the
-│   │                           frames written as images, a GIF, or piped
-│   │                           into an encoder
-│   │                           -- docs/notes/render-video.md
-│   ├── webviewer/          HTTP server + render worker + viewer.html (the ONE
-│   │                         browser client, embedded into the engine library
-│   │                         so the CLI and the GUI serve the same bytes)
-│   └── TrainerCore.{h,cpp} the ONE training driver: config -> dataset ->
-│                             seeding -> step loop -> eval. Both the CLI and
-│                             the GUI drive this; it lives in the engine
-│                             library (cmake/sources.txt), not the app targets.
-│                             TrainForecast.{h,cpp} beside it is the run's ETA,
-│                             VRAM forecast and step-time breakdown --
-│                             docs/notes/train-forecast.md, step-timing.md;
-│                             ResourceForecast.h is the shape every job's RAM /
-│                             VRAM forecast takes, RunReport.h how a child
-│                             reports it -- docs/notes/memory-forecast.md
-├── config/                 TrainConfig.h — the training config's single source
-│                             of truth: one X-macro row per flag, hand-written.
-│                             TrainConfigJson.h is the one flat-JSON encoding
-│                             of it, shared by config.json, --resume and the
-│                             GUI's saved presets
-├── i18n/                   the interface in 13 languages. A translation is a
-│                             TYPE, so a missing one is a compile error, not a
-│                             runtime fallback. Languages.h is the one place the
-│                             language set is written -- READ src/i18n/README.md
-├── app/EvalMetrics.{h,cpp} l1 / psnr / ssim (torchmetrics-compatible) and the
-│                             colour correction the cc_ metrics use. LPIPS is
-│                             src/lpips/, reached through TrainerCore's
-│                             LpipsHooks (app/EvalLpips.cpp installs them)
-├── checkpoint/             Resume.{h,cpp} — config.json -> TrainConfig,
-│                             checkpoint resolution, resumability checks;
-│                             Adapt.{h,cpp} — host-side layout adaptation
-│                             (the state restore itself is EngineCheckpoint.cpp);
-│                             SplatMerge.{h,cpp} — the parts of a partitioned
-│                             scene back into one model
-├── generated/  instantiations/    GENERATED — do not hand-edit
-└── external/               vendored (miniz, stb, npy)
+  app/                 CLI, desktop GUI, embedded web viewer, TrainerCore
+  config/              shared training config and serialization
+  core/                host and device types, memory, and utilities
+  data/                dataset parsers, image loading, and scene data
+  engine/  mesh/       training engine and meshing drivers
+  checkpoint/          resume and checkpoint adaptation
+  kernels/             CUDA launchers and device bodies
+  backend/             portable API, backend runtimes, Vulkan kernels, parity tests
+  shaders/             Slang device math shared by both training backends
+  generated/          generated CUDA headers, alongside instantiations/ for CUDA TUs
+  sfm/  nn/            reconstruction and shared inference, with their own runtimes
+  i18n/                interface messages and localization
+tools/                 development tools, including codegen and GUI automation
+reference/             standalone reference and preprocessing tools
+viewer/                standalone WebGL/WASM viewer using the native dataset parsers
 ```
 
-## Building
+Use `src/`-relative paths for local includes in native code. Start from the
+[docs index](docs/README.md) and [architecture guide](docs/architecture.md).
+Read the subsystem README before changing its internals.
 
-Always use the dev scripts; they run codegen first and pick a sane job count.
+## Build and verify
 
-```bash
-# Linux -- one tree per backend, so both can live in one checkout
-bash build_develop.bash -DSS_BACKEND=cuda     # -> build_cuda/
-bash build_develop.bash -DSS_BACKEND=vulkan   # -> build_vulkan/
-# Windows (cmd)
-build_develop.bat -DSS_BACKEND=vulkan         # -> build_vulkan\
+Use the dev scripts for regeneration, checks, and build parallelism. Select the
+backend explicitly. Linux and Windows use separate backend build trees.
+macOS uses Vulkan through MoltenVK and builds into `build/`.
+
+```sh
+bash build_develop.bash -DSS_BACKEND=vulkan
+bash build_develop.bash -DSS_BACKEND=cuda -DSS_BUILD_BACKEND_TESTS=ON
 ```
 
-Use
-`build_develop.bash`; it runs codegen first and picks a RAM-aware job count.
+On Windows, use `build_develop.bat` with the same CMake options. The main
+executable is `spirula`. It opens the desktop app with no arguments when the GUI
+is enabled and dispatches subcommands through `src/app/Main.cpp`.
 
-Everything builds into **one executable**, `<build dir>/spirula`: no arguments opens
-the GUI (`-DSS_BUILD_GUI=OFF` leaves a headless binary that needs neither a
-display nor GL), `spirula sfm|train|sam|mesh` are the command-line tools, and
-a symlink named `spirula-sfm` runs that tool directly (`src/app/Tools.h`);
-`spirula geometry` estimates depth and normals for a dataset, and `spirula
-partition` splits one into parts that train separately and merges the models
-back (docs/notes/scene-partition.md). The GUI runs
-reconstruction and that estimation by re-running itself as a child process, so
-there is no sibling binary to keep next to it. `-DSS_SEPARATE_TOOLS=ON` also builds the old
-per-tool executables.
+Build and verify affected shared training and meshing paths on CUDA and Vulkan.
+Include parity coverage for shared kernel changes under `src/backend/tests/`.
+CUDA parity tools are opt-in and Vulkan builds them by default. See the
+[test matrix](docs/testing.md#what-to-run-before-calling-a-change-done).
+For training scripts that serve the viewer, use `--keep-viewer-alive 0` to exit
+when training ends.
 
-The dev scripts put each backend in its own tree -- `build_cuda/` or
-`build_vulkan/`, and `build/` on macOS, which has one backend -- so testing
-both needs no reconfiguring and no `-B`. Options:
-`SS_BACKEND` (`cuda`|`vulkan`), `SS_BUILD_GUI`,
-`SS_BUILD_BACKEND_TESTS`, `SS_DEBUG_SYMBOLS`,
-`SS_BUILD_SFM`, `SS_BUILD_SAM`, `SS_ENABLE_PATENTED`,
-`SS_SEPARATE_TOOLS`.
-Full matrix and per-platform notes: `docs/build.md`.
+## Architecture and generated code
 
-**`SS_ENABLE_PATENTED` is OFF by default and should stay that way in anything
-you commit.** It gates `src/video/` -- the H.264 / H.265 / AV1 bitstream
-parsers, the HEIF container reader, the VK_KHR_video_decode_* driver and the
-VK_KHR_video_encode_* encoder behind `spirula encode` -- which is the only
-patent-encumbered code in the tree. With it off, everything that wanted it
-shells out to ffmpeg instead; no feature disappears, a subprocess appears. See
-the comment on the option in `cmake/SsOptions.cmake` before changing it.
+- Route GUI and CLI training through `TrainerCore`. Keep the engine and its
+  launch declarations CUDA-free. Call `engine_reset()` between training runs
+  that swap datasets because the engine is process-global.
+- Keep shared device math in `src/shaders/`. CUDA launchers live in
+  `src/kernels/`. Vulkan entry points and launchers live in
+  `src/backend/vulkan/shaders/` and `src/backend/vulkan/kernels/`. Register
+  new Vulkan training entries in `src/engine/StepTimingTable.h`. Read the
+  [backend seam](src/backend/README.md) and [Vulkan guide](src/backend/vulkan/README.md).
+- Keep codecs in `src/core/Tensor.h` host-callable for checkpoint adaptation.
+  Quantized gradients must decode code zero to exactly `0.0`.
+- Edit generator inputs and regenerate committed outputs. Keep edits above the
+  auto-header splitter in `.cuh` files. Mark exported launchers with
+  `/*[AutoHeaderGeneratorExport]*/`. Update `HEADER_SOURCES` when adding or
+  splitting a launcher file. Reserve `_kernel.cuh` for device bodies consumed
+  by the instantiation generator.
+- The dev scripts regenerate launch declarations and CUDA instantiations when
+  Python is available. Regenerate backend API forwarders separately when
+  needed. Shared Slang edits also require regenerating the committed CUDA
+  headers with `src/shaders/build.bash`. See [code generation](docs/codegen.md)
+  for commands and the required Slang version.
+- Keep SfM and inference on their own runtimes. They are enabled by default in
+  Vulkan builds and opt-in for CUDA builds. Native GUI SfM runs in process by
+  default and has a subprocess option. Keep model formats and policy in their
+  model or app layers and keep `nn/` reusable. See the [SfM guide](src/sfm/README.md)
+  and [inference guide](src/nn/README.md), including its macOS Metal path.
+- Add training options through `SS_CONFIG_FIELDS` in `src/config/TrainConfig.h`
+  and `src/i18n/catalog/TrainFields.h`. Check the Dataset and Mesh preset
+  tables when changing their job settings. Update the corresponding
+  `DatasetPlan` fields when a setting changes which dataset outputs can be
+  reused. See [dataset reruns](docs/notes/dataset-rerun.md).
 
-## Codegen — the invariants that bite
+## Memory and file I/O
 
-Generated trees are marked in `.gitattributes` (`src/generated/`,
-`src/instantiations/`) and are **committed**, so a fresh checkout
-builds with no Python at all. Four generators, all run from the repo root.
-Every one of them reads C++/CUDA sources — **no generator reads Python**, and
-none should be added:
-
-| generator | reads | writes |
-|---|---|---|
-| `tools/codegen/generate_headers.py` | `/*[AutoHeaderGeneratorExport]*/` markers in `src/kernels/**/*.cu` | the declaration section of the matching `<Name>.cuh` |
-| `tools/codegen/generate_kernel_instantiation.py` | kernel decls in `src/kernels/**/*_kernel.cuh` | `src/instantiations/*.cu` |
-| `tools/codegen/generate_backend_api.py` | per-kernel `.cuh` headers | `src/backend/api/*.h` forwarders |
-| `tools/codegen/generate_vulkan_stubs.py` | link-probes the Vulkan build | throwing stubs for unported kernels |
-
-Rules:
-
-1. **Never hand-edit below the `AUTO HEADER GENERATOR — DO NOT EDIT` splitter
-   line** in a `.cuh`. Everything above it is yours; everything below is
-   regenerated from the `.cu`.
-2. To export a launch function to the engine, put
-   `/*[AutoHeaderGeneratorExport]*/` immediately above its definition and
-   rerun `tools/codegen/generate_headers.py`.
-3. **A header can be fed by several `.cu` files**, listed explicitly in
-   `HEADER_SOURCES` in `tools/codegen/generate_headers.py`. This is the sanctioned way to
-   split a large `.cu`: name each part after **what it does**, not after the
-   header it feeds (e.g. `ImageWarp.cu`, `DepthGeometry.cu` → `PixelWise.cuh`),
-   and add it to the list. Both build systems glob via `cmake/sources.txt`, so
-   no build file changes are needed. A listed file that doesn't exist is a hard error,
-   so a rename can't silently drop declarations.
-4. `src/config/TrainConfig.h` is the **single source of truth** for the
-   training config, and it is hand-written, not generated. Adding a row to
-   `SS_CONFIG_FIELDS` makes the field appear in the native CLI, `--help`,
-   the GUI's "All Options" editor, the run's `config.json`, the GUI's saved
-   presets and `TrainerCore` —
-   the struct is expanded from the same table, so the two cannot drift. A row
-   also carries a `section` (which heading it is listed under) and a `tier`
-   (`basic` / `advanced` / `expert`, which decides whether `--help`
-   and the GUI's default view show it at all); both are display metadata, and
-   `config.json` is flat so neither reaches disk. What the row does NOT carry
-   is the flag's human name and help sentence: those are translated and live
-   in `src/i18n/catalog/TrainFields.h`, resolved by member name at compile
-   time, so a row without an entry there fails to build.
-5. `.cuh` declaration sections must stay CUDA-include-free — they have to
-   parse under `-DSS_BACKEND_VULKAN` without the CUDA toolkit.
-
-## The Vulkan-only subsystems
-
-`src/sfm/`, `src/nn/`, `src/sam/`, `src/swin/`, `src/gdino/`, `src/birefnet/`,
-`src/aliked/`, `src/loma/`, `src/metric3d/`, `src/moge/`, `src/marigold/`, `src/blur/`,
-`src/lpips/` and `src/video/` are **not** part of the two-backend rule below.
-They are Vulkan + Slang only, carry their own Vulkan context, share nothing
-with the training engine, and are absent from a CUDA build by default
-(`SS_BUILD_SFM` / `SS_BUILD_SAM` default OFF there). Nothing in them goes through `cmake/sources.txt`.
-
-The layering runs one way and must keep doing so:
-
-```
-app/gui, app/cli ──► sam ──────┬──► nn ──► nn/vk
-                 │    └► gdino, birefnet ──► swin ──► nn
-                 ├──► aliked ──┤
-                 ├──► loma ────┤
-                 ├──► metric3d ┤
-                 ├──► moge ────┤
-                 ├──► marigold ┤
-                 ├──► lpips ───┤
-                 └──► video ───┘
-                 └──► sfm  (its own vk/, independent of nn/)
-```
-
-`nn/` is the piece meant to be reused. A learned feature detector for SfM, or a
-depth/geometry model, goes on top of it unchanged -- so model-specific
-constants, weights formats and pipeline policy stay in `sam/` (or the next
-`src/<model>/`), never in `nn/`.
-
-## The two-backend rule
-
-Every kernel-level change needs **three** things, or the Vulkan build breaks
-or silently diverges:
-
-1. the CUDA implementation (`src/kernels/<family>/<Kernel>.cu` + `_kernel.cuh`),
-2. the Slang implementation (`cuda/slang/vulkan/*.slang`) and its launcher
-   (`src/backend/vulkan/kernels/*.cpp`),
-3. a parity test in `src/backend/tests/` that runs both and compares.
-
-If the Vulkan side isn't ready, `tools/codegen/generate_vulkan_stubs.py` emits a throwing
-stub so the portable engine still links — that's a deliberate TODO marker, not
-a finished state. Coverage is tracked in `src/backend/vulkan/README.md`,
-which is the authoritative and unusually detailed document on the Vulkan
-design (device baseline, capability variants, memory model, atomics). Read it
-before touching anything under `backend/vulkan/`.
-
-## Testing
-
-```bash
-# native parity tests (CUDA build)
-bash build_develop.bash -DSS_BUILD_BACKEND_TESTS=ON && ./build_cuda/<test_name>
-# the Vulkan build produces the same test binaries unconditionally
-```
-
-Each `src/backend/tests/*.cpp` becomes an executable of the same name.
-`backend/tests/engine/*` drive the real engine end to end. Details and the
-CUDA-vs-Vulkan reference-dump workflow: `docs/testing.md`.
+- Use `src/core/HostMemory.h` for host budgets so container and job limits are
+  included. Account for Windows commit limits and overlapping GPU runtimes.
+  See [memory forecasts](docs/notes/memory-forecast.md).
+- Reuse large scratch allocations. For caller-owned `thread_local` scratch
+  shared with an OpenMP team, resolve the pointer before entering the region.
+  Training pool aliases are valid only in their owning phase. When changing
+  allocations, keep the [phase arena](docs/notes/vram-splat-x-img.md#the-phase-arena)
+  and [training forecast](docs/notes/train-forecast.md#vram) in sync.
+- Use a reusable 8–32 MiB buffer for repeated sequential file I/O, with
+  16 MiB as the default. Use `BufferedInputFile` and `BufferedOutputFile` from
+  [BufferedFile.h](src/core/BufferedFile.h), or `kFileBufferBytes` for explicit
+  chunk loops. Count each stream and worker against the memory budget. Small
+  metadata transfers, mapped files, sparse seeks, and already-chunked paths
+  can keep their existing buffering. Budgeted paths may use smaller buffers.
+- Preserve seek and EOF behavior and timely flushing of live logs and process
+  protocols. Check flush or close before publishing output. Run the affected
+  format tests and `buffered_file_test` for changes to the stream helpers.
 
 ## Comments — write fewer, and shorter
 
-This section exists because the codebase is 14% comment by line and a lot of
-that is agent-written narration nobody needs. **A comment is a cost.** It is
-read every time the code is read, it is not compiled or tested, and it rots
-silently the moment the code under it changes. The default is *no comment*;
-lines earn their place one at a time.
-
-The one test: **could a competent reader recover this from the code?** If yes,
-delete it. Comment the *why* — the alternative you rejected, the number you
-measured, the invariant the compiler cannot state. Never the *what*.
-
-### Do not write
-
-- **Narration of the code below.** `// Loop over the cameras` above the loop,
-  `// Constructor` above the constructor, a comment listing a class's five
-  constructors when the five declarations are twenty lines down, a comment
-  tabulating an enum that is defined in the header next door. The declaration
-  is the documentation; keeping a second copy in prose guarantees they drift.
-- **Archaeology.** This began as a Python fork; that Python is *gone*. Do not
-  write "port of <that file>, lines 547-559", "mirrors <that other file>",
-  "the Python path did X". A citation into a file that does not exist cannot
-  be checked by anyone and reads as authority it has not got. Real
-  provenance — the ONNX operator we match, torchmetrics' SSIM convention,
-  COLMAP's `ba_global_images_ratio` — is fine and stays, because those
-  references are live and checkable.
-- **Changelog.** "Previously X, now Y", "this used to be", "was changed to".
-  Git knows. When you change code, **rewrite the comment to describe what is
-  true now** — never append a paragraph about what changed.
-- **Deliberate omissions.** "`Cameras::__getitem__` is intentionally NOT
-  ported", "rescale is omitted for the same reason". Absent code needs no
-  comment; if the omission is a real design decision, it belongs in `docs/` or
-  the subsystem README once, not in a header forever.
-- **Meta-narration and reassurance.** "Note that", "It is important to",
-  "This ensures correctness", "for clarity", "just to be safe". Either the
-  point is load-bearing — then state it flatly in one line — or it is filler.
-- **Tutorial voice.** No "we", "our", "let's", "you can now", "first…
-  second… finally". Write the fact, not the walkthrough.
-- **Essays where a doc belongs.** A thirty-line architecture lecture at the top
-  of a header is a document that has escaped `docs/`. Put it in `docs/` or the
-  subsystem README and leave a one-line pointer.
-
-### Do write
-
-Rationale that cannot be recovered any other way, and keep it dense:
-
-- A measured number and what measured it — `src/sfm/map/Mapper.h`'s tuning
-  constants are the model: each carries the dataset and the effect size that
-  chose it. That is worth every line it takes.
-- A footgun with teeth: the gridDim 65535 fold, `thread_local` under OpenMP,
-  code 0 decoding to exactly `0.0`, an ImGui ID pinned to a message name.
-- A cross-file invariant the compiler cannot enforce — "must match the layout
-  in `<file>`", a Slang/CUDA ABI constraint, an ordering requirement between
-  two calls.
-- Units, frames and conventions on a bare number: what space, which handedness,
-  whose pixel-center offset.
+Write comments for non-obvious invariants, units, ordering constraints, or
+measured tradeoffs. Skip narration, changelog, and references to deleted code.
+Keep long rationale in the relevant subsystem doc. Clean up stale or redundant
+comments in functions you edit. Name files after their responsibility.
 
 ### Budget
 
-Enforced, not advisory — the build fails on a block over budget:
-
-- file header: **≤ 10 lines** — what this file is for and its one non-obvious
-  constraint; everything longer goes to `docs/` or the subsystem README
-- a block above a function or a constant: **≤ 3 lines**
-- an inline note: **1 line**, and prefer a better name over the note
-
-Section banners (see Conventions below) are exempt — they are structure, not
-prose. So is an untitled horizontal rule used to separate top-level
-definitions, which several subsystems use consistently. Neither a divider rule
-nor a blank `//` counts toward a block; lines carrying prose do.
-
-Two scripts guard this, and both fail the build:
-
-- `tools/check_comment_length.py` counts the budget above over every block an
-  **uncommitted change touches**, staged or not. The standing debt in files
-  you did not open never blocks you; `--all` lists it for a deliberate cleanup
-  pass. It runs from `cmake/SsChecks.cmake`, so a bare `ninja` fails the same
-  way `build_develop.bash` does, and it skips itself when git or python is
-  missing (neither is a build dependency). `SS_SKIP_COMMENT_CHECK=1` skips one
-  build — needing it twice means the comment wanted cutting.
-- `tools/check_comments.sh` enforces the other part a script can decide: every
-  file a comment names must exist. A citation into a deleted file is
-  unfollowable, and the reader cannot tell it from a live one.
-
-Neither script can tell narration from rationale. A four-line block that
-survives by losing its fourth line has not been fixed.
-
-### When you edit a file
-
-Cleaning up as you go is the whole plan; there is no separate cleanup pass
-coming. If you touch a function whose comment breaks a rule above, fix the
-comment in the same diff. Deleting a stale comment needs no justification and
-no ceremony — do not ask, do not leave a note saying you removed it.
+File headers get at most 10 lines, other blocks 3, and inline notes 1. Section
+banners, divider rules, and blank comment lines are exempt. The build checks
+changed blocks with `tools/check_comment_length.py`. The dev script also
+checks that files named in comments exist. See [build lints](docs/build.md#lints).
 
 ## UI text — keep it short
 
-Interface copy lives in `src/i18n/catalog/`. A tooltip should answer what the
-control does or when to change it. Aim for 1–2 rendered lines, with 3 as the
-maximum. Ordinary inline help and confirmations should also fit within 3
-lines; labels should fit on one. CLI option descriptions use the same budget.
-Preserve consequences such as data loss,
-units and prerequisites before keeping rationale or examples.
+- Put GUI and CLI copy in `src/i18n/catalog/`. Use `ui::` wrappers for
+  text-bearing ImGui calls and the `Raw` variants for paths and other dynamic
+  text. Translate whole messages with placeholders and use labels for counts
+  to avoid plural handling. Keep CLI flag names and stored choice values
+  stable across languages.
+- Aim for 1–2 rendered lines of help and cap ordinary prose at 3. Preserve
+  consequences, units, and prerequisites. Lists can have up to 4 bullets,
+  2 wrapped lines per bullet, and 8 lines total including the overview.
+- Keep English terminal templates ASCII after catalog punctuation conversion
+  and preserve formatted arguments. Match localized child output with
+  `i18n::scan()` when the parent reads a message back.
+- Run `python3 tools/check_ui_text.py` and review changed copy at its actual
+  width across languages. See the [i18n guide](src/i18n/README.md) for
+  placeholders, widget IDs, font coverage, and reviewed length exceptions.
 
-Do not put an algorithm comparison, shortcut manual or implementation essay in
-a tooltip. Put longer explanations in documentation or explicit detailed help;
-use short descriptions for individual choices. Do not split a paragraph into
-several messages to evade the budget, or concatenate fragments into sentences.
-Shared GUI/CLI help uses the same budget. Preserve necessary instructions in
-concise copy or accessible detailed help. Never truncate copy to meet a limit.
+## Repository conventions
 
-Use a short bullet list for choices, effects or caveats. Start with a plain
-overview when the items need context. The overview follows the ordinary
-3-line budget. Use up to 4 bullets, at most 2 wrapped lines per bullet, and
-at most 8 wrapped lines for the whole message. Start each item on its own
-line with `- ` or `• `. Keep the overview and list in one translated message.
-Use complete items and give each its own point. A single follow-up can go
-on a new line without a marker and still has a 2-line budget. Skip an item
-when its option label already tells the reader what they need.
-
-### Measurement and exceptions
-
-`python3 tools/check_ui_text.py` reports changed messages, including every
-translation, against HEAD. `--all` surveys existing debt; `--base REV` compares
-with a branch base; `--json` emits a complete report. It fails on over-budget
-copy and unsupported English CLI characters. The build runs it through
-`cmake/SsChecks.cmake`, including explicit targets such
-as `spirula`. CI checks all copy and compares pull requests with their base.
-Fix findings or record a reviewed length exception with a reason and usage
-location. A policy or punctuation-table change rechecks all messages.
-`-DSS_CHECK_UI_TEXT=OFF` disables the local build check. Git and Python remain
-optional for building a source checkout.
-
-Measure display width, never UTF-8 bytes or source lines. The initial report
-uses 60 display columns per line: wide/fullwidth characters count as two,
-ordinary Latin and Cyrillic letters as one, combining marks as zero. This is
-an estimate, not a guarantee for the GUI's proportional fonts. Verify important
-copy at the actual panel or tooltip width, including translations and formatted
-arguments. Keep the 1–2-line target even when a sentence fits the 3-line ceiling.
-
-`tools/ui_text_policy.json` records presentation roles and exceptions with a
-reason. CLI output has the same prose/list budgets as GUI help. Legal text
-has a separate role; verbatim agreements are exempt. Inferred roles in reports need call-site review
-before enforcement. Use a specific message exception for mixed catalogs,
-not a whole-file exemption for one long message. License summaries can still
-be shortened with care; verbatim agreements must retain their required text.
-
-The `exclusions` map records reviewed exceptions with a reason and usage
-location. Reports count those messages separately from over-budget copy.
-Resolve entries as their content is fixed.
-
-When editing a message, shorten all translations together and preserve the
-meaning and placeholders. Run the report and the existing i18n/font checks.
-Length checks cannot decide whether a short sentence is useful.
-
-### English terminal output
-
-English terminal message templates use ASCII. Common punctuation and symbols
-are converted through `src/i18n/AsciiPunctuation.inc` before argument
-substitution. Keep user-supplied paths and other arguments intact.
-The length check covers both the catalog and converted English spelling.
-The checker rejects English catalog characters missing from that shared table,
-including length-excluded messages. Raw string literals in `src/app/cli/` and
-`src/app/Main.cpp` must already be ASCII. Add shared CLI copy to the catalogs.
-Embedded English license text uses the same conversion on the terminal, and
-its characters are checked against the replacement table.
-GUI rendering and other languages use their original localized strings.
-
-## Conventions
-
-- Files are named after **what they do**, not after the file they were split
-  out of, and not after the header they declare into.
-- `<Name>_kernel.cuh` is reserved: it means "the device body that
-  `tools/codegen/generate_kernel_instantiation.py` instantiates". Don't use the `_kernel`
-  suffix for an ordinary shared-helper header — give it a descriptive name
-  (e.g. `BilinearSample.cuh`).
-- A `<Family>Common.cuh` holds the shared preamble when a family spans several
-  translation units.
-- Section banners inside long files:
-  ```
-  // ================
-  // Section Name
-  // ================
-  ```
-  These are load-bearing for the split workflow — keep them meaningful.
-- Slang device math is shared by both backends; don't fork it per backend.
-- A `.cpp` (as opposed to `.cu`) under `src/` means "portable, compiles for Vulkan
-  builds too". Keep the engine layer in `.cpp` and CUDA-free.
-- **Macros, CMake options and environment variables are `SS_`-prefixed.** The
-  prefix is short enough to collide with `<signal.h>` and `winuser.h`, so
-  `tools/check_ss_prefix.sh` (run by `build_develop.bash`) refuses any name in
-  `tools/ss_reserved_names.txt`. Read environment variables through
-  `spirula::env("SUFFIX")` (`src/core/Env.h`), never `getenv` directly — the
-  deprecated `SSPLAT_` spelling is honoured in exactly that one function.
-- **An error message that cites a source line uses `SS_FILE`, never `__FILE__`**
-  (`src/core/SourcePath.h`). `__FILE__` is the absolute path on the machine that
-  built the binary; `SS_FILE` trims it to `src/...` at compile time, the same on
-  every toolchain. `tools/check_file_macro.sh` (run by `build_develop.bash`)
-  refuses the bare macro.
-- C++ code lives in `namespace spirula` where it is namespaced at all.
-- **The GUI never hands ImGui a string literal.** Every text-bearing call goes
-  through `ui::` (`src/app/gui/Ui.h`): `ui::Button(msg)` for interface copy,
-  `ui::ButtonRaw(...)` for a path, a number or an engine log line. The `Raw` in
-  the name is the point — it makes "deliberately not translated" visible in the
-  diff. `tools/check_i18n.sh` (run by `build_develop.bash`) enforces it.
-- **Interface copy is a `Msg`, not a literal** (`src/i18n/`, and read
-  `src/i18n/README.md` before adding one). Two rules there are expensive to
-  retrofit and are already followed everywhere: never build a sentence from
-  fragments — use `{0}` placeholders and `i18n::format()` — and never write a
-  plural-sensitive sentence ("Objects: 3", not "3 objects").
-- **A training flag's name and help are interface copy too**
-  (`src/i18n/catalog/TrainFields.h`, one `SS_MSG` pair per row of
-  `SS_CONFIG_FIELDS`). What stays untranslated is the *identifier*:
-  `--sh-degree` is `--sh-degree` in every language, and so are the `choices`
-  values, which `config.json` stores and the help text quotes in backticks.
-  Where those values are ordinary words the GUI shows the translation in
-  front of the value rather than instead of it — "按间隔 (interval)".
-  `spirula train --help` reads the same catalog, so it follows `--lang`.
-- **The command line is interface copy too, and so is everything a run
-  prints.** A terminal has no language picker to fix it with afterwards, and
-  the GUI *shows* a terminal: `spirula sfm` and `spirula mesh` run inside it as
-  child processes launched with `--lang`. `spirula --help` and the trainer's
-  output are `catalog/Cli.h`; a reconstruction is `catalog/Sfm.h` through
-  `src/sfm/core/Log.h`; a meshing run is `catalog/Mesh.h` through
-  `src/mesh/MeshLog.h`; reading a dataset is `catalog/Data.h`. `--help` is
-  included: `spirula sfm --help` alone is 120 flag descriptions
-  (`catalog/SfmFields.h`) plus its command pages (`catalog/SfmHelp.h`), and
-  `spirula sam --help` is `catalog/SamHelp.h`.
-- **Help text is stored one string per paragraph and wrapped by
-  `i18n::wrap()`, never by hand.** It measures in terminal columns rather than
-  bytes, and it breaks BETWEEN CHARACTERS in the languages that have no spaces
-  to break at -- without which a Chinese paragraph is one line four hundred
-  columns wide. `i18n::pad_to()` lays out the flag column the same way.
-- **A parent that reads a child's output matches on the MESSAGE, never on
-  English.** `i18n::scan()` is the inverse of `i18n::format()`: hand it the
-  same `Msg` the child printed with and it gives back what stood in the `{0}`,
-  `{1}` positions. That is how `src/app/gui/MeshRunner.cpp` drives its progress
-  bar off a Japanese child. Two rules follow for any message a parent reads:
-  keep a separator between adjacent placeholders, and do not reorder the
-  numbers past what every translation can live with.
-- **A mask prompt is English, not interface copy.** SAM 3's text encoder reads
-  English, so the field, its placeholder and the palette's inserted words stay
-  English in every language; `ui::InputTextEnglish()` is the wrapper that says
-  so, and `src/app/gui/MaskPrompt.h` is how a non-English speaker still writes
-  a good prompt. The same reasoning keeps THIRD-PARTY child-process output
-  (COLMAP, ffmpeg) untranslated — our stage names around it are
-  `i18n/catalog/Log.h`, its own lines are not ours to rewrite. `spirula sfm`
-  is ours, so it *is* translated: every line a default run prints goes through
-  `src/sfm/core/Log.h`, which puts a localized, equal-width `[tag]` in front
-  of a localized message (`i18n/catalog/Sfm.h`). `spirula mesh` is ours in the
-  same way. What stays English in both is the deep diagnostics — `--check`,
-  `--audit`, `SS_SFM_MAP_PROF`, `SS_MESH_DEBUG_RENDER` — and `spirula sam`'s
-  machine-readable detection table, which a script reads.
-
-## File I/O — buffer repeated reads and writes
-
-Repeated sequential reads or writes to the same regular file must use a
-reusable **8–32 MiB buffer**, with **16 MiB as the default**. This includes
-binary records, text rows, hashing and file comparisons; the standard stream's
-small default buffer is not enough for these bulk paths.
-
-- Use `spirula::BufferedInputFile` / `BufferedOutputFile` from
-  `src/core/BufferedFile.h`. They own the buffer and handle the different
-  buffer-setup order on MSVC and libstdc++. Preserve their types when returning
-  or storing them; slicing into a plain file stream loses buffer ownership.
-- Existing explicit chunk loops should use `spirula::kFileBufferBytes`.
-  For `FILE*`, call `setvbuf` after opening and before any I/O, and keep its
-  backing storage alive until after `fclose`.
-- Reuse buffers across chunks and repeated operations. Account for every
-  simultaneously open stream and worker in memory budgets and forecasts.
-  Dense code uses `disk_io_buffer_bytes()` in `src/dense/ExternalSort.h`;
-  small budgets may retain standard buffering rather than exceed their limit.
-- Frequent seeks can discard read-ahead and flush pending writes. Use a cached
-  read window for nearby reads, as in `src/data/E57Reader.cpp`; keep genuinely
-  sparse random access on its existing page cache or small-buffer path.
-- Check the final flush or close before reporting success or publishing an
-  output. Do not flush per record unless visibility or durability requires it.
-- Small metadata files, single bulk transfers, memory-mapped files and paths
-  already using suitably sized chunks need no additional large buffer. Preserve
-  timely flushing for live logs, progress output and subprocess protocols.
-- Buffering changes must preserve file bytes, seek/EOF behavior and error
-  reporting. Run the affected format tests; `buffered_file_test` covers chunk
-  boundaries, stream ownership, reopening and deferred write failures.
-
-## Gotchas worth knowing before you hit them
-
-- **The quantized codecs in `core/Tensor.h` are host-callable.** They carry
-  `__device__`, but that is an empty macro in host translation units on both
-  backends, and their bodies are plain `<cmath>` math. Host-side checkpoint
-  adaptation (`checkpoint/Adapt.cpp`) decodes and re-encodes through those very
-  functions, so there is no host mirror to drift. If you add a codec, keep it
-  free of CUDA intrinsics for the same reason.
-- **Quantized gradient codecs must decode code 0 to exactly `0.0`.** Anything
-  else and Adam amplifies the pseudo-gradient into visible floaters.
-- **`isfinite` has no spelling that works everywhere a `core/` header goes.**
-  MSVC declares `std::isfinite` as a host function template, so nvcc will not
-  call it from `__device__` code; gcc's `<cmath>` leaves nothing in the global
-  namespace for an unqualified call inside a template to find. `q_finite`
-  (`core/Tensor.h`) is the exponent test that does. Same for `isnan`/`isinf`.
-- **Never name a `thread_local` inside an `omp parallel` region.** The team
-  threads are different threads, so each one resolves it to its *own* copy —
-  which the calling thread never sized. Keep the storage `thread_local` if you
-  want it reused, but take a raw pointer outside the region and use that
-  inside; `EvalMetrics.cpp`'s SSIM slab is the worked example.
-- **A `Msg` is 13 strings, and the compiler checks all 13.** Adding a language
-  to `src/i18n/Languages.h` breaks the build on every incomplete message, by
-  name -- that is the feature, not an accident. Add the tag macro to
-  `BeginCatalog.h` in the same commit or the canary there fails first.
-- **ImGui derives a widget's ID from its label**, so a translated label would
-  change the ID and collapse every open header on a language switch. Every
-  `ui::` wrapper renders `"text###<message name>"` to pin it. Two call sites
-  sharing one message share an ID -- `ImGui::PushID()` around one of them,
-  exactly as for two identical literals.
-- **Swapping a font face invalidates every `ImFont*`.** `FontSet::ensure()` is
-  called from `GuiMain.cpp` between frames, before `NewFrame()`, and uses
-  `ImFontAtlas::ClearFonts()` (which keeps the texture) rather than `Clear()`
-  (which does not, and is documented as not callable there).
-- **The embedded CJK fonts are subset to the characters the catalogs use.**
-  Write a translation containing a character no translation used before and
-  they are stale, and the symptom is one hollow box mid-sentence.
-  `tools/check_font_coverage.py` runs on every `build_develop.bash` and fails
-  with the codepoint; `python3 tools/make_ui_font.py` regenerates all five
-  faces. All four regional subsets are merged into the atlas with the current
-  language's region FIRST -- first source wins per codepoint, which is what
-  gives each language its own Han forms while the others still supply hangul
-  and the simplified-only characters no single face has.
-- **Big per-call scratch is a scaling bug, not just an allocation.** Anything
-  over glibc's mmap threshold is faulted in and zeroed by the kernel on every
-  call, and `mmap_lock` is per *process* — so several worker threads each
-  allocating tens of MB serialize against each other. Reuse the buffer.
-- **Scripted runs need `--keep-viewer-alive 0`**, or training hangs at exit
-  waiting on the viewer.
-- **A kernel with one slot per image must fold its grid.** CUDA caps
-  `gridDim.y/z` at 65535 and Vulkan caps *every* dispatch dimension at 65535,
-  so a per-image axis put on y/z dies somewhere between 8k and 40k images.
-  Fold it across two dimensions (`vkk::fold_1d`, or `bilagrid_tv_grid` in
-  `kernels/bilagrid/BilagridConfig.cuh` for the 3D case) and pass the fold
-  factor to the kernel. Related: the bilagrid samplers index cells with
-  int32, which `engine_init_bilagrid_*` enforces up front.
-- **An SfM buffer bound past 4 GB is corrupted, not refused.** `src/sfm/`
-  binds storage buffers through descriptors (the other runtimes use device
-  addresses), and NVIDIA's `maxStorageBufferRange` is 4 GB: an access past it
-  wraps. Bundle adjustment's Jacobians reach that at ~10M observations, which
-  stalled every large solve until they were split (`sfm/ba/README.md`,
-  "Buffers past 4 GB"). A new per-observation buffer needs the same split, or
-  the refusal in `BundleSolver::decidePaths` that sends the solve to the host.
-- **Some pool buffers do not own their memory.** A slot listed in
-  `POOL_ALIAS_TABLE` (`core/PoolSlots.h`) is a slice of one arena that every
-  `PoolPhase` reuses, so the arena costs the largest phase rather than the sum
-  (626 MiB on a 15M-splat step). Acquiring one outside its phase throws;
-  `SS_POOL_ALIAS_POISON=1` fills the arena at every phase switch so a read
-  that outlives its phase becomes NaNs a parity test catches, and
-  `SS_POOL_ALIAS=0` turns the whole thing off. Read
-  `docs/notes/vram-splat-x-img.md` before adding a row. A phase opener that
-  can compute its size passes it to `pool_begin_phase()`: an arena that grows
-  by overflowing holds the overflow beside the old arena, a transient no
-  end-of-step VRAM sample sees. A buffer whose length follows the LIVE splat
-  count and outlives a call goes in `POOL_LIVE_SPLAT_TABLE`, so it is sized
-  for `cap_max` once: the trainer's VRAM forecast assumes only `splat x img`
-  grows during a run. An arena slice in the Splat category gets the same
-  treatment by itself (the arena is sized as if it were `cap_max` long), so
-  give a per-splat arena slot that category and nothing else.
-- **A feature that starts at a later step takes its memory at step 0.** The
-  PCA regularizer counts its scratch against the arena from the first step
-  (`DevicePool::arena_expect`) and the calibration warp acquires its warped
-  ground truth before its start step, so a run that cannot hold them fails
-  at once and the VRAM forecast has no start steps to model. A per-splat
-  cost that starts mid-run also tells the ETA: `ForecastSetup::reg_start_step`
-  and `TrainForecast::add_regularizer` (docs/notes/train-forecast.md).
-- **A new Vulkan kernel needs a row in `engine/StepTimingTable.h`**: what it
-  is for and what its time grows with, for the step-time breakdown the GUI
-  shows. The SPIR-V embed fails without it; a shared utility says `Scope` and
-  its caller opens a `StepTimingScope` (docs/notes/step-timing.md).
-- **`SS_PROFILE=1`** enables the per-stage backend timing breakdown
-  (H2D / D2H / D2D / memset / device / host), header-only, both backends, plus
-  a per-category VRAM breakdown after any run that trained. What the biggest
-  category costs per element, and what has already been tried against it, is
-  `docs/notes/vram-splat-x-img.md`. `SS_VRAM_TRACE=<MiB>` prints every pool
-  allocation at least that large with the process total and peak it brings.
-- **The VRAM forecast replays the tile intersector's band rule.** The sort is
-  cut into bands of tile rows by `intersect_bands_for`
-  (`kernels/tile/IntersectTile.cuh`), and `app/TrainForecast.cpp` calls the
-  same function to size the tile phase at a future splat count. Change the
-  rule there only. A change to the forecast is checked against recorded runs:
-  `SS_FORECAST_DUMP=<file>` and `train_forecast_replay`
-  (docs/notes/train-forecast.md).
-- **On Windows, VRAM is also limited by commit charge.** WDDM charges every
-  device allocation to the system commit limit (RAM + page file), so a small
-  page file fails an allocation as out-of-memory with VRAM to spare; the
-  forecast and the OOM error both account for it (`docs/notes/train-forecast.md`).
-- **Size host memory from `core/HostMemory.h`, not the OS.** `/proc/meminfo`
-  and `GlobalMemoryStatusEx` miss a cgroup (container, Slurm job) or job object
-  memory limit; `totalRamBytes`, `availableRamBytes`, `availableCommitBytes`
-  and `availableSwapBytes` apply it. `physicalRamBytes` is only the machine's.
-- **A kernel that fills the gaps between sorted keys is a scaling trap.** One
-  thread per INPUT walking `[ids[i-1]+1, ids[i]]` is fine while the ids are
-  dense and quadratic when they are not: `qgrad_camera_id_bounds` measured
-  478 ms/call at 20M splats with 0.8M visible, 92% of the whole step. One
-  thread per OUTPUT doing a `lower_bound` is the shape that does not care.
-- **The engine is a process-global singleton.** Call `engine_reset()` between
-  runs that swap datasets, or the new run inherits the old splats, camera
-  table, optimizer moments and color-space matrices. The one exception is
-  read-only: `engine_scene_*` keeps several splat SETS resident and binds one
-  per render, which is how the GUI shows four models side by side
-  (`docs/notes/compare-view.md`).
-- **`_deps` in the build tree, on WSL drvfs**, may need `git config
-  safe.directory` entries for the FetchContent'd GLFW/imgui.
-- **A static library whose only content is a static initializer is not
-  linked.** The generated SPIR-V blob tables are archive members that nothing
-  references, so registration is an explicit call at each library's entry point
-  (`NN_ENSURE_EMBEDDED_MODULES`, `src/nn/vk/EmbeddedSpirv.h`), not a
-  namespace-scope constructor. A new shader directory needs its own
-  declare/ensure pair or the kernels come back "no shader module".
-- **Three Vulkan devices can be live in one process** -- the engine's, the SfM
-  module's and the inference layer's. The GUI sequences them (mask preview,
-  then reconstruction as a *child process*, then training) so no two overlap;
-  do not casually make two of them concurrent. Converging is
-  `docs/notes/sfm-port-plan.md` phase 6.
-- **The camera models exist twice, on purpose, and only twice.** The device
-  copy is `shaders/projection_utils.slang`; the host copy is
-  `data/CameraMath.h`, which the GUI's frustum wireframe and `spirula
-  geometry`'s resampling both call. The wireframe's shape is the web viewer's,
-  in one host copy too: `data/FrustumTemplate.h`. A third copy is a bug waiting to be found
-  by nobody -- `spirula geometry --check` is what tests the host one, by
-  round-tripping an analytic plane through every camera model.
-- **"Is this lens too wide for one pinhole?" is asked in three places and must
-  get the same answer.** `spirula geometry --split auto` (CLI and GUI panel)
-  splits a frame into pinhole faces and then writes RAY depth; the trainer's
-  `--input-depth-is-ray-depth`, left unset, has to know that happened, and the
-  two never meet. All of them call `camhost::splits_to_pinhole_faces`, which
-  owns the 0.75 threshold and is deliberately blind to the distortion
-  coefficients so the answer cannot move between builds. `--check` compares the
-  closed form to counting the pixels.
-- **Three monocular geometry models sit behind `spirula geometry`, and they
-  answer different questions.** Metric3D v2 predicts depth; MoGe-2 predicts an
-  affine POINT MAP that needs the camera's focal length to become one, plus a
-  metric scale and a sky mask; Marigold v2 predicts depth only up to an affine
-  map of its LOG, which is fitted to MoGe-2's on the same face. `app/GeometryModel.h`
-  is the one seam between them and `--model` is what picks; a caller that
-  reaches past it into `metric3d::`, `moge::` or `marigold::` has hard-coded a
-  family. Marigold alone is installed rather than downloaded
-  (`geometry_install_needs`), and the disk is checked before it starts.
-- **Segmentation weights are never committed or bundled.** SAM's are Meta's,
-  under Meta's licences, and SAM 3's is not GPLv3-compatible; Grounding DINO
-  (Apache-2.0) and BiRefNet (MIT) are fetched the same way for consistency. They are fetched
-  at run time after the user has seen the terms -- `src/app/gui/ModelCache.cpp`
-  is where that policy lives, and it is the only place that should grow one.
-- **A gated download is ASKED about, in the GUI and on a terminal.** Every family
-  (SAM 3, SAM 2.1, Grounding DINO, BiRefNet) has its verbatim text in `LICENSES/`,
-  embedded by `tools/gen_license_texts.py`, and is accepted in one place:
-  `core/LicenseConsent.h`'s `accepted_license=` lines of gui.conf. A model with
-  licences of its own (RoMa: `roma`) adds its terms in `app/ModelLicenses.h`,
-  which Main.cpp and the GUI register at startup, and gives the GUI its wording
-  with `register_license_info()`. The GUI shows the
-  whole text with a required "I have read and accept the terms of <name>" tick
-  for EVERY family (`accept_enabled`), and a download continues by itself once it
-  is accepted; a batch asks for every family up front (`GuiApp::begin_batch`),
-  never mid-run.
-  Anything that starts a download with a `license_family` goes through
-  `GuiApp::request_licenses` / `start_downloads_with_consent`;
-  `FileDownload::start`'s refusal is only a backstop. On a terminal,
-  `app::require_license` (`app/cli/LicenseCli.h`) prints the terms and asks for
-  `yes`; without one (a script, or SS_NO_AUTO_FETCH set) the CLI refuses, naming
-  `--accept-license <family>=yes`. `nn::ensure_file` only calls the gate the
-  application installs (`app::install_license_gate()`), so the inference layer
-  knows no terms, and it gates the download only: a copy already in the cache
-  loads as before. A SAM checkpoint named with `--model` is gated by its file name
-  (`app/cli/ModelLicense.h`). End to end: `tools/license_checks/cli_prompt_gate.py`
-  (a pty) and `license_prompt_gate.py` (guictl).
-- **The inference layer's VRAM pool is process-wide and grow-only**, so
-  destroying a `sam::Session` frees nothing by itself and a 2 GB checkpoint
-  stays resident until the process exits. `Session::unload()` (called by the
-  destructor) releases it; anything that keys a pool slot per instance must
-  namespace the key per owner, as `Tracker`'s memory bank does -- two trackers
-  numbering slots from zero write over each other.
-- **A saved preset's field table is hand-written, so a new setting is silent
-  until it is added.** `DatasetPreset.cpp` and `MeshPreset.cpp` each carry one
-  `X(key, member)` row per setting; a field added to `SfmJob`, `ColmapJob` or
-  `MeshJob` and not added there saves, loads, and quietly runs at its default.
-  `preset_roundtrip_test` is the guard: it moves every field the table
-  names off its default and compares after a round trip.
-- **What a dataset run reuses is decided in one place, from fields you have to
-  list.** `app/gui/DatasetPlan.h` compares, per step, the settings its output
-  was made with (`frames_fields`, `masks_fields`, `model_fields`,
-  `geometry_fields`) against the workspace's `.spirula-dataset.json`; a setting
-  that changes a step's output and is not in its list is silently reused
-  across. The panel and both runners ask the same function -- never decide
-  "rerun this?" anywhere else. docs/notes/dataset-rerun.md.
-- **A mesh format lives in four places and reads back in two.** `kMeshFormats`
-  (`app/gui/MeshJob.h`) is the GUI's list, `parse_one_mesh_format` and
-  `write_mesh` (`mesh/MeshExport.cpp`) are the writer, `check_export_support`
-  decides which colors it can carry, and `mesh/MeshImport.cpp` plus
-  `viewer/src/viewer.cpp` are the two readers that have to open it.
-  `mesh_format_roundtrip` writes every format and reads it back, which is
-  the only thing keeping the two writers' idea of a file and the two readers'
-  from drifting.
-- **One meshing run can be asked for several colors**, and the texture atlas
-  SPLITS seam vertices -- so anything written from the un-split mesh (no color,
-  vertex color) is written BEFORE the bake, not after. `generate_mesh()` is
-  ordered that way on purpose; moving a write past the atlas ships a file whose
-  colors no longer match its vertices.
-- **Rotating a splat model means rotating its SH, and the sign convention is
-  where that goes wrong.** `core/ShRotation.h` is the closed form
-  (Ivanic-Ruedenberg), conjugated for the Condon-Shortley phase
-  `shaders/harmonics.slang` carries; without the conjugation bands 1 and 3 are
-  wrong by signs a casual render does not show. `sh_rotation_test` holds it to
-  a sampled fit of that basis and `splat_transform_render` to the engine
-  itself. Touch the basis and both have to follow. docs/notes/sh-rotation.md.
-  Spherical-beta lobes turn too -- their axis, `core/SphericalBeta.h` -- and
-  the same render test covers them on Vulkan.
-- **`features_sh` is a splat's colour row, not only its SH.** With
-  `--sb-lobes N` the row ends in N spherical-beta lobes, two float3 each, so
-  a row's width no longer says the SH degree: `ColorBasis` (`core/ColorBasis.h`)
-  does, and it travels with the row -- `set_data_3dgs`, the scene slots, the
-  launch APIs, `SplatCloud`, `state.json`. Everything that only moves rows
-  (densify, the codecs, checkpoints) needs nothing; what evaluates or steps
-  them must know the split. Vulkan only: the CUDA launchers refuse lobes.
-  docs/notes/spherical-beta.md.
-- **An edited model's placement is applied by the VIEWER until it is saved**
-  (`EditDoc::placement`), so there are two frames on screen: the elements'
-  own, and the saved coordinates the grid, the pivot and the alignment helpers
-  live in. docs/notes/scene-transform.md has the algebra; get a composition
-  order wrong and the model moves the right amount about the wrong point.
-- **A 3DGUT or 2DGS splat is bounded three times, and only one bound may be
-  loose.** The projection writes a box and a slab, the tile intersector tests
-  the footprint itself, the rasterizers cull on box and slab again; each pixel
-  then tests its own alpha, so a bound that keeps too much costs time and one
-  that keeps too little is a hole a tile wide. `footprint_exact` renders every
-  camera model against brute force. docs/notes/footprint.md.
-- **Orthographic uses camera model 4**, with focal pixels per world unit and
-  axial depth. The GUI scales its FOV by orbit distance; model placements must
-  scale the focal values too. Pixel rays have distinct origins and parallel
-  directions. See docs/notes/scene-transform.md.
-- **A progress bar is time, not a count, and never goes back.** Every bar is a
-  `ProgressClock` (`app/gui/ProgressClock.h`) fed the job's own 0..1 of work;
-  a job whose total can grow counts an upper bound first, so the bar jumps
-  forward when the real one arrives. docs/notes/progress-bars.md.
-- **A GUI worker that clears a `busy` flag at the end of its function will
-  strand it.** Every early `return set_error(...)` skips the line, and the next
-  request is refused forever. Use a scope guard (`SegmentPanel::start_job`).
-- **One SAM prompt selects one object.** Points are hints about a single thing:
-  a prompt holding a click on the dog and a click on the bicycle returns a mask
-  that fits neither. Several objects means several instances
-  (`sam::SeedPrompt::object`), unioned afterwards. And a click belongs to the
-  frame it was drawn on -- reusing one across a moving capture is the bug that
-  looks like a working feature.
-- **Masking's remaining headroom is in staging, not arithmetic.** The memory
-  bank was always there, and tensor cores now are: `gemm_coop.slang` and
-  `attention_coop.slang` run on `VK_KHR_cooperative_matrix` where the device has
-  it, worth ~1.4x end to end. Read `src/nn/README.md`'s "Cooperative matrix"
-  before touching either -- the multiplies measure 45 TFLOP/s in isolation
-  against 8.3 for the fp32 GEMM, so what decides the kernel is how its operands
-  reach it, and two plausible tilings measured *slower* than the fp32 kernel
-  they replace. The other thing worth taking was the host side -- PNG encoding
-  and JPEG decoding are a third of a frame, and belong on `app/WriterPool.h`,
-  not on the thread feeding the GPU.
-- **A shader that declares a device capability needs its own module.** SPIR-V
-  capabilities are per module and `vkCreateShaderModule` may reject the whole
-  blob, so a cooperative-matrix kernel cannot live next to a portable one --
-  `Pipelines` creates a `VkShaderModule` lazily, on first acquire of an entry
-  from it, which is what keeps `CooperativeMatrixKHR` off a device that lacks
-  it. Probe in `nn::vk::Context`, gate the dispatch, and leave the fp32 kernel
-  as the only path everywhere else.
+- Use `SS_` for project macros, CMake options, and environment variables.
+  Read these variables through `spirula::env("SUFFIX")`. Use `SS_FILE` for
+  source locations in diagnostics. Use namespace `spirula` for namespaced C++.
+- Use the existing GUI and CLI consent paths for gated model downloads.
+  Keep segmentation weights out of commits and bundles. See the
+  [model license registry](src/app/ModelLicenses.h).
 
 ## Do not commit
 
-Local dataset paths, private capture names, personal directory layouts
-(`/mnt/...`, `/home/<user>/...`, `C:\Users\...`). Standard academic dataset
-names (e.g. Mip-NeRF 360, ZipNeRF) are fine. Run
-`bash tools/check_private_paths.sh` before pushing.
+Keep local dataset paths, private capture names, and personal directory
+layouts out of commits. Run `bash tools/check_private_paths.sh` before pushing.

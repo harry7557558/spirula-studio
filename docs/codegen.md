@@ -81,10 +81,8 @@ Because of invariant 3, splitting is nearly free:
 python3 tools/codegen/generate_headers.py   # PixelWise.cuh's contents are unchanged
 ```
 
-No build file changes: both build systems glob the kernel directories through
-`cmake/sources.txt` (CMake with `CONFIGURE_DEPENDS`, so a new file is picked up
-without a manual reconfigure). No caller changes: the header keeps its name and
-its declaration set.
+CMake picks up new kernel files through the `CONFIGURE_DEPENDS` globs in
+`cmake/sources.txt`. Callers keep using the same header and declarations.
 
 Naming rules when splitting:
 

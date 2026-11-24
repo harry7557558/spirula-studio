@@ -423,9 +423,8 @@ Rendering is serial (one process-global engine), but scoring a view is pure
 host work, so it runs on a small pool while the GPU gets on with the next view
 — results land in a slot indexed by view, so `metrics.json` does not depend on
 who finished first. The pool is capped by cores *and* by a memory budget: at
-4K each worker holds ~725 MB of image and SSIM scratch. That scratch is reused
-across views rather than reallocated (see the AGENTS.md gotcha); at 4K the
-faulting otherwise costs more than the arithmetic.
+4K each worker holds ~725 MB of image and SSIM scratch. Reusing that scratch
+across views avoids page faults that cost more than the arithmetic at 4K.
 
 The metrics themselves are memory-bandwidth-bound at 4K, so the pool mostly
 buys overlap with PNG encoding rather than raw metric throughput — 30 views of

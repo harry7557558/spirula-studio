@@ -1,7 +1,7 @@
 // `spirula encode` -- raw RGB frames on stdin to an MP4 (or a raw H.264,
 // H.265 or AV1 stream), encoded on the GPU. What the GUI's render mode pipes its
 // frames into; a separate process because it needs a Vulkan device of its
-// own beside the engine's (AGENTS.md, "Three Vulkan devices"). PATENT-GATED.
+// own beside the engine's. PATENT-GATED.
 
 #include "core/BufferedFile.h"
 #include "app/Tools.h"
