@@ -1,6 +1,7 @@
 // ground_split -- a floor with a table on it, seen from above by pinhole
 // cameras whose ground masks are 5% wrong: the vertex votes put the floor and
-// the table top on their own sides, and the two parts add up to the mesh.
+// the table top on their own sides, and the two parts add up to the mesh. Also
+// the edge and speck removal on a label image.
 // Host only, so both builds run it.
 //
 //   ./build_vulkan/ground_split
@@ -104,7 +105,29 @@ void render(const TsdfCamera& c, const double eye[3], std::vector<float>& depth,
 
 }  // namespace
 
+void test_drop_label_edges() {
+    const int w = 20, h = 10;
+    std::vector<uint8_t> l((size_t)w * h, meshing::kGroundNo);
+    for (int y = 0; y < h; ++y)
+        for (int x = 10; x < w; ++x) l[(size_t)y * w + x] = meshing::kGroundYes;
+    l[(size_t)5 * w + 3] = meshing::kGroundYes;                 // a speck
+    for (int x = 15; x < w; ++x) l[(size_t)0 * w + x] = meshing::kGroundUnknown;
+    meshing::drop_label_edges(l, w, h, 2);
+    auto at = [&](int x, int y) { return l[(size_t)y * w + x]; };
+    for (int y = 0; y < h; ++y) {
+        for (int x = 8; x <= 11; ++x) CHECK(at(x, y) == meshing::kGroundUnknown);
+        CHECK(at(7, y) == meshing::kGroundNo);
+        CHECK(at(12, y) == meshing::kGroundYes);
+    }
+    for (int y = 3; y <= 7; ++y)
+        for (int x = 1; x <= 5; ++x) CHECK(at(x, y) == meshing::kGroundUnknown);
+    CHECK(at(0, 0) == meshing::kGroundNo);
+    // An unknown region is no edge: only the class next to it is kept as it was.
+    CHECK(at(16, 1) == meshing::kGroundYes);
+}
+
 int main() {
+    test_drop_label_edges();
     MeshData mesh;
     add_grid(mesh, kFloor, 0.0, 81);
     const size_t floor_faces = mesh.F.size();
@@ -119,6 +142,7 @@ int main() {
         const double eye[3] = {3.0 * std::cos(a), 3.0 * std::sin(a), 6.0};
         const TsdfCamera c = look_at(eye, at, 320, 240, 200.0);
         render(c, eye, depth, label);
+        meshing::drop_label_edges(label, c.width, c.height, 1);
         meshing::vote_ground(c, depth.data(), label.data(), mesh, ground.data(), seen.data());
     }
     const std::vector<uint8_t> faces = meshing::ground_faces(mesh, ground, seen, 20);

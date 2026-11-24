@@ -26,6 +26,40 @@ int find_root(std::vector<int>& parent, int x) {
 
 }  // namespace
 
+void drop_label_edges(std::vector<uint8_t>& labels, int w, int h, int radius) {
+    if (radius <= 0 || w <= 0 || h <= 0) return;
+    // Pixels of class `cls` within `radius`, by running counts: rows, then columns.
+    auto within = [&](uint8_t cls) {
+        std::vector<uint8_t> rows((size_t)w * h, 0), out((size_t)w * h, 0);
+        #pragma omp parallel for schedule(static)
+        for (int y = 0; y < h; ++y) {
+            const uint8_t* l = &labels[(size_t)y * w];
+            int count = 0;
+            for (int x = 0; x < std::min(w, radius + 1); ++x) count += l[x] == cls;
+            for (int x = 0; x < w; ++x) {
+                rows[(size_t)y * w + x] = count > 0;
+                if (x + radius + 1 < w) count += l[x + radius + 1] == cls;
+                if (x - radius >= 0) count -= l[x - radius] == cls;
+            }
+        }
+        #pragma omp parallel for schedule(static)
+        for (int x = 0; x < w; ++x) {
+            int count = 0;
+            for (int y = 0; y < std::min(h, radius + 1); ++y) count += rows[(size_t)y * w + x];
+            for (int y = 0; y < h; ++y) {
+                out[(size_t)y * w + x] = count > 0;
+                if (y + radius + 1 < h) count += rows[(size_t)(y + radius + 1) * w + x];
+                if (y - radius >= 0) count -= rows[(size_t)(y - radius) * w + x];
+            }
+        }
+        return out;
+    };
+    const std::vector<uint8_t> near_yes = within(kGroundYes), near_no = within(kGroundNo);
+    for (size_t p = 0; p < labels.size(); ++p)
+        if ((labels[p] == kGroundNo && near_yes[p]) || (labels[p] == kGroundYes && near_no[p]))
+            labels[p] = kGroundUnknown;
+}
+
 void vote_ground(const TsdfCamera& c, const float* depth, const uint8_t* labels,
                  const MeshData& mesh, float* ground, float* seen) {
     const bool ortho = c.model == kOrthographic;

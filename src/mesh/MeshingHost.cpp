@@ -178,6 +178,9 @@ constexpr int kMinCullPatch[2] = {64, 8};
 constexpr int kRepairRounds = 4;
 constexpr float kEarlyFixDeg = 5.0f;
 
+// Mask edges cast no vote within this share of the image's longer side.
+constexpr double kGroundEdge = 0.01;
+
 // Every camera's ground labels voted onto the mesh's vertices, then per face.
 // Empty when no camera had labels.
 std::vector<uint8_t> label_ground(const Mesh& mesh, OccupancyEvaluator& ev,
@@ -195,6 +198,7 @@ std::vector<uint8_t> label_ground(const Mesh& mesh, OccupancyEvaluator& ev,
         int W = 0, H = 0;
         if (!ev.render_moments(c, moments, W, H)) break;
         if (!cfg.ground_labels(c, W, H, labels) || labels.size() != (size_t)W * H) continue;
+        drop_label_edges(labels, W, H, std::max(1, (int)std::lround(kGroundEdge * std::max(W, H))));
         depth.resize((size_t)W * H);
         moments_to_depth(moments.data(), depth.size(), depth.data());
         vote_ground(tsdf_camera(cams, c, W, H), depth.data(), labels.data(), mesh,

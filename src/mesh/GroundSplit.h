@@ -14,6 +14,10 @@ namespace meshing {
 // One pixel of a camera's ground labels.
 inline constexpr uint8_t kGroundNo = 0, kGroundYes = 1, kGroundUnknown = 255;
 
+// Sets every pixel with one of the other class within `radius` (Chebyshev) to
+// kGroundUnknown: a mask is least sure along its edges and in small specks.
+void drop_label_edges(std::vector<uint8_t>& labels, int width, int height, int radius);
+
 // Adds one camera's votes to `ground` and `seen` [V]: a vertex votes when its
 // ray distance is within the band of the camera's depth at its pixel. `depth`
 // and `labels` are [height * width], depth as moments_to_depth gives it.

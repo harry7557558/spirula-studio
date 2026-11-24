@@ -42,6 +42,8 @@ same for the opacity field and both TSDF fusions (`src/mesh/GroundSplit.cpp`):
    lying within 3 pixel footprints plus 2% of its distance of that depth is
    seen, and votes with its pixel's label. An occluded vertex votes for
    nothing, so a wrong mask on a table cannot reach the floor under it.
+   Mask pixels within 1% of the image's longer side of the other label cast
+   no vote: a mask is least sure along its edges and in small specks.
 2. **Smoothing.** Each vertex's ground share is averaged with its faces'
    twice. Vertices no camera saw take their neighbours' share.
 3. **Faces.** A face is ground when its corners' mean share is at least 1/2.
@@ -68,3 +70,18 @@ stage 51 s), masks from SAM 2.1 base+ with Grounding DINO tiny, prompt
   objects on the floor (38% of it facing up and 32% steep, against 61% and
   17% of the majority's ground), which a plane-distance score counts as
   floor. The majority stays.
+- Ignoring mask edges made the ground cleaner (4.2% of it more than 0.1
+  above the floor, from 5.3%) for less of the floor (72.0%, from 80.6%):
+  the floor right beside objects loses the votes it had near their edges.
+
+## One outdoor capture
+
+Mip-NeRF 360 `garden`, 185 views, a 2dgs model meshed with `--method tsdf`
+(1.2M faces, 43 s, 2.2 GB peak), masks from the same SAM, prompt
+`ground; grass; paving stones` (`ground; grass` missed the paving).
+
+- Grass and paving were ground; the table, hedges and planters were not.
+- The mask edges held most of what was wrong. Ignoring them took the share
+  of the tabletop called ground from 7.1% to 4.9% and of the legs from 18%
+  to 10%, for 82.4% of the ground covered against 83.3%. A margin of 2%
+  lost ground and gained nothing on the legs, 4% was worse on both.
