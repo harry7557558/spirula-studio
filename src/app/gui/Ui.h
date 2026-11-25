@@ -520,6 +520,46 @@ inline bool BeginComboRaw(const char* id, const char* preview, ImGuiComboFlags f
     return ImGui::BeginCombo(id, preview, flags);
 }
 
+struct ComboChoice {
+    const Msg& label;
+    const Msg& help;
+};
+
+inline bool ComboWithHelp(const Msg& label, int* value, const Msg& help,
+                          std::initializer_list<ComboChoice> choices) {
+    const int count = (int)choices.size();
+    const char* preview = *value >= 0 && *value < count ? choices.begin()[*value].label.get()
+                                                        : nullptr;
+    const float width = ImGui::CalcItemWidth();
+    const float available = ImGui::GetContentRegionAvail().x;
+    const bool wrap_label = width + ImGui::GetStyle().ItemInnerSpacing.x +
+                            ImGui::CalcTextSize(label.get()).x > available;
+    if (wrap_label) {
+        TextWrapped(label);
+        help_on_hover(help);
+        ImGui::SetNextItemWidth(std::min(width, available));
+    }
+    const char* widget = detail::label(wrap_label ? "" : label.get(), label.id);
+    if (!detail::named_combo(widget, [&] { return BeginComboRaw(widget, preview); })) {
+        help_on_hover(help);
+        return false;
+    }
+    bool changed = false;
+    int i = 0;
+    for (const ComboChoice& choice : choices) {
+        const bool selected = *value == i;
+        if (Selectable(choice.label, selected) && !selected) {
+            *value = i;
+            changed = true;
+        }
+        help_on_hover(choice.help);
+        if (selected) ImGui::SetItemDefaultFocus();
+        ++i;
+    }
+    ImGui::EndCombo();
+    return changed;
+}
+
 inline bool SliderInt(const Msg& m, int* v, int lo, int hi) {
     return ImGui::SliderInt(detail::label(m), v, lo, hi);
 }

@@ -7,6 +7,7 @@
 #include "sfm/core/Log.h"
 #include "sfm/vk/VkContext.h"
 #include "i18n/catalog/SfmFields.h"
+#include "i18n/catalog/SfmOptions.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -286,7 +287,7 @@ FieldResult setConfigField(SfmConfig& cfg, uint32_t cmd, const std::string& arg,
             return r;                                                                               \
         }                                                                                           \
     }
-    SFM_CONFIG_FIELDS(SFM_TRY_SET)
+    SFM_CONFIG_FIELDS(SFM_TRY_SET, SFM_TRY_SET)
 #undef SFM_TRY_SET
     return FieldResult::Unknown;
 }
@@ -576,11 +577,19 @@ const std::vector<FieldInfo>& configFields() {
     static const std::vector<FieldInfo> rows = [] {
         const SfmConfig d;
         std::vector<FieldInfo> out;
-#define SFM_INFO(member, name, cmds, tier, group, lo, hi, choices, help)                           \
-    out.push_back({name, (uint32_t)(cmds), tier, group, (double)(lo), (double)(hi), choices,       \
-                   &spirula::i18n::msg::sfmfield::help##_help, typeOf(d.member)});
-        SFM_CONFIG_FIELDS(SFM_INFO)
+#define SFM_INFO_ROW(member, name, cmds, tier, group, lo, hi, choices, label, help) \
+    out.push_back({name, (uint32_t)(cmds), tier, group, (double)(lo), (double)(hi), choices, \
+                   typeOf(d.member), label, help});
+#define SFM_INFO(member, name, cmds, tier, group, lo, hi, choices, help) \
+    SFM_INFO_ROW(member, name, cmds, tier, group, lo, hi, choices, nullptr, nullptr)
+#define SFM_GUI_INFO(member, name, cmds, tier, group, lo, hi, choices, help) \
+    SFM_INFO_ROW(member, name, cmds, tier, group, lo, hi, choices, \
+                 &spirula::i18n::msg::sfmoption::help##_label, \
+                 &spirula::i18n::msg::sfmoption::help##_help)
+        SFM_CONFIG_FIELDS(SFM_INFO, SFM_GUI_INFO)
+#undef SFM_GUI_INFO
 #undef SFM_INFO
+#undef SFM_INFO_ROW
         return out;
     }();
     return rows;
@@ -610,7 +619,7 @@ bool configFieldValue(const SfmConfig& cfg, const std::string& name, std::string
         out = flagValue(cfg.member);                                                               \
         return true;                                                                               \
     }
-    SFM_CONFIG_FIELDS(SFM_VALUE)
+    SFM_CONFIG_FIELDS(SFM_VALUE, SFM_VALUE)
 #undef SFM_VALUE
     return false;
 }
@@ -656,7 +665,7 @@ void printConfigOptions(FILE* out, uint32_t cmd, const SfmConfig& defaults) {
                     valueString(defaults.member),                                                  \
                     spirula::i18n::msg::sfmfield::help##_help.get(), choices);                     \
     }
-    SFM_CONFIG_FIELDS(SFM_PRINT_FIELD)
+    SFM_CONFIG_FIELDS(SFM_PRINT_FIELD, SFM_PRINT_FIELD)
 #undef SFM_PRINT_FIELD
 }
 
@@ -708,7 +717,7 @@ std::string stageSignature(const SfmConfig& cfg, uint32_t cmd,
     if (((uint32_t)(cmds) & cmd) && (tier) != Tier::Alias && signatureRelevant(name) && \
         !(signatureOmitsUnset(name) && valueString(cfg.member) == "none"))              \
         out += std::string(name) + "=" + fieldValue(name, valueString(cfg.member)) + "\n";
-    SFM_CONFIG_FIELDS(SFM_SIG_FIELD)
+    SFM_CONFIG_FIELDS(SFM_SIG_FIELD, SFM_SIG_FIELD)
 #undef SFM_SIG_FIELD
     // Per-group lenses reach the camera setup, and so verification, without
     // being table rows: `--camera-model cam0=opencv-fisheye` and the manifest

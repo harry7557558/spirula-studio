@@ -145,6 +145,9 @@ checks that files named in comments exist. See [build lints](docs/build.md#lints
 - Aim for 1–2 rendered lines of help and cap ordinary prose at 3. Preserve
   consequences, units, and prerequisites. Lists can have up to 4 bullets,
   2 wrapped lines per bullet, and 8 lines total including the overview.
+- Explain settings in plain language. Say when to change a value and what
+  that can do to results, runtime, or memory. Give dedicated dropdowns help
+  for the control and for each choice.
 - Keep English terminal templates ASCII after catalog punctuation conversion
   and preserve formatted arguments. Match localized child output with
   `i18n::scan()` when the parent reads a message back.

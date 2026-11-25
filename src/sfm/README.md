@@ -385,16 +385,22 @@ structs unchanged (`SiftOptions`, `MatchOptions`, `PairSelectionOptions`,
 F(member, name, cmds, tier, group, lo, hi, choices, help)
 ```
 
-The table is the single source of truth for the CLI parser, for `--help`, and
-(port plan phase 5) for the GUI's options editor; each is one macro expansion
-over it in `SfmConfig.cpp`, so a new knob is one row and never three edits.
-`cmds` is which subcommands accept the flag — a name may repeat across commands
-with disjoint masks, which is how `--max-error` is the verification tolerance
-for `auto`/`match`/`map` and the *alignment* tolerance for `merge`. `tier` is
-`Basic` (what the GUI shows unfolded: quality, data type, camera model, camera
-sharing, focal, masks, pair mode) or `Advanced`; `Alias` marks a second
-spelling. A `bool` row is a switch and gets both `--name` and `--no-name`, and
-`--help` prints whichever direction changes the default.
+The CLI parser, help printer, and GUI editor read this table. `member` names
+the typed config field and `name` is its flag without the dashes. `cmds`
+selects subcommands. Flags may repeat with disjoint command masks, such as
+`--max-error` for verification or merge alignment. `group` files a row under a
+stage and optionally an owner, as in `matching/lightglue`. A range with
+`lo >= hi` is unbounded. Enumerated values use `|` separators. Boolean rows
+accept `--name` and `--no-name`. The CLI prints the form that changes the
+default and looks up the description as `<help>_help` in
+`src/i18n/catalog/SfmFields.h`.
+
+Use `G` with the same columns for an option that belongs in a dataset GUI
+fold. It needs `<help>_label` and `<help>_help` in
+`src/i18n/catalog/SfmOptions.h`. Folds with more than 10 applicable rows show
+search and a tier picker. `Expert` rows appear in Everything or when they
+match a search. Shorter folds show all rows. `Alias` marks a second CLI
+spelling.
 
 Three things stay hand-parsed in `src/app/cli/sfm_main.cpp`, because they do
 not name one scalar field: `--camera-model PREFIX=MODEL`, `--focal PREFIX=F` and

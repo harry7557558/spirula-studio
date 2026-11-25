@@ -5,6 +5,7 @@
 #include "app/gui/DatasetPrep.h"
 #include "app/gui/Ui.h"
 #include "i18n/catalog/Dataset.h"
+#include "i18n/catalog/SfmOptions.h"
 
 #include "imgui.h"
 
@@ -15,6 +16,7 @@
 namespace fs = std::filesystem;
 namespace i18n = spirula::i18n;
 namespace dmsg = spirula::i18n::msg::dataset;
+namespace smsg = spirula::i18n::msg::sfmoption;
 using spirula::i18n::Msg;
 
 namespace gui {
@@ -115,15 +117,16 @@ void GuiApp::draw_dataset_basics() {
     int& quality = builtin ? _sfm_job.quality : _colmap_job.quality;
     const int quality_before = quality;
     if (builtin) {
-        ui::Combo(dmsg::quality, &quality,
-                  {&dmsg::quality_fast, &dmsg::quality_balanced,
-                   &dmsg::quality_high_recommended, &dmsg::quality_maximum});
-        ui::help_on_hover(dmsg::quality_help_builtin);
+        ui::ComboWithHelp(dmsg::quality, &quality, dmsg::quality_help_builtin,
+            {{dmsg::quality_fast, smsg::quality_fast_help},
+             {dmsg::quality_balanced, smsg::quality_balanced_help},
+             {dmsg::quality_high_recommended, smsg::quality_high_help},
+             {dmsg::quality_maximum, smsg::quality_maximum_help}});
     } else {
-        ui::Combo(dmsg::quality, &quality,
-                  {&dmsg::quality_fast, &dmsg::quality_balanced,
-                   &dmsg::quality_high});
-        ui::help_on_hover(dmsg::quality_help_colmap);
+        ui::ComboWithHelp(dmsg::quality, &quality, dmsg::quality_help_colmap,
+            {{dmsg::quality_fast, smsg::quality_fast_help},
+             {dmsg::quality_balanced, smsg::quality_balanced_help},
+             {dmsg::quality_high, smsg::quality_high_help}});
     }
     // The masking models go with it while they are the ones it picked.
     if (quality != quality_before)
@@ -170,11 +173,11 @@ void GuiApp::draw_dataset_basics() {
     }
 
     ImGui::SetNextItemWidth(px(kFieldW));
-    ui::Combo(dmsg::camera_sharing,
-                builtin ? &_sfm_job.camera_mode : &_colmap_job.camera_mode,
-                {&dmsg::camera_sharing_one, &dmsg::camera_sharing_folder,
-                &dmsg::camera_sharing_image});
-    ui::help_on_hover(dmsg::camera_sharing_help);
+    ui::ComboWithHelp(dmsg::camera_sharing,
+        builtin ? &_sfm_job.camera_mode : &_colmap_job.camera_mode, dmsg::camera_sharing_help,
+        {{dmsg::camera_sharing_one, smsg::camera_sharing_one_help},
+         {dmsg::camera_sharing_folder, smsg::camera_sharing_folder_help},
+         {dmsg::camera_sharing_image, smsg::camera_sharing_image_help}});
 
     ImGui::EndDisabled();
 
@@ -275,15 +278,15 @@ void GuiApp::draw_pano360_options() {
     app::Pano360Options& p = _sfm_job.prep.pano;
     int mode = p.mode == app::Pano360Mode::Equirect ? 1 : 0;
     ImGui::SetNextItemWidth(px(kFieldW));
-    if (ui::Combo(dmsg::pano360_output, &mode,
-                  {&dmsg::pano360_output_faces, &dmsg::pano360_output_equirect})) {
+    if (ui::ComboWithHelp(dmsg::pano360_output, &mode, dmsg::pano360_output_help,
+        {{dmsg::pano360_output_faces, smsg::pano_faces_help},
+         {dmsg::pano360_output_equirect, smsg::pano_equirect_help}})) {
         p.mode = mode == 1 ? app::Pano360Mode::Equirect : app::Pano360Mode::Faces;
         // A face side and a panorama width are not the same number, so the one
         // in the box is meaningless the moment the other is chosen.
         reset_pano_size(_sources, _sfm_job.prep.pano);
         apply_pano_lens(_sources, _sfm_job, _colmap_job);
     }
-    ui::help_on_hover(dmsg::pano360_output_help);
     if (mode == 1 && effective_engine() != Engine::BuiltIn)
         ui::TextColoredWrapped(kWarn, dmsg::pano360_colmap_warning);
 }
@@ -404,9 +407,18 @@ void GuiApp::draw_source_cameras() {
             }
             int idx = (int)(std::find(ids.begin(), ids.end(), rig) - ids.begin());
             if (idx >= (int)ids.size()) idx = 0;
-            if (ui::ComboRaw("##rig", &idx, items.data(), (int)items.size()))
-                rig = ids[(size_t)idx];
-            ui::help_on_hover(dmsg::rig_help);
+            if (ui::BeginComboRaw("##rig", items[(size_t)idx])) {
+                for (size_t j = 0; j < items.size(); ++j) {
+                    if (ui::SelectableRaw(items[j], (int)j == idx)) rig = ids[j];
+                    ui::help_on_hover(ids[j] == kRigNone ? smsg::rig_none_help
+                                      : ids[j] == kRigOwn ? smsg::rig_own_help
+                                                          : smsg::rig_shared_help);
+                    if ((int)j == idx) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            } else {
+                ui::help_on_hover(dmsg::rig_help);
+            }
         }
         draw_lens_warning(dir, in.is_video, models[i], /*builtin=*/true);
         ImGui::PopID();

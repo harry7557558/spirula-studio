@@ -129,6 +129,21 @@ int main() {
         }
         expect(apart, "... and none the panel or the manifest sets");
 
+        bool tiers = true, localized = true;
+        for (int mapper = 0; mapper < (int)std::size(kSfmMapper); ++mapper) {
+            const auto rows = sfm_mapper_options(mapper);
+            size_t advanced = 0;
+            for (const SfmOption& row : rows) {
+                advanced += !row.expert;
+                localized = localized && row.label && row.help;
+                for (const SfmOptionChoice& choice : row.choices)
+                    localized = localized && choice.label && choice.help;
+            }
+            tiers = tiers && rows.size() > 10 && advanced > 0 && advanced <= 10;
+        }
+        expect(tiers, "each mapper schedule has a short default tier and expert options");
+        expect(localized, "mapper fields and choices have labels and hover help");
+
         SfmReconSettings s;
         set_sfm_option(s, "bup-atom-size", "96");
         set_sfm_option(s, "min-tri-angle", "2");

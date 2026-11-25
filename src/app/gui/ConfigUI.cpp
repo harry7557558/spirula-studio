@@ -6,6 +6,7 @@
 #include "app/gui/ConfigUI.h"
 
 #include "app/gui/Layout.h"
+#include "app/gui/OptionSearch.h"
 #include "app/gui/Ui.h"
 
 #include "i18n/catalog/Gui.h"
@@ -53,38 +54,20 @@ std::vector<std::string> split_choices(const char* choices) {
 
 // ---- search ------------------------------------------------------------------
 
-// ASCII only: the catalogs are UTF-8 and std::tolower would mangle a
-// continuation byte under a non-C locale.
-std::string lower_ascii(std::string s) {
-    for (char& c : s)
-        if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
-    return s;
-}
-
-// The UI's language and English both, since the flag names, `--help` and
-// every config.json are English whatever the labels are showing. NOT all 13:
-// Spanish "superficie" answering an English "sup" is noise, not reach.
-void add_text(std::string& out, const Msg& m) {
-    out += ' ';
-    out += m.get();
-    const char* en = m.in(spirula::i18n::Lang::en);
-    if (en != m.get()) { out += ' '; out += en; }
-}
-
 // Everything one field can be found by.
 std::string field_text(const char* key, const char* section, const Msg& name,
                        const Msg& help, const char* choices) {
     std::string s = key;
-    add_text(s, name);
-    add_text(s, help);
+    option_search::add_text(s, name);
+    option_search::add_text(s, help);
     if (const Msg* m = spirula::i18n::msg::train::section_label(section))
-        add_text(s, *m);
+        option_search::add_text(s, *m);
     for (const std::string& c : split_choices(choices)) {
         s += ' ';
         s += c;
-        if (const Msg* m = fld::choice_label(key, c.c_str())) add_text(s, *m);
+        if (const Msg* m = fld::choice_label(key, c.c_str())) option_search::add_text(s, *m);
     }
-    return lower_ascii(s);
+    return option_search::lower_ascii(s);
 }
 
 enum : size_t {
@@ -111,20 +94,6 @@ const std::vector<std::string>& field_texts() {
     return texts;
 }
 
-// Space, `_` and `-` all separate, so `depth sup`, `depth-sup` and
-// `depth_sup` are one query, and each token may match anywhere: `depth weight`
-// finds depth_supervision_weight without naming what is between them.
-std::vector<std::string> query_tokens(const char* q) {
-    std::vector<std::string> out;
-    std::string cur;
-    for (const char* c = q;; c++) {
-        if (*c && !std::strchr(" \t_-+/,.", *c)) { cur += *c; continue; }
-        if (!cur.empty()) { out.push_back(lower_ascii(cur)); cur.clear(); }
-        if (!*c) break;
-    }
-    return out;
-}
-
 void refresh_matches(ConfigUIState& st) {
     // The language is part of the key: switching it rebuilds the texts below.
     std::string query = st.search +
@@ -132,12 +101,11 @@ void refresh_matches(ConfigUIState& st) {
     if (st.match.size() == kNumFields && st.match_query == query) return;
     st.match_query = query;
     st.match.assign(kNumFields, 1);
-    std::vector<std::string> tokens = query_tokens(st.search);
+    std::vector<std::string> tokens = option_search::query_tokens(st.search);
     if (tokens.empty()) return;
     const std::vector<std::string>& texts = field_texts();
     for (size_t i = 0; i < kNumFields; i++)
-        for (const std::string& t : tokens)
-            if (texts[i].find(t) == std::string::npos) { st.match[i] = 0; break; }
+        st.match[i] = option_search::matches(texts[i], tokens);
 }
 
 // ---- value -> display string (tooltips / reset labels) ---------------------

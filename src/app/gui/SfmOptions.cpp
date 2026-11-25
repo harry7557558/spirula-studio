@@ -3,11 +3,11 @@
 #include "app/gui/SfmOptions.h"
 
 #ifdef SS_TOOL_SFM
+#include "i18n/catalog/SfmOptions.h"
 #include "sfm/SfmConfig.h"
 #endif
 
 #include <algorithm>
-#include <cstring>
 #include <iterator>
 
 namespace gui {
@@ -64,6 +64,29 @@ void set_sfm_option(SfmReconSettings& s, const std::string& flag, const std::str
 
 namespace {
 
+SfmOptionChoice option_choice(const std::string& flag, const std::string& value) {
+    namespace msg = spirula::i18n::msg::sfmoption;
+    struct Choice {
+        const char* flag;
+        const char* value;
+        const spirula::i18n::Msg& label;
+        const spirula::i18n::Msg& help;
+    };
+    static const Choice choices[] = {
+        {"level", "ground", msg::level_ground_label, msg::level_ground_help},
+        {"level", "cameras", msg::level_cameras_label, msg::level_cameras_help},
+        {"ba-loss", "trivial", msg::loss_squared_label, msg::loss_squared_help},
+        {"ba-loss", "huber", msg::loss_huber_label, msg::loss_huber_help},
+        {"ba-loss", "cauchy", msg::loss_cauchy_label, msg::loss_cauchy_help},
+        {"ba-solver", "auto", msg::solver_auto_label, msg::solver_auto_help},
+        {"ba-solver", "dense", msg::solver_dense_label, msg::solver_dense_help},
+        {"ba-solver", "cg", msg::solver_iterative_label, msg::solver_iterative_help},
+    };
+    for (const Choice& c : choices)
+        if (flag == c.flag && value == c.value) return {value, &c.label, &c.help};
+    return {value};
+}
+
 SfmOption row_of(const sfm::FieldInfo& f) {
     SfmOption o;
     o.flag = f.name;
@@ -75,10 +98,12 @@ SfmOption row_of(const sfm::FieldInfo& f) {
     o.hi = f.hi;
     for (std::string rest = f.choices; !rest.empty();) {
         const size_t bar = rest.find('|');
-        o.choices.push_back(rest.substr(0, bar));
+        o.choices.push_back(option_choice(o.flag, rest.substr(0, bar)));
         rest = bar == std::string::npos ? std::string() : rest.substr(bar + 1);
     }
+    o.label = f.label;
     o.help = f.help;
+    o.expert = f.tier == sfm::Tier::Expert;
     o.owner = sfm::fieldOwner(f);
     const uint32_t stage = sfm::fieldStage(f);
     o.part = stage == sfm::CMD_EXTRACT ? ModelPart::Features
@@ -129,28 +154,18 @@ bool owner_selected(const SfmReconSettings& s, const std::string& owner) {
 std::vector<SfmOption> sfm_owned_options(const std::string& owner) {
     std::vector<SfmOption> out;
     for (const sfm::FieldInfo& f : sfm::configFields())
-        if (offered(f) && sfm::fieldOwner(f) == owner) out.push_back(row_of(f));
+        if (f.label && offered(f) && sfm::fieldOwner(f) == owner) out.push_back(row_of(f));
     return out;
 }
 
 std::vector<SfmOption> sfm_mapper_options(int mapper) {
-    // SfmRunner::recon_args writes these from the panel's own controls, and
-    // the telemetry goes in the manifest.
-    static const char* const kElsewhere[] = {
-        "mapper", "refine-extra-params", "final-extra-params", "final-per-image-intrinsics",
-        "ba-real", "ba-real-coarse", "metric-gps", "sensor-gauge", "exif-attitude",
-        "telemetry",
-    };
     const std::string schedule = sfm_mapper_owner(mapper);
     std::vector<SfmOption> out;
     for (const sfm::FieldInfo& f : sfm::configFields()) {
         const std::string group = f.group;
-        if (!offered(f) || group.substr(0, group.find('/')) != "mapper") continue;
+        if (!f.label || !offered(f) || group.substr(0, group.find('/')) != "mapper") continue;
         const std::string owner = sfm::fieldOwner(f);
         if (!owner.empty() && owner != schedule) continue;
-        if (std::any_of(std::begin(kElsewhere), std::end(kElsewhere),
-                        [&](const char* n) { return std::strcmp(n, f.name) == 0; }))
-            continue;
         out.push_back(row_of(f));
     }
     return out;

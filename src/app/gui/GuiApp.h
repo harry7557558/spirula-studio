@@ -36,7 +36,7 @@
 #include "app/gui/Screenshot.h"
 #include "app/gui/SegmentPanel.h"
 #include "app/gui/mask/MaskSession.h"
-#include "app/gui/SfmRunner.h"
+#include "app/gui/SfmOptions.h"
 #include "app/gui/SourceList.h"
 #include "app/gui/SourceProbe.h"
 #include "app/gui/SourcePreview.h"
@@ -978,6 +978,7 @@ private:
     // have to read -- an input's LUT, starting focal, rig -- shows in place only
     // while it is open, so the input list is never drawn twice.
     bool _ds_advanced = false;
+    SfmOptionFilter _detector_filter, _matcher_filter, _mapper_filter;
     // What each input's IMU / GPS holds, read on its own thread and keyed by
     // path, so re-choosing a file already read costs nothing.
     TelemetryProbe _telemetry;

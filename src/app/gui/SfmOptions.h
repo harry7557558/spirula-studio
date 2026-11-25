@@ -16,15 +16,28 @@ namespace gui {
 
 enum class SfmOptionType { Switch, Integer, Real, Text };
 
+struct SfmOptionChoice {
+    std::string value;
+    const spirula::i18n::Msg* label = nullptr;
+    const spirula::i18n::Msg* help = nullptr;
+};
+
 // One row of the table as the panel reads it.
 struct SfmOption {
     std::string flag;                 // without the dashes
     SfmOptionType type = SfmOptionType::Text;
     double lo = 0, hi = 0;            // lo >= hi: unbounded
-    std::vector<std::string> choices;
+    std::vector<SfmOptionChoice> choices;
+    const spirula::i18n::Msg* label = nullptr;
     const spirula::i18n::Msg* help = nullptr;
+    bool expert = false;
     std::string owner;                // "sift", "lightglue", "prefilter", "bottom-up"; "" = shared
     ModelPart part = ModelPart::Features;   // the first stage it reaches
+};
+
+struct SfmOptionFilter {
+    std::string search;
+    int tier = 0;
 };
 
 // The rows one detector, matcher or pair mode owns, in table order. Empty in a
