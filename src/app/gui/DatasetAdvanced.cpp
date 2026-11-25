@@ -6,6 +6,7 @@
 #include "app/gui/OptionSearch.h"
 #include "app/gui/ProgressView.h"
 #include "app/gui/SfmOptions.h"
+#include "app/gui/Subprocess.h"
 #include "app/gui/Ui.h"
 #include "core/ColorSpace.h"
 #include "i18n/catalog/Dataset.h"
@@ -480,6 +481,7 @@ void GuiApp::draw_sfm_advanced() {
     ui::help_on_hover(dmsg::sfm_subprocess_help);
 
     ImGui::Spacing();
+    ui::SeparatorText(dmsg::section_additional);
     // Unticking it is what throws the resumable state away, so it asks first
     // and the answer is remembered; ticking it back needs no ceremony.
     if (ui::Checkbox(dmsg::keep_intermediate, &_sfm_job.keep_intermediate)) {
@@ -488,10 +490,31 @@ void GuiApp::draw_sfm_advanced() {
     }
     ui::help_on_hover(dmsg::keep_intermediate_help);
 
+    draw_dataset_finish_command();
+
+    ui::Text(dmsg::extra_sfm_flags);
     ImGui::SetNextItemWidth(-1);
     ui::InputTextWithHintRaw("##sfmextra", dmsg::extra_sfm_flags_hint,
                              &_sfm_job.extra_args);
     ui::help_on_hover(dmsg::extra_sfm_flags_help);
+}
+
+void GuiApp::draw_dataset_finish_command() {
+    ImGui::AlignTextToFramePadding();
+    ui::Text(dmsg::finish_command);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(_finish_cmd_run.busy() || split_args(_dataset_finish_command).empty());
+    if (ui::Button(msg::batch_cmd_test))
+        run_finish_command(_dataset_finish_command, msg::batch_cmd_test_message.get());
+    ui::help_on_hover_disabled(msg::batch_cmd_test_help);
+    ImGui::EndDisabled();
+
+    ImGui::SetNextItemWidth(-1);
+    ui::InputTextEnglishRaw("##dataset_finish_command",
+                            "python notify_me.py --message \"{message}\"",
+                            &_dataset_finish_command);
+    if (ImGui::IsItemDeactivatedAfterEdit()) save_settings();
+    ui::help_on_hover(dmsg::finish_command_help);
 }
 
 // ---------------------------------------------------------------------------
@@ -630,6 +653,9 @@ void GuiApp::draw_colmap_options() {
         ui::Text(dmsg::colmap_vocab_tree);
 
         draw_color_space_options(/*with_point_color=*/false);
+        ImGui::Spacing();
+        ui::SeparatorText(dmsg::section_additional);
+        draw_dataset_finish_command();
     }
 }
 

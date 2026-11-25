@@ -374,13 +374,15 @@ if(SS_SEPARATE_TOOLS)
     function(ss_tool_exe name sources defs libs)
         if(WIN32)
             list(APPEND sources ${SS_SRC}/app/utf8.manifest)
+            list(APPEND libs dbghelp)
         endif()
         # ss_i18n is linked explicitly: these targets deliberately do not
         # link the engine library, and Main.cpp's `--lang` handling needs
         # it. It is a leaf (cmake/SsI18n.cmake), so this costs nothing.
-        add_executable(${name} ${SS_SRC}/app/Main.cpp ${sources})
+        add_executable(${name} ${SS_SRC}/app/Main.cpp ${SS_SRC}/app/AppPaths.cpp
+                       ${SS_SRC}/app/CrashLog.cpp ${sources})
         target_include_directories(${name} PRIVATE ${SS_SRC} ${CMAKE_BINARY_DIR})
-        target_link_libraries(${name} PRIVATE ${libs} ss_i18n ss_license)
+        target_link_libraries(${name} PRIVATE ${libs} ss_i18n ss_license ${CMAKE_DL_LIBS})
         target_compile_definitions(${name} PRIVATE
             ${defs} SS_VERSION="${SS_VERSION}" ${SS_I18N_DEFS})
         target_compile_options(${name} PRIVATE
@@ -390,8 +392,8 @@ if(SS_SEPARATE_TOOLS)
 
     if(SS_BUILD_SFM)
         ss_tool_exe(spirula-sfm
-            "${SS_SRC}/app/cli/sfm_main.cpp;${SS_SRC}/app/cli/sfm_ba.cpp"
-            "SS_TOOL_SFM=1" "ss_sfm")
+            "${SS_SRC}/app/cli/sfm_main.cpp;${SS_SRC}/app/cli/sfm_ba.cpp;${SS_SRC}/app/RunReport.cpp"
+            "SS_TOOL_SFM=1" "ss_sfm;ss_inference_worker")
     endif()
     if(SS_BUILD_SAM)
         set(_sam_src ${SS_SRC}/app/cli/sam_main.cpp ${SS_SRC}/app/CubeLut.cpp

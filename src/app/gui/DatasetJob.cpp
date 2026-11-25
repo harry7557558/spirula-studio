@@ -14,8 +14,10 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <utility>
 
 namespace fs = std::filesystem;
+namespace i18n = spirula::i18n;
 namespace dmsg = spirula::i18n::msg::dataset;
 namespace runlog = spirula::runlog;
 
@@ -63,6 +65,7 @@ void GuiApp::cancel_dataset_job() {
     // what the trainer's stop confirmation already does.
     if (_batch_active) _batch_stop_after = _batch_stop_now = true;
     _dataset_training.pending = false;
+    _pending_dataset_finish_command.clear();
     _sfm.cancel();
     _colmap.cancel();
 }
@@ -244,10 +247,27 @@ void GuiApp::update_dataset_job() {
     else                                           _colmap.update(_colmap_job);
 }
 
+void GuiApp::poll_dataset_finish_command() {
+    if (_pending_dataset_finish_command.empty() || dataset_busy()) return;
+    const std::string command = std::exchange(_pending_dataset_finish_command, {});
+    auto notify = [&](auto& runner) {
+        using State = decltype(runner.state());
+        const State state = runner.state();
+        if (state == State::Done)
+            run_finish_command(command, i18n::format(dmsg::finish_cmd_ready,
+                                                      {runner.dataset_dir()}));
+        else if (state == State::Failed)
+            run_finish_command(command, i18n::format(dmsg::finish_cmd_failed,
+                                                      {runner.error()}));
+    };
+    if (_dataset_run_builtin) notify(_sfm);
+    else                      notify(_colmap);
+}
+
 void GuiApp::advance_dataset_training() {
     if (!_dataset_training.pending || dataset_busy()) return;
     _dataset_training.pending = false;
-    const bool builtin = _dataset_training.builtin;
+    const bool builtin = _dataset_run_builtin;
     const bool done = builtin ? _sfm.state() == SfmRunner::State::Done
                               : _colmap.state() == ColmapRunner::State::Done;
     if (!done || _batch_active || native_work_busy()) return;
@@ -315,6 +335,7 @@ void GuiApp::start_dataset_job() {
 bool GuiApp::launch_dataset_job() {
     // Device choice must freeze before any preview, decode or child process starts.
     if (native_work_busy()) return false;
+    poll_dataset_finish_command();
     _ws_state_at = -1.0;
     if (const StepPlan& frames = dataset_plan()[Step::Frames];
         !_redo_frames && frames.ask && !frames.can_keep) {
@@ -390,12 +411,13 @@ bool GuiApp::launch_dataset_job() {
         _picks_view.destroy_gl();
         _picks_workspace = _workspace;
     }
-    _sfm_job.prep.review_frames = !_batch_active && effective_engine() == Engine::BuiltIn &&
+    _dataset_run_builtin = effective_engine() == Engine::BuiltIn;
+    _sfm_job.prep.review_frames = !_batch_active && _dataset_run_builtin &&
                                   _sfm_job.prep.skip_blurry && _sfm_job.prep.blur_review;
-    _dataset_training.builtin = effective_engine() == Engine::BuiltIn;
+    _pending_dataset_finish_command = _batch_active ? std::string() : _dataset_finish_command;
     _dataset_training.pending = !_batch_active && _dataset_training.enabled;
-    if (effective_engine() == Engine::BuiltIn) _sfm.start(_sfm_job, films);
-    else                                      _colmap.start(_colmap_job, films);
+    if (_dataset_run_builtin) _sfm.start(_sfm_job, films);
+    else                      _colmap.start(_colmap_job, films);
     // A run is what the column is for while it goes.
     _right_input = false;
     // One run each: a re-do that stayed armed would throw the same step away

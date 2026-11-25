@@ -3059,7 +3059,8 @@ bool cameraOverrideName(const std::string& a, OverrideKind& kind) {
 
 }  // namespace
 
-std::string parse_auto_args(const std::vector<std::string>& args, AutoRequest& out) {
+std::string parse_auto_args(const std::vector<std::string>& args, AutoRequest& out,
+                            std::string* finish_command) {
     // setConfigField consumes argv the way main() gets it; this is that view.
     std::vector<char*> argv;
     argv.reserve(args.size());
@@ -3105,6 +3106,11 @@ std::string parse_auto_args(const std::vector<std::string>& args, AutoRequest& o
         if (a == "--progress-dir") {
             if (i + 1 >= argc) return "--progress-dir: missing value";
             out.progress_dir = args[(size_t)++i];
+            continue;
+        }
+        if (finish_command && a == "--finish-command") {
+            if (i + 1 >= argc) return "--finish-command: missing value";
+            *finish_command = args[(size_t)++i];
             continue;
         }
         // Claimed, not merely cleared: manifest_apply fills in anything the

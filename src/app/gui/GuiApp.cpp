@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 
 namespace fs = std::filesystem;
 namespace i18n = spirula::i18n;
@@ -197,9 +198,7 @@ void GuiApp::shutdown() {
 // One line per remembered pick directory, keyed by dir_key().
 static constexpr char kDirPrefix[] = "dialog_dir.";
 
-// gui.conf is one setting per line, so a setting that may HOLD line breaks --
-// the batch's finish command -- is written with them escaped. An escape that
-// means nothing is left alone, so a hand-typed `C:\Users` still reads back.
+// Escape line breaks to keep each gui.conf setting on one line.
 static std::string escape_setting(const std::string& v) {
     std::string out;
     for (char c : v) {
@@ -243,14 +242,12 @@ void GuiApp::load_settings() {
     _dialog_dirs["preset"] = preset_dir(PresetKind::Train);
 
     std::string saved_lang;
-    FILE* f = std::fopen(settings_path().c_str(), "r");
+    std::ifstream f(settings_path());
     if (!f) {
         spirula::i18n::init(spirula::i18n::lang_arg(), nullptr);
         return;
     }
-    char line[1024];
-    while (std::fgets(line, sizeof line, f)) {
-        std::string s = line;
+    for (std::string s; std::getline(f, s);) {
         while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
         size_t eq = s.find('=');
         if (eq == std::string::npos) continue;
@@ -261,6 +258,7 @@ void GuiApp::load_settings() {
         else if (k == "sfm_engine") _engine = v == "colmap" ? Engine::Colmap
                                                             : Engine::BuiltIn;
         else if (k == "batch_command") _batch_cmd = unescape_setting(v);
+        else if (k == "dataset_finish_command") _dataset_finish_command = unescape_setting(v);
         else if (k == "additional_gpus") _additional_gpus = unescape_setting(v);
         // accepted_license= is read from the file on demand (license_accepted).
         else if (k == "lang" && !v.empty()) saved_lang = v;
@@ -284,8 +282,6 @@ void GuiApp::load_settings() {
             _dialog_dirs[k.substr(sizeof kDirPrefix - 1)] = v;
         else if (read_screenshot_setting(_shot, k, v)) {}
     }
-    std::fclose(f);
-
     // A stored extent from a build whose defaults have moved, or a hand-edited
     // file, must not be able to leave a panel unreachably small or wide.
     _panel_w = std::clamp(_panel_w, 220.0f, 900.0f);
@@ -315,6 +311,8 @@ void GuiApp::save_settings() {
     std::fprintf(f, "sfm_engine=%s\n",
                  _engine == Engine::Colmap ? "colmap" : "builtin");
     std::fprintf(f, "batch_command=%s\n", escape_setting(_batch_cmd).c_str());
+    std::fprintf(f, "dataset_finish_command=%s\n",
+                 escape_setting(_dataset_finish_command).c_str());
     std::fprintf(f, "additional_gpus=%s\n", escape_setting(_additional_gpus).c_str());
     std::fprintf(f, "lang=%s\n", spirula::i18n::code(spirula::i18n::current()));
     std::fprintf(f, "ui_scale=%.3f\n", _scale.user());
@@ -505,6 +503,7 @@ void GuiApp::frame() {
     _scale.update(ImGui::GetIO().DisplaySize);
 
     append_logs();
+    poll_dataset_finish_command();
     pump_dense_delete();
     run_pending_if_stopped();
     if (!_edit_train_dataset.empty()) open_edited_dataset();

@@ -343,6 +343,7 @@ struct AutoRequest {
 //
 // Presets fill in first, then the manifest, then finalize(): an explicit
 // setting beats the file and the file beats a preset's guess.
-std::string parse_auto_args(const std::vector<std::string>& args, AutoRequest& out);
+std::string parse_auto_args(const std::vector<std::string>& args, AutoRequest& out,
+                            std::string* finish_command = nullptr);
 
 }  // namespace sfm

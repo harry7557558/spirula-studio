@@ -644,7 +644,7 @@ void GuiApp::run_finish_command(const std::string& command,
     const std::vector<std::string> argv =
         command_argv(command, kMessageToken, message);
     if (argv.empty()) return;
-    log(i18n::format(lmsg::finish_cmd_running, {command}));
+    log(i18n::format(lmsg::finish_cmd_running, {argv.front()}));
     if (!_finish_cmd_run.start(argv)) log(lmsg::finish_cmd_busy.get());
 }
 

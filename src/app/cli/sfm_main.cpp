@@ -10,6 +10,7 @@
 // beat the table's `--audit` / `--no-audit` switch.
 #include "app/RunReport.h"
 #include "app/Tools.h"
+#include "app/cli/FinishCommand.h"
 #include "sfm/Pipeline.h"
 
 #include <algorithm>
@@ -64,6 +65,7 @@
 
 #include "i18n/catalog/Sfm.h"
 #include "i18n/catalog/Cli.h"
+#include "i18n/catalog/Dataset.h"
 #include "i18n/catalog/SfmHelp.h"
 #include "i18n/TimeFormat.h"
 
@@ -94,6 +96,7 @@ namespace L = sfm::slog;
 namespace M = spirula::i18n::msg::sfm;
 namespace CM = spirula::i18n::msg::cli;
 namespace H = spirula::i18n::msg::sfmhelp;
+namespace D = spirula::i18n::msg::dataset;
 using sfm::slog::Tag;
 
 // How this tool was invoked ("spirula sfm" as dispatched); see app/Tools.h.
@@ -158,6 +161,7 @@ static void ownOptionsAuto(FILE* out) {
     helpLine(out, "--no-masks", "", H::opt_no_masks.get());
     helpLine(out, "--no-manage", "", H::opt_no_manage_auto.get());
     helpLine(out, "--progress-dir DIR", "", H::opt_progress_dir.get());
+    helpLine(out, "--finish-command COMMAND", "", D::finish_command_help.get());
     helpLine(out, "-h, --help", "", H::opt_help.get());
 }
 static void ownOptionsExtract(FILE* out) {
@@ -1231,19 +1235,38 @@ static int cmdMerge(int argc, char** argv) {
 static int cmdAuto(int argc, char** argv) {
     std::vector<std::string> args(argv, argv + argc);
     AutoRequest req;
-    if (std::string err = parse_auto_args(args, req); !err.empty())
+    std::string command;
+    if (std::string err = parse_auto_args(args, req, &command); !err.empty())
         return usageError("auto", err);
     if (req.wants_help) { printCommandHelp(*findCommand("auto")); return 0; }
-    if (!req.progress_dir.empty()) sfm::progress::set_dir(req.progress_dir);
-    spirula::RunReporter memory(req.progress_dir, [](spirula::RunReporter::Device& d) {
-        const sfm::DeviceMemoryTally& t = sfm::DeviceMemoryTally::get();
-        d.capacity = t.capacity.load();
-        d.ours = t.bytes.load();
-        d.others = t.others.load();
-        return d.capacity > 0;
-    });
-    installEventPrinter(req.cfg);
-    return run_auto(req.cfg, req.in).exit_code;
+    using spirula::i18n::format;
+    AutoResult result;
+    try {
+        if (!req.progress_dir.empty()) sfm::progress::set_dir(req.progress_dir);
+        spirula::RunReporter memory(req.progress_dir, [](spirula::RunReporter::Device& d) {
+            const sfm::DeviceMemoryTally& t = sfm::DeviceMemoryTally::get();
+            d.capacity = t.capacity.load();
+            d.ours = t.bytes.load();
+            d.others = t.others.load();
+            return d.capacity > 0;
+        });
+        installEventPrinter(req.cfg);
+        result = run_auto(req.cfg, req.in);
+    } catch (const sfm::Cancelled&) {
+        throw;
+    } catch (const std::exception& e) {
+        spirula::cli::run_finish_command(command, format(D::finish_cmd_failed, {e.what()}),
+                                         g_interrupted);
+        throw;
+    }
+    if (!command.empty() && !g_interrupted.load()) {
+        const int code = result.exit_code;
+        const std::string message = code == 0 || code == 3 || code == 4
+            ? format(D::finish_cmd_ready, {req.in.workspace})
+            : format(D::finish_cmd_failed, {(code == 2 ? H::exit_2 : H::exit_1).get()});
+        spirula::cli::run_finish_command(command, message, g_interrupted);
+    }
+    return result.exit_code;
 }
 
 int spirula_sfm_main(int argc, char** argv) {

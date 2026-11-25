@@ -16,11 +16,10 @@
 #include "app/RunLog.h"
 #include "app/Tools.h"
 #include "app/TrainerCore.h"
-#include "app/gui/Subprocess.h"
+#include "app/cli/FinishCommand.h"
 #include "app/webviewer/Viewer.h"
 #include "checkpoint/Resume.h"
 #include "i18n/catalog/Cli.h"
-#include "i18n/catalog/Log.h"
 #include "i18n/catalog/Train.h"
 #include "i18n/catalog/TrainFields.h"
 
@@ -53,7 +52,6 @@ namespace fs = std::filesystem;
 using namespace spirula;
 
 namespace cmsg = spirula::i18n::msg::cli;
-namespace lmsg = spirula::i18n::msg::log;
 namespace tmsg = spirula::i18n::msg::train;
 using spirula::i18n::format;
 
@@ -398,26 +396,6 @@ void dump_cameras_json(const char* path, const ParsedDataset& ds,
     std::fclose(f);
 }
 
-// Waits for it, so it ends before the trainer exits or parks on the viewer.
-void run_finish_command(const std::string& command, const std::string& message) {
-    const std::vector<std::string> argv =
-        gui::command_argv(command, gui::kMessageToken, message);
-    if (argv.empty()) return;
-    std::printf("%s\n", format(lmsg::finish_cmd_running, {command}).c_str());
-    std::fflush(stdout);
-    const std::atomic<bool> never{false};
-    const int code = gui::run_process(argv, "", [](const std::string& line) {
-        std::printf("%s\n", line.c_str());
-        std::fflush(stdout);
-    }, never);
-    if (code == gui::kSpawnFailed)
-        std::fprintf(stderr, "%s\n", format(lmsg::finish_cmd_missing, {argv.front()}).c_str());
-    else if (code != 0)
-        std::fprintf(stderr, "%s\n", format(lmsg::finish_cmd_exit, {(long long)code}).c_str());
-    else
-        std::printf("%s\n", lmsg::finish_cmd_ok.get());
-}
-
 // The GUI's snapshot minus the panels a command line does not have.
 void write_run_settings(std::ofstream& f, const TrainConfig& cfg, const std::string& preset,
                         int argc, char** argv) {
@@ -645,9 +623,9 @@ int spirula_train_main(int argc, char** argv) {
         // train afterwards -- and the viewer, which only reads splats, is
         // unaffected. TODO: early stopping on the validation split.
         session.eval();
-        run_finish_command(finish_command,
-                           format(tmsg::finish_cmd_trained,
-                                  {fs::absolute(session.out_dir).string()}));
+        cli::run_finish_command(finish_command,
+                                format(tmsg::finish_cmd_trained,
+                                       {fs::absolute(session.out_dir).string()}));
 
         if (viewer_on && cfg.keep_viewer_alive) {
             std::printf("%s\n", cmsg::train_done_viewer.get());
@@ -659,7 +637,7 @@ int spirula_train_main(int argc, char** argv) {
         const std::string error = format(cmsg::error_line, {e.what()});
         std::fprintf(stderr, "%s\n", error.c_str());
         runlog::write_line(run_log, error);
-        run_finish_command(finish_command, format(tmsg::finish_cmd_failed, {e.what()}));
+        cli::run_finish_command(finish_command, format(tmsg::finish_cmd_failed, {e.what()}));
         return 1;
     }
     return 0;

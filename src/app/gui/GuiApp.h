@@ -334,6 +334,7 @@ private:
     // as it reaches it (SfmRunner::update).
     void update_dataset_job();
     void advance_dataset_training();
+    void poll_dataset_finish_command();
     // Copies the panel-level state into whichever job struct will run.
     void sync_dataset_jobs();
     // The selected checkpoint and detector; empty paths until both are here.
@@ -538,6 +539,7 @@ private:
     void open_mask_preview();
     void draw_color_space_options(bool with_point_color);
     void draw_sfm_advanced();
+    void draw_dataset_finish_command();
     void draw_feature_download();
     void draw_colmap_options();
     void draw_tool_locations();
@@ -873,8 +875,10 @@ private:
     ColmapJob _colmap_job;
     SfmRunner _sfm;
     SfmJob _sfm_job;
+    bool _dataset_run_builtin = false;
+    std::string _dataset_finish_command, _pending_dataset_finish_command;
     struct DatasetTraining {
-        bool enabled = false, pending = false, builtin = false;
+        bool enabled = false, pending = false;
         BatchRun run;
         TrainPreset preset;
         std::string error;

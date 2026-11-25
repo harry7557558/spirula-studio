@@ -915,6 +915,23 @@ The training settings are captured when dataset creation starts. Failed or
 cancelled dataset jobs do not start training. Training uses the resulting image
 and mask folders and writes runs under the dataset's `outputs/` folder.
 
+## Dataset finish command
+
+In New Dataset, open **Advanced → Additional Options** and enter a
+**Command to run at the end**. The app remembers it for individual dataset jobs.
+Click **Test** to run it with a sample message and see the result in the log.
+From the CLI, pass `--finish-command` to `spirula sfm auto`:
+
+```sh
+spirula sfm auto photos/ -o dataset/ --finish-command \
+  "curl --fail https://example.invalid/webhook --json '{\"content\":\"{message}\"}'"
+```
+
+The command runs on success or failure. Cancelling skips it. `{message}` is
+replaced with a one-line result and stays within a single argument, including
+inside a webhook's JSON payload. The program runs directly without a shell.
+The CLI waits for the command and returns the reconstruction's exit status.
+
 ## Frames out of a video
 
 One frame every `skip` source frames, the sharpest of a window of `keep`

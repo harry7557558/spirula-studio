@@ -10,12 +10,14 @@
 #include "app/AppPaths.h"
 #include "app/CrashLog.h"
 #include "app/Tools.h"
-#include "checkpoint/BackgroundExport.h"
 #include "core/LicenseTexts.h"
 #include "i18n/Locale.h"
 #include "i18n/catalog/Cli.h"
-#include "i18n/catalog/BackgroundExport.h"
 #include "i18n/catalog/Dense.h"
+#ifdef SS_TOOL_TRAIN
+#include "checkpoint/BackgroundExport.h"
+#include "i18n/catalog/BackgroundExport.h"
+#endif
 #ifdef SS_HAVE_LPIPS
 #include "app/EvalLpips.h"
 #endif
@@ -150,7 +152,9 @@ void print_usage() {
     std::printf("%s\n", cmsg::usage_commands.get());
     for (const Tool& t : tools())
         std::printf("  %-10s %s\n", t.name, t.summary->get());
+#ifdef SS_TOOL_TRAIN
     std::printf("  %-10s %s\n", "export-bg", spirula::i18n::msg::background_export::summary.get());
+#endif
     std::printf("\n%s\n", cmsg::usage_per_command_help.get());
     std::printf("\n%s\n\n%s", cmsg::usage_lang.get(),
                 spirula::i18n::language_list().c_str());
@@ -245,6 +249,7 @@ int main(int argc, char** argv) {
 
     if (argc > 1) {
         const std::string a = argv[1];
+#ifdef SS_TOOL_TRAIN
         if (a == "export-bg" || a == "export_bg") {
             namespace bgmsg = spirula::i18n::msg::background_export;
             using spirula::i18n::format;
@@ -264,6 +269,7 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "%s\n", format(bgmsg::failed, {ckpt_dir.string(), out_path.string()}).c_str());
             return 1;
         }
+#endif
         if (a == "help" || a == "--help" || a == "-h") {
             print_usage();
             return 0;

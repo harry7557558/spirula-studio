@@ -48,8 +48,10 @@
 #include <cstring>
 #include <filesystem>
 #include <sstream>
+#include <stdexcept>
 
 namespace fs = std::filesystem;
+namespace dmsg = spirula::i18n::msg::dataset;
 namespace lmsg = spirula::i18n::msg::log;
 using spirula::i18n::format;
 
@@ -766,8 +768,11 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         // from an earlier run with masking on.
         argv.push_back("--no-masks");
     }
-    for (const std::string& a : split_args(job.extra_args))
+    for (const std::string& a : split_args(job.extra_args)) {
+        if (a == "--finish-command" || a.rfind("--finish-command=", 0) == 0)
+            throw std::runtime_error(dmsg::finish_command_in_extra_flags.get());
         argv.push_back(a);
+    }
     return argv;
 }
 
