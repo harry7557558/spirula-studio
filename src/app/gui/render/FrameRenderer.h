@@ -38,6 +38,10 @@ struct SourceView {
     ViewerHooks hooks;
     std::string file;
     int sh_max = 0;
+    // Splats: the colour space the viewer shows them in, which their sky follows.
+    std::string gamut;
+    int transfer = 0;
+    bool linear = false;
     // Splats being edited: which survive, or empty when all do.
     std::shared_ptr<const std::vector<uint8_t>> alive;
     // Points and meshes, valid while the owner's viewer holds them.
@@ -111,8 +115,8 @@ struct FrameSpec {
     double up[3] = {0, 0, 1};
     LayerSpec a, b;                     // a under b
     // 0: mix(a, b) by `mix` through `mask` (0 all, 1 wipe, 2 iris); 1: b
-    // over a, each moved in 3D; 2: a zooms past as b arrives, by `zoom`;
-    // 3: b over a, each as its own LayerSpec says.
+    // over a, each moved in 3D, over their skies mixed by `mix`; 2: a zooms
+    // past as b arrives, by `zoom`; 3: b over a, each as its own LayerSpec says.
     int mode = 0;
     int mask = 0;
     float mix = 1.0f;
@@ -168,8 +172,6 @@ public:
 
 private:
     struct SplatHost;
-    unsigned _sky_tex = 0;
-    std::string _sky_key;
     struct Slot;
     enum class Stage { Idle, Rendering };
 
@@ -190,6 +192,8 @@ private:
     // `dst` becomes mix(a, b, w), rows GL's way up; `b` may be 0.
     void blend(unsigned a, bool flip_a, unsigned b, bool flip_b, float w, unsigned dst);
     unsigned target(int index);
+    unsigned sky_of(int source);
+    void ensure_sky_rays();
     void composite();
 
     std::vector<std::unique_ptr<Slot>> _slots;
@@ -203,7 +207,12 @@ private:
 
     unsigned _prog = 0, _vao = 0, _fbo = 0, _out_tex = 0;
     int _out_w = 0, _out_h = 0;
-    int _u[28] = {};
+    int _u[34] = {};
+    // Camera-space rays over the frame, for the skies; remade when the lens is.
+    unsigned _ray_tex = 0;
+    int _ray_n[2] = {0, 0};
+    int _ray_w = 0, _ray_h = 0;
+    Lens _ray_lens;
     // The blend pass and the textures passes and layers land in.
     unsigned _blend_prog = 0, _blend_fbo = 0;
     int _bu[6] = {};

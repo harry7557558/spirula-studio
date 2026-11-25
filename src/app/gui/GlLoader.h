@@ -83,6 +83,12 @@
 #ifndef GL_TEXTURE3
 #define GL_TEXTURE3              0x84C3
 #endif
+#ifndef GL_TEXTURE4
+#define GL_TEXTURE4              0x84C4
+#endif
+#ifndef GL_RGBA32F
+#define GL_RGBA32F               0x8814
+#endif
 
 namespace glx {
 
