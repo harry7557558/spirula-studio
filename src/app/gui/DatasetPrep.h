@@ -78,8 +78,8 @@ struct StencilFollow {
     bool areas = false;
 };
 
-// PrepInput::fps for "every frame" -- a 0 there already means "^". Everywhere
-// else, a rate of 0 is every frame.
+// PrepInput::fps for "every frame" -- a 0 there already means "^", the rate
+// and adaptive group of the row above. Everywhere else, a rate of 0 is every frame.
 inline constexpr float kFpsEveryFrame = -1.0f;
 
 // PrepInput::lut for "no LUT", where empty would find one (input_lut).
@@ -257,6 +257,10 @@ struct PrepCapture {
 // moved aside since. A run that keeps the frames takes both out again.
 inline constexpr const char* kSkippedListFile = ".spirula-skipped";
 
+// The frame cap presets and records carried while it was on by default. It
+// never bound in practice, so it reads as no cap.
+inline constexpr int kRetiredMaxFrames = 100000;
+
 struct PrepJob {
     std::vector<PrepInput> inputs;   // in the order the user added them
     // Drawn areas for a laser scan's photographs, by scan file: given to the
@@ -324,7 +328,7 @@ struct PrepJob {
     bool  sort_frames = false;
     // Every track keeps the same instants in the streaming extraction path.
     bool  sync_tracks = true;
-    int   max_frames = 100000;
+    int   max_frames = 0;           // per video track; 0 = no cap
     // Turn every extracted frame by the rotation the capture asks for, so a
     // portrait clip lands upright and the written files need no metadata read
     // to be shown the right way up.
@@ -401,7 +405,7 @@ inline float input_fps(const std::vector<PrepInput>& inputs, float dataset_fps,
 
 // Rows extracted at one rate, named by the one that states it -- so an adaptive
 // plan can spend one budget over all of them and give the clip that moves more
-// the denser frames.
+// the denser frames. A row that states its own rate starts a group of its own.
 inline size_t fps_group(const std::vector<PrepInput>& inputs, size_t at) {
     size_t g = 0;
     for (size_t k = 1; k <= at && k < inputs.size(); k++)

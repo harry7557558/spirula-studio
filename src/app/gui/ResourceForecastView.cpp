@@ -17,10 +17,6 @@ using spirula::ResourceForecast;
 
 namespace {
 
-// The status strip's own pressure colours (GuiApp.cpp).
-const ImVec4 kOk(0.35f, 0.85f, 0.45f, 1.0f);
-const ImVec4 kWarn(0.95f, 0.75f, 0.30f, 1.0f);
-const ImVec4 kErr(1.0f, 0.42f, 0.42f, 1.0f);
 const ImVec4 kOthers(0.55f, 0.55f, 0.60f, 1.0f);
 
 constexpr double kGiB = 1024.0 * 1024.0 * 1024.0;

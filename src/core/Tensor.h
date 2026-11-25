@@ -1366,9 +1366,8 @@ inline size_t pool_arena_span_like(const std::vector<DeviceTensorFloatND>& tmpl)
 // straight-line arithmetic plus log1pf / expm1f (single CUDA math-lib calls).
 // ============================================================================
 
-// The finite test that survives every compiler this header sees; neither
-// spelling of isfinite does (AGENTS.md gotchas). Mirrors _oq_finite in
-// backend/vulkan/shaders/optim_quant.slang.
+// nvcc with MSVC and GCC disagree on which isfinite overload device code can call.
+// Match _oq_finite in backend/vulkan/shaders/optim_quant.slang.
 __device__ inline bool q_finite(float v) {
     uint32_t u;
     std::memcpy(&u, &v, sizeof(u));

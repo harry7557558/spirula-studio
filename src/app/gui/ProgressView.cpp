@@ -10,30 +10,35 @@
 namespace gui {
 
 namespace msg = spirula::i18n::msg::gui;
+using spirula::i18n::format_duration_coarse;
 
-void timed_progress_bar(const ProgressClock& c, const char* overlay, float width) {
-    ui::ProgressBarRaw(c.fraction(), ImVec2(width, 0), overlay);
+void timed_progress_bar(const ProgressClock& c, const char* overlay, float width,
+                        bool indeterminate) {
+    const float fill = c.fraction();
+    ui::ProgressBarRaw(indeterminate && fill == 0.0f ? -(float)ImGui::GetTime() : fill,
+                       ImVec2(width, 0), overlay);
     progress_time_line(c);
 }
 
-std::string progress_time_text(const ProgressClock& c) {
-    const double now = progress_now();
+std::string progress_time_text(double elapsed, double remaining) {
     return spirula::i18n::format(msg::progress_time,
-                                 {spirula::i18n::format_duration_coarse(c.elapsed(now)),
-                                  spirula::i18n::format_duration_coarse(c.remaining(now))});
+                                {format_duration_coarse(elapsed), format_duration_coarse(remaining)});
 }
 
-void progress_time_line(const ProgressClock& c) {
-    ui::TextDisabledRaw(progress_time_text(c));
-    ui::help_on_hover(msg::progress_time_help);
+void progress_time_line(const ProgressClock& c, double now) {
+    if (c.finished()) {
+        ui::TextDisabled(msg::progress_elapsed, {format_duration_coarse(c.elapsed(now))});
+    } else {
+        ui::TextDisabledRaw(progress_time_text(c.elapsed(now), c.remaining(now)));
+        ui::help_on_hover(msg::progress_time_help);
+    }
 }
 
 void download_bar(FileDownload& dl, const std::string& label) {
     const ProgressClock& c = dl.clock();
-    const std::string text = label + "   " + progress_time_text(c);
-    ui::ProgressBarRaw(dl.progress() >= 0.0f ? c.fraction() : -(float)ImGui::GetTime(),
-                       ImVec2(px(440.0f), 0), text.c_str());
-    ui::help_on_hover(msg::progress_time_help);
+    ImGui::BeginGroup();
+    timed_progress_bar(c, label.c_str(), px(440.0f), dl.progress() < 0.0f);
+    ImGui::EndGroup();
 }
 
 }  // namespace gui

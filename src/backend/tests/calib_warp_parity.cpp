@@ -104,7 +104,7 @@ int bench(int W, int H) {
         std::printf("calib_warp_parity: %-28s %8.3f ms at %dx%d\n", what, ms, W, H);
     };
     time("forward (f16 out)", [&] {
-        calib_warp_gt_forward(g, r, ttv_null(), ttv_null(), t, it, ttv_null(), n, D, o);
+        calib_warp_gt_forward(g, r, ttv_null(), ttv_null(), t, it, ttv_null(), n, D, o, ttv_null());
     });
     time("accumulate (registration)", [&] {
         calib_warp_accumulate(g, r, ttv_null(), ttv_null(), ttv_null(), 0.0f, t, it, ttv_null(),
@@ -193,12 +193,35 @@ int main(int argc, char** argv) {
 
         // render := gt warped by the truth, so the fit should land on the truth.
         calib_warp_gt_forward(img(gt), img(gt), t_depth, t_ts, tab(d_truth, P), ttv(d_intr, {k.B, 4}),
-                              ttv(d_cams, {k.B}), k.n, k.D, img(render));
+                              ttv(d_cams, {k.B}), k.n, k.D, img(render), ttv_null());
         auto fwd = download(render, (size_t)px * 3);
         tight.insert(tight.end(), fwd.begin(), fwd.end());
+        // Classes 2 and 0 exclude the same taps. Class 3 keeps colour like class 1.
+        {
+            const int mw = k.W / 2;
+            std::vector<uint8_t> classes(k.B * mw), binary(k.B * mw);
+            for (size_t i = 0; i < classes.size(); ++i) {
+                classes[i] = (uint8_t)(i % 4);
+                binary[i] = classes[i] & 1;
+            }
+            auto masked = [&](const std::vector<uint8_t>& bytes) {
+                auto* mask = upload(bytes);
+                calib_warp_gt_forward(img(gt), img(gt), t_depth, t_ts, tab(d_truth, P),
+                                      ttv(d_intr, {k.B, 4}), ttv(d_cams, {k.B}), k.n, k.D,
+                                      img(out), ttv(mask, {k.B, 1, mw, 1}, 1));
+                auto result = download(out, (size_t)px * 3);
+                backend::device_free(mask);
+                return result;
+            };
+            const auto expected = masked(binary);
+            if (masked(classes) != expected || expected == fwd) {
+                std::fprintf(stderr, "D=%d: masked RGB tap selection failed\n", D);
+                ++failures;
+            }
+        }
         // The uint8 path reads the same values to within the quantization.
         calib_warp_gt_forward(img(gt8, 1), img(gt), t_depth, t_ts, tab(d_truth, P), ttv(d_intr, {k.B, 4}),
-                              ttv(d_cams, {k.B}), k.n, k.D, img(out));
+                              ttv(d_cams, {k.B}), k.n, k.D, img(out), ttv_null());
         auto fwd8 = download(out, (size_t)px * 3);
         double worst8 = 0.0;
         for (size_t i = 0; i < fwd8.size(); ++i) worst8 = std::max(worst8, (double)std::fabs(fwd8[i] - fwd[i]));
@@ -208,7 +231,7 @@ int main(int argc, char** argv) {
         }
         // A zero table lands on the pixel centres, where Catmull-Rom is exact.
         calib_warp_gt_forward(img(gt), img(gt), t_depth, t_ts, tab(params, P), ttv(d_intr, {k.B, 4}),
-                              ttv(d_cams, {k.B}), k.n, k.D, img(out));
+                              ttv(d_cams, {k.B}), k.n, k.D, img(out), ttv_null());
         auto ident = download(out, (size_t)px * 3);
         double worst_id = 0.0;
         for (size_t i = 0; i < ident.size(); ++i)
@@ -245,7 +268,7 @@ int main(int argc, char** argv) {
         }
         // A float16 output, read back through the engine's own codec.
         calib_warp_gt_forward(img(gt), img(gt), t_depth, t_ts, tab(d_truth, P), ttv(d_intr, {k.B, 4}),
-                              ttv(d_cams, {k.B}), k.n, k.D, img(out16, 2));
+                              ttv(d_cams, {k.B}), k.n, k.D, img(out16, 2), ttv_null());
         auto h16 = download(out16, (size_t)px * 3);
         double worst16 = 0.0;
         for (size_t i = 0; i < h16.size(); ++i) {
@@ -266,7 +289,7 @@ int main(int argc, char** argv) {
             for (size_t i = 0; i < dm.size(); ++i) {
                 dm[i] = i % 11 ? 1.0f + 0.01f * (float)(i % Wa) + 0.02f * (float)(i / Wa) : 0.0f;
                 for (int c = 0; c < 3; ++c) nm[3 * i + c] = std::sin(0.3f * (float)i + (float)c);
-                mm[i] = (i % 13) != 0;
+                mm[i] = (uint8_t)(i % 4);
             }
             float* d_dm = upload(dm);
             float* d_nm = upload(nm);
@@ -323,7 +346,7 @@ int main(int argc, char** argv) {
                             const int ix = std::min(std::max(rx, 0), Wa - 1);
                             const int iy = std::min(std::max(ry, 0), Ha - 1);
                             const uint8_t wm = mm[((size_t)b * Ha + iy) * Wa + ix];
-                            const bool mask_ok = gm[i] == wm && gc[i] == (mm[i] ? wm : 0);
+                            const bool mask_ok = gm[i] == wm && gc[i] == ((mm[i] & 1) ? wm : 0);
                             off_image += off;
                             off_bad += off && !mask_ok;
                             // Bilinear over the valid taps.

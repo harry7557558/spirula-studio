@@ -126,6 +126,13 @@ struct MaskModelFiles {
 };
 MaskModelFiles cached_mask_model(const std::string& id, const std::string& detector_id);
 
+// The checkpoint and detector each quality level picks, lighter for the
+// faster ones; `quality` as SfmJob's (0 fast .. 3 maximum).
+struct MaskQualityPick { const char* model; const char* detector; };
+MaskQualityPick mask_models_for_quality(int quality);
+// Moves a pick that is still `from`'s to `to`'s. One chosen by hand stays.
+void follow_mask_quality(int from, int to, std::string& model_id, std::string& detector_id);
+
 // Is `path` a checkpoint of about `bytes` and not a half-finished download?
 // A truncated file that escaped the ".part" rename would fail deep inside a
 // weight loader, and a screen that called it ready would have lied.

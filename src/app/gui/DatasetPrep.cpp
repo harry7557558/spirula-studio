@@ -586,14 +586,6 @@ std::string round_to(double v, int decimals) {
     return b;
 }
 
-std::string human_duration(double seconds) {
-    if (seconds < 1.0) return lmsg::dur_moment.get();
-    if (seconds < 90.0) return fmt(lmsg::dur_seconds, {round_to(seconds, 0)});
-    if (seconds < 5400.0)
-        return fmt(lmsg::dur_minutes, {round_to(seconds / 60.0, 0)});
-    return fmt(lmsg::dur_hours, {round_to(seconds / 3600.0, 1)});
-}
-
 // The adaptive pass writes nothing, so the step's tally cannot move and a long
 // video would sit on an unchanged bar. It shows its own share of `frames`
 // instead -- the whole group, which is measured before any of it is written.
@@ -666,16 +658,7 @@ std::vector<float> spacing_bars(const std::vector<int64_t>& plan, int64_t frames
     return bars;
 }
 
-// Progress that answers "how long is this going to take", which is the only
-// question a user has during a twenty-minute masking pass, and the one a
-// counter that ticks every tenth frame does not answer.
-//
-// Rate-limited by wall clock rather than by a frame count: the same call site
-// serves a decode running at a thousand frames a second and a segmentation
-// running at one every two seconds.
-//
-// Counts are reported against the whole step's tally, so what is on screen is
-// the run's position through every input rather than through this one.
+// Counts span the whole step. Only the rate caption and log are throttled.
 class RateLimitedProgress {
 public:
     using Clock = std::chrono::steady_clock;
@@ -687,35 +670,25 @@ public:
 
     void update(int64_t in_segment, bool force = false) {
         const auto now = Clock::now();
-        // Never backwards: an input that reports nothing still leaves the bar
-        // where the last one left it.
         _tally->done = std::max(_tally->done, _base + in_segment);
         const int64_t done = _tally->done;
-        _total = _tally->total;
-        // The counter itself is cheap and drives the bar, so it is not
-        // rate-limited; only the sentence built from it is.
-        _prog->count(_stage, done, _total);
+        const int64_t total = _tally->total;
+        _prog->count(_stage, done, total);
         const double since =
             std::chrono::duration<double>(now - _last).count();
         if (!force && (done == _reported || since < 2.0)) return;
         _reported = done;
         _last = now;
-        // The rate is measured from the first item, not from the start: the
-        // several seconds a checkpoint takes to reach the GPU would otherwise
-        // be spread over every frame and put the first estimate out by 3x.
+        // Anchor throughput after the first report to exclude setup costs.
         if (_anchor_done < 0) {
             _anchor_done = done;
             _start = now;
         }
         const double elapsed = std::chrono::duration<double>(now - _start).count();
         const int64_t measured = done - _anchor_done;
-        // One whole sentence per shape, never a stem with clauses appended:
-        // the rate and the estimate sit in different places in a verb-final
-        // language, and "about ... left" cannot be glued onto a Japanese noun
-        // phrase and still parse.
         const std::string noun = _noun->get();
         if (measured <= 0 || elapsed <= 0.5) {
-            say(_total > 0 ? fmt(lmsg::prog_count_total, {noun, done, _total})
+            say(total > 0 ? fmt(lmsg::prog_count_total, {noun, done, total})
                            : fmt(lmsg::prog_count, {noun, done}));
             return;
         }
@@ -723,19 +696,11 @@ public:
         const std::string rate =
             per >= 0.5 ? fmt(lmsg::rate_each, {round_to(per, 1)})
                        : fmt(lmsg::rate_per_second, {round_to(1.0 / per, 0)});
-        if (_total <= 0)
-            say(fmt(lmsg::prog_count_rate, {noun, done, rate}));
-        else if (_total > done)
-            say(fmt(lmsg::prog_count_total_rate_eta,
-                    {noun, done, _total, rate,
-                     human_duration(per * (double)(_total - done))}));
-        else
-            say(fmt(lmsg::prog_count_total_rate, {noun, done, _total, rate}));
+        say(total > 0 ? fmt(lmsg::prog_count_total_rate, {noun, done, total, rate})
+                      : fmt(lmsg::prog_count_rate, {noun, done, rate}));
     }
 
 private:
-    // The same sentence in both places: under the step's bar, where it is the
-    // answer to "how long", and in the log, which keeps the history.
     void say(const std::string& s) {
         _prog->detail(_stage, s);
         _prog->note(_stage, s, /*detail=*/true);
@@ -746,7 +711,6 @@ private:
     const spirula::i18n::Msg* _noun;
     StageTally* _tally;
     int64_t     _base = 0;           // the tally when this input started
-    int64_t     _total = 0;
     int64_t     _reported = -1;
     int64_t     _anchor_done = -1;   // count at the first report; see update()
     Clock::time_point _start, _last;

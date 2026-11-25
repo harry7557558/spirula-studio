@@ -1,12 +1,13 @@
-// The three consumers of SFM_CONFIG_FIELDS: the flag parser, the preset
-// appliers, and the `--help` printer. Each is one macro expansion over the
-// table in SfmConfig.h, so a new knob is one row and never a fourth edit.
+// The consumers of SFM_CONFIG_FIELDS: the flag parser, the preset appliers,
+// the `--help` printer and the run-time rows an editor reads. Each is one
+// macro expansion over the table in SfmConfig.h, so a new knob is one row.
 #include "sfm/SfmConfig.h"
 
 #include "core/RelativePath.h"
 #include "sfm/core/Log.h"
 #include "sfm/vk/VkContext.h"
 #include "i18n/catalog/SfmFields.h"
+#include "i18n/catalog/SfmOptions.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -217,7 +218,12 @@ void printWrapped(FILE* out, const std::string& text, int indent) {
 // The heading a block of options is printed under. Keyed by the same string
 // the table carries, so a group added there without an entry here still
 // prints -- as itself, which is the honest fallback for a heading.
-const char* groupLabel(const char* group) {
+std::string baseGroup(const char* group) {
+    const char* slash = std::strchr(group, '/');
+    return slash ? std::string(group, slash) : std::string(group);
+}
+
+std::string groupLabel(const std::string& group) {
     namespace F = spirula::i18n::msg::sfmfield;
     struct Row { const char* key; const spirula::i18n::Msg* msg; };
     static const Row kRows[] = {
@@ -230,7 +236,7 @@ const char* groupLabel(const char* group) {
         {"runtime", &F::group_runtime},
     };
     for (const Row& r : kRows)
-        if (std::strcmp(r.key, group) == 0) return r.msg->get();
+        if (group == r.key) return r.msg->get();
     return group;
 }
 
@@ -263,6 +269,14 @@ FieldResult setConfigField(SfmConfig& cfg, uint32_t cmd, const std::string& arg,
                            char** argv, int& i, std::set<std::string>& seen, std::string& error) {
     const std::string key = normalizeKey(arg);
     if (key.empty()) return FieldResult::Unknown;
+    // Retired: off was every run's default, on is --pairs sequential minus the mapper's order.
+    const bool pairing = cmd & (CMD_AUTO | CMD_MATCH);
+    if (pairing && key == "no-prefilter-sequential") return FieldResult::Ok;
+    if (pairing && key == "prefilter-sequential") {
+        error = "--prefilter-sequential is retired: use --pairs sequential, which also "
+                "matches the GPU pre-selection's pairs (--loop-closure)";
+        return FieldResult::Error;
+    }
 #define SFM_TRY_SET(member, name, cmds, tier, group, lo, hi, choices, help)                        \
     if ((uint32_t)(cmds) & cmd) {                                                                  \
         FieldResult r = trySetField(cfg.member, key, name, argc, argv, i, (double)(lo),            \
@@ -273,7 +287,7 @@ FieldResult setConfigField(SfmConfig& cfg, uint32_t cmd, const std::string& arg,
             return r;                                                                               \
         }                                                                                           \
     }
-    SFM_CONFIG_FIELDS(SFM_TRY_SET)
+    SFM_CONFIG_FIELDS(SFM_TRY_SET, SFM_TRY_SET)
 #undef SFM_TRY_SET
     return FieldResult::Unknown;
 }
@@ -295,47 +309,36 @@ void presetSet(std::set<std::string> const& seen, std::vector<PresetChange>& mov
     moved.push_back({flag, valueString(member), valueString(next)});
     member = next;
 }
+
+// Quality mirrors COLMAP's OptionManager::ModifyFor*Quality() as fractions of
+// the extractor's 3200 px default; pair-selection breadth follows it (D42).
+// A learned frontend runs about two thirds of SIFT's size with half the points.
+struct QualityLevel {
+    const char* name;
+    int sift_size, learned_size, sift_features, learned_features, neighbors;
+};
+constexpr QualityLevel kQualityLevels[] = {
+    {"low", 1000, 800, 2048, 1024, 16},
+    {"medium", 1600, 1200, 4096, 2048, 24},
+    {"high", 2400, 1600, 8192, 4096, 32},
+    {"extreme", 3200, 2400, 16384, 8192, 48},
+};
 }  // namespace
 
 std::string applyPresets(SfmConfig& cfg, const std::set<std::string>& seen,
                          std::vector<PresetChange>& moved) {
-    // Quality mirrors COLMAP's OptionManager::ModifyFor*Quality() as fractions
-    // of the extractor's 3200 px default. Pair-selection breadth follows it too
-    // (D42): `prefilter-neighbors` is the one selection parameter that trades
-    // match time against how much of the view graph verification even sees.
-    // The learned frontend runs on its own resolution ladder, roughly two
-    // thirds of SIFT's -- COLMAP does the same (1600 against 3200 at the
-    // default), and for the same reason: ALIKED aggregates 128 channels at
-    // FULL resolution, so working size is what its memory is spent on. Its
-    // feature counts are lower too, which is the detector's design rather
-    // than a budget: it emits fewer, better-localized points.
     const bool learned = isAlikedType(cfg.features) || isLomaType(cfg.features);
-    if (cfg.quality == "low") {
-        presetSet(seen, moved, "max-image-size", cfg.max_image_size, learned ? 800 : 1000);
-        presetSet(seen, moved, "max-features", cfg.sift.max_num_features, 2048);
-        presetSet(seen, moved, "aliked-max-features", cfg.aliked.max_num_features, 1024);
-        presetSet(seen, moved, "loma-max-features", cfg.loma.max_num_features, 1024);
-        presetSet(seen, moved, "prefilter-neighbors", cfg.prefilter.num_neighbors, 16);
-    } else if (cfg.quality == "medium") {
-        presetSet(seen, moved, "max-image-size", cfg.max_image_size, learned ? 1200 : 1600);
-        presetSet(seen, moved, "max-features", cfg.sift.max_num_features, 4096);
-        presetSet(seen, moved, "aliked-max-features", cfg.aliked.max_num_features, 2048);
-        presetSet(seen, moved, "loma-max-features", cfg.loma.max_num_features, 2048);
-        presetSet(seen, moved, "prefilter-neighbors", cfg.prefilter.num_neighbors, 24);
-    } else if (cfg.quality == "high") {
-        presetSet(seen, moved, "max-image-size", cfg.max_image_size, learned ? 1600 : 2400);
-        presetSet(seen, moved, "max-features", cfg.sift.max_num_features, 8192);
-        presetSet(seen, moved, "aliked-max-features", cfg.aliked.max_num_features, 4096);
-        presetSet(seen, moved, "loma-max-features", cfg.loma.max_num_features, 4096);
-    } else if (cfg.quality == "extreme") {
-        presetSet(seen, moved, "max-image-size", cfg.max_image_size, learned ? 2400 : 3200);
-        presetSet(seen, moved, "max-features", cfg.sift.max_num_features, 16384);
-        presetSet(seen, moved, "aliked-max-features", cfg.aliked.max_num_features, 8192);
-        presetSet(seen, moved, "loma-max-features", cfg.loma.max_num_features, 8192);
-        presetSet(seen, moved, "prefilter-neighbors", cfg.prefilter.num_neighbors, 48);
-    } else {
-        return "unknown --quality '" + cfg.quality + "' (low, medium, high or extreme)";
-    }
+    const QualityLevel* q = nullptr;
+    for (const QualityLevel& l : kQualityLevels)
+        if (cfg.quality == l.name) q = &l;
+    if (!q) return "unknown --quality '" + cfg.quality + "' (low, medium, high or extreme)";
+    presetSet(seen, moved, "max-image-size", cfg.max_image_size,
+              learned ? q->learned_size : q->sift_size);
+    presetSet(seen, moved, "max-features", cfg.sift.max_num_features, q->sift_features);
+    presetSet(seen, moved, "aliked-max-features", cfg.aliked.max_num_features,
+              q->learned_features);
+    presetSet(seen, moved, "loma-max-features", cfg.loma.max_num_features, q->learned_features);
+    presetSet(seen, moved, "prefilter-neighbors", cfg.prefilter.num_neighbors, q->neighbors);
 
     // A learned descriptor needs a looser ratio than SIFT's 0.8, because its
     // second-best distance sits much closer to its best: measured on a
@@ -371,34 +374,16 @@ std::string applyPresets(SfmConfig& cfg, const std::set<std::string>& seen,
     if (isLearnedMatcher(cfg.matcher)) {
         presetSet(seen, moved, "ratio", cfg.match.max_ratio, 1.0f);
         presetSet(seen, moved, "min-similarity", cfg.match.min_similarity, 0.0f);
-        // Exhaustive matching with it is hours on a capture where pair
-        // selection is minutes, and the shortlist is what it was built for.
-        presetSet(seen, moved, "pairs", cfg.pairs, std::string("prefilter"));
-    }
-
-    if (cfg.data_type == "individual") {
-        // Nothing: the defaults are written for a set of individual photos.
-    } else if (cfg.data_type == "video") {
-        // Only binding below `auto`'s 100-image cutoff: cmdAuto retires it for
-        // pair selection above that, because a capture that long revisits
-        // places a temporal window cannot pair (see the comment there).
-        presetSet(seen, moved, "pairs", cfg.pairs, std::string("sequential"));
-        // COLMAP ModifyForVideoData: consecutive frames subtend far less angle,
-        // so the seed pair cannot be held to the photo-collection threshold.
-        presetSet(seen, moved, "init-min-tri-angle", cfg.mapper.init_min_tri_angle_deg,
-                  cfg.mapper.init_min_tri_angle_deg / 2);
-    } else if (cfg.data_type == "internet") {
-        // Two Flickr uploads that happen to be 1024x768 are two cameras that
-        // were each downscaled, so grouping on resolution fuses unrelated
-        // intrinsics. Give every image its own (D20).
-        presetSet(seen, moved, "camera-mode", cfg.camera_mode, std::string("image"));
-        cfg.camera_mode_pinned = true;
-        // Downloaded photos are in no order, so their file order links nothing.
-        presetSet(seen, moved, "prefilter-sequential", cfg.prefilter_sequential, false);
-    } else {
-        return "unknown --data-type '" + cfg.data_type + "' (individual, video or internet)";
     }
     return "";
+}
+
+void applySequenceDefaults(SfmConfig& cfg, const std::set<std::string>& seen,
+                           std::vector<PresetChange>& moved) {
+    if (cfg.sequences.empty()) return;
+    // COLMAP ModifyForVideoData: the seed cannot be held to a photo set's angle.
+    presetSet(seen, moved, "init-min-tri-angle", cfg.mapper.init_min_tri_angle_deg,
+              MapperOptions().init_min_tri_angle_deg / 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -516,8 +501,8 @@ std::string SfmConfig::finalize(uint32_t cmd) {
 
 PairMode SfmConfig::pairMode() const {
     if (pairs == "sequential") return PairMode::Sequential;
-    if (pairs == "prefilter") return PairMode::Prefilter;
-    return PairMode::Exhaustive;  // "exhaustive", and "auto" until counted
+    if (pairs == "exhaustive") return PairMode::Exhaustive;
+    return PairMode::Prefilter;
 }
 
 // ---------------------------------------------------------------------------
@@ -571,22 +556,116 @@ std::string SfmConfig::resolveDevice() {
 }
 
 // ---------------------------------------------------------------------------
+// The table at run time
+// ---------------------------------------------------------------------------
+
+namespace {
+FieldType typeOf(bool) { return FieldType::Switch; }
+FieldType typeOf(const std::string&) { return FieldType::Text; }
+template <class T>
+FieldType typeOf(T) {
+    return std::is_floating_point<T>::value ? FieldType::Real : FieldType::Integer;
+}
+
+std::string flagValue(bool v) { return v ? "on" : "off"; }
+std::string flagValue(const std::string& v) { return v; }
+template <class T>
+std::string flagValue(T v) { return valueString(v); }
+}  // namespace
+
+const std::vector<FieldInfo>& configFields() {
+    static const std::vector<FieldInfo> rows = [] {
+        const SfmConfig d;
+        std::vector<FieldInfo> out;
+#define SFM_INFO_ROW(member, name, cmds, tier, group, lo, hi, choices, label, help) \
+    out.push_back({name, (uint32_t)(cmds), tier, group, (double)(lo), (double)(hi), choices, \
+                   typeOf(d.member), label, help});
+#define SFM_INFO(member, name, cmds, tier, group, lo, hi, choices, help) \
+    SFM_INFO_ROW(member, name, cmds, tier, group, lo, hi, choices, nullptr, nullptr)
+#define SFM_GUI_INFO(member, name, cmds, tier, group, lo, hi, choices, help) \
+    SFM_INFO_ROW(member, name, cmds, tier, group, lo, hi, choices, \
+                 &spirula::i18n::msg::sfmoption::help##_label, \
+                 &spirula::i18n::msg::sfmoption::help##_help)
+        SFM_CONFIG_FIELDS(SFM_INFO, SFM_GUI_INFO)
+#undef SFM_GUI_INFO
+#undef SFM_INFO
+#undef SFM_INFO_ROW
+        return out;
+    }();
+    return rows;
+}
+
+const FieldInfo* findConfigField(const std::string& name) {
+    for (const FieldInfo& f : configFields())
+        if ((f.cmds & CMD_AUTO) && name == f.name) return &f;
+    return nullptr;
+}
+
+std::string fieldOwner(const FieldInfo& f) {
+    const char* slash = std::strchr(f.group, '/');
+    return slash ? std::string(slash + 1) : std::string();
+}
+
+uint32_t fieldStage(const FieldInfo& f) {
+    if (f.cmds & CMD_EXTRACT) return CMD_EXTRACT;
+    if (f.cmds & CMD_MATCH) return CMD_MATCH;
+    // A row `auto` alone has is a preset, which fans out from extraction on.
+    return (f.cmds & CMD_MAP) ? CMD_MAP : CMD_EXTRACT;
+}
+
+bool configFieldValue(const SfmConfig& cfg, const std::string& name, std::string& out) {
+#define SFM_VALUE(member, fname, cmds, tier, group, lo, hi, choices, help)                         \
+    if (((uint32_t)(cmds) & CMD_AUTO) && name == fname) {                                          \
+        out = flagValue(cfg.member);                                                               \
+        return true;                                                                               \
+    }
+    SFM_CONFIG_FIELDS(SFM_VALUE, SFM_VALUE)
+#undef SFM_VALUE
+    return false;
+}
+
+std::string checkConfigValue(const FieldInfo& f, const std::string& value) {
+    std::string err;
+    switch (f.type) {
+        case FieldType::Switch:
+            if (value != "on" && value != "off") err = "expected on or off";
+            break;
+        case FieldType::Integer: {
+            long long v = 0;
+            parseValue(v, value, f.lo, f.hi, f.choices, err);
+            break;
+        }
+        case FieldType::Real: {
+            double v = 0;
+            parseValue(v, value, f.lo, f.hi, f.choices, err);
+            break;
+        }
+        case FieldType::Text: {
+            std::string v;
+            parseValue(v, value, f.lo, f.hi, f.choices, err);
+            break;
+        }
+    }
+    return err;
+}
+
+// ---------------------------------------------------------------------------
 // Help
 // ---------------------------------------------------------------------------
 
 void printConfigOptions(FILE* out, uint32_t cmd, const SfmConfig& defaults) {
-    const char* cur_group = "";
+    std::string cur_group;
 #define SFM_PRINT_FIELD(member, name, cmds, tier, group, lo, hi, choices, help)                    \
     if (((uint32_t)(cmds) & cmd) && (tier) != Tier::Alias) {                                       \
-        if (std::string(cur_group) != group) {                                                     \
-            cur_group = group;                                                                     \
-            std::fprintf(out, "\n %s:\n", groupLabel(group));                                      \
+        if (cur_group != baseGroup(group)) {                                                       \
+            cur_group = baseGroup(group);                                                          \
+            std::fprintf(out, "\n %s:\n", groupLabel(cur_group).c_str());                          \
         }                                                                                          \
         printOption(out, flagFor(defaults.member, name), metavarFor(defaults.member, name, choices),\
                     valueString(defaults.member),                                                  \
                     spirula::i18n::msg::sfmfield::help##_help.get(), choices);                     \
     }
-    SFM_CONFIG_FIELDS(SFM_PRINT_FIELD)
+    SFM_CONFIG_FIELDS(SFM_PRINT_FIELD, SFM_PRINT_FIELD)
 #undef SFM_PRINT_FIELD
 }
 
@@ -630,7 +709,7 @@ std::string stageSignature(const SfmConfig& cfg, uint32_t cmd,
     };
     auto fieldValue = [&](const char* name, std::string val) {
         if (!workspace.empty() && !val.empty() && val != "none" &&
-            (std::strcmp(name, "masks") == 0 || std::strcmp(name, "feature-masks") == 0))
+            std::strcmp(name, "masks") == 0)
             return spirula::relative_to_dir(val, workspace);
         return val;
     };
@@ -638,7 +717,7 @@ std::string stageSignature(const SfmConfig& cfg, uint32_t cmd,
     if (((uint32_t)(cmds) & cmd) && (tier) != Tier::Alias && signatureRelevant(name) && \
         !(signatureOmitsUnset(name) && valueString(cfg.member) == "none"))              \
         out += std::string(name) + "=" + fieldValue(name, valueString(cfg.member)) + "\n";
-    SFM_CONFIG_FIELDS(SFM_SIG_FIELD)
+    SFM_CONFIG_FIELDS(SFM_SIG_FIELD, SFM_SIG_FIELD)
 #undef SFM_SIG_FIELD
     // Per-group lenses reach the camera setup, and so verification, without
     // being table rows: `--camera-model cam0=opencv-fisheye` and the manifest

@@ -206,8 +206,8 @@ device, and loads on the device the app froze for inference.
   polarity; in memory everything is 255 = keep.
 
 **What not to undo.**
-- A new site that starts inference calls `GuiApp::stop_inference_users()`, not the bare preview close (`GuiApp.cpp:1267`).
-- The blocker is pushed every frame, after the screens draw (`GuiApp.cpp:2808`).
+- A new site that starts inference calls `GuiApp::stop_inference_users()`, not the bare preview close (`Navigation.cpp`).
+- The blocker is pushed every frame, after the screens draw (`GuiApp::frame()` in `GuiApp.cpp`).
 - No `sam::Masker` in the editor: under `keep_prompted` its margin is negative and would eat into the object (`MaskSam.cpp:14`).
 - Editor clicks live in `MaskSam::prompt()` and never reach the dataset's `MaskSettings`, where an empty `source` means every input (`MaskSam.h:89`).
 - Closing mid-job parks SAM in a retiring slot released from the UI thread, never unloaded on the job thread (`MaskSession.cpp:1163`).

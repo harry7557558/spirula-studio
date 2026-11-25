@@ -7,13 +7,14 @@ Every bar in the GUI is a `ProgressClock` (`app/gui/ProgressClock.h`) drawn by
   so a step whose items get dearer as it goes does not race through its first
   half and crawl through its second.
 - **It never goes back.** A total that grows, or an estimate that rises,
-  holds the bar where it is until the clock catches up.
+  holds the bar where it is until the clock catches up. The displayed ETA
+  can rise as soon as a new estimate comes in.
 - **It errs toward jumping forward near the end.** Every estimate below is
   biased long, so a wrong one ends in a jump rather than a crawl.
 - **It moves when the job reports, not in between.** No interpolation: the bar
   steps, and the time left counts down between reports.
-- **It always says elapsed and time left as hh:mm:ss**, `--:--:--` while the
-  time left is unknown. Logs may keep milliseconds; bars do not.
+- **Elapsed and time left appear once below the bar**, as hh:mm:ss with
+  `--:--:--` for an unknown ETA. Bar captions carry the phase or counts.
 
 ## How the time left is estimated
 
@@ -39,7 +40,9 @@ so the pace stays right and the bar holds.
 **Dataset steps** (`PrepProgress.h`). One clock per step. A step entered again
 with a new label is a new phase counting something new -- reading features,
 then choosing pairs, then matching -- and gets a fresh bar; `detail()` only
-relabels.
+relabels. The clock estimates frame preparation, masking and geometry time
+from stage-wide progress. Throughput in a caption can describe only part of
+that work, such as model inference.
 
 **Matching.** The rig-mate pass verifies pairs only the first pass's results
 name, so its count is not known until then. The first pass's total includes

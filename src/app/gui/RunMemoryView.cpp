@@ -47,11 +47,12 @@ void RunMemoryView::poll_self(double work,
                               const std::function<bool(spirula::RunReporter::Device&)>& device) {
     if (!due()) return;
     RunReport r;
+    const spirula::HostMemory host = spirula::hostMemory();
     r.host_process = spirula::processRamBytes();
-    r.host_available = spirula::availableRamBytes();
-    r.host_total = spirula::physicalRamBytes();
-    r.host_commit_free = spirula::availableCommitBytes();
-    r.host_swap_free = spirula::availableSwapBytes();
+    r.host_available = host.available;
+    r.host_total = host.total;
+    r.host_commit_free = host.commit;
+    r.host_swap_free = host.swap;
     spirula::RunReporter::Device d;
     const backend::MemoryUsage m = backend::memory_usage();
     if (device && device(d) && d.capacity > 0) {

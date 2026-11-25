@@ -31,9 +31,6 @@ namespace gui::render {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
-const ImVec4 kErr(1.0f, 0.45f, 0.45f, 1.0f);
-const ImVec4 kOk(0.35f, 0.85f, 0.45f, 1.0f);    // GuiApp's, for a job done
-const ImVec4 kDim(0.62f, 0.64f, 0.68f, 1.0f);
 
 struct Resolution { int w, h; const Msg* name; };
 const Resolution kResolutions[] = {
@@ -1220,7 +1217,7 @@ void RenderSession::draw_effects_section(float full) {
         if (s.transition != Transition::Cut) {
             ImGui::SameLine();
             float d = (float)s.duration;
-            ImGui::SetNextItemWidth(px(120.0f));
+            ImGui::SetNextItemWidth(px(kCompactFieldW));
             if (ui::SliderFloatRaw("##dur", &d, 0.1f, 6.0f, "%.1f s")) {
                 s.duration = d;
                 project_changed();
@@ -1586,11 +1583,10 @@ void RenderSession::draw_output_section(float full) {
             ui::TextDisabled(msg::out_summary, {seconds(T), (long long)frame_count()});
     } else {
         const double now = progress_now();
-        if (!_job_clock.started() || _job.frame == 0) _job_clock.start(now);
         if (_job.frames > 0) _job_clock.work(now, (double)_job.frame / (double)_job.frames);
-        ui::ProgressBar(_job_clock.fraction(), ImVec2(full, 0), msg::render_progress,
-                        {(long long)_job.frame, (long long)_job.frames});
-        progress_time_line(_job_clock);
+        const std::string caption = spirula::i18n::format(
+            msg::render_progress, {(long long)_job.frame, (long long)_job.frames});
+        timed_progress_bar(_job_clock, caption.c_str(), full);
         if (ui::Button(msg::render_cancel, ImVec2(full, 0))) cancel_export();
     }
 }

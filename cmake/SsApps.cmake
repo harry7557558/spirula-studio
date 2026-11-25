@@ -123,7 +123,8 @@ list(APPEND SS_TOOL_DEFS SS_TOOL_DENSE=1)
 # ---- mesh extraction ----
 # Both backends: the host side is portable (mesh/OccupancyEvaluator.cpp) and
 # each has kernels (mesh/Meshing.cu, backend/vulkan/kernels/Meshing.cpp).
-list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/mesh_main.cpp)
+list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/mesh_main.cpp
+     ${SS_SRC}/app/MeshPreviewFile.cpp ${SS_SRC}/app/MeshPreviewBudget.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_MESH=1)
 
 # ---- a dataset from an E57 laser scan: host only, both backends ----
@@ -374,13 +375,15 @@ if(SS_SEPARATE_TOOLS)
     function(ss_tool_exe name sources defs libs)
         if(WIN32)
             list(APPEND sources ${SS_SRC}/app/utf8.manifest)
+            list(APPEND libs dbghelp)
         endif()
         # ss_i18n is linked explicitly: these targets deliberately do not
         # link the engine library, and Main.cpp's `--lang` handling needs
         # it. It is a leaf (cmake/SsI18n.cmake), so this costs nothing.
-        add_executable(${name} ${SS_SRC}/app/Main.cpp ${sources})
+        add_executable(${name} ${SS_SRC}/app/Main.cpp ${SS_SRC}/app/AppPaths.cpp
+                       ${SS_SRC}/app/CrashLog.cpp ${sources})
         target_include_directories(${name} PRIVATE ${SS_SRC} ${CMAKE_BINARY_DIR})
-        target_link_libraries(${name} PRIVATE ${libs} ss_i18n ss_license)
+        target_link_libraries(${name} PRIVATE ${libs} ss_i18n ss_license ${CMAKE_DL_LIBS})
         target_compile_definitions(${name} PRIVATE
             ${defs} SS_VERSION="${SS_VERSION}" ${SS_I18N_DEFS})
         target_compile_options(${name} PRIVATE
@@ -390,8 +393,8 @@ if(SS_SEPARATE_TOOLS)
 
     if(SS_BUILD_SFM)
         ss_tool_exe(spirula-sfm
-            "${SS_SRC}/app/cli/sfm_main.cpp;${SS_SRC}/app/cli/sfm_ba.cpp"
-            "SS_TOOL_SFM=1" "ss_sfm")
+            "${SS_SRC}/app/cli/sfm_main.cpp;${SS_SRC}/app/cli/sfm_ba.cpp;${SS_SRC}/app/RunReport.cpp"
+            "SS_TOOL_SFM=1" "ss_sfm;ss_inference_worker")
     endif()
     if(SS_BUILD_SAM)
         set(_sam_src ${SS_SRC}/app/cli/sam_main.cpp ${SS_SRC}/app/CubeLut.cpp
@@ -456,6 +459,12 @@ add_executable(cube_lut_test
     ${SS_SRC}/app/CubeLut.cpp
     ${SS_SRC}/app/LogLuts.cpp)
 ss_configure_app(cube_lut_test)
+
+add_executable(mesh_preview_test
+    ${SS_SRC}/app/tests/mesh_preview_test.cpp
+    ${SS_SRC}/app/MeshPreviewBudget.cpp
+    ${SS_SRC}/app/MeshPreviewFile.cpp)
+ss_configure_app(mesh_preview_test)
 
 # The frame plan: no device, no GUI, and a wrong answer is silent.
 add_executable(frame_motion_test
@@ -599,6 +608,16 @@ if(SS_BUILD_GUI)
             ${SS_SRC}/app/gui/SfmProgress.cpp)
         ss_configure_app(sfm_live_preview_test)
         target_link_libraries(sfm_live_preview_test PRIVATE ss_sfm)
+
+        # The option table as the dataset panel reads it, against the real one.
+        add_executable(sfm_options_test
+            ${SS_SRC}/app/gui/tests/sfm_options_test.cpp
+            ${SS_SRC}/app/gui/SfmOptions.cpp)
+        ss_configure_app(sfm_options_test)
+        target_link_libraries(sfm_options_test PRIVATE ss_sfm)
+        target_compile_definitions(sfm_options_test PRIVATE SS_TOOL_SFM=1)
+        add_test(NAME sfm_options_test COMMAND sfm_options_test)
+        set_tests_properties(sfm_options_test PROPERTIES LABELS "cpu;headless" TIMEOUT 30)
     endif()
 
     add_executable(align_fit_test
@@ -652,6 +671,7 @@ if(SS_BUILD_GUI)
     add_executable(preset_roundtrip_test
         ${SS_SRC}/app/gui/tests/preset_roundtrip_test.cpp
         ${SS_SRC}/app/gui/DatasetPreset.cpp
+        ${SS_SRC}/app/gui/SfmOptions.cpp
         ${SS_SRC}/app/gui/MeshJob.cpp
         ${SS_SRC}/app/gui/MeshPreset.cpp
         ${SS_SRC}/app/gui/PresetFile.cpp
@@ -780,6 +800,7 @@ if(SS_BUILD_GUI)
     add_executable(dataset_plan_test
         ${SS_SRC}/app/gui/tests/dataset_plan_test.cpp
         ${SS_SRC}/app/gui/DatasetPlan.cpp
+        ${SS_SRC}/app/gui/SfmOptions.cpp
         ${SS_SRC}/app/gui/DatasetRecord.cpp
         ${SS_SRC}/app/gui/DatasetPrep.cpp
         ${SS_SRC}/app/gui/HeifPhoto.cpp

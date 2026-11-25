@@ -161,14 +161,14 @@ int batch_num_meshes(const BatchRow& row);
 
 // What the queue has taken and what is left. `frac` is how far through the
 // running task its own runner says it is (<0 when it cannot say), and
-// `elapsed` how long that task has been going.
+// `elapsed` is the task's wall time. `runner_remaining` is preferred when known.
 struct BatchProgress {
     int done = 0, total = 0, running = 0;
     double task_remaining = -1.0;   // the running task, seconds; -1 unknown
     double remaining = -1.0;        // the whole queue, seconds; -1 unknown
 };
 BatchProgress batch_progress(const std::vector<BatchTask>& tasks, int current,
-                             double frac, double elapsed);
+                             double frac, double elapsed, double runner_remaining);
 
 // What this build and this machine can do, asked once and handed to every
 // row's check so that no two rows can get different answers.

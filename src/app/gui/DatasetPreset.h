@@ -30,6 +30,9 @@ struct DatasetSettings {
     std::string mask_detector_id = "gdino-base";   // a TextDetector, ModelCache.h
     bool use_found_masks = true;
     bool border_enable = false;
+    // The video rows' Sequential switches, which a preset has no rows to hold:
+    // on when every video hands its frame order to the reconstruction.
+    bool videos_in_order = false;
     // A saved stencil's name (StencilPreset.h), drawn on every input.
     std::string frame_shapes;
 };

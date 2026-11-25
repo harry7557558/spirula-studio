@@ -86,13 +86,11 @@ struct ImageLoadOptions {
     size_t memory_budget_bytes = 0;
 };
 
-// A quarter of physical RAM, clamped to [1 GiB, 8 GiB]. The decoder's peak
-// in-flight set is bounded by this, so it is peak *anonymous* RSS for the
-// stage; a quarter leaves the page cache the room it needs to keep serving the
-// very files being decoded. Falls back to the historical 1 GiB when the
-// platform will not say how much memory it has.
+// A quarter of the RAM this process can hold, in [1 GiB, 8 GiB]: it bounds the
+// decoder's peak anonymous RSS, and the rest leaves the page cache room to serve
+// the files being decoded. 1 GiB when the platform will not say.
 inline size_t defaultDecodeBudget() {
-    const size_t total = spirula::physicalRamBytes();
+    const size_t total = spirula::totalRamBytes();
     if (total == 0) return 1ull << 30;
     return std::min<size_t>(std::max<size_t>(total / 4, 1ull << 30), 8ull << 30);
 }

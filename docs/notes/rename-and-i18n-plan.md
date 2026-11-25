@@ -822,9 +822,8 @@ Trim comments **in files you are already editing**, never as a standalone pass â
 a repo-wide comment diff has no test coverage and will conflict with all three
 phases above.
 
-The rule: **keep a comment that records a non-obvious invariant or a
-why-not; delete one that restates the code.** AGENTS.md's "Gotchas" section is
-the right register â€” every entry there is something that cost someone a day.
+Keep comments that record a non-obvious invariant or tradeoff. See the
+[comment rules](../../AGENTS.md#comments--write-fewer-and-shorter).
 The header comment on `ConfigUI.cpp` ("keep this file free of per-field special
 cases") is a keeper. Most of the inline narration in `GuiMain.cpp` is not.
 

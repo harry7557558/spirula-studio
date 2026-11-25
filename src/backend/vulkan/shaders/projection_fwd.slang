@@ -149,8 +149,8 @@ void run_projection<let cam: CameraModelType, D : ICameraDistortion>(
                        s_opac, rgb);
         p.out_aabb[idx] = aabb16_encode(aabb, p.width, p.height);
         p.out_depths[idx] = sorting_depth;
-        // float atomicMax on non-negative floats == uint max on bits.
-        InterlockedMax(p.out_radii[gid], asuint(radius));
+        if (!is_null(p.out_radii))
+            InterlockedMax(p.out_radii[gid], asuint(radius));
     } else {
         p.out_aabb[idx] = uint2(0u, 0u);
         p.out_depths[idx] = 0.0f;
@@ -259,7 +259,8 @@ void run_projection_3dgut<let cam: CameraModelType, D : ICameraDistortion,
             scrg_store(scrg_row(p.s_screen, idx), s_scale, s_opac, rgb);
         p.out_aabb[idx] = aabb16_encode(aabb, p.width, p.height);
         p.out_depths[idx] = sorting_depth;
-        InterlockedMax(p.out_radii[gid], asuint(radius));
+        if (!is_null(p.out_radii))
+            InterlockedMax(p.out_radii[gid], asuint(radius));
     } else {
         p.out_aabb[idx] = uint2(0u, 0u);
         p.out_depths[idx] = 0.0f;
@@ -495,7 +496,8 @@ void run_packed_fwd<let cam: CameraModelType, D : ICameraDistortion,
             scr2_store(scr2_row(p.s_screen, out_idx), xy, depth, conic, opac,
                        rgb);
     }
-    InterlockedMax(p.out_radii[gid], asuint(radius));
+    if (!is_null(p.out_radii))
+        InterlockedMax(p.out_radii[gid], asuint(radius));
 }
 
 #define _pk_call_surfel(M, D) run_packed_fwd<M, D, true, true>(p, idx, out_idx)

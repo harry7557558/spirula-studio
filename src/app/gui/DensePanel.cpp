@@ -17,9 +17,6 @@ namespace gui {
 
 namespace {
 
-const ImVec4 kOk(0.35f, 0.85f, 0.45f, 1.0f);
-const ImVec4 kErr(1.0f, 0.35f, 0.35f, 1.0f);
-
 const spirula::i18n::Msg& quality_label(const spirula::dense::DenseConfig& config) {
     namespace D = spirula::i18n::msg::dense;
     if (config.matches_preset("fast")) return D::quality_fast;
@@ -132,7 +129,7 @@ void GuiApp::draw_dense_options() {
 
     ImGui::Indent();
     auto& config = _dense.config;
-    ImGui::SetNextItemWidth(px(260.0f));
+    ImGui::SetNextItemWidth(px(kFieldW));
     if (ui::BeginCombo(D::preset, quality_label(config).get())) {
         const std::pair<const char*, const spirula::i18n::Msg*> choices[] = {
             {"fast", &D::quality_fast}, {"balanced", &D::quality_balanced}, {"high", &D::quality_high}};

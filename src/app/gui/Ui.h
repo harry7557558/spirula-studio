@@ -202,6 +202,18 @@ inline void TextWrapped(const Msg& m, std::initializer_list<Arg> a) {
     ImGui::PopTextWrapPos();
 }
 
+inline void CenteredText(const Msg& m) {
+    const ImVec2 area = ImGui::GetContentRegionAvail();
+    const ImVec2 pos = ImGui::GetCursorPos();
+    const float width = std::max(1.f, area.x);
+    const ImVec2 size = ImGui::CalcTextSize(m.get(), nullptr, false, width);
+    const float x = pos.x + std::max(0.f, (area.x - size.x) * .5f);
+    ImGui::SetCursorPos(ImVec2(x, pos.y + std::max(0.f, (area.y - size.y) * .5f)));
+    ImGui::PushTextWrapPos(pos.x + width);
+    Text(m);
+    ImGui::PopTextWrapPos();
+}
+
 inline void TextDisabled(const Msg& m) {
     ImGui::TextDisabled("%s", m.get());
 }
@@ -289,7 +301,7 @@ inline void help_on_hover_raw(const char* text,
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
                              ImGuiHoveredFlags_NoSharedDelay | extra) &&
         ImGui::BeginTooltip()) {
-        ImGui::PushTextWrapPos(gui::px(420.0f));
+        ImGui::PushTextWrapPos(gui::px(gui::kTooltipWrapW));
         ImGui::TextUnformatted(text);
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
@@ -312,7 +324,7 @@ inline void SetTooltipRaw(const char* s) { ImGui::SetTooltip("%s", s); }
 // SetTooltip for a sentence or more: wrapped at help_on_hover's width.
 inline void SetTooltipWrapped(const Msg& m) {
     if (!ImGui::BeginTooltip()) return;
-    ImGui::PushTextWrapPos(gui::px(420.0f));
+    ImGui::PushTextWrapPos(gui::px(gui::kTooltipWrapW));
     ImGui::TextUnformatted(m.get());
     ImGui::PopTextWrapPos();
     ImGui::EndTooltip();
@@ -518,6 +530,46 @@ inline bool BeginCombo(const Msg& m, const char* preview, ImGuiComboFlags flags 
 }
 inline bool BeginComboRaw(const char* id, const char* preview, ImGuiComboFlags flags = 0) {
     return ImGui::BeginCombo(id, preview, flags);
+}
+
+struct ComboChoice {
+    const Msg& label;
+    const Msg& help;
+};
+
+inline bool ComboWithHelp(const Msg& label, int* value, const Msg& help,
+                          std::initializer_list<ComboChoice> choices) {
+    const int count = (int)choices.size();
+    const char* preview = *value >= 0 && *value < count ? choices.begin()[*value].label.get()
+                                                        : nullptr;
+    const float width = ImGui::CalcItemWidth();
+    const float available = ImGui::GetContentRegionAvail().x;
+    const bool wrap_label = width + ImGui::GetStyle().ItemInnerSpacing.x +
+                            ImGui::CalcTextSize(label.get()).x > available;
+    if (wrap_label) {
+        TextWrapped(label);
+        help_on_hover(help);
+        ImGui::SetNextItemWidth(std::min(width, available));
+    }
+    const char* widget = detail::label(wrap_label ? "" : label.get(), label.id);
+    if (!detail::named_combo(widget, [&] { return BeginComboRaw(widget, preview); })) {
+        help_on_hover(help);
+        return false;
+    }
+    bool changed = false;
+    int i = 0;
+    for (const ComboChoice& choice : choices) {
+        const bool selected = *value == i;
+        if (Selectable(choice.label, selected) && !selected) {
+            *value = i;
+            changed = true;
+        }
+        help_on_hover(choice.help);
+        if (selected) ImGui::SetItemDefaultFocus();
+        ++i;
+    }
+    ImGui::EndCombo();
+    return changed;
 }
 
 inline bool SliderInt(const Msg& m, int* v, int lo, int hi) {

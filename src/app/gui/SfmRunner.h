@@ -31,6 +31,7 @@
 #include "i18n/catalog/Dataset.h"
 
 #include <atomic>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -75,10 +76,14 @@ inline bool sfm_model_is_fisheye(const std::string& m) {
 
 // What `spirula sfm` spells each of SfmJob's choices as, in index order.
 inline const char* const kSfmQuality[] = {"low", "medium", "high", "extreme"};
-inline const char* const kSfmDataType[] = {"individual", "video", "internet"};
 inline const char* const kSfmCameraMode[] = {"single", "folder", "image"};
+// Index 0 was "automatic" (by image count) and reads as pair selection now.
 inline const char* const kSfmPairs[] = {"auto", "exhaustive", "sequential",
                                         "prefilter"};
+inline constexpr int kPairsExhaustive = 1, kPairsSequential = 2, kPairsPrefilter = 3;
+inline int sfm_pairs(int v) {
+    return v == kPairsExhaustive || v == kPairsSequential ? v : kPairsPrefilter;
+}
 inline const char* const kSfmMapper[] = {"flat", "bottom-up", "global"};
 inline const char* const kSfmFeatures[] = {"sift", "aliked-n16rot", "aliked-n32",
                                            "loma-b128", "loma-b"};
@@ -107,37 +112,27 @@ inline bool sfm_subprocess_default() {
     return v && *v && *v != '0';
 }
 
-struct SfmJob {
-    // ---- shared with ColmapRunner's path ----
-    PrepJob prep;
-    // ... and so is this: the depth and normal maps are written after the
-    // reconstruction, from the dataset it produced, whichever engine made it.
-    GeometryJob geometry;
-    // Laser scans the model is aligned with; they replace the geometry step.
-    LidarJob lidar;
-    DenseJob dense;
+// `spirula sfm` options the panel edits without a member of their own, by flag
+// name: only what differs from the default (SfmOptions.h).
+using SfmOptionMap = std::map<std::string, std::string>;
 
-    // ---- reconstruction ----
-    // What the user asked to redo or keep; the plan (DatasetPlan.h) decides
-    // the rest, step by step, against what the workspace records.
-    PlanRequest request;
+// Everything the reconstruction step reads and no earlier step does. A live
+// run takes the whole block when it reaches that step (SfmRunner::update), so
+// a member added here cannot be left behind on the screen.
+struct SfmReconSettings {
     // Keep feature detection out of the masked areas too, not only training.
     // Off still writes the masks -- worth it where what they cover holds still
     // and carries the finer detail the cameras converge on.
     bool mask_features = true;
     int quality = 2;                  // 0 low, 1 medium, 2 high, 3 extreme
-    int data_type = 0;                // 0 individual photos, 1 video, 2 internet
     std::string camera_model = "opencv";
     int camera_mode = 1;              // 0 single, 1 per folder, 2 per image
-    int pairs = 0;                    // 0 auto, 1 exhaustive, 2 sequential, 3 prefilter
+    int pairs = kPairsPrefilter;      // kPairs*; see sfm_pairs()
     int overlap = 10;                 // sequential neighbours
     // Sequential pairing only: also match the pairs GPU pair selection finds,
     // so a capture that comes back on itself links across the seam instead of
     // breaking into one model per unbroken run of frames.
     bool loop_closure = true;
-    // Pair selection only: also match each image with its neighbours in file
-    // order, the converse of the above.
-    bool prefilter_sequential = false;
     float init_focal_px = 0.0f;       // 0 = guess from EXIF / image size
     // Starting distortion, "k1,k2,..." in the lens model's own order; empty
     // starts at zero.
@@ -150,8 +145,6 @@ struct SfmJob {
     bool final_per_image_intrinsics = false;
     // ... and one with the rigs released, every image on its own pose.
     bool final_free_rig = false;
-    int max_features = 0;             // 0 = the quality preset's
-    int max_image_size = 0;           // 0 = the quality preset's
     // 0 flat, 1 bottom-up. Flat for every capture, whatever its size: there is
     // no automatic switch, here or in `spirula sfm`.
     int mapper = 0;
@@ -179,6 +172,28 @@ struct SfmJob {
     // driver that resets under a long solve: a run falls back by itself when
     // the device fails, but only after paying for the failure.
     bool ba_cpu = false;
+    // Image size, feature count, pair-selection breadth, the selected
+    // detector's and matcher's own knobs and the mapper's, where they differ
+    // from the default.
+    SfmOptionMap options;
+    // Extra flags typed by the user, appended verbatim: the escape hatch for
+    // what the panel does not surface (`spirula sfm auto --help` lists it).
+    std::string extra_args;
+};
+
+struct SfmJob : SfmReconSettings {
+    // ---- shared with ColmapRunner's path ----
+    PrepJob prep;
+    // ... and so is this: the depth and normal maps are written after the
+    // reconstruction, from the dataset it produced, whichever engine made it.
+    GeometryJob geometry;
+    // Laser scans the model is aligned with; they replace the geometry step.
+    LidarJob lidar;
+    DenseJob dense;
+
+    // What the user asked to redo or keep; the plan (DatasetPlan.h) decides
+    // the rest, step by step, against what the workspace records.
+    PlanRequest request;
     // Reconstruct in a child process instead of this one: the escape hatch for
     // a driver that resets under a long solve. SS_SFM_SUBPROCESS=1 starts a
     // session with it on.
@@ -199,20 +214,11 @@ struct SfmJob {
     // false: the sparse point cloud stays sRGB (train with point-color-gamut
     // Rec.709). true: written in the images' space, the trainer's default.
     bool point_color_in_image_space = false;
-
-    // Extra flags typed by the user, appended verbatim. The escape hatch for
-    // everything the panel does not surface -- `spirula-sfm auto --help` lists
-    // the lot, and this is how an expert reaches it without us mirroring 130
-    // flags into the GUI.
-    std::string extra_args;
 };
 
-// Whether a sequential window can run, and so whether `overlap` means
-// anything: named, or what "auto" resolves to for a short video, or taken
-// alongside pair selection.
-inline bool sequential_window_applies(const SfmJob& j) {
-    return j.pairs == 2 || (j.pairs == 0 && j.data_type == 1) ||
-           ((j.pairs == 0 || j.pairs == 3) && j.prefilter_sequential);
+// Whether `overlap` and `loop_closure` mean anything.
+inline bool sequential_pairing(const SfmReconSettings& j) {
+    return sfm_pairs(j.pairs) == kPairsSequential;
 }
 
 // What a learned frontend still has to fetch, in order; empty for SIFT with

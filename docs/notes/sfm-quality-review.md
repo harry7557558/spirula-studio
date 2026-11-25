@@ -343,8 +343,8 @@ not an immediate replacement for Huber.
 sequence-aware PnP, IMU rotations, GPS factors and camera calibration already
 have substantial implementations. Audit whether import/extraction preserves
 their provenance and whether the selected configuration activates them. Video
-auto-pairing switches to preselection at 100 images; `prefilter_sequential`
-defaults false. Inspect explicit sequence/rig pairing separately rather than
+auto-pairing switches to preselection at 100 images; file-order neighbours
+come only with `--pairs sequential`. Inspect explicit sequence/rig pairing separately rather than
 assuming a video label supplies all constraints. Where order is known, test
 retrieval plus temporal neighbors and loop links. Never derive a hard temporal
 constraint from arbitrary photo filenames, or treat GPS/IMU as infallible.

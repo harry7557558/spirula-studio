@@ -27,6 +27,15 @@ namespace dataset {
 // Screen chrome
 // ===========================================================================
 
+SS_MSG(preview_choose_source,
+    EN("Add photos, a video or a scan to preview your input."), JA("写真、動画、スキャンを追加すると、ここで確認できます。"),
+    ZH_HANS("添加照片、视频或扫描数据即可预览输入。"), ZH_HANT("新增照片、影片或掃描資料即可預覽輸入。"),
+    KO("사진, 동영상 또는 스캔을 추가해 입력을 미리 보세요."), DE("Fotos, ein Video oder einen Scan für die Vorschau hinzufügen."),
+    FR("Ajoutez des photos, une vidéo ou un scan pour voir un aperçu."), ES("Añade fotos, un vídeo o un escaneo para ver la vista previa."),
+    PT("Adicione fotos, um vídeo ou uma digitalização para ver a prévia."), IT("Aggiungi foto, un video o una scansione per vedere l’anteprima."),
+    NL("Voeg foto’s, een video of een scan toe voor een voorbeeld."), RU("Добавьте фотографии, видео или скан для предпросмотра."),
+    TR("Önizleme için fotoğraf, video veya tarama ekleyin."));
+
 SS_MSG(title_from_video,
     EN("Create Dataset from Video"),
     JA("動画からデータセットを作成"),
@@ -74,6 +83,21 @@ SS_MSG(section_color_space,
     KO("색 공간"),         DE("Farbraum"),      FR("Espace colorimétrique"),
     ES("Espacio de color"), PT("Espaço de cor"), IT("Spazio colore"),
     NL("Kleurruimte"),    RU("Цветовое пространство"), TR("Renk uzayı"));
+
+SS_MSG(color_space_section_caption,
+    EN("Set how the app reads input colours and adjusts exposure."),
+    JA("入力画像の色の読み取り方と露出の調整方法を設定します。"),
+    ZH_HANS("设置如何读取输入图像的颜色和调整曝光。"),
+    ZH_HANT("設定如何讀取輸入影像的色彩和調整曝光。"),
+    KO("입력 이미지의 색을 읽고 노출을 조정하는 방식을 설정합니다."),
+    DE("Legt fest, wie Eingabefarben gelesen und die Belichtung angepasst werden."),
+    FR("Règle la lecture des couleurs d’entrée et l’ajustement de l’exposition."),
+    ES("Ajusta cómo se leen los colores de entrada y se corrige la exposición."),
+    PT("Define como são lidas as cores de entrada e ajustada a exposição."),
+    IT("Imposta come leggere i colori in ingresso e regolare l’esposizione."),
+    NL("Stel in hoe de app invoerkleuren leest en de belichting aanpast."),
+    RU("Задайте, как читать цвета исходных снимков и менять экспозицию."),
+    TR("Girdi renklerinin nasıl okunacağını ve pozlamanın nasıl ayarlanacağını belirler."));
 
 SS_MSG(input_gamut,
     EN("Input colour space"), JA("入力の色域"),  ZH_HANS("输入色域"),  ZH_HANT("輸入色域"),
@@ -1993,19 +2017,19 @@ SS_MSG(quality_high,
     NL("Hoge kwaliteit"), RU("Высокое качество"), TR("Yüksek kalite"));
 
 SS_MSG(quality_help_builtin,
-    EN("Working resolution, how many features are found per image, and how many image pairs are compared. Higher finds more cameras in difficult scenes and takes longer."),
-    JA("作業解像度、1枚あたりに検出する特徴の数、比較する画像ペアの数をまとめて決めます。上げるほど難しいシーンでもカメラが見つかりますが、時間は長くなります。"),
-    ZH_HANS("工作分辨率、每张图像找多少特征，以及比较多少对图像。调高在困难场景里能找到更多相机，但更耗时。"),
-    ZH_HANT("工作解析度、每張影像找多少特徵，以及比較多少對影像。調高在困難場景裡能找到更多相機，但更耗時。"),
-    KO("작업 해상도, 이미지당 찾는 특징점 수, 비교하는 이미지 쌍의 수를 함께 정합니다. 높일수록 어려운 장면에서도 카메라를 더 많이 찾지만 시간이 더 걸립니다."),
-    DE("Arbeitsauflösung, wie viele Merkmale je Bild gefunden werden und wie viele Bildpaare verglichen werden. Höher findet in schwierigen Szenen mehr Kameras und dauert länger."),
-    FR("Résolution de travail, nombre de points caractéristiques par image et nombre de paires d'images comparées.\nPlus haut trouve plus de caméras dans les scènes difficiles et prend plus de temps."),
-    ES("Resolución de trabajo, cuántas características se buscan por imagen y cuántos pares de imágenes se comparan. Más alto encuentra más cámaras en escenas difíciles y tarda más."),
-    PT("Define resolução de trabalho, características por imagem e pares comparados. Maior encontra mais câmaras em cenas difíceis e demora mais."),
-    IT("Risoluzione di lavoro, quante caratteristiche si cercano per immagine e quante coppie di immagini si confrontano.\nPiù alto trova più fotocamere nelle scene difficili e richiede più tempo."),
-    NL("Werkresolutie, hoeveel kenmerken per beeld worden gevonden en hoeveel beeldparen worden vergeleken. Hoger vindt meer camera's in lastige scènes en duurt langer."),
-    RU("Рабочее разрешение, сколько особых точек ищется на снимке и сколько пар снимков сравнивается. Выше — больше найденных камер в сложных сценах и дольше."),
-    TR("Çalışma çözünürlüğü, görüntü başına kaç öznitelik bulunacağı ve kaç görüntü çiftinin karşılaştırılacağı. Yüksek olan zor sahnelerde daha çok kamera bulur ve daha uzun sürer."));
+    EN("Resolution, features per image, pairs compared and the masking models. Higher finds more cameras in difficult scenes and takes longer."),
+    JA("解像度、1枚あたりの特徴数、比較するペア数、マスク用モデルを決めます。上げるほど難しいシーンでもカメラが見つかりますが、時間がかかります。"),
+    ZH_HANS("决定分辨率、每张图像的特征数、比较的图像对数和蒙版模型。调高在困难场景里能找到更多相机，但更耗时。"),
+    ZH_HANT("決定解析度、每張影像的特徵數、比較的影像對數和遮罩模型。調高在困難場景裡能找到更多相機，但更耗時。"),
+    KO("해상도, 이미지당 특징점 수, 비교하는 쌍의 수, 마스크 모델을 정합니다. 높일수록 어려운 장면에서 카메라를 더 찾지만 오래 걸립니다."),
+    DE("Auflösung, Merkmale je Bild, verglichene Paare und Maskierungsmodelle. Höher findet in schwierigen Szenen mehr Kameras und dauert länger."),
+    FR("Résolution, points par image, paires comparées et modèles de masquage. Plus haut trouve plus de caméras dans les scènes difficiles et prend plus de temps."),
+    ES("Resolución, características por imagen, pares comparados y modelos de máscara. Más alto encuentra más cámaras en escenas difíciles y tarda más."),
+    PT("Resolução, características por imagem, pares comparados e modelos de máscara. Maior encontra mais câmaras em cenas difíceis e demora mais."),
+    IT("Risoluzione, caratteristiche per immagine, coppie confrontate e modelli di mascheratura. Più alto trova più fotocamere nelle scene difficili e richiede più tempo."),
+    NL("Resolutie, kenmerken per beeld, vergeleken paren en maskeermodellen. Hoger vindt meer camera's in lastige scènes en duurt langer."),
+    RU("Разрешение, число особых точек на снимок, сравниваемые пары и модели маскирования. Выше — больше найденных камер в сложных сценах и дольше."),
+    TR("Çözünürlük, görüntü başına öznitelik, karşılaştırılan çiftler ve maskeleme modelleri. Yüksek olan zor sahnelerde daha çok kamera bulur ve daha uzun sürer."));
 
 SS_MSG(quality_help_colmap,
     EN("Feature count used for matching (4k / 8k / 16k). Higher finds more cameras in difficult scenes but matching is O(n^2) in feature count."),
@@ -2178,71 +2202,74 @@ SS_MSG(image_matching,
     IT("Corrispondenza tra immagini"), NL("Beeldmatching"),
     RU("Сопоставление снимков"), TR("Görüntü eşleştirme"));
 
-SS_MSG(matching_automatic,
-    EN("Automatic"),     JA("自動"),          ZH_HANS("自动"),     ZH_HANT("自動"),
-    KO("자동"),           DE("Automatisch"),  FR("Automatique"),  ES("Automático"),
-    PT("Automático"),    IT("Automatico"),   NL("Automatisch"),  RU("Автоматически"),
-    TR("Otomatik"));
-
 SS_MSG(matching_every_pair,
-    EN("Every pair (best, slowest)"),
-    JA("すべての組み合わせ（最良・最遅）"),
-    ZH_HANS("所有配对（最好、最慢）"),
-    ZH_HANT("所有配對（最好、最慢）"),
-    KO("모든 쌍(가장 좋고 가장 느림)"),
-    DE("Jedes Paar (bestes, langsamstes)"),
-    FR("Toutes les paires (meilleur, plus lent)"),
-    ES("Todos los pares (mejor, más lento)"),
-    PT("Todos os pares (melhor, mais lento)"),
-    IT("Tutte le coppie (migliore, più lento)"),
-    NL("Elk paar (beste, traagste)"),
-    RU("Все пары (лучше всего, медленнее всего)"),
-    TR("Her çift (en iyi, en yavaş)"));
+    EN("Every pair"),
+    JA("すべての組み合わせ"),
+    ZH_HANS("所有图像对"),
+    ZH_HANT("所有影像對"),
+    KO("모든 이미지 쌍"),
+    DE("Jedes Bildpaar"),
+    FR("Toutes les paires"),
+    ES("Todos los pares"),
+    PT("Todos os pares"),
+    IT("Tutte le coppie"),
+    NL("Elk beeldpaar"),
+    RU("Все пары"),
+    TR("Tüm çiftler"));
 
 SS_MSG(matching_neighbours,
-    EN("Neighbouring frames (video)"),
-    JA("隣り合うフレーム（動画）"),
-    ZH_HANS("相邻帧（视频）"),
-    ZH_HANT("相鄰影格（影片）"),
-    KO("이웃 프레임(동영상)"),
-    DE("Benachbarte Bilder (Video)"),
-    FR("Images voisines (vidéo)"),
-    ES("Fotogramas vecinos (vídeo)"),
-    PT("Quadros vizinhos (vídeo)"),
-    IT("Fotogrammi vicini (video)"),
-    NL("Naburige beelden (video)"),
-    RU("Соседние кадры (видео)"),
-    TR("Komşu kareler (video)"));
+    EN("Neighbouring frames"),
+    JA("隣り合うフレーム"),
+    ZH_HANS("相邻帧"),
+    ZH_HANT("相鄰影格"),
+    KO("이웃 프레임"),
+    DE("Benachbarte Bilder"),
+    FR("Images voisines"),
+    ES("Fotogramas vecinos"),
+    PT("Quadros vizinhos"),
+    IT("Fotogrammi vicini"),
+    NL("Naburige beelden"),
+    RU("Соседние кадры"),
+    TR("Komşu kareler"));
 
 SS_MSG(matching_gpu_preselect,
-    EN("GPU pre-selection (large captures)"),
-    JA("GPU による事前選択（大規模な撮影）"),
-    ZH_HANS("GPU 预筛选（大规模拍摄）"),
-    ZH_HANT("GPU 預篩選（大規模拍攝）"),
-    KO("GPU 사전 선별(대규모 촬영)"),
-    DE("GPU-Vorauswahl (große Aufnahmen)"),
-    FR("Présélection GPU (grandes prises)"),
-    ES("Preselección en GPU (capturas grandes)"),
-    PT("Pré-seleção na GPU (capturas grandes)"),
-    IT("Preselezione su GPU (riprese grandi)"),
-    NL("GPU-voorselectie (grote opnamen)"),
-    RU("Предварительный отбор на GPU (крупные съёмки)"),
-    TR("GPU ön seçimi (büyük çekimler)"));
+    EN("GPU pre-selection"),
+    JA("GPU による事前選択"),
+    ZH_HANS("GPU 预筛选"),
+    ZH_HANT("GPU 預篩選"),
+    KO("GPU 사전 선별"),
+    DE("GPU-Vorauswahl"),
+    FR("Présélection GPU"),
+    ES("Preselección en GPU"),
+    PT("Pré-seleção na GPU"),
+    IT("Preselezione su GPU"),
+    NL("GPU-voorselectie"),
+    RU("Предварительный отбор на GPU"),
+    TR("GPU ön seçimi"));
 
 SS_MSG(matching_help_builtin,
-    EN("Image-pair strategy. Automatic: neighbors for short video, every pair below 100 images, GPU pre-selection for larger sets."),
-    JA("画像ペアの方式です。自動は短い動画で隣接、100枚未満で全ペア、それ以上でGPU事前選択を使います。"),
-    ZH_HANS("图像对策略。自动：短视频匹配相邻帧，少于 100 张匹配所有对，更大数据集用 GPU 预选。"),
-    ZH_HANT("影像對策略。自動：短影片匹配相鄰影格，少於 100 張匹配所有對，更大資料集用 GPU 預選。"),
-    KO("이미지 쌍 전략입니다. 자동: 짧은 영상은 이웃, 100장 미만은 모든 쌍, 더 큰 데이터셋은 GPU 사전 선택을 씁니다."),
-    DE("Bildpaarstrategie. Automatisch: Nachbarn bei kurzen Videos, alle Paare unter 100 Bildern, sonst GPU-Vorauswahl."),
-    FR("Stratégie de paires. Automatique : voisins pour les vidéos courtes, toutes les paires sous 100 images, puis présélection GPU."),
-    ES("Estrategia de pares. Automático: vecinos en vídeos cortos, todos los pares con menos de 100 imágenes, luego preselección GPU."),
-    PT("Estratégia de pares. Automático: vizinhos em vídeos curtos, todos os pares abaixo de 100 imagens, depois pré-seleção GPU."),
-    IT("Strategia delle coppie. Automatico: vicini per video brevi, tutte le coppie sotto 100 immagini, poi preselezione GPU."),
-    NL("Beeldpaarstrategie. Automatisch: buren bij korte video, alle paren onder 100 beelden, anders GPU-voorselectie."),
-    RU("Стратегия пар. Авто: соседи для короткого видео, все пары до 100 снимков, затем предварительный отбор GPU."),
-    TR("Resim çifti stratejisi. Otomatik: kısa videoda komşular, 100’den az resimde tüm çiftler, daha büyük kümelerde GPU ön seçimi."));
+    EN("Choose which images to compare. Pre-selection saves time on large sets. Neighboring frames need capture "
+       "order."),
+    JA("比較する画像を選ぶ方法です。大量の画像では事前選別が速く、近接フレームには撮影順が必要です。"),
+    ZH_HANS("选择要比较的图像。大型数据集使用预筛选可节省时间。邻近帧需要拍摄顺序。"),
+    ZH_HANT("選擇要比較的影像。大型資料集使用預篩選可節省時間。鄰近影格需要拍攝順序。"),
+    KO("비교할 이미지를 고릅니다. 큰 모음은 사전 선택이 빠릅니다. 이웃 프레임은 촬영 순서가 필요합니다."),
+    DE("Wählt die zu vergleichenden Bilder. Vorauswahl spart bei großen Mengen Zeit. Nachbarbilder brauchen die "
+       "Aufnahmereihenfolge."),
+    FR("Choisit les images à comparer. La présélection accélère les grandes séries. Les vues voisines doivent être "
+       "dans l’ordre."),
+    ES("Elige qué imágenes comparar. La preselección ahorra tiempo en conjuntos grandes. Los fotogramas vecinos "
+       "requieren orden."),
+    PT("Escolhe quais imagens comparar. A pré-seleção poupa tempo em grandes conjuntos. Quadros vizinhos exigem "
+       "ordem de captura."),
+    IT("Scegli quali foto confrontare. La preselezione accelera le serie grandi. I fotogrammi vicini richiedono "
+       "ordine di ripresa."),
+    NL("Kies welke beelden worden vergeleken. Voorselectie spaart tijd bij grote sets. Nabije beelden vereisen "
+       "opnamevolgorde."),
+    RU("Выбирает сравниваемые снимки. Предотбор экономит время на больших наборах. Для соседних кадров нужен "
+       "порядок съёмки."),
+    TR("Karşılaştırılacak görüntüleri seçer. Ön eleme büyük setlerde zaman kazandırır. Komşu kareler çekim sırası "
+       "ister."));
 
 SS_MSG(matching_exhaustive,
     EN("Exhaustive"),    JA("総当たり"),      ZH_HANS("穷举"),     ZH_HANT("窮舉"),
@@ -2264,19 +2291,21 @@ SS_MSG(matching_vocab_tree,
     RU("Словарное дерево"), TR("Sözcük ağacı"));
 
 SS_MSG(matching_help_colmap,
-    EN("How image pairs are matched. Exhaustive tries every pair (best quality, fine up to a few hundred images).\nSequential matches temporal neighbors (video). Vocabulary tree scales to thousands of unordered photos."),
-    JA("画像ペアのマッチング方法です。\n- 総当たりはすべての組み合わせを試します（品質は最良で、数百枚までなら問題ありません）。\n- 逐次は時間的に隣り合うフレームを照合します（動画向け）。 ボキャブラリツリーは順不同の数千枚規模まで対応できます。"),
-    ZH_HANS("图像配对的匹配方式。穷举会试遍所有配对（质量最好，几百张以内没问题）。顺序匹配时间上相邻的帧（视频用）。词汇树可以扩展到数千张无序照片。"),
-    ZH_HANT("影像配對的比對方式。窮舉會試遍所有配對（品質最好，幾百張以內沒問題）。循序比對時間上相鄰的影格（影片用）。詞彙樹可以擴展到數千張無序相片。"),
-    KO("전수: 모든 쌍을 매칭해 품질이 높고 수백 장까지 적합합니다. 순차: 동영상의 이웃 프레임. 어휘 트리: 순서 없는 수천 장에 적합합니다."),
-    DE("Wie Bildpaare zugeordnet werden.\n- Vollständig probiert jedes Paar (beste Qualität, bis zu einigen hundert Bildern unproblematisch).\n- Sequenziell ordnet zeitliche Nachbarn zu (Video). Der Vokabularbaum skaliert auf Tausende ungeordneter Fotos."),
-    FR("Comment les paires d'images sont appariées.\n- Exhaustif essaie chaque paire (meilleure qualité, sans problème jusqu'à quelques centaines d'images).\n- Séquentiel apparie les voisins temporels (vidéo). L'arbre de vocabulaire monte à des milliers de photos sans ordre."),
-    ES("Cómo se emparejan los pares de imágenes.\n- Exhaustivo prueba todos los pares (mejor calidad, sin problema hasta unos cientos de imágenes).\n- Secuencial empareja vecinos temporales (vídeo). El árbol de vocabulario escala a miles de fotos sin orden."),
-    PT("Como os pares de imagens são correspondidos.\n- Exaustivo tenta todos os pares (melhor qualidade, tranquilo até algumas centenas de imagens).\n- Sequencial casa vizinhos temporais (vídeo). A árvore de vocabulário escala para milhares de fotos sem ordem."),
-    IT("Come vengono messe in corrispondenza le coppie di immagini.\n- Esaustivo prova ogni coppia (qualità migliore, tranquillo fino a qualche centinaio di immagini).\n- Sequenziale abbina i vicini temporali (video). L'albero di vocabolario arriva a migliaia di foto senza ordine."),
-    NL("Hoe beeldparen worden gematcht.\n- Uitputtend probeert elk paar (beste kwaliteit, tot enkele honderden beelden prima).\n- Sequentieel matcht tijdelijke buren (video). De vocabulaireboom schaalt naar duizenden ongeordende foto's."),
-    RU("Как сопоставляются пары снимков.\n- Полный перебор пробует все пары (лучшее качество, до нескольких сотен снимков вполне нормально).\n- Последовательное сопоставляет соседей по времени (видео). Словарное дерево тянет тысячи неупорядоченных фотографий."),
-    TR("Görüntü çiftlerinin nasıl eşleştirileceği.\n- Kapsamlı her çifti dener (en iyi kalite, birkaç yüz görüntüye kadar sorunsuz).\n- Sıralı zamansal komşuları eşleştirir (video). Sözcük ağacı sırasız binlerce fotoğrafa ölçeklenir."));
+    EN("Choose which images COLMAP compares. Comparing every pair can take much longer on large captures."),
+    JA("COLMAPで比較する画像を選びます。大規模な撮影で全ペアを比較すると時間が大幅に増えます。"),
+    ZH_HANS("选择 COLMAP 比较哪些图像。大型采集中比较所有图像对可能慢得多。"),
+    ZH_HANT("選擇 COLMAP 比較哪些影像。大型拍攝中比較所有影像對可能慢很多。"),
+    KO("COLMAP에서 비교할 이미지를 고릅니다. 큰 촬영에서 모든 쌍을 비교하면 훨씬 오래 걸릴 수 있습니다."),
+    DE("Wählt, welche Bilder COLMAP vergleicht. Alle Paare zu prüfen kann bei vielen Bildern deutlich länger "
+       "dauern."),
+    FR("Choisit les images que COLMAP compare. Tester toutes les paires peut allonger fortement les grandes "
+       "séries."),
+    ES("Elige qué imágenes compara COLMAP. Probar todos los pares puede tardar mucho en capturas grandes."),
+    PT("Escolhe quais imagens o COLMAP compara. Testar todos os pares pode demorar muito em capturas grandes."),
+    IT("Scegli le immagini che COLMAP confronta. Provare tutte le coppie può essere molto lento con serie grandi."),
+    NL("Kiest welke beelden COLMAP vergelijkt. Alle paren vergelijken kan veel langer duren bij grote sets."),
+    RU("Выбирает кадры для сравнения в COLMAP. Все пары на большой съёмке могут занять намного больше времени."),
+    TR("COLMAP’ın karşılaştıracağı görüntüleri seçer. Büyük çekimlerde her çifti denemek çok daha uzun sürebilir."));
 
 SS_MSG(loop_closure,
     EN("Loop closure detection"),
@@ -2309,19 +2338,28 @@ SS_MSG(loop_closure_help_colmap,
     TR("Sözlük ağacıyla benzer ama komşu olmayan kareleri eşleştirip aynı yere dönüşte döngüleri kapatır. Yalnızca SIFT."));
 
 SS_MSG(loop_closure_help_builtin,
-    EN("Matches similar non-neighbor frames to close loops. On by default, roughly doubles matching time. Automatic only uses it below 100 frames."),
-    JA("似た非隣接フレームを照合してループを閉じます。既定で有効、照合時間は約2倍です。自動では100フレーム未満でのみ使います。"),
-    ZH_HANS("匹配相似的非相邻帧以闭合回环。默认开启，匹配耗时约翻倍。自动模式仅在少于 100 帧时使用。"),
-    ZH_HANT("匹配相似的非相鄰影格以閉合回環。預設開啟，匹配耗時約翻倍。自動模式僅在少於 100 影格時使用。"),
-    KO("비슷한 비인접 프레임을 매칭해 루프를 닫습니다. 기본으로 켜며 매칭 시간은 약 두 배입니다. 자동은 100프레임 미만에서만 씁니다."),
-    DE("Gleicht ähnliche Nicht-Nachbarn ab, um Schleifen zu schließen. Standardmäßig an, etwa doppelte Zuordnungszeit. Automatisch nur unter 100 Bildern."),
-    FR("Apparie les images similaires non voisines pour fermer les boucles. Activé par défaut, temps d’appariement ~doublé. Automatique sous 100 images seulement."),
-    ES("Empareja fotogramas similares no vecinos para cerrar bucles. Activado por defecto, tarda ~el doble. Automático solo con menos de 100 fotogramas."),
-    PT("Combina fotogramas semelhantes não vizinhos para fechar voltas. Ligado por padrão, demora ~o dobro. Automático só abaixo de 100 fotogramas."),
-    IT("Abbina fotogrammi simili non vicini per chiudere anelli. Attivo per default, tempo circa doppio. Automatico solo sotto 100 fotogrammi."),
-    NL("Koppelt gelijkende niet-buren om lussen te sluiten. Standaard aan, ongeveer dubbele koppeltijd. Automatisch alleen onder 100 beelden."),
-    RU("Сопоставляет похожие несоседние кадры для замыкания петель. По умолчанию включено, время ~вдвое. Авто лишь до 100 кадров."),
-    TR("Döngü kapatmak için benzer komşu olmayan kareleri eşleştirir. Varsayılan açık, süre yaklaşık iki katıdır. Otomatik yalnız 100 kare altında kullanır."));
+    EN("Also match similar frames far apart in the sequence. Useful when returning to a place you already filmed. "
+       "Adds work."),
+    JA("順番の離れた似たフレームも照合します。一度撮った場所に戻る場合に役立ちますが、処理が増えます。"),
+    ZH_HANS("也匹配序列中相距较远的相似帧。适合回到已拍过的地点，会增加计算量。"),
+    ZH_HANT("也配對序列中相距較遠的相似影格。適合回到已拍過的地點，會增加運算量。"),
+    KO("순서상 멀리 떨어진 비슷한 프레임도 맞춥니다. 이미 찍은 곳으로 돌아갈 때 유용하지만 작업이 늘어납니다."),
+    DE("Ordnet auch ähnliche, weit auseinanderliegende Bilder zu. Hilft bei Rückkehr an einen gefilmten Ort und "
+       "kostet Zeit."),
+    FR("Relie aussi des vues similaires éloignées dans la séquence. Utile si vous revenez sur un lieu déjà filmé. "
+       "Coût accru."),
+    ES("También empareja cuadros similares alejados en la secuencia. Útil al volver a un lugar ya filmado. "
+       "Requiere más trabajo."),
+    PT("Também liga quadros parecidos distantes na sequência. Útil ao voltar a um local já filmado. Custa mais "
+       "trabalho."),
+    IT("Abbina anche fotogrammi simili lontani nella sequenza. Utile tornando in un luogo già filmato. Aumenta il "
+       "lavoro."),
+    NL("Matcht ook gelijkende frames ver uit elkaar in de reeks. Handig als je terugkeert naar een gefilmde plek. "
+       "Kost tijd."),
+    RU("Сопоставляет похожие кадры далеко друг от друга. Полезно при возвращении на снятое место. Добавляет "
+       "работу."),
+    TR("Dizide uzak ama benzer kareleri de eşleştirir. Daha önce çekilen yere dönünce yararlıdır. Ek iş "
+       "gerektirir."));
 
 SS_MSG(frames_per_second_help,
     EN("How many frames to keep per second of video.\n- 1-3 is right for a slow walkthrough; more only helps if the camera moved fast.\n- A video with a rate of its own uses that instead. 0 keeps every frame."),
@@ -2426,45 +2464,19 @@ SS_MSG(video_lut_help,
     TR("Çıkarılan karelere log→Rec.709 3D LUT uygular.\nYerleşik yaklaşımlar veya .cube dosyası. Şimdi: {0}"));
 
 SS_MSG(video_fps_this_one_help,
-    EN("Frames per second for this video alone. \"^\" is following the video "
-       "above it; type that rate back in to go back to following. "
-       "0 keeps every frame of it."),
-    JA("この動画だけの毎秒フレーム数です。「^」は上の動画に従っている印で、"
-       "上と同じ値を入れ直すとまた従います。"
-       "0 にするとこの動画のすべてのフレームを残します。"),
-    ZH_HANS("仅用于这个视频的每秒帧数。「^」表示跟随上面那个视频；改回上面的值"
-            "就重新跟随。"
-            "设为 0 则保留它的每一帧。"),
-    ZH_HANT("僅用於這個影片的每秒影格數。「^」表示跟隨上面那個影片；改回上面的"
-            "值就重新跟隨。"
-            "設為 0 則保留它的每一影格。"),
-    KO("이 동영상에만 적용되는 초당 프레임 수입니다. \"^\"는 위 동영상을 따르고 "
-       "있다는 뜻이며, 그 값을 다시 입력하면 다시 따릅니다. "
-       "0이면 이 동영상의 모든 프레임을 남깁니다."),
-    DE("Bilder je Sekunde nur für dieses Video. \"^\" heißt, es folgt dem Video "
-       "darüber; die Rate wieder eintragen, und es folgt erneut. "
-       "0 behält jedes seiner Bilder."),
-    FR("Images par seconde pour cette vidéo seule. « ^ » signifie qu'elle suit "
-       "la vidéo au-dessus ; retapez ce débit pour qu'elle la suive à nouveau. "
-       "0 en conserve toutes les images."),
-    ES("Fotogramas por segundo solo para este vídeo. «^» es que sigue al vídeo "
-       "de arriba; vuelve a escribir esa tasa para que lo siga otra vez. "
-       "0 conserva todos sus fotogramas."),
-    PT("Quadros por segundo só para este vídeo. \"^\" é seguir o vídeo acima; "
-       "escreva essa taxa outra vez para voltar a segui-lo. "
-       "0 mantém todos os quadros dele."),
-    IT("Fotogrammi al secondo solo per questo video. \"^\" vuol dire che segue "
-       "il video qui sopra; riscrivi quella frequenza e torna a seguirlo. "
-       "0 ne tiene tutti i fotogrammi."),
-    NL("Beelden per seconde alleen voor deze video. \"^\" is de video hierboven "
-       "volgen; typ dat tempo terug om weer te volgen. "
-       "0 bewaart er elk beeld van."),
-    RU("Кадров в секунду только для этого видео. «^» значит, что оно следует за "
-       "видео выше; введите ту же частоту, чтобы снова следовать. "
-       "0 оставляет все его кадры."),
-    TR("Yalnızca bu video için saniyedeki kare sayısı. \"^\", üstündeki videoyu "
-       "izlediği anlamına gelir; o hızı yeniden yazınca yine izler. "
-       "0 onun her karesini tutar."));
+    EN("Frames per second for this video; 0 keeps every frame. \"^\" follows the video above and shares its adaptive budget; a number gives it its own."),
+    JA("この動画の毎秒フレーム数です。0 は全フレームを残します。「^」は上の動画に従い、動きに合わせた配分も共有します。数値を入れると独自の配分になります。"),
+    ZH_HANS("这个视频的每秒帧数，0 保留每一帧。「^」跟随上面的视频并共用按运动分配的帧数；填入数字则单独分配。"),
+    ZH_HANT("這個影片的每秒影格數，0 保留每一影格。「^」跟隨上面的影片並共用依運動分配的影格數；填入數字則單獨分配。"),
+    KO("이 동영상의 초당 프레임 수이며 0은 모든 프레임을 남깁니다. \"^\"는 위 동영상을 따르고 움직임 배분도 함께 씁니다. 숫자를 넣으면 따로 배분합니다."),
+    DE("Bilder pro Sekunde für dieses Video; 0 behält jedes Bild. „^“ folgt dem Video darüber und teilt dessen Budget; eine Zahl gibt ihm ein eigenes."),
+    FR("Images par seconde de cette vidéo ; 0 garde tout. « ^ » suit la vidéo du dessus et partage son budget adaptatif ; un nombre lui donne le sien."),
+    ES("Fotogramas por segundo de este vídeo; 0 los conserva todos. «^» sigue al vídeo de arriba y comparte su presupuesto; un número le da uno propio."),
+    PT("Quadros por segundo deste vídeo; 0 mantém todos. “^” segue o vídeo acima e partilha o orçamento adaptativo; um número dá-lhe um próprio."),
+    IT("Fotogrammi al secondo di questo video; 0 li tiene tutti. «^» segue il video sopra e ne condivide il budget; un numero gliene dà uno proprio."),
+    NL("Beelden per seconde voor deze video; 0 houdt elk beeld. ‘^’ volgt de video erboven en deelt diens budget; een getal geeft een eigen budget."),
+    RU("Кадров в секунду для этого видео; 0 оставляет все. «^» следует видео выше и делит его бюджет; число даёт этому видео собственный."),
+    TR("Bu videonun saniyedeki kare sayısı; 0 hepsini tutar. “^” üstteki videoyu izler ve bütçesini paylaşır; bir sayı kendi bütçesini verir."));
 
 SS_MSG(adaptive_fps,
     EN("Adapt the rate to the motion"),
@@ -6333,60 +6345,35 @@ SS_MSG(preview_almost_all_masked,
 // Advanced: built-in reconstruction
 // ===========================================================================
 
-SS_MSG(capture_type,
-    EN("Capture type"),  JA("撮影の種類"),    ZH_HANS("拍摄类型"),  ZH_HANT("拍攝類型"),
-    KO("촬영 종류"),      DE("Aufnahmeart"),  FR("Type de prise"), ES("Tipo de captura"),
-    PT("Tipo de captura"), IT("Tipo di ripresa"), NL("Soort opname"),
-    RU("Тип съёмки"),    TR("Çekim türü"));
-
-SS_MSG(capture_photos,
-    EN("Individual photos"),
-    JA("個別の写真"),    ZH_HANS("单张照片"),  ZH_HANT("單張相片"),
-    KO("낱장 사진"),     DE("Einzelfotos"),   FR("Photos individuelles"),
-    ES("Fotos sueltas"), PT("Fotos avulsas"), IT("Fotografie singole"),
-    NL("Losse foto's"),  RU("Отдельные фотографии"), TR("Tek tek fotoğraflar"));
-
-SS_MSG(capture_video,
-    EN("Video frames"),  JA("動画のフレーム"), ZH_HANS("视频帧"),   ZH_HANT("影片影格"),
-    KO("동영상 프레임"), DE("Videobilder"),   FR("Images de vidéo"),
-    ES("Fotogramas de vídeo"), PT("Quadros de vídeo"), IT("Fotogrammi video"),
-    NL("Videobeelden"),  RU("Кадры видео"),  TR("Video kareleri"));
-
-SS_MSG(capture_internet,
-    EN("Unordered internet collection"),
-    JA("順不同のインターネット写真集"),
-    ZH_HANS("无序的网络图片集"),
-    ZH_HANT("無序的網路圖片集"),
-    KO("순서 없는 인터넷 사진 모음"),
-    DE("Ungeordnete Internetsammlung"),
-    FR("Collection internet sans ordre"),
-    ES("Colección de internet sin orden"),
-    PT("Coleção da internet sem ordem"),
-    IT("Raccolta internet senza ordine"),
-    NL("Ongeordende internetverzameling"),
-    RU("Неупорядоченная подборка из интернета"),
-    TR("Sırasız internet derlemesi"));
-
-SS_MSG(capture_type_help,
-    EN("What the input is, which sets the pairing strategy and how forgiving the mapper is. Video frames follows the first input's Sequential switch."),
-    JA("入力が何であるかです。ペアの作り方と、マッパーがどれだけ寛容かがこれで決まります。「動画のフレーム」は先頭の入力の「撮影順」に従います。"),
-    ZH_HANS("输入是什么，它决定了配对策略以及建图器有多宽容。“视频帧”跟随第一个输入的“按顺序”开关。"),
-    ZH_HANT("輸入是什麼，它決定了配對策略以及建圖器有多寬容。「影片影格」跟隨第一個輸入的「按順序」開關。"),
-    KO("입력이 무엇인지입니다. 짝짓기 전략과 매퍼가 얼마나 관대한지가 여기서 정해집니다. '동영상 프레임'은 첫 입력의 '순서대로' 스위치를 따릅니다."),
-    DE("Was die Eingabe ist; davon hängen die Paarungsstrategie und die Nachsicht des Mappers ab. „Videobilder“ folgt dem Schalter „Sequenziell“ der ersten Eingabe."),
-    FR("Ce qu'est l'entrée, ce qui fixe la stratégie d'appariement et la tolérance du mapper. « Images de vidéo » suit l'interrupteur « Séquentiel » de la première entrée."),
-    ES("El tipo de entrada fija la estrategia de emparejamiento y la tolerancia del mapeador. «Fotogramas de vídeo» sigue «Secuencial» de la primera entrada."),
-    PT("O que é a entrada, o que define a estratégia de pareamento e a tolerância do mapeador. “Quadros de vídeo” segue o interruptor “Sequencial” da primeira entrada."),
-    IT("Il tipo di ingresso determina abbinamento e tolleranza del mapper. «Fotogrammi video» segue «Sequenziale» del primo ingresso."),
-    NL("Wat de invoer is; dat bepaalt de koppelstrategie en hoe mild de mapper is. ‘Videobeelden’ volgt de schakelaar ‘Sequentieel’ van de eerste invoer."),
-    RU("Чем является вход; от этого зависят стратегия составления пар и снисходительность маппера. «Кадры видео» следует переключателю «По порядку» первого входа."),
-    TR("Girdinin ne olduğu; eşleştirme stratejisini ve haritalayıcının ne kadar hoşgörülü olduğunu bu belirler. “Video kareleri”, ilk girdinin “Sıralı” anahtarını izler."));
+SS_MSG(feature_extraction_section_caption,
+    EN("Set the detector, image size and number of points to keep."),
+    JA("検出器、画像サイズ、保持する特徴点の数を設定します。"),
+    ZH_HANS("设置检测器、图像尺寸和保留的特征点数量。"),
+    ZH_HANT("設定偵測器、影像尺寸和保留的特徵點數量。"),
+    KO("검출기, 이미지 크기, 유지할 특징점 수를 설정합니다."),
+    DE("Legt Detektor, Bildgröße und Anzahl der beibehaltenen Punkte fest."),
+    FR("Règle le détecteur, la taille des images et le nombre de points à garder."),
+    ES("Ajusta el detector, el tamaño de imagen y cuántos puntos se conservan."),
+    PT("Define o detetor, o tamanho da imagem e quantos pontos manter."),
+    IT("Imposta il rilevatore, la dimensione delle immagini e quanti punti tenere."),
+    NL("Kies de detector, de beeldgrootte en hoeveel punten je bewaart."),
+    RU("Выберите детектор, размер изображений и число сохраняемых точек."),
+    TR("Algılayıcıyı, görüntü boyutunu ve tutulacak nokta sayısını belirler."));
 
 SS_MSG(features,
-    EN("Features"),      JA("特徴"),          ZH_HANS("特征"),     ZH_HANT("特徵"),
-    KO("특징점"),         DE("Merkmale"),     FR("Points caractéristiques"),
-    ES("Características"), PT("Características"), IT("Caratteristiche"),
-    NL("Kenmerken"),     RU("Особые точки"), TR("Öznitelikler"));
+    EN("Feature detector"),
+    JA("特徴点検出"),
+    ZH_HANS("特征点检测"),
+    ZH_HANT("特徵點偵測"),
+    KO("특징점 검출기"),
+    DE("Merkmalsdetektor"),
+    FR("Détecteur de points"),
+    ES("Detector de puntos"),
+    PT("Detector de pontos"),
+    IT("Rilevatore di punti"),
+    NL("Puntdetector"),
+    RU("Детектор точек"),
+    TR("Özellik algılayıcı"));
 
 SS_MSG(features_sift,
     EN("SIFT (classic)"), JA("SIFT（古典的）"), ZH_HANS("SIFT（经典）"),
@@ -6441,40 +6428,80 @@ SS_MSG(features_loma_b128,
     TR("LoMa-B128 (öğrenilmiş, küçük)"));
 
 SS_MSG(features_loma_b,
-    EN("LoMa-B (learned, most accurate)"),
-    JA("LoMa-B（学習型・最も高精度）"),
-    ZH_HANS("LoMa-B（学习型，最准确）"),
-    ZH_HANT("LoMa-B（學習型，最準確）"),
-    KO("LoMa-B(학습형, 가장 정확)"),
-    DE("LoMa-B (gelernt, am genauesten)"),
-    FR("LoMa-B (appris, le plus précis)"),
-    ES("LoMa-B (aprendido, el más preciso)"),
-    PT("LoMa-B (aprendido, o mais preciso)"),
-    IT("LoMa-B (appreso, il più preciso)"),
-    NL("LoMa-B (geleerd, nauwkeurigst)"),
-    RU("LoMa-B (обученный, самый точный)"),
-    TR("LoMa-B (öğrenilmiş, en doğru)"));
+    EN("LoMa-B (larger model)"),
+    JA("LoMa-B（大型モデル）"),
+    ZH_HANS("LoMa-B（较大模型）"),
+    ZH_HANT("LoMa-B（較大模型）"),
+    KO("LoMa-B (대형 모델)"),
+    DE("LoMa-B (größeres Modell)"),
+    FR("LoMa-B (modèle plus grand)"),
+    ES("LoMa-B (modelo más grande)"),
+    PT("LoMa-B (modelo maior)"),
+    IT("LoMa-B (modello più grande)"),
+    NL("LoMa-B (groter model)"),
+    RU("LoMa-B (крупная модель)"),
+    TR("LoMa-B (daha büyük model)"));
 
 SS_MSG(features_help,
-    EN("SIFT needs no download. ALIKED downloads 3–4 MB and matches more pairs on difficult captures. N32 is slower and slightly stronger without large rotations."),
-    JA("SIFTは取得不要です。ALIKEDは3–4 MBを取得し、難しい撮影でより多くのペアを照合します。N32は低速ですが、大きな回転がない場面でやや高精度です。"),
-    ZH_HANS("SIFT 无需下载。ALIKED 下载 3–4 MB，在困难场景匹配更多图像对。N32 较慢，在无大幅旋转时稍强。"),
-    ZH_HANT("SIFT 無需下載。ALIKED 下載 3–4 MB，在困難場景匹配更多影像對。N32 較慢，在無大幅旋轉時稍強。"),
-    KO("SIFT는 다운로드가 없습니다. ALIKED는 3–4 MB를 받아 어려운 촬영에서 더 많은 쌍을 매칭합니다. N32는 느리지만 큰 회전이 없을 때 조금 더 좋습니다."),
-    DE("SIFT braucht keinen Download. ALIKED lädt 3–4 MB und findet bei schwierigen Aufnahmen mehr Paare. N32 ist langsamer, ohne starke Drehung etwas besser."),
-    FR("SIFT ne télécharge rien. ALIKED télécharge 3–4 MB et apparie plus de paires difficiles. N32 est plus lent, un peu meilleur sans fortes rotations."),
-    ES("SIFT no descarga nada. ALIKED descarga 3–4 MB y empareja más vistas difíciles. N32 es más lento y algo mejor sin giros grandes."),
-    PT("SIFT dispensa transferências. ALIKED descarrega 3–4 MB e combina mais pares difíceis. N32 é mais lento e um pouco melhor sem grandes rotações."),
-    IT("SIFT non richiede download. ALIKED scarica 3–4 MB e abbina più coppie difficili. N32 è più lento, leggermente migliore senza grandi rotazioni."),
-    NL("SIFT vereist geen download. ALIKED downloadt 3–4 MB en koppelt meer paren bij lastige opnamen. N32 is trager, iets beter zonder grote rotaties."),
-    RU("SIFT не требует загрузки. ALIKED загружает 3–4 MB и сопоставляет больше сложных пар. N32 медленнее, немного лучше без сильных поворотов."),
-    TR("SIFT indirme gerektirmez. ALIKED, 3–4 MB indirip zor çekimlerde daha çok çifti eşleştirir. N32 daha yavaştır; büyük dönüşler yoksa biraz daha iyidir."));
+    EN("Find details to match across images. SIFT needs no download. ALIKED and LoMa use learned models for "
+       "difficult views."),
+    JA("画像間で対応する細部を探します。SIFTはダウンロード不要です。ALIKEDとLoMaは難しい視点で学習モデルを使います。"),
+    ZH_HANS("查找可在图像间匹配的细节。SIFT 无需下载。ALIKED 和 LoMa 使用学习模型处理困难视角。"),
+    ZH_HANT("尋找可在影像間配對的細節。SIFT 無需下載。ALIKED 和 LoMa 使用學習模型處理困難視角。"),
+    KO("이미지 사이에서 일치시킬 디테일을 찾습니다. SIFT는 다운로드가 필요 없고 ALIKED와 LoMa는 어려운 시점에 학습 모델을 씁니다."),
+    DE("Findet Bilddetails zum Zuordnen. SIFT braucht keinen Download. ALIKED und LoMa nutzen Lernmodelle für "
+       "schwierige Ansichten."),
+    FR("Repère les détails à relier entre images. SIFT ne télécharge rien. ALIKED et LoMa utilisent des modèles "
+       "pour les vues difficiles."),
+    ES("Busca detalles para unir imágenes. SIFT no requiere descarga. ALIKED y LoMa usan modelos para vistas "
+       "difíciles."),
+    PT("Procura detalhes para ligar imagens. SIFT dispensa download. ALIKED e LoMa usam modelos para vistas "
+       "difíceis."),
+    IT("Cerca dettagli da abbinare tra foto. SIFT non richiede download. ALIKED e LoMa usano modelli per viste "
+       "difficili."),
+    NL("Vindt details om beelden te koppelen. SIFT heeft geen download nodig. ALIKED en LoMa gebruiken modellen "
+       "bij lastige beelden."),
+    RU("Ищет детали для связи кадров. SIFT не требует загрузки. ALIKED и LoMa используют модели для сложных "
+       "ракурсов."),
+    TR("Görüntüler arasında ortak ayrıntı arar. SIFT indirme istemez. ALIKED ve LoMa zor açılarda eğitilmiş model "
+       "kullanır."));
+
+SS_MSG(section_feature_matching,
+    EN("Feature matching"),
+    JA("特徴点の照合"), ZH_HANS("特征点匹配"), ZH_HANT("特徵點比對"),
+    KO("특징점 정합"), DE("Merkmalszuordnung"), FR("Appariement des points"),
+    ES("Emparejamiento de puntos"), PT("Pareamento de pontos"), IT("Corrispondenza tra punti"),
+    NL("Kenmerken koppelen"), RU("Сопоставление признаков"), TR("Öznitelik eşleştirme"));
+
+SS_MSG(feature_matching_section_caption,
+    EN("Choose which images to compare and how to link their points."),
+    JA("比較する画像の組み合わせと、特徴点の対応付けの方法を選びます。"),
+    ZH_HANS("选择要比较的图像，以及如何匹配其中的特征点。"),
+    ZH_HANT("選擇要比較的影像，以及如何比對其中的特徵點。"),
+    KO("비교할 이미지와 특징점을 연결하는 방법을 선택합니다."),
+    DE("Wählt die zu vergleichenden Bilder und die Methode zur Punktzuordnung."),
+    FR("Choisissez quelles images comparer et comment apparier leurs points."),
+    ES("Elige qué imágenes comparar y cómo emparejar sus puntos."),
+    PT("Escolha quais imagens comparar e como parear os seus pontos."),
+    IT("Scegli quali immagini confrontare e come associare i loro punti."),
+    NL("Kies welke beelden je vergelijkt en hoe je hun punten koppelt."),
+    RU("Выберите, какие снимки сравнивать и как сопоставлять их точки."),
+    TR("Karşılaştırılacak görüntüleri ve noktaların nasıl eşleştirileceğini seçin."));
 
 SS_MSG(matcher,
-    EN("Matcher"),       JA("マッチャー"),    ZH_HANS("匹配器"),   ZH_HANT("配對器"),
-    KO("매처"),           DE("Zuordner"),     FR("Appariement"),  ES("Emparejador"),
-    PT("Correspondedor"), IT("Abbinatore"),  NL("Matcher"),      RU("Сопоставитель"),
-    TR("Eşleştirici"));
+    EN("Feature matcher"),
+    JA("特徴点の照合方法"),
+    ZH_HANS("特征点匹配"),
+    ZH_HANT("特徵點配對"),
+    KO("특징점 매칭 방식"),
+    DE("Merkmalszuordnung"),
+    FR("Appariement des points"),
+    ES("Emparejado de puntos"),
+    PT("Pareamento de pontos"),
+    IT("Abbinamento dei punti"),
+    NL("Punten koppelen"),
+    RU("Сопоставление точек"),
+    TR("Özellik eşleştirici"));
 
 SS_MSG(matcher_brute_force,
     EN("Brute force"),   JA("総当たり"),      ZH_HANS("暴力匹配"),  ZH_HANT("暴力比對"),
@@ -6511,19 +6538,28 @@ SS_MSG(matcher_flexglue,
     RU("FlexGlue (обученный, любые признаки)"), TR("FlexGlue (öğrenilmiş, her öznitelik)"));
 
 SS_MSG(matcher_flexglue_help,
-    EN("Matches any detector using image features and rejects non-overlapping pairs. Slow: use a shortlist of pairs. Downloads 570 MB on first use."),
-    JA("画像特徴を使って任意の検出器の点を照合し、重なりのないペアを除外します。低速なので候補ペアを絞ってください。初回は570 MBを取得します。"),
-    ZH_HANS("利用图像特征匹配任意检测器的关键点，排除无重叠图像对。速度较慢，适合少量候选对。首次使用下载 570 MB。"),
-    ZH_HANT("利用影像特徵匹配任意偵測器的關鍵點，排除無重疊影像對。速度較慢，適合少量候選對。首次使用下載 570 MB。"),
-    KO("이미지 특징으로 모든 검출기의 키포인트를 매칭하며 겹치지 않는 쌍을 제외합니다. 느리므로 후보 쌍을 줄이세요. 첫 사용 시 570 MB를 받습니다."),
-    DE("Gleicht jeden Detektor über Bildmerkmale ab und verwirft Paare ohne Überlappung. Langsam: nur wenige Kandidaten nutzen. Erstmaliger Download: 570 MB."),
-    FR("Apparie tout détecteur via les caractéristiques des images et rejette les paires sans recouvrement. Lent : limiter les paires. Premier téléchargement : 570 MB."),
-    ES("Empareja cualquier detector por rasgos de imagen y descarta pares sin solape. Lento: limita los pares candidatos. Primera descarga: 570 MB."),
-    PT("Combina qualquer detetor por características da imagem e rejeita pares sem sobreposição. Lento: limite os pares candidatos. Primeira transferência: 570 MB."),
-    IT("Abbina qualsiasi rilevatore tramite le immagini e scarta coppie senza sovrapposizione. Lento: limitare le coppie candidate. Primo download: 570 MB."),
-    NL("Koppelt elke detector via beeldkenmerken en verwerpt paren zonder overlap. Traag: beperk de kandidaatparen. Eerste download: 570 MB."),
-    RU("Сопоставляет точки любого детектора по признакам изображений, отклоняя пары без перекрытия. Медленно: сократите список пар. Первая загрузка: 570 MB."),
-    TR("Her dedektörü görüntü özellikleriyle eşleştirir, örtüşmeyen çiftleri eler. Yavaştır: aday çiftleri azaltın. İlk kullanımda 570 MB indirir."));
+    EN("Checks image context for overlap and works with any detector. Slow on many pairs. Downloads about 570 MB "
+       "on first use."),
+    JA("画像の周辺情報で重なりを調べます。どの検出器でも使用可能です。多数のペアでは遅く、初回は約570 MB取得します。"),
+    ZH_HANS("利用图像内容判断重叠，适用于所有检测器。图像对多时较慢。首次使用约下载 570 MB。"),
+    ZH_HANT("利用影像內容判斷重疊，適用於所有偵測器。影像對多時較慢。首次使用約下載 570 MB。"),
+    KO("이미지 내용으로 겹침을 확인하며 모든 검출기에서 쓸 수 있습니다. 쌍이 많으면 느립니다. 처음에 약 570 MB를 받습니다."),
+    DE("Prüft Überlappung anhand des Bildinhalts. Für jeden Detektor. Bei vielen Paaren langsam, beim ersten Mal "
+       "etwa 570 MB Download."),
+    FR("Vérifie le recouvrement avec le contexte de l’image. Tout détecteur. Lent sur de nombreuses paires. "
+       "Télécharge environ 570 Mo."),
+    ES("Comprueba el solape usando el contenido de imagen. Admite cualquier detector. Lento con muchos pares. "
+       "Descarga unos 570 MB."),
+    PT("Usa o conteúdo das imagens para conferir sobreposição. Para qualquer detector. Lento com muitos pares. "
+       "Baixa cerca de 570 MB."),
+    IT("Verifica la sovrapposizione dal contesto delle immagini. Per ogni rilevatore. Lento con tante coppie. "
+       "Scarica circa 570 MB."),
+    NL("Toetst overlap via beeldinhoud. Werkt met elke detector. Traag bij veel paren. Downloadt circa 570 MB bij "
+       "eerste gebruik."),
+    RU("Учитывает содержимое кадра для проверки перекрытия. С любым детектором. Много пар — медленно. Загрузка "
+       "около 570 МБ."),
+    TR("Örtüşmeyi görüntü içeriğiyle denetler. Her algılayıcıyla çalışır. Çok çiftte yavaştır. İlk kullanımda "
+       "yaklaşık 570 MB indirir."));
 
 SS_MSG(matcher_flexglue_wide_lens,
     EN("FlexGlue is meant for ordinary lenses. This capture has fisheye or panorama "
@@ -6584,67 +6620,28 @@ SS_MSG(license_flexglue_terms,
     TR("FlexGlue, Meta'nın özel koşulları altındaki DINOv3 ağırlıklarını kullanır. İndirmeden önce bu koşulları ve FlexGlue MIT lisansını inceleyin. Ağırlıklar çalışma sırasında indirilir ve paketlenmez. Yerel kontrol noktası yolu da desteklenir."));
 
 SS_MSG(matcher_help,
-    EN("How descriptors are matched. LightGlue is a learned matcher: it "
-       "generally gives a better success rate on hard pairs, at the cost of "
-       "much slower matching."),
-    JA("記述子をどう照合するかです。LightGlue は学習型のマッチャーで、難しい"
-       "ペアでも成功率がおおむね高くなりますが、照合はずっと遅くなります。"),
-    ZH_HANS("描述子如何匹配。LightGlue 是学习型匹配器：在困难配对上成功率通常"
-            "更高，代价是匹配慢得多。"),
-    ZH_HANT("描述子如何比對。LightGlue 是學習型配對器：在困難配對上成功率通常"
-            "更高，代價是比對慢得多。"),
-    KO("기술자를 어떻게 맞출지입니다. LightGlue는 학습형 매처로, 어려운 쌍에서 "
-       "대체로 성공률이 더 높지만 매칭이 훨씬 느립니다."),
-    DE("Wie Deskriptoren zugeordnet werden. LightGlue ist ein gelernter "
-       "Zuordner: er hat bei schwierigen Paaren meist eine bessere "
-       "Trefferquote, ordnet dafür aber viel langsamer zu."),
-    FR("Comment les descripteurs sont appariés. LightGlue est un apparieur "
-       "appris : il réussit généralement mieux sur les paires difficiles, au "
-       "prix d'un appariement bien plus lent."),
-    ES("Cómo se emparejan los descriptores. LightGlue es un emparejador "
-       "aprendido: suele acertar más en pares difíciles, a costa de un "
-       "emparejamiento mucho más lento."),
-    PT("Como os descritores são casados. O LightGlue é um correspondedor "
-       "aprendido: costuma ter mais sucesso em pares difíceis, ao custo de um "
-       "casamento bem mais lento."),
-    IT("Come vengono abbinati i descrittori. LightGlue è un abbinatore "
-       "appreso: in genere riesce meglio sulle coppie difficili, al prezzo di "
-       "un abbinamento molto più lento."),
-    NL("Hoe descriptors worden gematcht. LightGlue is een geleerde matcher: "
-       "die slaagt bij lastige paren doorgaans beter, maar matcht wel veel "
-       "trager."),
-    RU("Как сопоставляются дескрипторы. LightGlue — обученный сопоставитель: "
-       "на трудных парах он обычно успешнее, но сопоставляет намного "
+    EN("Decide how to link the same point across two images. Learned matchers can help with difficult views but "
+       "take longer."),
+    JA("2枚の画像で同じ点を結ぶ方法です。学習型は難しい視点に役立ちますが、時間がかかります。"),
+    ZH_HANS("决定如何关联两张图像中的同一点。学习型匹配适合困难视角，但耗时更长。"),
+    ZH_HANT("決定如何連結兩張影像中的同一點。學習型配對適合困難視角，但耗時較長。"),
+    KO("두 이미지에서 같은 점을 연결하는 방법입니다. 학습형은 어려운 시점에 도움이 되지만 느립니다."),
+    DE("Bestimmt, wie derselbe Punkt in zwei Bildern zugeordnet wird. Gelernte Verfahren helfen bei schwierigen "
+       "Ansichten und dauern länger."),
+    FR("Choisit comment relier le même point dans deux images. Les modèles aident sur les vues difficiles mais "
+       "prennent plus de temps."),
+    ES("Elige cómo enlazar un punto entre dos imágenes. Los modelos aprendidos ayudan con vistas difíciles, pero "
+       "tardan más."),
+    PT("Escolhe como ligar o mesmo ponto em duas imagens. Modelos aprendidos ajudam em vistas difíceis, mas "
+       "demoram mais."),
+    IT("Scegli come unire lo stesso punto in due foto. I modelli addestrati aiutano con viste difficili ma sono "
+       "più lenti."),
+    NL("Kiest hoe hetzelfde punt in twee beelden wordt verbonden. Geleerde methoden helpen bij lastige beelden en "
+       "kosten tijd."),
+    RU("Задаёт способ связать одну точку на двух кадрах. Обучаемые методы помогают на сложных ракурсах, но "
        "медленнее."),
-    TR("Betimleyicilerin nasıl eşleştirileceği. LightGlue öğrenilmiş bir "
-       "eşleştiricidir: zor çiftlerde genellikle daha başarılıdır, "
-       "karşılığında eşleştirme çok daha yavaştır."));
-
-SS_MSG(matcher_needs_learned,
-    EN("LightGlue needs the learned descriptors -- pick an ALIKED frontend "
-       "above to enable it."),
-    JA("LightGlue には学習型の記述子が必要です。上で ALIKED のフロントエンドを"
-       "選ぶと使えるようになります。"),
-    ZH_HANS("LightGlue 需要学习型描述子——请在上面选一个 ALIKED 前端来启用它。"),
-    ZH_HANT("LightGlue 需要學習型描述子——請在上面選一個 ALIKED 前端來啟用它。"),
-    KO("LightGlue에는 학습형 기술자가 필요합니다. 위에서 ALIKED 프런트엔드를 "
-       "고르면 켜집니다."),
-    DE("LightGlue braucht die gelernten Deskriptoren -- oben ein "
-       "ALIKED-Frontend wählen, um es freizuschalten."),
-    FR("LightGlue exige les descripteurs appris -- choisissez un frontal "
-       "ALIKED ci-dessus pour l'activer."),
-    ES("LightGlue necesita los descriptores aprendidos: elija arriba un "
-       "frontal ALIKED para activarlo."),
-    PT("O LightGlue precisa dos descritores aprendidos -- escolha acima um "
-       "front-end ALIKED para habilitá-lo."),
-    IT("LightGlue richiede i descrittori appresi: scelga sopra un frontend "
-       "ALIKED per abilitarlo."),
-    NL("LightGlue heeft de geleerde descriptors nodig -- kies hierboven een "
-       "ALIKED-frontend om het aan te zetten."),
-    RU("LightGlue нужны обученные дескрипторы — выберите выше фронтенд ALIKED, "
-       "чтобы он стал доступен."),
-    TR("LightGlue öğrenilmiş betimleyicilere ihtiyaç duyar -- etkinleştirmek "
-       "için yukarıdan bir ALIKED ön ucu seçin."));
+    TR("Aynı noktayı iki görüntüde eşleştirme yolunu seçer. Eğitilmiş yöntemler zor açılarda işe yarar, ama daha "
+       "uzun sürer."));
 
 SS_MSG(feat_get_model,
     EN("Get the feature model"),
@@ -6683,42 +6680,65 @@ SS_MSG(feat_model_first,
     RU("модель особых точек ещё не загружена"),
     TR("öznitelik modeli henüz indirilmedi"));
 
+SS_MSG(mapping_section_caption,
+    EN("Estimate camera poses and build a sparse 3D model from matches."),
+    JA("特徴点の対応からカメラの位置と向きを推定し、疎な3Dモデルを作ります。"),
+    ZH_HANS("根据匹配结果估计相机位姿并构建稀疏 3D 模型。"),
+    ZH_HANT("根據比對結果估計相機的位置和方向，並建立稀疏 3D 模型。"),
+    KO("정합 결과로 카메라 위치와 방향을 추정하고 희소 3D 모델을 만듭니다."),
+    DE("Schätzt Kameraposen und erstellt ein dünn besetztes 3D-Modell aus Punktpaaren."),
+    FR("Estime les poses des caméras et crée un modèle 3D clairsemé à partir des points appariés."),
+    ES("Estima las poses de cámara y crea un modelo 3D disperso a partir de las coincidencias."),
+    PT("Estima as poses das câmaras e cria um modelo 3D esparso a partir dos pareamentos."),
+    IT("Stima le pose delle fotocamere e crea un modello 3D sparso dalle corrispondenze."),
+    NL("Schat cameraposes en bouw een ijl 3D-model uit gekoppelde punten."),
+    RU("По совпадениям оценивает позы камер и строит разреженную 3D-модель."),
+    TR("Eşleşmelerden kamera pozlarını kestirir ve seyrek bir 3B model oluşturur."));
+
 SS_MSG(mapper_schedule,
-    EN("Mapper schedule"), JA("マッパーの進め方"), ZH_HANS("建图策略"), ZH_HANT("建圖策略"),
-    KO("매퍼 진행 방식"), DE("Mapper-Ablauf"), FR("Ordonnancement du mapper"),
-    ES("Estrategia del mapeador"), PT("Estratégia do mapeador"),
-    IT("Strategia del mapper"), NL("Mapper-schema"),
-    RU("Схема работы маппера"), TR("Haritalayıcı planı"));
+    EN("Reconstruction method"),
+    JA("再構成方法"),
+    ZH_HANS("重建方式"),
+    ZH_HANT("重建方式"),
+    KO("재구성 방식"),
+    DE("Rekonstruktionsmethode"),
+    FR("Méthode de reconstruction"),
+    ES("Método de reconstrucción"),
+    PT("Método de reconstrução"),
+    IT("Metodo di ricostruzione"),
+    NL("Reconstructiemethode"),
+    RU("Метод реконструкции"),
+    TR("Yeniden oluşturma yöntemi"));
 
 SS_MSG(mapper_flat,
-    EN("Flat (one reconstruction)"),
-    JA("フラット（1つの再構成）"),
-    ZH_HANS("扁平（单个重建）"),
-    ZH_HANT("扁平（單個重建）"),
-    KO("평면(재구성 하나)"),
-    DE("Flach (eine Rekonstruktion)"),
-    FR("Plat (une seule reconstruction)"),
-    ES("Plano (una sola reconstrucción)"),
-    PT("Plano (uma única reconstrução)"),
-    IT("Piatto (una sola ricostruzione)"),
-    NL("Vlak (één reconstructie)"),
-    RU("Плоская (одна реконструкция)"),
-    TR("Düz (tek yeniden oluşturma)"));
+    EN("Flat (incremental)"),
+    JA("フラット（逐次）"),
+    ZH_HANS("平铺（逐步添加）"),
+    ZH_HANT("平鋪（逐步新增）"),
+    KO("플랫 (순차 추가)"),
+    DE("Flach (schrittweise)"),
+    FR("À plat (progressif)"),
+    ES("Plano (incremental)"),
+    PT("Plano (incremental)"),
+    IT("Piatto (incrementale)"),
+    NL("Vlak (stapsgewijs)"),
+    RU("Плоский (пошаговый)"),
+    TR("Düz (artımlı)"));
 
 SS_MSG(mapper_bottom_up,
-    EN("Bottom-up (atoms, merged upwards)"),
-    JA("ボトムアップ（小さな塊を作って統合）"),
-    ZH_HANS("自下而上（先建小块再向上合并）"),
-    ZH_HANT("由下而上（先建小塊再向上合併）"),
-    KO("상향식(작은 덩어리를 만들어 위로 병합)"),
-    DE("Von unten (Atome, nach oben zusammengeführt)"),
-    FR("Ascendant (atomes, fusionnés vers le haut)"),
-    ES("Ascendente (átomos, fusionados hacia arriba)"),
-    PT("Ascendente (átomos, mesclados para cima)"),
-    IT("Dal basso (atomi, uniti verso l'alto)"),
-    NL("Bottom-up (atomen, naar boven samengevoegd)"),
-    RU("Снизу вверх (атомы, объединяемые вверх)"),
-    TR("Aşağıdan yukarı (atomlar, yukarı doğru birleştirilir)"));
+    EN("Bottom-up (merge groups)"),
+    JA("ボトムアップ（グループを統合）"),
+    ZH_HANS("自底向上（合并小组）"),
+    ZH_HANT("由下而上（合併群組）"),
+    KO("상향식 (그룹 병합)"),
+    DE("Bottom-up (Gruppen vereinen)"),
+    FR("Ascendant (fusion de groupes)"),
+    ES("Ascendente (une grupos)"),
+    PT("Ascendente (funde grupos)"),
+    IT("Dal basso (unisce gruppi)"),
+    NL("Van onderop (groepen samenvoegen)"),
+    RU("Снизу вверх (слияние групп)"),
+    TR("Aşağıdan yukarı (grupları birleştir)"));
 
 SS_MSG(mapper_global,
     EN("Global (experimental)"), JA("グローバル（実験的）"),
@@ -6730,49 +6750,19 @@ SS_MSG(mapper_global,
     TR("Küresel (deneysel)"));
 
 SS_MSG(mapper_schedule_help,
-    EN("- Flat: default, adds cameras one by one.\n- Bottom-up: reconstructs small groups and merges them.\n- Global: solves camera rotations and positions together; experimental."),
-    JA("- 平面：既定。カメラを1台ずつ追加します。\n- ボトムアップ：小グループを再構成して結合します。\n- グローバル：カメラの回転と位置をまとめて解きます。実験的です。"),
-    ZH_HANS("- 平面：默认，逐个添加相机。\n- 自底向上：重建小组并合并。\n- 全局：联合求解相机旋转和位置，实验性。"),
-    ZH_HANT("- 平面：預設，逐個新增相機。\n- 自底向上：重建小組並合併。\n- 全域：聯合求解相機旋轉和位置，實驗性。"),
-    KO("- 평면: 기본값, 카메라를 하나씩 추가합니다.\n- 상향식: 작은 그룹을 재구성해 병합합니다.\n- 전역: 회전·위치를 함께 풉니다. 실험적입니다."),
-    DE("- Flach: Standard, fügt Kameras einzeln hinzu.\n- Bottom-up: rekonstruiert kleine Gruppen und vereint sie.\n- Global: löst Kameradrehungen und Positionen gemeinsam; experimentell."),
-    FR("- Plat : défaut, ajoute les caméras une à une.\n- Ascendant : reconstruit de petits groupes et les fusionne.\n- Global : résout rotations et positions ensemble ; expérimental."),
-    ES("- Plano: por defecto, añade cámaras una a una.\n- Ascendente: reconstruye grupos pequeños y los fusiona.\n- Global: resuelve giros y posiciones juntos; experimental."),
-    PT("- Plano: padrão, adiciona câmaras uma a uma.\n- Ascendente: reconstrói pequenos grupos e funde-os.\n- Global: resolve rotações e posições em conjunto; experimental."),
-    IT("- Piatto: predefinito, aggiunge camere una per volta.\n- Dal basso: ricostruisce piccoli gruppi e li unisce.\n- Globale: risolve rotazioni e posizioni insieme; sperimentale."),
-    NL("- Vlak: standaard, voegt camera’s één voor één toe.\n- Bottom-up: reconstrueert kleine groepen en voegt ze samen.\n- Globaal: lost camerarotaties en posities samen op; experimenteel."),
-    RU("- Плоский: по умолчанию, добавляет камеры по одной.\n- Снизу вверх: реконструирует малые группы и объединяет их.\n- Глобальный: решает повороты и положения вместе; экспериментальный."),
-    TR("- Düz: varsayılan, kameraları tek tek ekler.\n- Aşağıdan yukarı: küçük grupları oluşturup birleştirir.\n- Küresel: kamera dönüş ve konumlarını birlikte çözer; deneysel."));
-
-SS_MSG(prefilter_sequential,
-    EN("Also match neighbouring frames"),
-    JA("隣り合うフレームもマッチングする"),
-    ZH_HANS("同时匹配相邻帧"),
-    ZH_HANT("同時比對相鄰影格"),
-    KO("이웃 프레임도 매칭"),
-    DE("Auch benachbarte Bilder zuordnen"),
-    FR("Apparier aussi les images voisines"),
-    ES("Emparejar también los fotogramas vecinos"),
-    PT("Comparar também os quadros vizinhos"),
-    IT("Abbinare anche i fotogrammi vicini"),
-    NL("Ook naburige beelden matchen"),
-    RU("Сопоставлять и соседние кадры"),
-    TR("Komşu kareleri de eşleştir"));
-
-SS_MSG(prefilter_sequential_help,
-    EN("Adds file-order neighbor matches to content pre-selection, preventing weak gaps in walks at extra matching cost. Automatic enables it from 100 images."),
-    JA("内容による事前選択にファイル順の隣接照合を加え、歩行撮影の弱い隙間を防ぎます。追加の照合が必要です。自動では100枚以上で有効です。"),
-    ZH_HANS("在内容预选外增加文件顺序邻近匹配，防止行走拍摄断连，但增加匹配开销。自动模式从 100 张起启用。"),
-    ZH_HANT("在內容預選外增加檔案順序鄰近匹配，防止行走拍攝斷連，但增加匹配開銷。自動模式從 100 張起啟用。"),
-    KO("내용 사전 선택에 파일 순서 이웃 매칭을 더해 보행 촬영의 끊김을 막습니다. 매칭 비용이 추가됩니다. 자동은 100장부터 켭니다."),
-    DE("Ergänzt Inhaltsvorauswahl um Dateinachbarn gegen Lücken in Rundgängen; mehr Zuordnungsarbeit. Automatisch ab 100 Bildern."),
-    FR("Ajoute les voisins par ordre de fichiers à la présélection pour éviter les ruptures d’un parcours ; coût accru. Automatique dès 100 images."),
-    ES("Añade vecinos en orden de archivo a la preselección para evitar cortes en recorridos; más coste de emparejamiento. Automático desde 100 imágenes."),
-    PT("Adiciona vizinhos por ordem de ficheiro à pré-seleção para evitar falhas num percurso; mais custo. Automático a partir de 100 imagens."),
-    IT("Aggiunge vicini in ordine di file alla preselezione per evitare interruzioni nei percorsi; costo extra. Automatico da 100 immagini."),
-    NL("Voegt bestandsburen toe aan inhoudsvoorselectie tegen gaten in wandelingen; extra koppelwerk. Automatisch vanaf 100 beelden."),
-    RU("Добавляет соседей по порядку файлов к отбору по содержимому, закрывая слабые связи прохода ценой лишних сравнений. Авто от 100 снимков."),
-    TR("İçerik ön seçimine dosya sırası komşularını ekleyerek yürüyüşte kopmayı önler; ek eşleştirme maliyeti vardır. Otomatik 100 resimden itibaren açar."));
+    EN("Choose how matched images become a 3D model."),
+    JA("対応画像から3Dモデルを作る方法です。"),
+    ZH_HANS("选择如何将匹配的图像构建成 3D 模型。"),
+    ZH_HANT("選擇如何將配對的影像建成 3D 模型。"),
+    KO("매칭한 이미지로 3D 모델을 만드는 방식입니다."),
+    DE("Wählt, wie aus Bildtreffern ein 3D-Modell entsteht."),
+    FR("Choisit comment transformer les images appariées en modèle 3D."),
+    ES("Elige cómo formar el modelo 3D con las imágenes enlazadas."),
+    PT("Escolhe como gerar o modelo 3D das imagens pareadas."),
+    IT("Scegli come ricavare un modello 3D dalle foto abbinate."),
+    NL("Kiest hoe gekoppelde beelden een 3D-model worden."),
+    RU("Задаёт сборку 3D-модели из связанных кадров."),
+    TR("Eşleşen görüntülerden 3B model kurma yolunu seçer."));
 
 SS_MSG(sequential_overlap,
     EN("Sequential overlap"),
@@ -6790,19 +6780,26 @@ SS_MSG(sequential_overlap,
     TR("Sıralı örtüşme"));
 
 SS_MSG(sequential_overlap_help,
-    EN("How many neighbouring frames each frame is matched against."),
-    JA("各フレームを、隣り合う何フレームと照合するかです。"),
-    ZH_HANS("每一帧要和多少相邻帧做匹配。"),
-    ZH_HANT("每一影格要和多少相鄰影格做比對。"),
-    KO("각 프레임을 이웃한 몇 개의 프레임과 매칭할지입니다."),
-    DE("Mit wie vielen benachbarten Bildern jedes Bild verglichen wird."),
-    FR("Nombre d'images voisines auxquelles chaque image est appariée."),
-    ES("Con cuántos fotogramas vecinos se empareja cada fotograma."),
-    PT("Com quantos quadros vizinhos cada quadro é comparado."),
-    IT("Con quanti fotogrammi vicini viene confrontato ogni fotogramma."),
-    NL("Met hoeveel naburige beelden elk beeld wordt gematcht."),
-    RU("Со сколькими соседними кадрами сопоставляется каждый кадр."),
-    TR("Her karenin kaç komşu kareyle eşleştirileceği."));
+    EN("Raise to compare more nearby frames. This can connect gaps from motion or skipped frames and takes longer."),
+    JA("近くのフレームを多く比較するには上げます。動きや抜けたフレームで生じる隙間をつなぎやすくなりますが、時間は延びます。"),
+    ZH_HANS("调高可比较更多邻近帧，有助于连接移动或跳帧造成的断点，但耗时更长。"),
+    ZH_HANT("調高可比較更多鄰近影格，有助於連接移動或跳格造成的斷點，但耗時較長。"),
+    KO("높이면 이웃 프레임을 더 비교합니다. 이동이나 누락 구간을 이을 수 있지만 시간이 더 듭니다."),
+    DE("Höher vergleicht mehr Nachbarbilder. Kann Lücken durch Bewegung oder ausgelassene Bilder schließen und "
+       "dauert länger."),
+    FR("Augmentez pour comparer plus de vues voisines. Cela peut combler des sauts de mouvement ou d’image, au "
+       "prix du temps."),
+    ES("Sube para comparar más cuadros cercanos. Puede salvar huecos por movimiento o saltos de cuadros y tarda "
+       "más."),
+    PT("Aumente para comparar mais quadros vizinhos. Pode ligar lacunas de movimento ou quadros pulados e leva "
+       "mais tempo."),
+    IT("Aumenta per confrontare più fotogrammi vicini. Può colmare vuoti da movimento o fotogrammi saltati e costa "
+       "tempo."),
+    NL("Hoger vergelijkt meer nabije frames. Kan gaten door beweging of overgeslagen frames dichten en kost tijd."),
+    RU("Повысьте для сравнения с большим числом соседних кадров. Помогает закрыть разрывы от движения или "
+       "пропусков, но дольше."),
+    TR("Daha çok yakın kare karşılaştırmak için artırın. Hareket veya atlanan kare boşluklarını bağlayabilir, süre "
+       "uzar."));
 
 SS_MSG(initial_focal_px,
     EN("Initial focal length (px, 0 = auto)"),
@@ -6940,19 +6937,28 @@ SS_MSG(sfm_distortion_never,
     TR("Asla"));
 
 SS_MSG(sfm_distortion_refinement_help,
-    EN("Final pass only: holds initial distortion during mapping, then fits it once; steadier for low distortion. The “Never” option locks a trusted calibration."),
-    JA("最終段階のみ：構築中は初期歪みを保ち、最後に一度調整します。歪みの小さいレンズで安定します。「しない」は既知の補正を固定します。"),
-    ZH_HANS("仅最终阶段：建图时固定初始畸变，最后优化一次，对低畸变更稳定。“从不”锁定可信的标定。"),
-    ZH_HANT("僅最終階段：建圖時固定初始畸變，最後最佳化一次，對低畸變更穩定。「永不」鎖定可信的校正。"),
-    KO("최종 단계만: 매핑 중 초기 왜곡을 유지하고 마지막에 한 번 풉니다. 작은 왜곡에서 안정적입니다. “안 함”은 알려진 보정을 고정합니다."),
-    DE("Nur letzter Durchlauf: hält die Anfangsverzeichnung beim Aufbau, passt sie am Ende an; stabiler bei wenig Verzeichnung. „Nie“ fixiert bekannte Kalibrierung."),
-    FR("Passe finale seule : garde la distorsion initiale puis l’ajuste une fois ; plus stable si faible. « Jamais » verrouille une calibration fiable."),
-    ES("Solo pase final: mantiene la distorsión inicial y la ajusta al final; más estable con poca distorsión. «Nunca» fija una calibración fiable."),
-    PT("Só passagem final: mantém a distorção inicial e ajusta-a no fim; mais estável com pouca distorção. «Nunca» fixa uma calibração fiável."),
-    IT("Solo passo finale: mantiene la distorsione iniziale e la adatta alla fine; più stabile se bassa. «Mai» blocca una calibrazione nota."),
-    NL("Alleen eindronde: houdt beginvervorming vast en past die achteraf aan; stabieler bij weinig vervorming. ‘Nooit’ zet bekende kalibratie vast."),
-    RU("Только финал: держит исходную дисторсию при построении, уточняя в конце; устойчивее при малой дисторсии. «Никогда» фиксирует известную калибровку."),
-    TR("Yalnız son geçiş: başlangıç bozulmasını tutar, sonunda ayarlar; az bozulmada daha kararlı. “Asla” güvenilen kalibrasyonu sabitler."));
+    EN("Choose when to fit lens distortion. A wide lens can benefit from fitting early. A trusted calibration can "
+       "stay fixed."),
+    JA("レンズの歪みを合わせる時期を選びます。広角なら早めの調整が役立ちます。信頼できる校正値は固定できます。"),
+    ZH_HANS("选择何时拟合镜头畸变。广角镜头可受益于尽早拟合。可信的标定参数可以固定。"),
+    ZH_HANT("選擇何時擬合鏡頭畸變。廣角鏡頭可受益於儘早擬合。可信的校正參數可以固定。"),
+    KO("렌즈 왜곡을 맞출 시점을 고릅니다. 광각 렌즈는 일찍 맞추면 도움이 됩니다. 신뢰할 수 있는 보정은 고정할 수 있습니다."),
+    DE("Wählt den Zeitpunkt für die Verzeichnungskorrektur. Weitwinkel profitiert von früher Anpassung. Gute "
+       "Kalibrierung kann fest bleiben."),
+    FR("Choisit quand ajuster la distorsion. Un grand angle peut gagner à être ajusté tôt. Un étalonnage fiable "
+       "peut rester fixe."),
+    ES("Elige cuándo ajustar la distorsión. Un gran angular puede beneficiarse de un ajuste temprano. Puedes fijar "
+       "una calibración fiable."),
+    PT("Escolhe quando corrigir a distorção. Uma grande angular pode ganhar com ajuste cedo. Uma calibração "
+       "confiável pode ficar fixa."),
+    IT("Scegli quando adattare la distorsione. Il grandangolo può beneficiare di un fit precoce. Una calibrazione "
+       "affidabile può restare fissa."),
+    NL("Kiest wanneer lensvervorming wordt aangepast. Bij groothoek kan vroeg helpen. Een goede kalibratie kan "
+       "vast blijven."),
+    RU("Выбирает момент коррекции дисторсии. Широкий угол может выиграть от ранней подгонки. Надёжную калибровку "
+       "можно закрепить."),
+    TR("Lens bozulmasının ayar zamanını seçer. Geniş açıda erken ayar yararlı olabilir. Güvenilir kalibrasyon "
+       "sabit kalabilir."));
 
 SS_MSG(sfm_metric_gps,
     EN("GPS"),
@@ -7331,32 +7337,20 @@ SS_MSG(sensors_unused_colmap,
        "kullanır."));
 
 SS_MSG(sensors_section_caption,
-    EN("How the sensors left on in the input rows are used. Off here turns that "
-       "sensor off for every input."),
-    JA("入力の各行でオンのままのセンサーをどう使うかです。ここでオフにすると、"
-       "そのセンサーはすべての入力でオフになります。"),
-    ZH_HANS("在各输入行中保持开启的传感器如何使用。在这里关闭，则该传感器对所有"
-            "输入都关闭。"),
-    ZH_HANT("在各輸入列中保持開啟的感測器如何使用。在這裡關閉，則該感測器對所有"
-            "輸入都關閉。"),
-    KO("입력 행에서 켜 둔 센서를 어떻게 쓸지입니다. 여기서 끄면 그 센서는 모든 "
-       "입력에서 꺼집니다."),
-    DE("Wie die in den Eingabezeilen eingeschalteten Sensoren genutzt werden. "
-       "Aus schaltet den Sensor hier für alle Eingaben ab."),
+    EN("How the sensors left on in the input rows are used."),
+    JA("入力の各行でオンのままのセンサーをどう使うかです。"),
+    ZH_HANS("在各输入行中保持开启的传感器如何使用。"),
+    ZH_HANT("在各輸入列中保持開啟的感測器如何使用。"),
+    KO("입력 행에서 켜 둔 센서를 어떻게 쓸지입니다."),
+    DE("Wie die in den Eingabezeilen eingeschalteten Sensoren genutzt werden."),
     FR("Comment sont utilisés les capteurs laissés actifs dans les lignes "
-       "d'entrée. Désactiver ici coupe ce capteur pour toutes les entrées."),
-    ES("Cómo se usan los sensores que quedan activados en las filas de entrada. "
-       "Desactivarlo aquí lo apaga para todas las entradas."),
-    PT("Como são usados os sensores deixados ligados nas linhas de entrada. "
-       "Desligar aqui desliga esse sensor para todas as entradas."),
-    IT("Come si usano i sensori lasciati attivi nelle righe degli ingressi. "
-       "Disattivarlo qui lo spegne per tutti gli ingressi."),
-    NL("Hoe de sensoren die in de invoerrijen aan staan worden gebruikt. Hier "
-       "uitzetten schakelt die sensor voor alle invoer uit."),
-    RU("Как используются датчики, оставленные включёнными в строках входов. "
-       "Выключение здесь отключает датчик для всех входов."),
-    TR("Girdi satırlarında açık bırakılan sensörlerin nasıl kullanılacağı. "
-       "Burada kapatmak o sensörü tüm girdiler için kapatır."));
+       "d'entrée."),
+    ES("Cómo se usan los sensores que quedan activados en las filas de entrada."),
+    PT("Como são usados os sensores deixados ligados nas linhas de entrada."),
+    IT("Come si usano i sensori lasciati attivi nelle righe degli ingressi."),
+    NL("Hoe de sensoren die in de invoerrijen aan staan worden gebruikt."),
+    RU("Как используются датчики, оставленные включёнными в строках входов."),
+    TR("Girdi satırlarında açık bırakılan sensörlerin nasıl kullanılacağı."));
 
 SS_MSG(sfm_metric_gps_help,
     EN("Fit a metric model to video GPS or photo EXIF. The capture should span tens of metres.\n- Latitude/longitude sets scale and heading. IMU or cameras still determine up.\n- Altitude also levels the model. Phone altitude errors can tilt it.\n- Auto uses altitude for DJI drone GPS or EXIF with altitude, horizontal for other fixes, and off without GPS.\n- Skips images without fixes. Failed alignment is reported and saves an unscaled model."),
@@ -7530,64 +7524,167 @@ SS_MSG(sfm_per_image_intrinsics_help,
     TR("Ortak kameralı modelden sonra resim başına odak ve bozulma ayarlar. Yakınlaştırma/odak kaymasını izler, ancak son çözümü çok büyütür."));
 
 SS_MSG(max_features_auto,
-    EN("Max features per image (0 = auto)"),
-    JA("画像あたりの特徴数の上限（0 で自動）"),
-    ZH_HANS("每张图像的最大特征数（0 = 自动）"),
-    ZH_HANT("每張影像的最大特徵數（0 = 自動）"),
-    KO("이미지당 최대 특징점 수(0 = 자동)"),
-    DE("Höchstzahl Merkmale je Bild (0 = automatisch)"),
-    FR("Points max par image (0 = auto)"),
-    ES("Características máximas por imagen (0 = automático)"),
-    PT("Máximo de características por imagem (0 = automático)"),
-    IT("Caratteristiche massime per immagine (0 = automatico)"),
-    NL("Max. kenmerken per beeld (0 = automatisch)"),
-    RU("Предел особых точек на снимок (0 — авто)"),
-    TR("Görüntü başına en çok öznitelik (0 = otomatik)"));
+    EN("Max features per image"),
+    JA("画像あたりの特徴数の上限"),
+    ZH_HANS("每张图像的最大特征数"),
+    ZH_HANT("每張影像的最大特徵數"),
+    KO("이미지당 최대 특징점 수"),
+    DE("Höchstzahl Merkmale je Bild"),
+    FR("Points max par image"),
+    ES("Características máximas por imagen"),
+    PT("Máximo de características por imagem"),
+    IT("Caratteristiche massime per immagine"),
+    NL("Max. kenmerken per beeld"),
+    RU("Предел особых точек на снимок"),
+    TR("Görüntü başına en çok öznitelik"));
 
 SS_MSG(max_features_auto_help,
-    EN("Keypoints per image; nonzero overrides quality. SIFT keeps largest scales, learned detectors highest scores. SIFT needs more points than ALIKED."),
-    JA("画像ごとの特徴点数です。0以外は品質設定を上書きします。SIFTは大きいスケール、学習検出器は高スコアを優先し、SIFTはALIKEDより多く必要です。"),
-    ZH_HANS("每图关键点数，非零时覆盖质量预设。SIFT 优先大尺度，学习检测器优先高分；SIFT 比 ALIKED 需要更多点。"),
-    ZH_HANT("每圖關鍵點數，非零時覆蓋品質預設。SIFT 優先大尺度，學習偵測器優先高分；SIFT 比 ALIKED 需要更多點。"),
-    KO("이미지당 키포인트 수입니다. 0 외 값은 품질을 덮어씁니다. SIFT는 큰 스케일, 학습 검출기는 높은 점수를 우선하며 SIFT가 ALIKED보다 많이 필요합니다."),
-    DE("Punkte je Bild; ungleich 0 ersetzt die Qualität. SIFT priorisiert große Skalen, gelernte Detektoren hohe Scores. SIFT braucht mehr Punkte als ALIKED."),
-    FR("Points par image ; non nul remplace la qualité. SIFT privilégie les grandes échelles, les détecteurs appris les scores. SIFT exige plus de points qu’ALIKED."),
-    ES("Puntos por imagen; distinto de 0 anula la calidad. SIFT prioriza escalas grandes, detectores aprendidos puntuación alta. SIFT requiere más puntos que ALIKED."),
-    PT("Pontos por imagem; não zero substitui a qualidade. SIFT prioriza escalas grandes, detetores aprendidos pontuações altas. SIFT exige mais pontos que ALIKED."),
-    IT("Punti per immagine; diverso da 0 sostituisce la qualità. SIFT privilegia scale grandi, i rilevatori appresi punteggi alti. SIFT richiede più punti di ALIKED."),
-    NL("Punten per beeld; niet nul vervangt kwaliteit. SIFT kiest grote schalen, geleerde detectoren hoge scores. SIFT vereist meer punten dan ALIKED."),
-    RU("Точки на снимок; не 0 заменяет качество. SIFT берёт крупные масштабы, обученные детекторы — высокие оценки. SIFT нужно больше точек, чем ALIKED."),
-    TR("Resim başına nokta; 0 dışı kaliteyi geçersiz kılar. SIFT büyük ölçekleri, öğrenilmiş dedektörler yüksek puanları tutar. SIFT, ALIKED’den çok nokta ister."));
+    EN("Raise to keep more points per image and help place difficult views. More points take longer to match and "
+       "use more memory."),
+    JA("画像ごとの点を増やし、難しい視点を取り込むには上げます。照合時間とメモリ使用量が増えます。"),
+    ZH_HANS("调高可保留每张图像的更多点，帮助定位困难视图。点越多，匹配越慢，内存用量越大。"),
+    ZH_HANT("調高可保留每張影像的更多點，幫助定位困難視圖。點越多，配對較慢，記憶體用量較大。"),
+    KO("높이면 이미지마다 점을 더 남겨 어려운 시점을 배치하기 쉬워집니다. 매칭 시간과 메모리 사용이 늘어납니다."),
+    DE("Höher behält mehr Punkte je Bild und hilft bei schwierigen Ansichten. Matching braucht mehr Zeit und "
+       "Speicher."),
+    FR("Augmentez pour garder plus de points par image et placer les vues difficiles. L’appariement est plus lourd "
+       "et plus lent."),
+    ES("Sube para conservar más puntos y ubicar vistas difíciles. Emparejar tarda más y usa más memoria."),
+    PT("Aumente para manter mais pontos por imagem e posicionar vistas difíceis. Parear demora mais e usa mais "
+       "memória."),
+    IT("Aumenta per tenere più punti per foto e posizionare viste difficili. Gli abbinamenti costano più tempo e "
+       "memoria."),
+    NL("Hoger bewaart meer punten per beeld en helpt lastige beelden plaatsen. Matchen kost meer tijd en geheugen."),
+    RU("Повысьте для большего числа точек на кадр и привязки сложных ракурсов. Сопоставление требует больше "
+       "времени и памяти."),
+    TR("Görüntü başına daha çok nokta tutup zor açılara yardım etmek için artırın. Eşleştirme daha uzun sürer ve "
+       "bellek kullanır."));
 
 SS_MSG(max_image_size_auto,
-    EN("Max image size (0 = auto)"),
-    JA("画像サイズの上限（0 で自動）"),
-    ZH_HANS("最大图像尺寸（0 = 自动）"),
-    ZH_HANT("最大影像尺寸（0 = 自動）"),
-    KO("최대 이미지 크기(0 = 자동)"),
-    DE("Maximale Bildgröße (0 = automatisch)"),
-    FR("Taille d'image max (0 = auto)"),
-    ES("Tamaño máximo de imagen (0 = automático)"),
-    PT("Tamanho máximo da imagem (0 = automático)"),
-    IT("Dimensione massima immagine (0 = automatico)"),
-    NL("Max. beeldgrootte (0 = automatisch)"),
-    RU("Предел размера изображения (0 — авто)"),
-    TR("En büyük görüntü boyutu (0 = otomatik)"));
+    EN("Max image size"),
+    JA("画像サイズの上限"),
+    ZH_HANS("最大图像尺寸"),
+    ZH_HANT("最大影像尺寸"),
+    KO("최대 이미지 크기"),
+    DE("Maximale Bildgröße"),
+    FR("Taille d'image max"),
+    ES("Tamaño máximo de imagen"),
+    PT("Tamanho máximo da imagem"),
+    IT("Dimensione massima immagine"),
+    NL("Max. beeldgrootte"),
+    RU("Предел размера изображения"),
+    TR("En büyük görüntü boyutu"));
 
 SS_MSG(max_image_size_auto_help,
-    EN("Longest edge the feature extractor runs on; bigger images are downscaled first. Keypoints are still reported in the source image's pixels."),
-    JA("特徴抽出を行う長辺の長さです。これより大きい画像は先に縮小されます。キーポイントの座標は元画像のピクセルで報告されます。"),
-    ZH_HANS("特征提取所用的最长边长度；更大的图像会先缩小。关键点坐标仍以源图像的像素给出。"),
-    ZH_HANT("特徵擷取所用的最長邊長度；更大的影像會先縮小。關鍵點座標仍以來源影像的像素給出。"),
-    KO("특징 추출을 수행하는 긴 변의 길이입니다. 그보다 큰 이미지는 먼저 축소됩니다. 키포인트 좌표는 여전히 원본 이미지의 픽셀로 보고됩니다."),
-    DE("Längste Kante, auf der die Merkmalsextraktion läuft; größere Bilder werden zuvor verkleinert. Schlüsselpunkte werden weiterhin in Pixeln des Ausgangsbildes angegeben."),
-    FR("Plus grand côté sur lequel l'extraction de points s'exécute ; les images plus grandes sont d'abord réduites. Les points clés restent exprimés en pixels de l'image source."),
-    ES("Lado más largo sobre el que se ejecuta la extracción de características; las imágenes mayores se reducen antes.\nLos puntos clave se siguen dando en píxeles de la imagen de origen."),
-    PT("Maior lado sobre o qual a extração de características roda; imagens maiores são reduzidas antes. Os pontos-chave continuam em pixels da imagem de origem."),
-    IT("Lato massimo per estrarre caratteristiche; riduce prima le immagini più grandi. Le coordinate dei punti restano in pixel dell’immagine sorgente."),
-    NL("Langste zijde waarop de kenmerkextractie draait; grotere beelden worden eerst verkleind. Sleutelpunten worden nog steeds in pixels van het bronbeeld gegeven."),
-    RU("Наибольшая сторона, на которой работает выделение особых точек; изображения крупнее сначала уменьшаются. Координаты точек всё равно даются в пикселях исходного изображения."),
-    TR("Öznitelik çıkarımının çalıştığı en uzun kenar; daha büyük görüntüler önce küçültülür. Anahtar noktalar yine kaynak görüntünün pikselleri cinsinden bildirilir."));
+    EN("Limit the longest edge used to find points. Raise to keep fine detail or lower to save memory. Measured in "
+       "pixels."),
+    JA("点を探す画像の長辺をピクセル単位で制限します。細部を残すには上げ、メモリを節約するには下げます。"),
+    ZH_HANS("限制用于查找特征点的最长边，单位是像素。调高保留细节，调低节省内存。"),
+    ZH_HANT("限制用於尋找特徵點的最長邊，單位是像素。調高保留細節，調低節省記憶體。"),
+    KO("점 탐지에 쓸 이미지의 긴 변을 픽셀로 제한합니다. 디테일을 살리려면 높이고 메모리를 아끼려면 낮추세요."),
+    DE("Begrenzt die längste Bildkante für die Punktsuche in Pixeln. Höher für Details, niedriger für weniger "
+       "Speicher."),
+    FR("Limite le côté le plus long en pixels pour la détection. Montez pour garder les détails, baissez pour "
+       "économiser la mémoire."),
+    ES("Limita el lado mayor en píxeles para detectar puntos. Sube para conservar detalle o baja para ahorrar "
+       "memoria."),
+    PT("Limita a maior borda em pixels para achar pontos. Aumente para manter detalhes ou reduza para poupar "
+       "memória."),
+    IT("Limita in pixel il lato lungo per trovare punti. Aumenta per tenere dettagli o riduci per risparmiare "
+       "memoria."),
+    NL("Beperkt de langste zijde voor puntdetectie in pixels. Hoger behoudt details, lager spaart geheugen."),
+    RU("Ограничивает длинную сторону для поиска точек в пикселях. Больше сохраняет детали, меньше экономит память."),
+    TR("Nokta aramada en uzun kenarı piksel olarak sınırlar. Ayrıntı için artırın, bellek tasarrufu için azaltın."));
+
+SS_MSG(prefilter_neighbors,
+    EN("Pairs kept per image"),
+    JA("画像あたりに残すペア数"),
+    ZH_HANS("每张图像保留的配对数"),
+    ZH_HANT("每張影像保留的配對數"),
+    KO("이미지당 남기는 쌍 수"),
+    DE("Behaltene Paare je Bild"),
+    FR("Paires gardées par image"),
+    ES("Pares conservados por imagen"),
+    PT("Pares mantidos por imagem"),
+    IT("Coppie tenute per immagine"),
+    NL("Behouden paren per beeld"),
+    RU("Пар на снимок"),
+    TR("Görüntü başına tutulan çift"));
+
+SS_MSG(prefilter_neighbors_help,
+    EN("Best-scoring partners GPU pre-selection keeps for each image. Follows Quality until edited. More finds weak links and takes longer to match."),
+    JA("GPU事前選択が各画像に残す高スコアの相手の数です。編集するまでは品質に従います。増やすと弱いつながりも拾えますが、マッチングに時間がかかります。"),
+    ZH_HANS("GPU 预筛选为每张图像保留的高分伙伴数。修改之前跟随质量。调大能找到较弱的连接，但匹配更久。"),
+    ZH_HANT("GPU 預篩選為每張影像保留的高分夥伴數。修改之前跟隨品質。調大能找到較弱的連結，但匹配更久。"),
+    KO("GPU 사전 선별이 이미지마다 남기는 점수 높은 상대의 수입니다. 직접 바꾸기 전에는 품질을 따릅니다. 늘리면 약한 연결도 찾지만 매칭이 오래 걸립니다."),
+    DE("Bestbewertete Partner, die die GPU-Vorauswahl je Bild behält. Folgt der Qualität, bis der Wert geändert wird. Mehr findet schwache Verbindungen und dauert länger."),
+    FR("Partenaires que la présélection GPU garde par image. Suit la qualité jusqu'à modification. Plus trouve les liens faibles et allonge l'appariement."),
+    ES("Mejores compañeras que la preselección en GPU conserva para cada imagen. Sigue la calidad hasta que se edita. Más encuentra enlaces débiles y tarda más en emparejar."),
+    PT("Melhores parceiras que a pré-seleção na GPU mantém para cada imagem. Segue a qualidade até ser editado. Mais encontra ligações fracas e demora mais a emparelhar."),
+    IT("Partner migliori che la preselezione su GPU tiene per ogni immagine. Segue la qualità finché non viene modificato. Di più trova i legami deboli e allunga l'abbinamento."),
+    NL("Best scorende partners die de GPU-voorselectie per beeld houdt. Volgt de kwaliteit tot de waarde wordt aangepast. Meer vindt zwakke verbindingen en matcht langer."),
+    RU("Сколько партнёров отбор на GPU оставляет каждому снимку. Следует качеству, пока значение не изменено. Больше — находятся слабые связи, но дольше."),
+    TR("GPU ön seçiminin her görüntü için tuttuğu en yüksek puanlı eş sayısı. Düzenlenene kadar kaliteyi izler. Artırmak zayıf bağları bulur ve eşleştirmeyi uzatır."));
+
+SS_MSG(sfm_detector_options,
+    EN("Detector options"),
+    JA("検出器のオプション"),
+    ZH_HANS("检测器选项"),
+    ZH_HANT("偵測器選項"),
+    KO("검출기 옵션"),
+    DE("Detektoroptionen"),
+    FR("Options du détecteur"),
+    ES("Opciones del detector"),
+    PT("Opções do detetor"),
+    IT("Opzioni del rilevatore"),
+    NL("Detectoropties"),
+    RU("Параметры детектора"),
+    TR("Dedektör seçenekleri"));
+
+SS_MSG(sfm_matcher_options,
+    EN("Matcher options"),
+    JA("マッチャーのオプション"),
+    ZH_HANS("匹配器选项"),
+    ZH_HANT("配對器選項"),
+    KO("매처 옵션"),
+    DE("Zuordner-Optionen"),
+    FR("Options d'appariement"),
+    ES("Opciones del emparejador"),
+    PT("Opções do correspondedor"),
+    IT("Opzioni dell'abbinatore"),
+    NL("Matcheropties"),
+    RU("Параметры сопоставителя"),
+    TR("Eşleştirici seçenekleri"));
+
+SS_MSG(sfm_mapper_options,
+    EN("Mapper options"),
+    JA("マッパーのオプション"),
+    ZH_HANS("建图器选项"),
+    ZH_HANT("建圖器選項"),
+    KO("매퍼 옵션"),
+    DE("Mapper-Optionen"),
+    FR("Options du mapper"),
+    ES("Opciones del mapeador"),
+    PT("Opções do mapeador"),
+    IT("Opzioni del mapper"),
+    NL("Mapper-opties"),
+    RU("Параметры маппера"),
+    TR("Haritalayıcı seçenekleri"));
+
+SS_MSG(option_default,
+    EN("Default"),
+    JA("既定値"),
+    ZH_HANS("默认"),
+    ZH_HANT("預設"),
+    KO("기본값"),
+    DE("Standard"),
+    FR("Par défaut"),
+    ES("Predeterminado"),
+    PT("Predefinição"),
+    IT("Predefinito"),
+    NL("Standaard"),
+    RU("По умолчанию"),
+    TR("Varsayılan"));
 
 SS_MSG(flip_found_masks,
     EN("They mark what to remove"),
@@ -7808,6 +7905,13 @@ SS_MSG(drop_intermediate_button,
     NL("Verwijderen"),     RU("Удалять"),
     TR("Sil"));
 
+SS_MSG(section_additional,
+    EN("Additional Options"), JA("追加オプション"),
+    ZH_HANS("附加选项"), ZH_HANT("附加選項"), KO("추가 옵션"),
+    DE("Weitere Optionen"), FR("Options supplémentaires"),
+    ES("Opciones adicionales"), PT("Opções adicionais"), IT("Opzioni aggiuntive"),
+    NL("Extra opties"), RU("Дополнительные параметры"), TR("Ek Seçenekler"));
+
 SS_MSG(keep_intermediate,
     EN("Keep intermediate files"),
     JA("中間ファイルを残す"),
@@ -7838,20 +7942,91 @@ SS_MSG(keep_intermediate_help,
     RU("Хранит features/, matches.bin и .resume/ после успеха. Эти большие файлы позволяют продолжить прерванную или неудачную реконструкцию."),
     TR("Başarı sonrası features/, matches.bin ve .resume/ tutar. Bu büyük dosyalar kesilen veya başarısız yeniden oluşturmaya devam etmeyi sağlar."));
 
+SS_MSG(finish_command,
+    EN("Command to run at the end"), JA("終了時に実行するコマンド"),
+    ZH_HANS("结束时运行的命令"), ZH_HANT("結束時執行的命令"),
+    KO("끝날 때 실행할 명령"), DE("Befehl am Ende"),
+    FR("Commande à lancer à la fin"), ES("Comando al terminar"),
+    PT("Comando a executar no fim"), IT("Comando da eseguire alla fine"),
+    NL("Opdracht aan het eind"), RU("Команда по завершении"),
+    TR("Bitince çalışacak komut"));
+
+SS_MSG(finish_command_help,
+    EN("Runs on success or failure. {message} passes the result as one argument."),
+    JA("成功時や失敗時に実行します。{message} は結果を1つの引数として渡します。"),
+    ZH_HANS("成功或失败时运行。{message} 将结果作为一个参数传递。"),
+    ZH_HANT("成功或失敗時執行。{message} 將結果作為一個參數傳遞。"),
+    KO("성공하거나 실패하면 실행합니다. {message}는 결과를 인수 하나로 전달합니다."),
+    DE("Läuft bei Erfolg oder Fehler. {message} übergibt das Ergebnis als ein Argument."),
+    FR("S’exécute après un succès ou un échec. {message} transmet le résultat en un argument."),
+    ES("Se ejecuta al completar o fallar. {message} pasa el resultado como un argumento."),
+    PT("Executa em caso de sucesso ou falha. {message} passa o resultado como um argumento."),
+    IT("Si esegue in caso di successo o errore. {message} passa l’esito come un argomento."),
+    NL("Draait bij succes of mislukking. {message} geeft het resultaat door als één argument."),
+    RU("Запускается при успехе или сбое. {message} передаёт итог одним аргументом."),
+    TR("Başarı veya hatada çalışır. {message} sonucu tek argüman olarak iletir."));
+
+SS_MSG(finish_cmd_ready,
+    EN("Spirula Studio: dataset ready. Output: {0}"),
+    JA("スピルラ・スタジオ: データセットの準備ができました。出力: {0}"),
+    ZH_HANS("旋影工坊：数据集已就绪。输出：{0}"),
+    ZH_HANT("旋影工坊：資料集已就緒。輸出：{0}"),
+    KO("스피룰라 스튜디오: 데이터셋이 준비되었습니다. 출력: {0}"),
+    DE("Spirula Studio: Datensatz bereit. Ausgabe: {0}"),
+    FR("Spirula Studio : jeu de données prêt. Sortie : {0}"),
+    ES("Spirula Studio: conjunto de datos listo. Salida: {0}"),
+    PT("Spirula Studio: conjunto de dados pronto. Saída: {0}"),
+    IT("Spirula Studio: set di dati pronto. Output: {0}"),
+    NL("Spirula Studio: dataset klaar. Uitvoer: {0}"),
+    RU("Спирула Студио: набор данных готов. Результат: {0}"),
+    TR("Spirula Studio: veri kümesi hazır. Çıktı: {0}"));
+
+SS_MSG(finish_cmd_failed,
+    EN("Spirula Studio: dataset creation failed. {0}"),
+    JA("スピルラ・スタジオ: データセットの作成に失敗しました。{0}"),
+    ZH_HANS("旋影工坊：数据集创建失败。{0}"),
+    ZH_HANT("旋影工坊：資料集建立失敗。{0}"),
+    KO("스피룰라 스튜디오: 데이터셋을 만들지 못했습니다. {0}"),
+    DE("Spirula Studio: Datensatz konnte nicht erstellt werden. {0}"),
+    FR("Spirula Studio : échec de la création du jeu de données. {0}"),
+    ES("Spirula Studio: no se pudo crear el conjunto de datos. {0}"),
+    PT("Spirula Studio: falha ao criar o conjunto de dados. {0}"),
+    IT("Spirula Studio: creazione del set di dati non riuscita. {0}"),
+    NL("Spirula Studio: dataset maken mislukt. {0}"),
+    RU("Спирула Студио: не удалось создать набор данных. {0}"),
+    TR("Spirula Studio: veri kümesi oluşturulamadı. {0}"));
+
+SS_MSG(finish_command_in_extra_flags,
+    EN("Use the Command to run at the end field for --finish-command."),
+    JA("--finish-command は「終了時に実行するコマンド」欄で指定してください。"),
+    ZH_HANS("请在“结束时运行的命令”中设置 --finish-command。"),
+    ZH_HANT("請在「結束時執行的命令」中設定 --finish-command。"),
+    KO("--finish-command는 ‘끝날 때 실행할 명령’ 입력란에 지정하세요."),
+    DE("Geben Sie --finish-command im Feld „Befehl am Ende“ an."),
+    FR("Indiquez --finish-command dans « Commande à lancer à la fin »."),
+    ES("Indica --finish-command en el campo «Comando al terminar»."),
+    PT("Defina --finish-command no campo «Comando a executar no fim»."),
+    IT("Imposta --finish-command nel campo «Comando da eseguire alla fine»."),
+    NL("Gebruik ‘Opdracht aan het eind’ voor --finish-command."),
+    RU("Задайте --finish-command в поле «Команда по завершении»."),
+    TR("--finish-command için ‘Bitince çalışacak komut’ alanını kullanın."));
+
+SS_MSG(extra_sfm_flags,
+    EN("Extra `spirula sfm` flags"), JA("`spirula sfm` への追加オプション"),
+    ZH_HANS("额外的 `spirula sfm` 参数"), ZH_HANT("額外的 `spirula sfm` 參數"),
+    KO("추가 `spirula sfm` 옵션"), DE("Zusätzliche `spirula sfm`-Optionen"),
+    FR("Options `spirula sfm` supplémentaires"), ES("Opciones adicionales de `spirula sfm`"),
+    PT("Opções adicionais do `spirula sfm`"), IT("Opzioni aggiuntive per `spirula sfm`"),
+    NL("Extra `spirula sfm`-opties"), RU("Дополнительные ключи `spirula sfm`"),
+    TR("Ek `spirula sfm` seçenekleri"));
+
 SS_MSG(extra_sfm_flags_hint,
-    EN("extra `spirula sfm` flags, e.g. --max-error 2"),
-    JA("`spirula sfm` への追加オプション（例: --max-error 2）"),
-    ZH_HANS("额外的 `spirula sfm` 参数，例如 --max-error 2"),
-    ZH_HANT("額外的 `spirula sfm` 參數，例如 --max-error 2"),
-    KO("추가 `spirula sfm` 옵션, 예: --max-error 2"),
-    DE("zusätzliche `spirula sfm`-Optionen, z. B. --max-error 2"),
-    FR("options `spirula sfm` supplémentaires, p. ex. --max-error 2"),
-    ES("opciones adicionales de `spirula sfm`, p. ej. --max-error 2"),
-    PT("opções adicionais do `spirula sfm`, por exemplo --max-error 2"),
-    IT("opzioni aggiuntive per `spirula sfm`, ad es. --max-error 2"),
-    NL("extra `spirula sfm`-opties, bijv. --max-error 2"),
-    RU("дополнительные ключи `spirula sfm`, например --max-error 2"),
-    TR("ek `spirula sfm` seçenekleri, örn. --max-error 2"));
+    EN("e.g. --max-error 2"), JA("例: --max-error 2"),
+    ZH_HANS("例如 --max-error 2"), ZH_HANT("例如 --max-error 2"),
+    KO("예: --max-error 2"), DE("z. B. --max-error 2"),
+    FR("p. ex. --max-error 2"), ES("p. ej. --max-error 2"),
+    PT("por exemplo --max-error 2"), IT("ad es. --max-error 2"),
+    NL("bijv. --max-error 2"), RU("например --max-error 2"), TR("örn. --max-error 2"));
 
 SS_MSG(extra_sfm_flags_help,
     EN("Passed to `spirula sfm auto` verbatim. Everything this panel does not "
@@ -7894,6 +8069,21 @@ SS_MSG(section_fallbacks,
     KO("대체 수단"),      DE("Ausweichwege"), FR("Solutions de repli"),
     ES("Alternativas"),  PT("Alternativas"), IT("Ripieghi"),
     NL("Terugvalopties"), RU("Запасные пути"), TR("Yedek yollar"));
+
+SS_MSG(fallbacks_section_caption,
+    EN("Try these options if decoding or reconstruction fails."),
+    JA("デコードや再構成に失敗した場合に試してください。"),
+    ZH_HANS("解码或重建失败时可尝试这些选项。"),
+    ZH_HANT("解碼或重建失敗時可試用這些選項。"),
+    KO("디코딩이나 재구성에 실패하면 이 옵션을 사용해 보세요."),
+    DE("Diese Optionen helfen, wenn Dekodierung oder Rekonstruktion fehlschlagen."),
+    FR("Essayez ces options si le décodage ou la reconstruction échoue."),
+    ES("Prueba estas opciones si falla la decodificación o la reconstrucción."),
+    PT("Experimente estas opções se a descodificação ou reconstrução falhar."),
+    IT("Prova queste opzioni se la decodifica o la ricostruzione non riesce."),
+    NL("Probeer deze opties als decoderen of reconstrueren mislukt."),
+    RU("Попробуйте эти параметры при сбое декодирования или реконструкции."),
+    TR("Kod çözme veya yeniden oluşturma başarısız olursa bu seçenekleri deneyin."));
 
 SS_MSG(sfm_subprocess,
     EN("Reconstruct in a separate process"),
@@ -9840,6 +10030,36 @@ SS_MSG(plan_redo_stale,
     RU("Переделать: сделано по более старым результатам"),
     TR("Yeniden yap: daha eski sonuçlardan yapılmış"));
 
+SS_MSG(plan_redo_interrupted,
+    EN("Redo: the last run was interrupted"),
+    JA("やり直す：前回の実行が中断された"),
+    ZH_HANS("重做：上次运行被中断"),
+    ZH_HANT("重做：上次執行被中斷"),
+    KO("다시 하기: 지난 실행이 중단됨"),
+    DE("Neu machen: der letzte Lauf wurde unterbrochen"),
+    FR("Refaire : la dernière exécution a été interrompue"),
+    ES("Rehacer: la última ejecución se interrumpió"),
+    PT("Refazer: a última execução foi interrompida"),
+    IT("Rifare: l'ultima esecuzione è stata interrotta"),
+    NL("Opnieuw doen: de vorige run is onderbroken"),
+    RU("Переделать: прошлый запуск был прерван"),
+    TR("Yeniden yap: son çalıştırma yarıda kesildi"));
+
+SS_MSG(plan_redo_unrecorded,
+    EN("Redo: no record of how it was made"),
+    JA("やり直す：作成時の記録がない"),
+    ZH_HANS("重做：没有制作记录"),
+    ZH_HANT("重做：沒有製作紀錄"),
+    KO("다시 하기: 만든 기록이 없음"),
+    DE("Neu machen: keine Aufzeichnung der Entstehung"),
+    FR("Refaire : aucune trace de sa fabrication"),
+    ES("Rehacer: no hay registro de cómo se hizo"),
+    PT("Refazer: sem registo de como foi feito"),
+    IT("Rifare: nessuna traccia di come è stato fatto"),
+    NL("Opnieuw doen: niet vastgelegd hoe het gemaakt is"),
+    RU("Переделать: нет записи о том, как это сделано"),
+    TR("Yeniden yap: nasıl yapıldığının kaydı yok"));
+
 SS_MSG(plan_redo_features,
     EN("Redo: the feature points change"),
     JA("やり直す：特徴点が変わる"),
@@ -10201,6 +10421,21 @@ SS_MSG(rebuild_confirm,
        "тех, что на экране, поэтому этот запуск сделает это заново:"),
     TR("{0} içinde zaten olanların bir kısmı ekrandakilerden farklı ayarlarla "
        "yapıldı, bu yüzden bu çalıştırma onları yeniden yapacak:"));
+
+SS_MSG(rebuild_whole_run,
+    EN("The whole run:"),
+    JA("実行全体："),
+    ZH_HANS("整个运行："),
+    ZH_HANT("整個執行："),
+    KO("전체 실행:"),
+    DE("Der ganze Lauf:"),
+    FR("L'exécution complète :"),
+    ES("La ejecución completa:"),
+    PT("A execução completa:"),
+    IT("L'intera esecuzione:"),
+    NL("De hele run:"),
+    RU("Весь запуск:"),
+    TR("Tüm çalıştırma:"));
 
 SS_MSG(rebuild_go,
     EN("Redo them"),

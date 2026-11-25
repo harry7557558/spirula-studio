@@ -410,13 +410,10 @@ int main(int argc, char** argv) {
         // 2 scales, full-SSIM map; checks the SSIM scalar.
         {"scaled_gt", 2, 40, 48, 2, 80, 96, 30, 36, 0, 0, false, true, false,
          (int)DensifyLossMapMode::SsimFull, 0.9f, 0.5f, -1.0f},
-        // Minimal modalities, robust edge-aware map (residual + quantile +
-        // tukey + canny), equal-res mask (canny indexes the mask at render
-        // resolution), single scale.
-        {"robust_edge", 1, 48, 64, 1, 0, 0, 0, 0, 0, 0, true, false, true,
+        {"robust_edge", 1, 48, 64, 1, 0, 0, 0, 0, 24, 32, true, false, true,
          (int)DensifyLossMapMode::RobustEdgeAware, 0.85f, 0.5f, -1.0f},
         // Plain edge-aware map (canny of GT rgb), 2 scales.
-        {"edge_aware", 1, 32, 32, 2, 0, 0, 0, 0, 0, 0, true, false, true,
+        {"edge_aware", 1, 32, 32, 2, 0, 0, 0, 0, 64, 64, true, false, true,
          (int)DensifyLossMapMode::EdgeAware, 0.9f, 0.5f, -1.0f},
         // SSIM contrast*structure and structure-only map variants; the
         // latter with a smaller-resolution mask (SSIM's clamped mask path).

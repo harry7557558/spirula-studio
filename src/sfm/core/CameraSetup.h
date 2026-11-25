@@ -337,7 +337,7 @@ inline CameraSetup buildCameras(const std::vector<ImageEntry>& images,
     CameraSetup out;
     out.ids.assign(images.size(), 1);
     // A photo collection gets per-image intrinsics whether or not the caller
-    // knew to ask (D20's --data-type internet, decided from the data instead).
+    // knew to ask (D20's per-image cameras, decided from the data instead).
     CameraMode mode = opt.mode;
     if (!opt.mode_explicit && mode == CameraMode::Folder &&
         looksLikePhotoCollection(feats, &out.dim_buckets)) {

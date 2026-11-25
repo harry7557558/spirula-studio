@@ -87,11 +87,9 @@ inline void tar_finish(std::ostream& out) {
         throw std::runtime_error("failed to write checkpoint TAR terminator");
 }
 
-// --- Stream a device buffer as a flat typed .npy member. Chunked D->H copy
-//     through `host` (reused across calls); no device allocation. ---
-inline void tar_write_npy_device(std::ostream& out, const std::string& name,
-                                 const void* dptr, size_t nbytes, uint8_t dtype_tag,
-                                 std::vector<char>& host) {
+inline void tar_write_npy(std::ostream& out, const std::string& name,
+                          const void* ptr, size_t nbytes, uint8_t dtype_tag,
+                          std::vector<char>* device_stage) {
     auto descr_size = npy_scalar_descr((NpyScalar)dtype_tag);
     const char* descr = descr_size.first;
     size_t esize      = descr_size.second;
@@ -102,23 +100,28 @@ inline void tar_write_npy_device(std::ostream& out, const std::string& name,
     tar_header(out, name, member);
     out.write(hdr.data(), (std::streamsize)hdr.size());
 
-    const size_t chunk = std::min(nbytes, spirula::kFileBufferBytes);
-    if (host.size() < 2*chunk) host.resize(2*chunk);
-    const char* src = (const char*)dptr;
-    std::future<void> pending;
-    size_t slot = 0;
-    for (size_t off = 0; off < nbytes; off += chunk) {
-        const size_t n = std::min(chunk, nbytes-off);
-        char* data = host.data()+slot*chunk;
-        backend::memcpy_sync(data, src+off, n, backend::MemcpyKind::DeviceToHost);
+    const char* src = static_cast<const char*>(ptr);
+    if (!device_stage) {
+        out.write(src, (std::streamsize)nbytes);
+    } else {
+        const size_t chunk = std::min(nbytes, spirula::kFileBufferBytes);
+        auto& host = *device_stage;
+        if (host.size() < 2*chunk) host.resize(2*chunk);
+        std::future<void> pending;
+        size_t slot = 0;
+        for (size_t off = 0; off < nbytes; off += chunk) {
+            const size_t n = std::min(chunk, nbytes-off);
+            char* data = host.data()+slot*chunk;
+            backend::memcpy_sync(data, src+off, n, backend::MemcpyKind::DeviceToHost);
+            if (pending.valid()) pending.get();
+            pending = std::async(std::launch::async, [&, data, n] {
+                out.write(data, (std::streamsize)n);
+                if (!out) throw std::runtime_error("failed to write checkpoint buffer " + name);
+            });
+            slot = 1-slot;
+        }
         if (pending.valid()) pending.get();
-        pending = std::async(std::launch::async, [&, data, n] {
-            out.write(data, (std::streamsize)n);
-            if (!out) throw std::runtime_error("failed to write checkpoint buffer " + name);
-        });
-        slot = 1-slot;
     }
-    if (pending.valid()) pending.get();
     tar_pad(out, member);
 }
 

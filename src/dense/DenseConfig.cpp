@@ -12,7 +12,7 @@ namespace spirula::dense {
 uint64_t DenseConfig::resolved_image_cache_bytes() const {
     if (image_cache_bytes) return image_cache_bytes;
     uint64_t budget = 0;
-    for (const uint64_t limit : {(uint64_t)spirula::physicalRamBytes() / 8, (uint64_t)spirula::availableRamBytes() / 3,
+    for (const uint64_t limit : {(uint64_t)spirula::totalRamBytes() / 8, (uint64_t)spirula::availableRamBytes() / 3,
                                  (uint64_t)spirula::availableCommitBytes() / 5})
         if (limit) budget = budget ? std::min(budget, limit) : limit;
     if (!budget) throw std::runtime_error("cannot determine dense host memory budget; set image_cache_bytes explicitly");

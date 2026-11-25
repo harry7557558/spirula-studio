@@ -712,6 +712,99 @@ void compute_tile_active(
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 
+__global__ void active_radii_accum_kernel(
+    const uint32_t N,
+    const uint32_t total,
+    const float3* __restrict__ means,
+    const float3* __restrict__ scales,
+    const float* __restrict__ opacities,
+    const float* __restrict__ viewmats,
+    const uint2* __restrict__ aabb,
+    const uint32_t image_width,
+    const uint32_t image_height,
+    const int32_t* __restrict__ image_ids,
+    const int32_t* __restrict__ gaussian_ids,
+    const int32_t* __restrict__ tile_active,
+    const uint32_t tile_width,
+    const uint32_t tile_height,
+    const BinTile bt,
+    float* __restrict__ radii
+) {
+    uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+
+    const uint2 aabb_enc = aabb[idx];
+    if ((aabb_enc.x | aabb_enc.y) == 0u) return;
+    const float4 box = aabb16_decode(aabb_enc, image_width, image_height);
+    if (box.z - box.x <= 1e-3f || box.w - box.y <= 1e-3f) return;
+
+    const bool packed = image_ids != nullptr && gaussian_ids != nullptr;
+    const uint32_t cid = packed ? (uint32_t)image_ids[idx] : (idx / N);
+    const uint32_t gid = packed ? (uint32_t)gaussian_ids[idx] : (idx % N);
+
+    const int tx0 = max(0, min((int)floorf((box.x + 0.5f) * bt.inv_x), (int)tile_width));
+    const int ty0 = max(0, min((int)floorf((box.y + 0.5f) * bt.inv_y), (int)tile_height));
+    const int tx1 = max(0, min((int)ceilf((box.z + 0.5f) * bt.inv_x), (int)tile_width));
+    const int ty1 = max(0, min((int)ceilf((box.w + 0.5f) * bt.inv_y), (int)tile_height));
+    if (tx0 >= tx1 || ty0 >= ty1) return;
+
+    const int64_t base = (int64_t)cid * tile_width * tile_height;
+    const int cx = (tx0 + tx1) >> 1;
+    const int cy = (ty0 + ty1) >> 1;
+    bool hit = tile_active[base + (int64_t)cy * tile_width + cx] != 0;
+    if (!hit) {
+        for (int y = ty0; y < ty1 && !hit; ++y) {
+            const int64_t row = base + (int64_t)y * tile_width;
+            for (int x = tx0; x < tx1; ++x) {
+                if (tile_active[row + x] != 0) { hit = true; break; }
+            }
+        }
+    }
+    if (!hit) return;
+
+    const float* vm = viewmats + (size_t)cid * 16;
+    const float3x3 R = {vm[0], vm[1], vm[2], vm[4], vm[5], vm[6], vm[8], vm[9], vm[10]};
+    const float3 campos = SlangProjectionUtils::transform_ray_o(R, {vm[3], vm[7], vm[11]});
+    const float r = SlangProjectionUtils::view_radius_3dgs(means[gid], scales[gid], opacities[gid], campos);
+    atomicMax(&radii[gid], r);
+}
+
+/*[AutoHeaderGeneratorExport]*/
+void accumulate_active_radii(
+    const int64_t num_splats,
+    const uint32_t I,
+    DeviceVector<float3> means,
+    DeviceVector<float3> scales,
+    DeviceVector<float> opacities,
+    TorchTensorView viewmats,
+    DeviceTensor2D<uint2> aabb,
+    const uint32_t image_width,
+    const uint32_t image_height,
+    DeviceVector<int32_t>* image_ids,
+    DeviceVector<int32_t>* gaussian_ids,
+    const int32_t* tile_active,
+    int macro_log2,
+    DeviceVector<float> radii
+) {
+    (void)I;
+    const int64_t total = aabb.size<0>() * aabb.size<1>();
+    if (total <= 0 || num_splats <= 0 || tile_active == nullptr ||
+        radii.data_ptr() == nullptr)
+        return;
+    const BinTile bt = bin_tile(macro_log2);
+    const uint32_t tile_width = _CEIL_DIV(image_width, bt.ix);
+    const uint32_t tile_height = _CEIL_DIV(image_height, bt.iy);
+    active_radii_accum_kernel<<<_LAUNCH_ARGS_1D(total, 256)>>>(
+        (uint32_t)num_splats, (uint32_t)total,
+        means.data_ptr(), scales.data_ptr(), opacities.data_ptr(),
+        (const float*)std::get<0>(viewmats), aabb.data_ptr(),
+        image_width, image_height,
+        image_ids ? image_ids->data_ptr() : nullptr,
+        gaussian_ids ? gaussian_ids->data_ptr() : nullptr,
+        tile_active, tile_width, tile_height, bt, radii.data_ptr());
+    CHECK_DEVICE_ERROR(cudaGetLastError());
+}
+
 
 /*[AutoHeaderGeneratorExport]*/
 std::tuple<

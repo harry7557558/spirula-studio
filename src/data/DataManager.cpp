@@ -503,21 +503,36 @@ void decode_rgb_into(const std::string& path,
     }
 }
 
-// Signed dilate (+) / erode (-) of keep pixels, by fraction * sqrt(W * H) pixels.
+// Signed dilate (+) / erode (-) of the pixels not ignored, by fraction *
+// sqrt(W * H) pixels. Only edges with ignore move: a sky segment's edge with
+// keep stays where the file has it, as no halo is being trimmed there.
 void apply_boundary_offset(uint8_t* mask, int h, int w, float fraction,
                            bool segment_and_ignore = false) {
-    if (fraction == 0.0f) return;
+    if (fraction == 0.0f || (size_t)h * w <= 1) return;
     const float offset_px = fraction * std::sqrt((float)w * (float)h);
     if (!segment_and_ignore) {
         edt::apply_mask_boundary_offset_in_place(mask, h, w, offset_px);
         return;
     }
-    std::vector<uint8_t> bin((size_t)h * w);
-    for (size_t i = 0; i < bin.size(); ++i) bin[i] = (mask[i] == 1) ? 1 : 0;
-    edt::apply_mask_boundary_offset_in_place(bin.data(), h, w, offset_px);
-    for (size_t i = 0; i < bin.size(); ++i) {
-        if (bin[i] == 1) mask[i] = 1;
-        else if (mask[i] == 1) mask[i] = 0;
+    const size_t n = (size_t)h * w;
+    std::vector<uint8_t> bin(n);
+    if (offset_px < 0.0f) {
+        for (size_t i = 0; i < n; ++i) bin[i] = mask[i] != 0;
+        edt::apply_mask_boundary_offset_in_place(bin.data(), h, w, offset_px);
+        for (size_t i = 0; i < n; ++i)
+            if (!bin[i]) mask[i] = 0;
+        return;
+    }
+    // An ignored pixel within reach takes the nearer of keep and segment.
+    std::unique_ptr<float[]> to_keep(new float[n]), to_seg(new float[n]);
+    for (size_t i = 0; i < n; ++i) bin[i] = mask[i] == 1;
+    edt::squared_distance_to(bin.data(), h, w, 1, to_keep.get());
+    for (size_t i = 0; i < n; ++i) bin[i] = mask[i] >= 2;
+    edt::squared_distance_to(bin.data(), h, w, 1, to_seg.get());
+    for (size_t i = 0; i < n; ++i) {
+        if (mask[i] != 0) continue;
+        const bool keep = to_keep[i] <= to_seg[i];
+        if (std::sqrt(keep ? to_keep[i] : to_seg[i]) <= offset_px) mask[i] = keep ? 1 : 2;
     }
 }
 

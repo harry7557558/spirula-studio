@@ -6,6 +6,7 @@
 #include "app/gui/ConfigUI.h"
 
 #include "app/gui/Layout.h"
+#include "app/gui/OptionSearch.h"
 #include "app/gui/Ui.h"
 
 #include "i18n/catalog/Gui.h"
@@ -33,7 +34,8 @@ namespace gui {
 
 namespace {
 
-constexpr float kFieldWidth = 170.0f;
+constexpr float kFieldWidth = 170.0f;      // unscaled, like every width here
+constexpr float kWideFieldWidth = 260.0f;  // text, paths and colours
 const ImVec4 kModifiedColor(1.0f, 0.72f, 0.25f, 1.0f);
 
 std::vector<std::string> split_choices(const char* choices) {
@@ -52,38 +54,20 @@ std::vector<std::string> split_choices(const char* choices) {
 
 // ---- search ------------------------------------------------------------------
 
-// ASCII only: the catalogs are UTF-8 and std::tolower would mangle a
-// continuation byte under a non-C locale.
-std::string lower_ascii(std::string s) {
-    for (char& c : s)
-        if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
-    return s;
-}
-
-// The UI's language and English both, since the flag names, `--help` and
-// every config.json are English whatever the labels are showing. NOT all 13:
-// Spanish "superficie" answering an English "sup" is noise, not reach.
-void add_text(std::string& out, const Msg& m) {
-    out += ' ';
-    out += m.get();
-    const char* en = m.in(spirula::i18n::Lang::en);
-    if (en != m.get()) { out += ' '; out += en; }
-}
-
 // Everything one field can be found by.
 std::string field_text(const char* key, const char* section, const Msg& name,
                        const Msg& help, const char* choices) {
     std::string s = key;
-    add_text(s, name);
-    add_text(s, help);
+    option_search::add_text(s, name);
+    option_search::add_text(s, help);
     if (const Msg* m = spirula::i18n::msg::train::section_label(section))
-        add_text(s, *m);
+        option_search::add_text(s, *m);
     for (const std::string& c : split_choices(choices)) {
         s += ' ';
         s += c;
-        if (const Msg* m = fld::choice_label(key, c.c_str())) add_text(s, *m);
+        if (const Msg* m = fld::choice_label(key, c.c_str())) option_search::add_text(s, *m);
     }
-    return lower_ascii(s);
+    return option_search::lower_ascii(s);
 }
 
 enum : size_t {
@@ -110,20 +94,6 @@ const std::vector<std::string>& field_texts() {
     return texts;
 }
 
-// Space, `_` and `-` all separate, so `depth sup`, `depth-sup` and
-// `depth_sup` are one query, and each token may match anywhere: `depth weight`
-// finds depth_supervision_weight without naming what is between them.
-std::vector<std::string> query_tokens(const char* q) {
-    std::vector<std::string> out;
-    std::string cur;
-    for (const char* c = q;; c++) {
-        if (*c && !std::strchr(" \t_-+/,.", *c)) { cur += *c; continue; }
-        if (!cur.empty()) { out.push_back(lower_ascii(cur)); cur.clear(); }
-        if (!*c) break;
-    }
-    return out;
-}
-
 void refresh_matches(ConfigUIState& st) {
     // The language is part of the key: switching it rebuilds the texts below.
     std::string query = st.search +
@@ -131,12 +101,11 @@ void refresh_matches(ConfigUIState& st) {
     if (st.match.size() == kNumFields && st.match_query == query) return;
     st.match_query = query;
     st.match.assign(kNumFields, 1);
-    std::vector<std::string> tokens = query_tokens(st.search);
+    std::vector<std::string> tokens = option_search::query_tokens(st.search);
     if (tokens.empty()) return;
     const std::vector<std::string>& texts = field_texts();
     for (size_t i = 0; i < kNumFields; i++)
-        for (const std::string& t : tokens)
-            if (texts[i].find(t) == std::string::npos) { st.match[i] = 0; break; }
+        st.match[i] = option_search::matches(texts[i], tokens);
 }
 
 // ---- value -> display string (tooltips / reset labels) ---------------------
@@ -164,12 +133,12 @@ bool draw_value(const char*, bool& v, const char*) {
 }
 
 bool draw_value(const char*, int& v, const char*) {
-    ImGui::SetNextItemWidth(kFieldWidth);
+    ImGui::SetNextItemWidth(px(kFieldWidth));
     return ui::InputIntRaw("##v", &v);
 }
 
 bool draw_value(const char*, float& v, const char*) {
-    ImGui::SetNextItemWidth(kFieldWidth);
+    ImGui::SetNextItemWidth(px(kFieldWidth));
     return ui::InputFloatRaw("##v", &v, "%g");
 }
 
@@ -179,13 +148,13 @@ bool draw_value(const char*, float& v, const char*) {
 bool draw_value(const char* key, std::string& v, const char* choices,
                 bool blank_none = true) {
     if (train_choices_free_form(choices)) {
-        ImGui::SetNextItemWidth(kFieldWidth);
+        ImGui::SetNextItemWidth(px(kFieldWidth));
         return ui::InputTextRaw("##v", &v);
     }
     std::vector<std::string> opts = split_choices(choices);
     std::string cur = (blank_none && v.empty()) ? "none" : v;
     bool changed = false;
-    ImGui::SetNextItemWidth(kFieldWidth);
+    ImGui::SetNextItemWidth(px(kFieldWidth));
     if (ui::BeginComboRaw("##v", choice_display(key, cur).c_str())) {
         for (const auto& o : opts) {
             bool sel = (o == cur);
@@ -204,7 +173,7 @@ bool draw_value(const char*, std::optional<bool>& v, const char*) {
     // Literal[True, False, None] -> tri-state dropdown.
     const char* cur = !v.has_value() ? "auto" : (*v ? "true" : "false");
     bool changed = false;
-    ImGui::SetNextItemWidth(kFieldWidth);
+    ImGui::SetNextItemWidth(px(kFieldWidth));
     if (ui::BeginComboRaw("##v", cur)) {
         if (ui::SelectableRaw("auto",  !v.has_value())) { v = std::nullopt; changed = true; }
         if (ui::SelectableRaw("true",  v.has_value() && *v))  { v = true;  changed = true; }
@@ -249,7 +218,7 @@ bool draw_color3(std::array<float, 3>& v) {
     const ImGuiStyle& st = ImGui::GetStyle();
     const float gap = st.ItemInnerSpacing.x;
     const float slider_w =
-        (kFieldWidth + 90 - ImGui::GetFrameHeight() - 3 * gap) / 3.0f;
+        (px(kWideFieldWidth) - ImGui::GetFrameHeight() - 3 * gap) / 3.0f;
     static const char* kChannel[3] = {"R %.3f", "G %.3f", "B %.3f"};
 
     // Grouped so the row's tooltip and its right-click reset still hang off
@@ -274,14 +243,14 @@ bool draw_value(const char* key, std::array<float, N>& v, const char*) {
     if constexpr (N == 3) {
         if (is_color_key(key)) return draw_color3(v);
     }
-    ImGui::SetNextItemWidth(kFieldWidth + 90);
+    ImGui::SetNextItemWidth(px(kWideFieldWidth));
     return ImGui::InputScalarN("##v", ImGuiDataType_Float, v.data(), (int)N,
                                nullptr, nullptr, "%g");
 }
 
 template <size_t N>
 bool draw_value(const char*, std::array<int, N>& v, const char*) {
-    ImGui::SetNextItemWidth(kFieldWidth + 90);
+    ImGui::SetNextItemWidth(px(kWideFieldWidth));
     return ImGui::InputScalarN("##v", ImGuiDataType_S32, v.data(), (int)N);
 }
 
@@ -315,7 +284,7 @@ bool draw_path(const char* key, std::string& v, const TrainPathSpec& spec,
     const float button_w = ImGui::CalcTextSize("...").x + 2 * style.FramePadding.x;
     // Grouped so the row's tooltip and right-click reset cover the button too.
     ImGui::BeginGroup();
-    ImGui::SetNextItemWidth(kFieldWidth + 90 - gap - button_w);
+    ImGui::SetNextItemWidth(px(kWideFieldWidth) - gap - button_w);
     const bool changed = ui::InputTextRaw("##v", &v);
     ImGui::SameLine(0.0f, gap);
     if (ui::ButtonRaw("...##pick")) {
@@ -382,7 +351,7 @@ bool field_row(const char* cli_key, const Msg& name, const Msg& help,
     ImGui::OpenPopupOnItemClick("ctx", ImGuiPopupFlags_MouseButtonRight);
 
     if (hovered && ImGui::BeginTooltip()) {
-        ImGui::PushTextWrapPos(px(420.0f));
+        ImGui::PushTextWrapPos(px(kTooltipWrapW));
         ui::TextColoredRaw(kModifiedColor, "--" + std::string(cli_key));
         // The same sentence `spirula train --help` prints for this flag.
         ui::TextRaw(help.get());

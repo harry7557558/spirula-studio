@@ -153,13 +153,16 @@ __global__ void densify_clip_scale_kernel(
     float max_scale3d,
     const float* __restrict__ radii,
     float3* __restrict__ log_scales,
-    float* __restrict__ logit_opacs
+    float* __restrict__ logit_opacs,
+    const uint32_t* __restrict__ visit_counters
 ) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_splats)
         return;
 
-    if (isfinite(max_scale2d)) {
+    const bool rendered_step =
+        visit_counters == nullptr || visit_unrendered_steps(visit_counters[idx]) == 0u;
+    if (rendered_step && isfinite(max_scale2d)) {
         float oversize_factor = radii[idx] / max_scale2d;
         if (isfinite(clip_hardness))
             oversize_factor = fminf(oversize_factor, clip_hardness);
@@ -187,6 +190,7 @@ void densify_clip_scale_tensor(
     DeviceVector<float> radii,
     DeviceVector<float3> log_scales,
     float* logit_opacs_ptr,
+    DeviceVector<uint32_t> visit_counters,
     float max_scale2d,
     float clip_hardness,
     float max_scale3d
@@ -195,7 +199,8 @@ void densify_clip_scale_tensor(
         num_splats, max_scale2d, clip_hardness, max_scale3d,
         radii.data_ptr(),
         log_scales.data_ptr(),
-        logit_opacs_ptr
+        logit_opacs_ptr,
+        visit_counters.data_ptr()
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }

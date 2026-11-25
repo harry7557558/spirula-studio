@@ -525,7 +525,7 @@ SourcePreview::Result SourcePreview::draw(float height, double* clip_start, doub
     const float h = std::max(px(80.0f), height - (ImGui::GetCursorPosY() - y0));
 
     if (L && !L->error.empty() && _tab != Tab::Details) {
-        ui::TextColoredWrappedRaw(ImVec4(0.95f, 0.45f, 0.40f, 1.0f), L->error);
+        ui::TextColoredWrappedRaw(kErr, L->error);
         return r;
     }
     switch (_tab) {
@@ -640,7 +640,7 @@ void SourcePreview::draw_cloud(float height) {
         return;
     }
     if (!L->cloud) {
-        if (!L->model_error.empty()) ui::TextColoredWrappedRaw(ImVec4(0.95f, 0.45f, 0.40f, 1.0f), L->model_error);
+        if (!L->model_error.empty()) ui::TextColoredWrappedRaw(kErr, L->model_error);
         return;
     }
     if (!_cloud_attached) {

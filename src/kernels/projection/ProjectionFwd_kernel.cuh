@@ -102,7 +102,8 @@ __global__ void projection_fused_fwd_kernel(
         splat_screen.store(splats_screen, idx);
         aabbs[idx] = aabb16_encode(aabb, image_width, image_height);
         sorting_depths[idx] = sorting_depth;
-        atomicMax(&radii[idx%N], radius);
+        if (radii != nullptr)
+            atomicMax(&radii[idx%N], radius);
     } else {
         aabbs[idx] = make_uint2(0u, 0u);
         sorting_depths[idx] = 0.0f;

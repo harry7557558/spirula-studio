@@ -364,6 +364,9 @@ void forward_3dgs(
     }
 
     const ColorBasis color{sh_degree, engine().sb_lobes};
+    const bool has_tile_mask = engine().fwd.tile_active.data_ptr() != nullptr;
+    DeviceVector<float> proj_radii =
+        has_tile_mask ? DeviceVector<float>() : engine().optim.radii;
 
     // --- Projection ---
     std::optional<StepTimingScope> timing;
@@ -380,7 +383,7 @@ void forward_3dgs(
                 (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
                 engine().camera.model_str,
         engine().camera.distortion_str, _dt2d_tv(engine().camera.dist_coeffs),
-                engine().optim.radii,
+                proj_radii,
                 sh_value_packed_opt, sh_value_bounds_opt, num_sh_buffer, sh_value_bits, sh_bounds_stride);
             cam_ids = a; gauss_ids = b; aabb_vec = c; depths_vec = d;
             engine().fwd.splats_s = e;
@@ -391,7 +394,7 @@ void forward_3dgs(
                 (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
                 engine().camera.model_str,
         engine().camera.distortion_str, _dt2d_tv(engine().camera.dist_coeffs),
-                engine().optim.radii,
+                proj_radii,
                 sh_value_packed_opt, sh_value_bounds_opt, num_sh_buffer, sh_value_bits, sh_bounds_stride);
             cam_ids = a; gauss_ids = b; aabb_vec = c; depths_vec = d;
             engine().fwd.splats_s = e;
@@ -404,7 +407,7 @@ void forward_3dgs(
                 (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
                 engine().camera.model_str,
         engine().camera.distortion_str, _dt2d_tv(engine().camera.dist_coeffs),
-                engine().optim.radii,
+                proj_radii,
                 sh_value_packed_opt, sh_value_bounds_opt, num_sh_buffer, sh_value_bits, sh_bounds_stride);
             cam_ids = a; gauss_ids = b; aabb_vec = c; depths_vec = d;
             engine().fwd.splats_s = e;
@@ -428,7 +431,7 @@ void forward_3dgs(
                 (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
                 engine().camera.model_str,
         engine().camera.distortion_str, _dt2d_tv(engine().camera.dist_coeffs),
-                engine().optim.radii,
+                proj_radii,
                 sh_value_packed_opt, sh_value_bounds_opt, num_sh_buffer, sh_value_bits, sh_bounds_stride);
             aabb_2d = a; depths_2d = b;
             engine().fwd.splats_s = c;
@@ -439,7 +442,7 @@ void forward_3dgs(
                 (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
                 engine().camera.model_str,
         engine().camera.distortion_str, _dt2d_tv(engine().camera.dist_coeffs),
-                engine().optim.radii,
+                proj_radii,
                 sh_value_packed_opt, sh_value_bounds_opt, num_sh_buffer, sh_value_bits, sh_bounds_stride);
             aabb_2d = a; depths_2d = b;
             engine().fwd.splats_s = c;
@@ -452,7 +455,7 @@ void forward_3dgs(
                 (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
                 engine().camera.model_str,
         engine().camera.distortion_str, _dt2d_tv(engine().camera.dist_coeffs),
-                engine().optim.radii,
+                proj_radii,
                 sh_value_packed_opt, sh_value_bounds_opt, num_sh_buffer, sh_value_bits, sh_bounds_stride);
             aabb_2d = a; depths_2d = b;
             engine().fwd.splats_s = c;
@@ -489,6 +492,20 @@ void forward_3dgs(
 
     auto& bin = bin_choice();
     engine().fwd.macro_log2 = engine_bin_macro_log2();
+    if (has_tile_mask) {
+        DeviceVector<int32_t>* gauss_ids_ptr =
+            (packed && engine().fwd.gaussian_ids.data_ptr() != nullptr)
+                ? &engine().fwd.gaussian_ids : nullptr;
+        accumulate_active_radii(
+            engine().cur_num_splats, (uint32_t)engine().camera.num,
+            engine().world.means, engine().world.scales, engine().world.opacities,
+            _dt2d_tv(engine().camera.viewmats), aabb_q,
+            (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
+            image_ids_ptr, gauss_ids_ptr,
+            engine().fwd.tile_active.data_ptr(), engine().fwd.macro_log2,
+            engine().optim.radii
+        );
+    }
     const int macro_before = engine().fwd.macro_log2;
     timing.reset();
     timing.emplace(StepPart::Render, StepScale::SplatsPixels);

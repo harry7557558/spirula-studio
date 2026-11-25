@@ -130,7 +130,7 @@ the cheap path, and the only sensible one for a perspective lens. **Split** is
 a front face plus a ring of faces reaching the lens's edge, or a 6-face cube
 map for a panorama. `--split auto` picks between them on
 `camhost::pinhole_coverage` at 0.75, and the trainer's
-`--input-depth-is-ray-depth` resolves against the same call (AGENTS.md).
+`--input-depth-is-ray-depth` resolves against the same call.
 
 The split is planned from what the lens actually holds
 (`camhost::visible_boundary`, the largest visible angle per azimuth, by the

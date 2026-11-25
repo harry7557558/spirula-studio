@@ -123,24 +123,51 @@ float4 cw_catmull_rom(float t) {
                          -3.0f * t3 + 4.0f * t2 + t, t3 - t2);
 }
 
-// Catmull-Rom clamped to the four nearest taps; see cw_sample_cubic in CalibWarp.cu.
-float3 cw_sample_cubic(uint* img, uint fmt, gindex_t base, int W, int H, float x, float y) {
+bool cw_mask_ok(CalibWarpParams p, uint b, int x, int y) {
+    if (p.has_mask == 0) return true;
+    int cx = min(max(x, 0), p.W - 1);
+    int cy = min(max(y, 0), p.H - 1);
+    int mx = (p.Wm == p.W) ? cx : min(int((float(cx) + 0.5f) * float(p.Wm) / float(p.W)), p.Wm - 1);
+    int my = (p.Hm == p.H) ? cy : min(int((float(cy) + 0.5f) * float(p.Hm) / float(p.H)), p.Hm - 1);
+    return (u8_load(p.mask, (gindex_t(b) * gindex_t(p.Hm) + gindex_t(my)) * gindex_t(p.Wm) + gindex_t(mx)) & 1u) != 0u;
+}
+
+// Catmull-Rom clamped to the four nearest taps; at mask boundaries only
+// unmasked taps are blended so masked colours never bleed into valid pixels.
+float3 cw_sample_cubic_masked(CalibWarpParams p, uint b, gindex_t base, float x, float y,
+                              out bool any_valid) {
     float xf = floor(x), yf = floor(y);
     int x0 = int(xf), y0 = int(yf);
-    float4 wx = cw_catmull_rom(x - xf), wy = cw_catmull_rom(y - yf);
+    float fx = x - xf, fy = y - yf;
+    float4 wx = cw_catmull_rom(fx), wy = cw_catmull_rom(fy);
     float3 acc = float3(0.0f), lo = float3(1e30f), hi = float3(-1e30f);
+    float3 bacc = float3(0.0f), fb = float3(0.0f);
+    float bwsum = 0.0f, fwsum = 0.0f;
+    bool all_ok = true;
     [ForceUnroll]
     for (int j = 0; j < 4; ++j)
         [ForceUnroll]
         for (int i = 0; i < 4; ++i) {
-            float3 t = cw_tap(img, fmt, base, W, H, x0 - 1 + i, y0 - 1 + j);
+            int tx = x0 - 1 + i, ty = y0 - 1 + j;
+            bool ok = cw_mask_ok(p, b, tx, ty);
+            all_ok = all_ok && ok;
+            if (!ok) continue;
+            float3 t = cw_tap(p.gt, p.gt_fmt, base, p.W, p.H, tx, ty);
             acc += wx[i] * wy[j] * t;
+            fb += t;
+            fwsum += 1.0f;
             if ((i == 1 || i == 2) && (j == 1 || j == 2)) {
                 lo = min(lo, t);
                 hi = max(hi, t);
+                float bw = ((i == 2) ? fx : (1.0f - fx)) * ((j == 2) ? fy : (1.0f - fy));
+                bacc += bw * t;
+                bwsum += bw;
             }
         }
-    return clamp(acc, lo, hi);
+    any_valid = fwsum > 0.0f;
+    if (all_ok) return clamp(acc, lo, hi);
+    if (bwsum > 0.0f) return bacc / bwsum;
+    return fwsum > 0.0f ? fb / fwsum : float3(0.0f);
 }
 
 int cw_cam(CalibWarpParams p, uint b) {
@@ -169,10 +196,14 @@ void calib_warp_gt_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float2 fl = cw_flow(p, row, c, e, 1e-3f * intr.x, 1e-3f * intr.y);
     float sx = float(x) + fl.x, sy = float(y) + fl.y;
     float3 v;
-    if (sx >= 0.0f && sx <= float(p.W - 1) && sy >= 0.0f && sy <= float(p.H - 1))
-        v = cw_sample_cubic(p.gt, p.gt_fmt, base, p.W, p.H, sx, sy);
-    else
+    if (sx >= 0.0f && sx <= float(p.W - 1) && sy >= 0.0f && sy <= float(p.H - 1)) {
+        bool any_valid = true;
+        v = cw_sample_cubic_masked(p, b, base, sx, sy, any_valid);
+        if (!any_valid)
+            v = rgb_load3(p.render, base + gindex_t(pix), p.render_fmt);
+    } else {
         v = rgb_load3(p.render, base + gindex_t(pix), p.render_fmt);
+    }
     rgb_store3(p.out, flat, v, p.out_fmt, active);
 }
 
@@ -212,12 +243,7 @@ void calib_warp_accum(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         int x = bx0 + idx % bw, y = by0 + idx / bw;
         CwCell c = cw_cell(x, y, W, H, n);
         if (c.i0 != ci || c.j0 != cj) continue;
-        if (p.has_mask != 0) {
-            int my = min(int((float(y) + 0.5f) * float(p.Hm) / float(H)), p.Hm - 1);
-            int mx = min(int((float(x) + 0.5f) * float(p.Wm) / float(W)), p.Wm - 1);
-            if ((u8_load(p.mask, (gindex_t(b) * gindex_t(p.Hm) + gindex_t(my)) * gindex_t(p.Wm) + gindex_t(mx)) & 1u) == 0u)
-                continue;
-        }
+        if (!cw_mask_ok(p, b, x, y)) continue;
         gindex_t pix = base + gindex_t(y) * gindex_t(W) + gindex_t(x);
         float e = cw_inv_depth(p, pix);
         float2 fl = cw_flow(p, row, c, e, scx, scy);
@@ -227,8 +253,12 @@ void calib_warp_accum(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             continue;
         float3 I, gx, gy;
         if (p.gt_warped != 0) {
-            // Already resampled at p + flow; see calib_warp_accum_kernel.
+            // Already resampled at p + flow; skip mask edges so finite diffs stay valid.
             if (x < 1 || x > W - 2 || y < 1 || y > H - 2) continue;
+            if (p.has_mask != 0 &&
+                (!cw_mask_ok(p, b, x - 1, y) || !cw_mask_ok(p, b, x + 1, y) ||
+                 !cw_mask_ok(p, b, x, y - 1) || !cw_mask_ok(p, b, x, y + 1)))
+                continue;
             I = cw_tap(p.gt, p.gt_fmt, base, W, H, x, y);
             gx = (cw_tap(p.gt, p.gt_fmt, base, W, H, x + 1, y) -
                   cw_tap(p.gt, p.gt_fmt, base, W, H, x - 1, y)) * (0.5f * scx);
@@ -496,7 +526,7 @@ void calib_warp_aux_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         int ix = clamp(int(floor(sx + 0.5f)), 0, p.Wm - 1);
         int iy = clamp(int(floor(sy + 0.5f)), 0, p.Hm - 1);
         uint v = 0u;
-        if (p.cut_by_source == 0 || u8_load(p.gt, o) != 0u)
+        if (p.cut_by_source == 0 || (u8_load(p.gt, o) & 1u) != 0u)
             v = u8_load(p.gt, plane + gindex_t(iy) * gindex_t(p.Wm) + gindex_t(ix));
         u8_store(p.out, o, v);
         return;

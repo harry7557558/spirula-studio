@@ -716,11 +716,12 @@ void ms_downsample_gt_geo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 struct MsPoolMaskedParams {
     uint* hs;    // read as hs_fmt (core/PixelFormat.h)
     uint* ls;    // written as ls_fmt
-    uint* mask;  // [B,hsH,hsW] bool bytes
+    uint* mask;  // [B,mH,mW] bool bytes
     int B, C;
     int hsH, hsW;
     int lsH, lsW;
-    uint hs_fmt, ls_fmt, wgs_per_row, _pad0;
+    int mH, mW;
+    uint hs_fmt, ls_fmt, wgs_per_row, classes;
 };
 
 [shader("compute")]
@@ -737,10 +738,15 @@ void ms_downsample_masked_f(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float acc[3] = { 0.0f, 0.0f, 0.0f };
     float box[3] = { 0.0f, 0.0f, 0.0f };
     int n = 0;
+    const bool same_mask = (p.mH == p.hsH && p.mW == p.hsW);
     for (int dy = 0; dy < 2; dy++)
         for (int dx = 0; dx < 2; dx++) {
             gindex_t i = base + ys[dy] * p.hsW + xs[dx];
-            bool valid = u8_load(p.mask, (uint)i) == 1u;
+            uint mask = same_mask
+                ? u8_load(p.mask, (uint)i)
+                : _ms_nearest_u8(p.mask, int(bid), int(xs[dx]), int(ys[dy]),
+                                 p.hsW, p.hsH, p.mW, p.mH);
+            bool valid = (p.classes & (1u << mask)) != 0u;
             for (int c = 0; c < p.C; c++) {
                 float v = rgb_load1(p.hs, i * p.C + c, p.hs_fmt);
                 box[c] += 0.25f * v;
@@ -762,7 +768,9 @@ struct MsZeroMaskedParams {
     float* grad;
     uint* mask;
     int B, C, H, W;
+    int mH, mW;
     int ignore_only;  // zero only class 0, leaving a segment its alpha grad
+    int _pad0;
 };
 
 [shader("compute")]
@@ -774,7 +782,10 @@ void ms_zero_masked_grad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint bid = wg.z;
     if (yid >= uint(p.H) || xid >= uint(p.W)) return;
     gindex_t i = ((gindex_t)bid * p.H + yid) * (gindex_t)p.W + xid;
-    uint m = u8_load(p.mask, (uint)i);
+    uint m = (p.mH == p.H && p.mW == p.W)
+        ? u8_load(p.mask, (uint)i)
+        : _ms_nearest_u8(p.mask, int(bid), int(xid), int(yid),
+                         p.W, p.H, p.mW, p.mH);
     if (p.ignore_only != 0 ? m != 0u : (m & 1u) != 0u) return;
     for (int c = 0; c < p.C; c++)
         p.grad[i * p.C + c] = 0.0f;

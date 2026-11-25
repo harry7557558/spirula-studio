@@ -833,3 +833,75 @@ void intersect_offset(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             p.offsets[i] = int(p.isect_base + idx);
     }
 }
+
+struct ActiveRadiiParams {  // 112 bytes: pushed directly
+    float* means;
+    float* scales;
+    float* opacities;
+    float* viewmats;
+    uint2* aabb;
+    int* image_ids;
+    int* gaussian_ids;
+    int* tile_active;
+    uint32_t* radii;
+    uint32_t N;
+    uint32_t total;
+    uint32_t image_width;
+    uint32_t image_height;
+    uint32_t tile_width;
+    uint32_t tile_height;
+    uint32_t macro_log2;
+    uint32_t wgs_per_row;
+    uint32_t packed;
+    uint32_t _pad0;
+};
+
+// Accumulate view radii only for (camera, splat) pairs overlapping an active tile.
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void active_radii_accum(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                        uniform ActiveRadiiParams p) {
+    uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
+    if (idx >= p.total) return;
+
+    uint2 aabb_enc = p.aabb[idx];
+    if ((aabb_enc.x | aabb_enc.y) == 0u) return;
+    float4 box = aabb16_decode(aabb_enc, p.image_width, p.image_height);
+    if (box.z - box.x <= 1e-3f || box.w - box.y <= 1e-3f) return;
+
+    uint cid = p.packed != 0u ? uint(p.image_ids[idx]) : (idx / p.N);
+    uint gid = p.packed != 0u ? uint(p.gaussian_ids[idx]) : (idx % p.N);
+
+    BinTile bt = bin_tile(p.macro_log2);
+    int tx0 = clamp(int(floor((box.x + 0.5f) * bt.inv_x)), 0, int(p.tile_width));
+    int ty0 = clamp(int(floor((box.y + 0.5f) * bt.inv_y)), 0, int(p.tile_height));
+    int tx1 = clamp(int(ceil((box.z + 0.5f) * bt.inv_x)), 0, int(p.tile_width));
+    int ty1 = clamp(int(ceil((box.w + 0.5f) * bt.inv_y)), 0, int(p.tile_height));
+    if (tx0 >= tx1 || ty0 >= ty1) return;
+
+    gindex_t base = gindex_t(cid) * gindex_t(p.tile_width) * gindex_t(p.tile_height);
+    int cx = (tx0 + tx1) >> 1;
+    int cy = (ty0 + ty1) >> 1;
+    bool hit = p.tile_active[base + gindex_t(cy) * gindex_t(p.tile_width) + gindex_t(cx)] != 0;
+    if (!hit) {
+        for (int y = ty0; y < ty1 && !hit; ++y) {
+            gindex_t row = base + gindex_t(y) * gindex_t(p.tile_width);
+            for (int x = tx0; x < tx1; ++x) {
+                if (p.tile_active[row + gindex_t(x)] != 0) {
+                    hit = true;
+                    break;
+                }
+            }
+        }
+    }
+    if (!hit) return;
+
+    float* vm = p.viewmats + cid * 16;
+    float3 t = float3(vm[3], vm[7], vm[11]);
+    float3x3 R = float3x3(vm[0], vm[1], vm[2], vm[4], vm[5], vm[6], vm[8], vm[9], vm[10]);
+    float3 campos = transform_ray_o(R, t);
+    float3 mean = float3(p.means[3 * gid], p.means[3 * gid + 1], p.means[3 * gid + 2]);
+    float3 sc = float3(p.scales[3 * gid], p.scales[3 * gid + 1], p.scales[3 * gid + 2]);
+    float r = view_radius_3dgs(mean, sc, p.opacities[gid], campos);
+    InterlockedMax(p.radii[gid], asuint(r));
+}

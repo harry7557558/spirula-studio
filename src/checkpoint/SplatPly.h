@@ -51,6 +51,8 @@ bool is_splat_ply(const std::string& path);
 // `want_sh` false skips the f_rest and sb_params columns, which are most of
 // the file: the mesher only needs geometry and DC colour.
 SplatCloud read_splat_ply(const std::string& path, bool want_sh = true);
+SplatCloud read_splat_ply_sample(const std::string& path, int limit, bool want_sh = false,
+                                 const std::function<bool()>& cancelled = {});
 SplatCloud splat_ply_shape(const std::string& path);
 // The same file in runs of up to `chunk_rows` splats, front to back: `fn` gets
 // each run (num = its length, arrays reused between calls), its first splat's

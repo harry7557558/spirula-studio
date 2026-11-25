@@ -1554,7 +1554,7 @@ void SegmentPanel::draw_saved_areas(app::FrameStencil& s) {
     }
     if (!_saved_msg.empty()) {
         if (_saved_msg_err)
-            ui::TextColoredWrappedRaw(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), _saved_msg);
+            ui::TextColoredWrappedRaw(kErr, _saved_msg);
         else
             ui::TextColoredWrappedRaw(ImGui::GetStyle().Colors[ImGuiCol_TextDisabled], _saved_msg);
     }
@@ -1616,7 +1616,7 @@ void SegmentPanel::draw_stencil(app::FrameStencil& s, bool& edited) {
         if (_detecting.load())
             ui::TextDisabled(dmsg::stencil_looking);
         else if (_detect_asked && !_border.found)
-            ui::TextColoredWrapped(ImVec4(0.95f, 0.75f, 0.30f, 1.0f),
+            ui::TextColoredWrapped(kWarn,
                                    dmsg::stencil_border_none);
         if (!_detecting.load() && !_listing.load() &&
             ui::SmallButton(dmsg::stencil_look_again))
@@ -1973,17 +1973,17 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
         model_missing = _model_missing;
         // Segmentation errors and progress come from the inference layer.
         if (!_error.empty())
-            ui::TextColoredWrappedRaw(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), _error);
+            ui::TextColoredWrappedRaw(kErr, _error);
         else if (!_status.empty() && !model_missing)
             ui::TextDisabledRaw(_status);
         kept_fraction = _kept_fraction;
         feature_fraction = _feature_fraction;
     }
     if (model_missing && !_pick_model) {
-        ui::TextColoredWrapped(ImVec4(1.0f, 0.45f, 0.45f, 1.0f),
+        ui::TextColoredWrapped(kErr,
                                spirula::i18n::msg::log::err_no_model_selected);
     } else if (model_missing) {
-        ui::TextColoredWrapped(ImVec4(0.95f, 0.75f, 0.30f, 1.0f), dmsg::preview_needs_model,
+        ui::TextColoredWrapped(kWarn, dmsg::preview_needs_model,
                                {dmsg::mask_enable.get()});
         const MaskModelFiles picked = _pick_model();
         if (!picked.empty()) {
@@ -2002,7 +2002,7 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
             ui::Text(dmsg::preview_features_kept_fraction, {pct});
         }
         if (kept_fraction < 0.05f)
-            ui::TextColoredWrapped(ImVec4(0.95f, 0.75f, 0.30f, 1.0f),
+            ui::TextColoredWrapped(kWarn,
                                    settings.keep_subject
                                        ? dmsg::preview_almost_nothing_kept
                                        : dmsg::preview_almost_all_masked);

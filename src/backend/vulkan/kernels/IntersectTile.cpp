@@ -72,6 +72,15 @@ struct IsectOffsetParams {
 static_assert(sizeof(IsectOffsetParams) == 2 * 8 + 4 * 4,
               "params layout must match the slang struct");
 
+struct ActiveRadiiParams {
+    uint64_t means, scales, opacities, viewmats;
+    uint64_t aabb, image_ids, gaussian_ids, tile_active, radii;
+    uint32_t N, total, image_width, image_height, tile_width, tile_height;
+    uint32_t macro_log2, wgs_per_row, packed, _pad0;
+};
+static_assert(sizeof(ActiveRadiiParams) == 9 * 8 + 10 * 4,
+              "params layout must match the slang struct");
+
 }  // namespace
 
 /* API definition matching kernels/tile/IntersectTile.cuh */
@@ -99,6 +108,50 @@ void compute_tile_active(
     p.total = (uint32_t)I * p.tile_width * p.tile_height;
     vkk::dispatch_flat("intersect_tile.tile_active_map", {}, p.total, 256, &p,
                        sizeof(p), &p.wgs_per_row);
+}
+
+void accumulate_active_radii(
+    const int64_t num_splats,
+    const uint32_t I,
+    DeviceVector<float3> means,
+    DeviceVector<float3> scales,
+    DeviceVector<float> opacities,
+    TorchTensorView viewmats,
+    DeviceTensor2D<uint2> aabb,
+    const uint32_t image_width,
+    const uint32_t image_height,
+    DeviceVector<int32_t>* image_ids,
+    DeviceVector<int32_t>* gaussian_ids,
+    const int32_t* tile_active,
+    int macro_log2,
+    DeviceVector<float> radii
+) {
+    (void)I;
+    const int64_t total = aabb.size<0>() * aabb.size<1>();
+    if (total <= 0 || num_splats <= 0 || tile_active == nullptr ||
+        radii.data_ptr() == nullptr)
+        return;
+    const bool packed = image_ids != nullptr && gaussian_ids != nullptr;
+    ActiveRadiiParams p{};
+    p.means = (uint64_t)means.data_ptr();
+    p.scales = (uint64_t)scales.data_ptr();
+    p.opacities = (uint64_t)opacities.data_ptr();
+    p.viewmats = std::get<0>(viewmats);
+    p.aabb = (uint64_t)aabb.data_ptr();
+    p.image_ids = vkk::or_fallback(packed ? image_ids->data_ptr() : nullptr);
+    p.gaussian_ids = vkk::or_fallback(packed ? gaussian_ids->data_ptr() : nullptr);
+    p.tile_active = (uint64_t)tile_active;
+    p.radii = (uint64_t)radii.data_ptr();
+    p.N = (uint32_t)num_splats;
+    p.total = (uint32_t)total;
+    p.image_width = image_width;
+    p.image_height = image_height;
+    p.tile_width = _CEIL_DIV(image_width, bin_tile_x(macro_log2));
+    p.tile_height = _CEIL_DIV(image_height, bin_tile_y(macro_log2));
+    p.macro_log2 = (uint32_t)macro_log2;
+    p.packed = packed ? 1u : 0u;
+    vkk::dispatch_flat("intersect_tile.active_radii_accum", {}, total, 256,
+                       &p, sizeof(p), &p.wgs_per_row);
 }
 
 std::tuple<

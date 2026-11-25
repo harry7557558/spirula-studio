@@ -362,7 +362,7 @@ OccupancyEvaluator::OccupancyEvaluator(
     // 85% of free commit (RAM plus swap on Linux), up to the 32-bit tet-ID cap.
     {
         size_t budget = spirula::availableCommitBytes();
-        if (budget == 0) budget = spirula::physicalRamBytes();
+        if (budget == 0) budget = spirula::totalRamBytes();
         budget += spirula::availableSwapBytes();
         if (budget == 0) {
             max_points_ = 150000000;

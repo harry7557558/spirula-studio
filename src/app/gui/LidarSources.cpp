@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -22,8 +23,6 @@ using spirula::i18n::format;
 
 namespace gui {
 namespace {
-
-const ImVec4 kWarnColor(0.95f, 0.75f, 0.30f, 1.0f);
 
 std::string lower_ext(const std::string& path) {
     std::string ext = fs::path(path).extension().string();
@@ -238,9 +237,65 @@ void GuiApp::draw_lidar_options() {
         ui::help_on_hover(ldmsg::scan_in_frame_help);
     }
     if (effective_engine() != Engine::BuiltIn)
-        ui::TextColoredWrapped(kWarnColor, ldmsg::scan_needs_builtin);
+        ui::TextColoredWrapped(kWarn, ldmsg::scan_needs_builtin);
     else
         ui::TextDisabled(ldmsg::scan_replaces_geometry);
+}
+
+bool GuiApp::scan_photos_busy() const {
+    return _scan_photos.valid() &&
+           _scan_photos.wait_for(std::chrono::seconds(0)) != std::future_status::ready;
+}
+
+void GuiApp::open_scan_mask_preview(size_t scan, std::optional<std::string> camera) {
+    if (native_work_busy() || scan >= _lidar.size() || _workspace.empty()) return;
+    std::vector<std::string> clouds;
+    for (const LidarInput& l : _lidar) clouds.push_back(l.path);
+    const std::string ws = _workspace;
+    _scan_photos_for = scan;
+    _scan_camera = std::move(camera);
+    log(format(ldmsg::scan_photos_extracting, {_lidar[scan].path}));
+    _scan_photos = std::async(std::launch::async, [clouds, scan, ws] {
+        std::string dir, err;
+        if (!extract_scan_photos(clouds, scan, ws, dir, err) && err.empty()) err = "-";
+        return std::make_pair(dir, err);
+    });
+}
+
+void GuiApp::pump_scan_photos() {
+    if (!_scan_photos.valid() || scan_photos_busy()) return;
+    const auto [dir, err] = _scan_photos.get();
+    const std::optional<SegmentPanel::EditRequest> edit = std::exchange(_scan_edit, std::nullopt);
+    const std::optional<std::string> camera = std::exchange(_scan_camera, std::nullopt);
+    const size_t scan = _scan_photos_for;
+    if (scan >= _lidar.size()) return;   // removed meanwhile (forget_scan)
+    if (!err.empty()) {
+        log(format(ldmsg::scan_photos_failed, {_lidar[scan].path, err}));
+        return;
+    }
+    if (native_work_busy()) return;
+    stop_inference_users();
+    close_splat();
+    if (!freeze_native_device()) return;
+    _mask_preview_scan = (int)scan;
+    PrepInput photos;
+    photos.path = dir;
+    open_segment(preview_source_for(photos, ""));
+    if (camera) _segment.edit_camera(*camera);
+    if (edit) _segment.edit_saved(*edit);
+}
+
+void GuiApp::forget_scan(size_t scan) {
+    auto shift = [&](int& row) {
+        if (row == (int)scan) row = -1;
+        else if (row > (int)scan) row--;
+    };
+    if (_mask_preview_scan == (int)scan) _segment.close();
+    shift(_mask_preview_scan);
+    shift(_mask_try_scan);
+    // Its photographs, still being taken out, open nothing.
+    if (_scan_photos_for == scan) _scan_photos_for = SIZE_MAX;
+    else if (_scan_photos_for > scan && _scan_photos_for != SIZE_MAX) _scan_photos_for--;
 }
 
 }  // namespace gui

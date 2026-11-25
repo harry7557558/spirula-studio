@@ -2513,6 +2513,7 @@ void RenderSession::start_export(bool no_builtin, bool confirmed) {
     }
     _job.state = Job::Preparing;
     _job.started = now_s();
+    if (!no_builtin) _job_clock.start(progress_now());
     _status.clear();
     _status_err = false;
     _status_done = false;

@@ -96,31 +96,59 @@ __device__ __forceinline__ void cw_catmull_rom(float t, float w[4]) {
     w[3] = 0.5f * (t3 - t2);
 }
 
-// Catmull-Rom, clamped to the four nearest taps: bilinear at a half-pixel
-// offset halves the response at half Nyquist, and the loss would fit that blur.
-__device__ __forceinline__ float3 cw_sample_cubic(const void* img, PixelFormat f, size_t base,
-                                                  int W, int H, float x, float y) {
+__device__ __forceinline__ bool cw_mask_ok(const uint8_t* mask, int Hm, int Wm,
+                                           int b, int W, int H, int x, int y) {
+    if (!mask) return true;
+    const int cx = min(max(x, 0), W - 1);
+    const int cy = min(max(y, 0), H - 1);
+    const int mx = (Wm == W) ? cx : min((int)(((float)cx + 0.5f) * Wm / W), Wm - 1);
+    const int my = (Hm == H) ? cy : min((int)(((float)cy + 0.5f) * Hm / H), Hm - 1);
+    return (mask[((size_t)b * Hm + my) * Wm + mx] & 1) != 0;
+}
+
+// Catmull-Rom clamped to the four nearest taps; at mask boundaries only
+// unmasked taps are blended so masked colours never bleed into valid pixels.
+__device__ __forceinline__ float3 cw_sample_cubic_masked(
+    const void* img, PixelFormat f, size_t base, int W, int H,
+    const uint8_t* mask, int Hm, int Wm, int b, float x, float y, bool& any_valid
+) {
     const float xf = floorf(x), yf = floorf(y);
     const int x0 = (int)xf, y0 = (int)yf;
+    const float fx = x - xf, fy = y - yf;
     float wx[4], wy[4];
-    cw_catmull_rom(x - xf, wx);
-    cw_catmull_rom(y - yf, wy);
+    cw_catmull_rom(fx, wx);
+    cw_catmull_rom(fy, wy);
     float3 acc = make_float3(0.0f, 0.0f, 0.0f);
     float3 lo = make_float3(1e30f, 1e30f, 1e30f), hi = make_float3(-1e30f, -1e30f, -1e30f);
+    float3 bacc = make_float3(0.0f, 0.0f, 0.0f), fb = make_float3(0.0f, 0.0f, 0.0f);
+    float bwsum = 0.0f, fwsum = 0.0f;
+    bool all_ok = true;
     for (int j = 0; j < 4; ++j)
         for (int i = 0; i < 4; ++i) {
-            const float3 t = cw_tap(img, f, base, W, H, x0 - 1 + i, y0 - 1 + j);
+            const int tx = x0 - 1 + i, ty = y0 - 1 + j;
+            const bool ok = cw_mask_ok(mask, Hm, Wm, b, W, H, tx, ty);
+            all_ok = all_ok && ok;
+            if (!ok) continue;
+            const float3 t = cw_tap(img, f, base, W, H, tx, ty);
             const float w = wx[i] * wy[j];
-            acc.x += w * t.x;
-            acc.y += w * t.y;
-            acc.z += w * t.z;
+            acc.x += w * t.x; acc.y += w * t.y; acc.z += w * t.z;
+            fb.x += t.x; fb.y += t.y; fb.z += t.z;
+            fwsum += 1.0f;
             if ((i == 1 || i == 2) && (j == 1 || j == 2)) {
                 lo = make_float3(fminf(lo.x, t.x), fminf(lo.y, t.y), fminf(lo.z, t.z));
                 hi = make_float3(fmaxf(hi.x, t.x), fmaxf(hi.y, t.y), fmaxf(hi.z, t.z));
+                const float bw = ((i == 2) ? fx : (1.0f - fx)) * ((j == 2) ? fy : (1.0f - fy));
+                bacc.x += bw * t.x; bacc.y += bw * t.y; bacc.z += bw * t.z;
+                bwsum += bw;
             }
         }
-    return make_float3(fminf(fmaxf(acc.x, lo.x), hi.x), fminf(fmaxf(acc.y, lo.y), hi.y),
-                       fminf(fmaxf(acc.z, lo.z), hi.z));
+    any_valid = fwsum > 0.0f;
+    if (all_ok)
+        return make_float3(fminf(fmaxf(acc.x, lo.x), hi.x), fminf(fmaxf(acc.y, lo.y), hi.y),
+                           fminf(fmaxf(acc.z, lo.z), hi.z));
+    if (bwsum > 0.0f) return make_float3(bacc.x / bwsum, bacc.y / bwsum, bacc.z / bwsum);
+    return fwsum > 0.0f ? make_float3(fb.x / fwsum, fb.y / fwsum, fb.z / fwsum)
+                        : make_float3(0.0f, 0.0f, 0.0f);
 }
 
 __device__ __forceinline__ float cw_dot(float3 a, float3 b) {
@@ -142,6 +170,7 @@ __global__ void calib_warp_gt_fwd_kernel(
     const float* __restrict__ params, int P,
     const float4* __restrict__ intrins,
     const int32_t* __restrict__ cam_idx,
+    const uint8_t* __restrict__ mask, int Hm, int Wm,
     int H, int W, int n, int D,
     PixelOut out
 ) {
@@ -158,10 +187,14 @@ __global__ void calib_warp_gt_fwd_kernel(
                               1e-3f * intr.x, 1e-3f * intr.y);
     const float sx = (float)x + fl.x, sy = (float)y + fl.y;
     float3 v;
-    if (sx >= 0.0f && sx <= (float)(W - 1) && sy >= 0.0f && sy <= (float)(H - 1))
-        v = cw_sample_cubic(gt, gt_fmt, base, W, H, sx, sy);
-    else
+    if (sx >= 0.0f && sx <= (float)(W - 1) && sy >= 0.0f && sy <= (float)(H - 1)) {
+        bool any_valid = true;
+        v = cw_sample_cubic_masked(gt, gt_fmt, base, W, H, mask, Hm, Wm, b, sx, sy, any_valid);
+        if (!any_valid)
+            v = pixel_load3(render, render_fmt, base + pix);
+    } else {
         v = pixel_load3(render, render_fmt, base + pix);
+    }
     out[3 * (base + pix) + 0] = v.x;
     out[3 * (base + pix) + 1] = v.y;
     out[3 * (base + pix) + 2] = v.z;
@@ -208,11 +241,7 @@ __global__ void calib_warp_accum_kernel(
         const int x = bx0 + idx % bw, y = by0 + idx / bw;
         const CwCell c = cw_cell(x, y, W, H, n);
         if (c.i0 != ci || c.j0 != cj) continue;
-        if (mask != nullptr) {
-            const int my = min((int)(((float)y + 0.5f) * Hm / H), Hm - 1);
-            const int mx = min((int)(((float)x + 0.5f) * Wm / W), Wm - 1);
-            if (!(mask[((size_t)b * Hm + my) * Wm + mx] & 1)) continue;
-        }
+        if (!cw_mask_ok(mask, Hm, Wm, b, W, H, x, y)) continue;
         const size_t pix = base + (size_t)y * W + x;
         const float e = D == 4 ? cw_inv_depth(depth, Ts, pix) : 0.0f;
         const float2 fl = cw_flow(row, c, n, D, e, scx, scy);
@@ -222,9 +251,14 @@ __global__ void calib_warp_accum_kernel(
             continue;
         float3 I, gx, gy;
         if (warped) {
-            // Already resampled at p + flow, so its own neighbours stand in for
-            // the source's there: the flow's Jacobian is ~1 over a pixel.
+            // Already resampled at p + flow; skip mask edges so finite diffs stay valid.
             if (x < 1 || x > W - 2 || y < 1 || y > H - 2) continue;
+            if (mask &&
+                (!cw_mask_ok(mask, Hm, Wm, b, W, H, x - 1, y) ||
+                 !cw_mask_ok(mask, Hm, Wm, b, W, H, x + 1, y) ||
+                 !cw_mask_ok(mask, Hm, Wm, b, W, H, x, y - 1) ||
+                 !cw_mask_ok(mask, Hm, Wm, b, W, H, x, y + 1)))
+                continue;
             I = cw_tap(gt, gt_fmt, base, W, H, x, y);
             gx = cw_scale(cw_sub(cw_tap(gt, gt_fmt, base, W, H, x + 1, y),
                                  cw_tap(gt, gt_fmt, base, W, H, x - 1, y)), 0.5f * scx);
@@ -483,7 +517,7 @@ __global__ void calib_warp_aux_fwd_kernel(
         const int ix = min(max((int)floorf(sx + 0.5f), 0), Wa - 1);
         const int iy = min(max((int)floorf(sy + 0.5f), 0), Ha - 1);
         ((uint8_t*)out_v)[plane + pix] =
-            cut_by_source && !src[plane + pix] ? 0 : src[plane + (size_t)iy * Wa + ix];
+            cut_by_source && !(src[plane + pix] & 1) ? 0 : src[plane + (size_t)iy * Wa + ix];
     } else {
         constexpr int Ch = Kind == 1 ? 1 : 3;
         const float* src = (const float*)src_v;
@@ -525,12 +559,16 @@ void _cw_check(int n, int D) {
 void calib_warp_gt_forward(
     TorchTensorView gt_rgb, TorchTensorView render_rgb, TorchTensorView render_depth,
     TorchTensorView render_Ts, TorchTensorView params, TorchTensorView intrins,
-    TorchTensorView cam_indices, int grid_n, int D, TorchTensorView out_rgb
+    TorchTensorView cam_indices, int grid_n, int D, TorchTensorView out_rgb,
+    TorchTensorView mask
 ) {
     _cw_check(grid_n, D);
     const auto& s = std::get<2>(render_rgb);
     const int B = (int)s[0], H = (int)s[1], W = (int)s[2];
     if (B <= 0 || H <= 0 || W <= 0) return;
+    const auto& ms = std::get<2>(mask);
+    const bool has_mask = std::get<0>(mask) != 0 && ms.size() >= 3;
+    const int Hm = has_mask ? (int)ms[1] : 0, Wm = has_mask ? (int)ms[2] : 0;
     const int P = (int)std::get<2>(params)[1];
     dim3 grid(_CEIL_DIV(H * W, kCwBlock), B);
     calib_warp_gt_fwd_kernel<<<grid, kCwBlock>>>(
@@ -538,6 +576,7 @@ void calib_warp_gt_forward(
         (const float*)_cw_ptr(render_depth), (const float*)_cw_ptr(render_Ts),
         (const float*)_cw_ptr(params), P,
         (const float4*)_cw_ptr(intrins), (const int32_t*)_cw_ptr(cam_indices),
+        has_mask ? (const uint8_t*)_cw_ptr(mask) : nullptr, Hm, Wm,
         H, W, grid_n, D, PixelOut((void*)_cw_ptr(out_rgb), pixel_format(out_rgb)));
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }

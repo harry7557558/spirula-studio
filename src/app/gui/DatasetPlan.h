@@ -23,6 +23,11 @@ struct ColmapJob;
 enum class ModelPart { Features, Matching, Mapping, Align };
 inline constexpr int kNumModelParts = 4;
 
+// StepRecord::made of the model step: the stages whose output on disk was
+// finished under the record's fields.
+inline constexpr const char* kMadeFeatures = "features";
+inline constexpr const char* kMadeMatches = "matches";
+
 // A stage kept although the plan would make it again, or made again although
 // it would be kept. Honoured only where StepPlan::lock allows.
 enum class PartChoice { Auto, Keep, Run };
@@ -194,6 +199,9 @@ public:
     // Marks the step started -- an interruption leaves it incomplete -- under
     // a new id that the steps after it are made from.
     void begin(Step s, StepFields fields, std::vector<std::string> made = {});
+    // Adds to the open step's StepRecord::made: for the model, a stage that
+    // finished under its fields (kMade*), which an interrupted run may reuse.
+    void note(Step s, const std::string& made);
     // `captures`: the frames step's (StepRecord::captures).
     void finish(Step s, std::vector<PrepCapture> captures = {});
     const std::string& id(Step s) const { return _ids[(int)s]; }

@@ -27,7 +27,8 @@ inline int calib_warp_hess_floats(int D) { return D == 4 ? 9 : 3; }
 void calib_warp_gt_forward(
     TorchTensorView gt_rgb, TorchTensorView render_rgb, TorchTensorView render_depth,
     TorchTensorView render_Ts, TorchTensorView params, TorchTensorView intrins,
-    TorchTensorView cam_indices, int grid_n, int D, TorchTensorView out_rgb
+    TorchTensorView cam_indices, int grid_n, int D, TorchTensorView out_rgb,
+    TorchTensorView mask
 );
 
 

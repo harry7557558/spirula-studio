@@ -391,6 +391,9 @@ using camhost::FrustumLine;
 using camhost::frustum_template;
 constexpr int kASeg = camhost::kFrustumAnchorSeg;
 constexpr int M_PINHOLE = 0;
+// A dense cloud reaches 585M points: at 24 B in the VBO plus 24 B host-side
+// each, all of them filled a 16 GB card. A regular stride keeps the preview under this.
+constexpr int64_t kMaxPreviewPoints = 10'000'000;
 
 }  // namespace
 
@@ -781,10 +784,9 @@ bool PreviewRenderer::build(const ParsedDataset& ds, const PostSplitCameras& pos
     _t2n_scale = (float)sA;
 
     // ---- point cloud ------------------------------------------------------
-    // Sized first and filled in parallel: a few million points, and this runs
-    // on the GUI thread.
+    // Sized first and filled in parallel: this runs on the GUI thread.
     const int64_t n_src = ds.points.num();
-    const int64_t stride = 1;
+    const int64_t stride = std::max<int64_t>(1, (n_src + kMaxPreviewPoints - 1) / kMaxPreviewPoints);
     const int64_t n_pts = (n_src + stride - 1) / stride;
     std::unique_ptr<V[]> pts(new V[(size_t)n_pts]);   // not zeroed: every one is written
     _pick_xyz.resize((size_t)n_pts * 3);   // kept host-side for double-click picking

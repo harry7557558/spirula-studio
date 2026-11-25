@@ -122,16 +122,19 @@ void densify_update_weight(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 // densify_clip_scale
 // ---------------------------------------------------------------------------
 
-struct DensifyClipScaleParams {  // 48 bytes: pushed directly
+struct DensifyClipScaleParams {  // 64 bytes: pushed directly
     float* radii;        // [N]
     float* log_scales;   // [N, 3]
     float* logit_opacs;  // [N] (has_opacs gates; fallback-backed)
+    uint* visit_counters; // [N] (has_visit gates; fallback-backed)
     float max_scale2d;
     float clip_hardness;
     float max_scale3d;
     uint has_opacs;
+    uint has_visit;
     uint num_splats;
     uint wgs_per_row;
+    uint _pad0;
 };
 
 [shader("compute")]
@@ -141,7 +144,9 @@ void densify_clip_scale(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
     if (idx >= p.num_splats) return;
 
-    if (_dn_finitef(p.max_scale2d)) {
+    bool rendered_step =
+        p.has_visit == 0 || visit_unrendered_steps(p.visit_counters[idx]) == 0u;
+    if (rendered_step && _dn_finitef(p.max_scale2d)) {
         float oversize_factor = p.radii[idx] / p.max_scale2d;
         if (_dn_finitef(p.clip_hardness))
             oversize_factor = min(oversize_factor, p.clip_hardness);

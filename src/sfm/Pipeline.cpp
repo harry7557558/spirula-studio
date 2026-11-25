@@ -2045,24 +2045,12 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
         pairs = prefilterPairs(feats, popt, sp);
         events::stage_end(Stage::Select);
         stats.select_seconds = now() - t0;
-        if (verbose)
+        if (verbose) {
             fprintf(stderr, "\n");
             L::err(Tag::Match, M::match_prefilter_kept,
                    {(long long)pairs.size(), (long long)stats.scored,
                     popt.num_features, popt.num_neighbors,
                     format_duration(stats.select_seconds)});
-        // The shortlist keeps each image's top-k by a subsampled score, and a
-        // weak but real link just below the cut is gone for good; the file
-        // order still knows it.
-        if (cfg.prefilter_sequential) {
-            const size_t sel = pairs.size();
-            const std::vector<std::pair<uint32_t, uint32_t>> win = sequentialPairs(
-                (uint32_t)n_images, cfg.overlap, cfg.quadratic_overlap, folderRuns(image_names));
-            pairs.insert(pairs.end(), win.begin(), win.end());
-            std::sort(pairs.begin(), pairs.end());
-            pairs.erase(std::unique(pairs.begin(), pairs.end()), pairs.end());
-            L::err(Tag::Match, M::match_sequential_added,
-                   {(long long)(pairs.size() - sel), (long long)sel, (long long)win.size()});
         }
     } else {
         pairs = mode == PairMode::Exhaustive
@@ -2085,12 +2073,13 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
             pairs.insert(pairs.end(), extra.begin(), extra.end());
             std::sort(pairs.begin(), pairs.end());
             pairs.erase(std::unique(pairs.begin(), pairs.end()), pairs.end());
-            if (verbose)
+            if (verbose) {
                 fprintf(stderr, "\n");
                 L::err(Tag::Match, M::match_loop_closure_added,
                        {(long long)(pairs.size() - seq), (long long)seq,
                         (long long)extra.size(),
                         format_duration(stats.select_seconds)});
+            }
         }
     }
     // makes the mapper trust the sequence pairs,
@@ -2138,7 +2127,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 mode == PairMode::Exhaustive ? "exhaustive"
                 : mode == PairMode::Sequential
                     ? (cfg.loop_closure ? "sequential + loop closure" : "sequential")
-                    : (cfg.prefilter_sequential ? "prefilter + sequential" : "prefilter")});
+                    : "prefilter"});
     if (verbose && mode == PairMode::Prefilter)
         L::err(Tag::Match, M::match_prefilter_params,
                {popt.num_features, popt.num_neighbors});
@@ -2605,7 +2594,6 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     L::out(Tag::Run, M::run_quality,
            {cfg.quality, (long long)cfg.max_image_size,
             (long long)cfg.sift.max_num_features});
-    L::out(Tag::Run, M::run_data_type, {cfg.data_type});
     L::out(Tag::Run, M::run_cameras, {cfg.camera_model, cfg.camera_mode});
     std::vector<LensPlan> lens_plans = collectLensPlans(cfg.telemetry_inputs, _imagedir);
     applyLensPlans(cfg.camera, lens_plans);
@@ -2668,29 +2656,12 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     }
     warnIfMasksLookInverted(est);
 
-    // Pairing: what --pairs says, except that "auto" only knows the image count
-    // once extraction has run. Above COLMAP's exhaustive cutoff -- where COLMAP
-    // switches to vocabulary-tree retrieval -- we switch to GPU pair selection
-    // (sfm/feature/PairSelection.h, D35).
-    //
-    // The same cutoff retires the video preset's sequential pairing. A temporal
-    // window is a chain, and a capture long enough to be worth this many frames
-    // is long enough to come back on itself; pair selection finds those links
-    // from content, at a cost that is a fraction of matching. Measured on a
-    // 262-frame walk: sequential gave four models (144 / 74 / 19 / 12 images),
-    // pair selection one with 254. Below the cutoff the temporal prior is still
-    // the cheaper way to get the same pairs, and --loop-closure covers its blind
-    // spot. `--pairs sequential` explicitly still means sequential.
-    PairMode mode = cfg.pairMode();
-    if ((mode == PairMode::Exhaustive || mode == PairMode::Sequential) &&
-        est.images >= 100 && !in.explicit_flags.count("pairs")) {
-        const char* was = mode == PairMode::Exhaustive ? "exhaustive" : "sequential";
-        mode = PairMode::Prefilter;
-        L::out(Tag::Match, M::match_switch_to_selection, {(long long)est.images, was});
-    } else if (mode == PairMode::Exhaustive && est.images >= 100) {
+    // What --pairs says, at any image count: a default that changed with the
+    // count made two runs of one command line two different pipelines.
+    const PairMode mode = cfg.pairMode();
+    if (mode == PairMode::Exhaustive && est.images >= 100)
         L::warn(Tag::Match, M::match_exhaustive_quadratic,
                 {(long long)est.images, (long long)(est.images * (est.images - 1) / 2)});
-    }
 
     // ---- 2. match + geometric verification ----
     t0 = now();
@@ -2725,11 +2696,24 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     mres.dir = rdir;
     mres.signature =
         extract_sig + match_settings + "features=" + featureDirDigest(featdir) + "\n";
-    const std::string old_match = resume::recorded(rdir / resume::kMatchSig);
+    std::string old_match = resume::recorded(rdir / resume::kMatchSig);
+    // From while --prefilter-sequential was a row; "off" matched what runs now.
+    const std::string retired = "\nprefilter-sequential=off\n";
+    if (const size_t at = old_match.find(retired); at != std::string::npos)
+        old_match.erase(at + 1, retired.size() - 1);
+    // Recorded when --pairs defaulted to "auto"; the mode it resolved to is the
+    // pairs-resolved line, which still has to agree.
+    const auto as_auto = [](std::string sig) {
+        const size_t at = sig.find("\npairs=prefilter\n");
+        if (at != std::string::npos) sig.replace(at, 17, "\npairs=auto\n");
+        return sig;
+    };
     // Matches over features kept under other extraction settings are still
     // theirs: the digest is of the files they index, as they were then.
-    const bool current = old_match == mres.signature ||
-                         old_match == old_extract + match_settings + features_before ||
+    const std::string kept_features_sig = old_extract + match_settings + features_before;
+    const bool current = old_match == mres.signature || old_match == kept_features_sig ||
+                         old_match == as_auto(mres.signature) ||
+                         old_match == as_auto(kept_features_sig) ||
                          (legacy_sig && old_match == legacy_match);
     if (cfg.reuse_matches == "redo") {
         resume::forget(rdir / resume::kMatchSig);
@@ -3075,7 +3059,8 @@ bool cameraOverrideName(const std::string& a, OverrideKind& kind) {
 
 }  // namespace
 
-std::string parse_auto_args(const std::vector<std::string>& args, AutoRequest& out) {
+std::string parse_auto_args(const std::vector<std::string>& args, AutoRequest& out,
+                            std::string* finish_command) {
     // setConfigField consumes argv the way main() gets it; this is that view.
     std::vector<char*> argv;
     argv.reserve(args.size());
@@ -3115,9 +3100,17 @@ std::string parse_auto_args(const std::vector<std::string>& args, AutoRequest& o
             cfg.sequences.push_back(std::move(d));
             continue;
         }
+        if (a == "--data-type")
+            return "--data-type is retired: declare ordered frames with --sequence, give "
+                   "internet photos --camera-mode image, and choose pairing with --pairs";
         if (a == "--progress-dir") {
             if (i + 1 >= argc) return "--progress-dir: missing value";
             out.progress_dir = args[(size_t)++i];
+            continue;
+        }
+        if (finish_command && a == "--finish-command") {
+            if (i + 1 >= argc) return "--finish-command: missing value";
+            *finish_command = args[(size_t)++i];
             continue;
         }
         // Claimed, not merely cleared: manifest_apply fills in anything the
@@ -3167,6 +3160,7 @@ std::string parse_auto_args(const std::vector<std::string>& args, AutoRequest& o
             return manifest_path + ": " + err;
         if (!man.mask_dir.empty()) maskdir_explicit = true;
     }
+    applySequenceDefaults(cfg, seen, moved);
     if (std::string err = cfg.finalize(CMD_AUTO); !err.empty()) return err;
     if (std::string err = cfg.resolveDevice(); !err.empty()) return err;
 

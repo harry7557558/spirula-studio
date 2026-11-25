@@ -1,7 +1,7 @@
 #pragma once
 
-// How big the interface is, and the drag handles that let the user say
-// otherwise.
+// How big the interface is, the drag handles that let the user say otherwise,
+// and the widths and status colours every screen shares.
 //
 // Everything the screens lay out against is stored UNSCALED and multiplied by
 // ui_scale() at the point of use, so a saved layout survives a change of
@@ -24,6 +24,27 @@ inline float ui_scale() { return ImGui::GetStyle().FontScaleMain; }
 
 // A hand-written pixel constant, at the current scale.
 inline float px(float unscaled) { return unscaled * ui_scale(); }
+
+// Unscaled widths for SetNextItemWidth(px(...)). Fields in a settings form:
+inline constexpr float kFieldW = 220.0f;
+inline constexpr float kTextFieldW = 320.0f;    // free text: prompts, names
+inline constexpr float kPathFieldW = 300.0f;
+inline constexpr float kCompactFieldW = 120.0f; // toolbar sliders and combos
+
+// Wrap widths for PushTextWrapPos(px(...)), and button sizes: a modal's, a
+// screen's main action, and the "..." that opens a picker beside a path.
+inline constexpr float kTooltipWrapW = 420.0f;
+inline constexpr float kModalWrapW = 460.0f;
+inline constexpr float kModalButtonW = 170.0f;
+inline constexpr float kActionButtonW = 200.0f;
+inline constexpr float kActionButtonH = 34.0f;
+inline constexpr float kBrowseButtonW = 60.0f;
+
+// Status colours for text and marks.
+inline constexpr ImVec4 kOk(0.35f, 0.85f, 0.45f, 1.0f);
+inline constexpr ImVec4 kWarn(0.95f, 0.75f, 0.30f, 1.0f);
+inline constexpr ImVec4 kErr(1.0f, 0.42f, 0.42f, 1.0f);
+inline constexpr ImVec4 kDim(0.6f, 0.6f, 0.6f, 1.0f);
 
 // The DPI scale and the user's size preference, resolved into one number once
 // per frame.

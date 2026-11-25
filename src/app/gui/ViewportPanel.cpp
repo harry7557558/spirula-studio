@@ -1,6 +1,7 @@
 // ViewportPanel.cpp -- see ViewportPanel.h.
 
 #include "app/gui/ViewportPanel.h"
+#include "checkpoint/SplatPly.h"
 #include "app/gui/ViewBookmarks.h"
 #include "data/FrustumTemplate.h"
 
@@ -957,6 +958,22 @@ void ViewportPanel::attach_hardware(const ViewerRenderConfig& cfg,
     refresh_buffer_keys();
 }
 
+void ViewportPanel::attach_splat_preview(const spirula::SplatCloud& sample, const std::string& key,
+                                        const float center[3], float unit) {
+    ViewerRenderConfig cfg;
+    _preview.destroy_gl();
+    attach_hardware(cfg, {}, key, center, unit);
+    _primitive_idx = 0;
+    for (int i = 0; i < kNumViewerPrimitives; ++i)
+        if (sample.primitive == kViewerPrimitives[i]) _primitive_idx = i;
+    try {
+        _hardware.load({}, center, unit, &sample);
+    } catch (...) {
+        detach();
+        throw;
+    }
+}
+
 void ViewportPanel::detach() {
     if (_mode == Mode::Hardware) _hardware.destroy();
     _hardware_path.clear();
@@ -1552,14 +1569,20 @@ void ViewportPanel::draw_controls(bool engine) {
         if (used > 0.0f && used + st.ItemSpacing.x + w > row_w) used = 0.0f;
     };
 
-    // The SH slider's width. Short enough to sit in a row of controls, wide
-    // enough for "SH 3" plus the grab.
-    constexpr float kShW = 86.0f;
+    // place() plus the width of the control that follows, unscaled.
+    auto place_item = [&](float w) {
+        place(px(w));
+        ImGui::SetNextItemWidth(px(w));
+    };
+    // Control widths. The SH slider is short enough for a row of controls,
+    // wide enough for "SH 3" plus the grab.
+    constexpr float kBufferW = 130.0f, kSizeW = 110.0f, kCenterW = 170.0f;
+    constexpr float kScaleW = 66.0f, kPrimitiveW = 80.0f, kShW = 86.0f;
+    constexpr float kColorW = kCompactFieldW;   // gamut and transfer
 
     // ---- display group ----
     if (engine && !_buffer_keys.empty()) {
-        place(px(130.0f));
-        ImGui::SetNextItemWidth(px(130.0f));
+        place_item(kBufferW);
         // Buffer names ("color", "depth") come from the engine.
         if (ui::BeginComboRaw("##buffer", _buffer_keys[_buffer_idx].c_str())) {
             for (int i = 0; i < (int)_buffer_keys.size(); i++)
@@ -1573,7 +1596,7 @@ void ViewportPanel::draw_controls(bool engine) {
     }
     // The "dataset preview" note explains why the image is points and not a
     // render; over a mesh it would be simply wrong.
-    if (!engine && !_preview.has_mesh()) {
+    if (!engine && !_preview.has_mesh() && !_preview_limit) {
         place(text_w(msg::viewport_dataset_preview.get()));
         ui::TextDisabled(msg::viewport_dataset_preview);
         ui::help_on_hover(msg::viewport_dataset_preview_help);
@@ -1584,8 +1607,7 @@ void ViewportPanel::draw_controls(bool engine) {
         if (ui::Checkbox(msg::viewport_cameras, &_show_cams)) _dirty = true;
         ui::help_on_hover(msg::viewport_cameras_help);
         if (_show_cams) {
-            place(px(110.0f));
-            ImGui::SetNextItemWidth(px(110.0f));
+            place_item(kSizeW);
             if (ui::SliderFloatRaw("##fsize", &_frustum_scale, 0.1f, 10.0f,
                                    "size x%.2f", ImGuiSliderFlags_Logarithmic))
                 _dirty = true;
@@ -1593,8 +1615,7 @@ void ViewportPanel::draw_controls(bool engine) {
         }
     }
     if (!engine && !_preview.has_mesh() && _preview.num_points() > 0) {
-        place(px(110.0f));
-        ImGui::SetNextItemWidth(px(110.0f));
+        place_item(kSizeW);
         const std::string fmt = spirula::i18n::format(msg::viewport_point_size, {"%.1f"});
         if (ui::SliderFloatRaw("##psize", &_point_px, 1.0f, 5.0f, fmt.c_str(),
                                ImGuiSliderFlags_AlwaysClamp))
@@ -1633,8 +1654,8 @@ void ViewportPanel::draw_controls(bool engine) {
             return mode == (int)M::CameraMedian || mode == (int)M::CameraMean ||
                    mode == (int)M::CameraFocus;
         };
-        place(px(170.0f) + st.ItemInnerSpacing.x + text_w(msg::viewport_center.get()));
-        ImGui::SetNextItemWidth(px(170.0f));
+        place(px(kCenterW) + st.ItemInnerSpacing.x + text_w(msg::viewport_center.get()));
+        ImGui::SetNextItemWidth(px(kCenterW));
         if (ui::BeginComboRaw(ui::detail::label(msg::viewport_center),
                               center_label(effective_center_mode()))) {
             for (int i = 0; i < dsparse::kNumCenterModes; i++) {
@@ -1658,9 +1679,9 @@ void ViewportPanel::draw_controls(bool engine) {
         ui::help_on_hover(msg::viewport_center_help);
     }
     if (engine && _mode != Mode::Hardware) {
-        place(px(66.0f) + st.ItemInnerSpacing.x +
+        place(px(kScaleW) + st.ItemInnerSpacing.x +
               text_w(msg::viewport_scale.get()));
-        ImGui::SetNextItemWidth(px(66.0f));
+        ImGui::SetNextItemWidth(px(kScaleW));
         // Only the first entry is a word; the rest are numbers, and a
         // percentage is a percentage in every language.
         const char* scales[] = {msg::viewport_scale_auto.get(),
@@ -1700,13 +1721,12 @@ void ViewportPanel::draw_controls(bool engine) {
     // A training session renders what it is training; only a file being
     // LOOKED at can be drawn a different way than it was made.
     if (engine && _scene_options) {
-        float w_group = px(80.0f) + px(120.0f) + px(120.0f) +
+        float w_group = px(kPrimitiveW) + 2.0f * px(kColorW) +
                         check_w(msg::viewport_linear_color) +
                         3.0f * st.ItemSpacing.x;
         if (_sh_degree_max > 0) w_group += px(kShW) + st.ItemSpacing.x;
         place_group(w_group);
-        place(px(80.0f));
-        ImGui::SetNextItemWidth(px(80.0f));
+        place_item(kPrimitiveW);
         // Primitive names are identifiers (they are what --primitive takes).
         if (ui::ComboRaw("##primitive", &_primitive_idx, kViewerPrimitives,
                          kNumViewerPrimitives)) {
@@ -1717,8 +1737,7 @@ void ViewportPanel::draw_controls(bool engine) {
         ui::help_on_hover(msg::viewport_primitive_help);
 
         if (_sh_degree_max > 0) {
-            place(px(kShW));
-            ImGui::SetNextItemWidth(px(kShW));
+            place_item(kShW);
             // Capped at what the file actually carries -- bands it has not got
             // cannot be drawn, so there is nothing above the top end to offer.
             // Degrees are numbers in every language.
@@ -1728,8 +1747,7 @@ void ViewportPanel::draw_controls(bool engine) {
             ui::help_on_hover(msg::viewport_sh_degree_help);
         }
 
-        place(px(120.0f));
-        ImGui::SetNextItemWidth(px(120.0f));
+        place_item(kColorW);
         // Gamut names are standards ("DCI-P3"); only the "none" row is a word.
         const char* gamuts[kNumViewerGamuts];
         gamuts[0] = msg::viewport_gamut_none.get();
@@ -1746,8 +1764,7 @@ void ViewportPanel::draw_controls(bool engine) {
         place(check_w(msg::viewport_linear_color));
         if (ui::Checkbox(msg::viewport_linear_color, &_linear_color)) apply();
         ui::help_on_hover(msg::viewport_linear_help);
-        place(px(120.0f));
-        ImGui::SetNextItemWidth(px(120.0f));
+        place_item(kColorW);
         // Transfer names are the identifiers --splat-color-transfer takes.
         if (ui::ComboRaw("##transfer", &_transfer_idx, colorspace::kTransfers,
                          kNumViewerTransfers))
@@ -1787,13 +1804,18 @@ void ViewportPanel::draw_nav_controls() {
     static const spirula::i18n::Msg* kNavModes[] = {
         &msg::nav_turntable, &msg::nav_trackball,
         &msg::nav_first_person, &msg::nav_free_fly};
-    const float w_fov = fov_max() > 0 ? px(120.0f)
+    auto place_item = [&](float w) {
+        place(px(w));
+        ImGui::SetNextItemWidth(px(w));
+    };
+    constexpr float kNavW = 150.0f, kSpeedW = 100.0f, kLensW = 160.0f;
+    constexpr float kFovW = kCompactFieldW;
+    const float w_fov = fov_max() > 0 ? px(kFovW)
                                       : text_w("360\xc2\xb0 x 180\xc2\xb0");
-    place_group(px(150.0f) + px(100.0f) + px(160.0f) + w_fov +
+    place_group(px(kNavW) + px(kSpeedW) + px(kLensW) + w_fov +
                 3.0f * st.ItemSpacing.x);
     int nav = (int)_cam.mode;
-    place(px(150.0f));
-    ImGui::SetNextItemWidth(px(150.0f));
+    place_item(kNavW);
     if (ui::ComboRaw("##navmode", &nav,
                      {kNavModes[0], kNavModes[1], kNavModes[2], kNavModes[3]})) {
         _cam.mode = (NavCamera::Mode)nav;
@@ -1802,12 +1824,10 @@ void ViewportPanel::draw_nav_controls() {
     ui::help_on_hover(msg::viewport_nav_help,
                       {kNavModes[0]->get(), kNavModes[1]->get(),
                        kNavModes[2]->get(), kNavModes[3]->get()});
-    place(px(100.0f));
-    ImGui::SetNextItemWidth(px(100.0f));
+    place_item(kSpeedW);
     ui::SliderFloatRaw("##speed", &_cam.speed_exp, -2.0f, 2.0f, "spd 10^%.1f");
     ui::help_on_hover(msg::viewport_speed_help);
-    place(px(160.0f));
-    ImGui::SetNextItemWidth(px(160.0f));
+    place_item(kLensW);
     if (ui::BeginComboRaw("##cammodel", kViewerCameraModels[_cam_model].label->get())) {
         for (int i : {4, 0, 1, 2, 3})
             if (ui::Selectable(*kViewerCameraModels[i].label, i == _cam_model))
@@ -1817,7 +1837,7 @@ void ViewportPanel::draw_nav_controls() {
     ui::help_on_hover(msg::viewport_projection_help);
     place(w_fov);
     if (fov_max() > 0) {
-        ImGui::SetNextItemWidth(px(120.0f));
+        ImGui::SetNextItemWidth(px(kFovW));
         if (ui::SliderFloatRaw("##fov", &_fov_deg[_cam_model],
                                fov_min(), fov_max(), "fov %.0f\xc2\xb0"))
             _dirty = true;
@@ -1874,9 +1894,10 @@ void ViewportPanel::draw(bool training, int step) {
 
     if (_mode == Mode::Hardware) {
         try {
-            const int W = int(std::clamp(avail.x, 64.f, 4096.f));
-            const int H = int(std::clamp(avail.y, 64.f, 4096.f));
-            const unsigned tex = pump_hardware(W, H);
+            const int W = preview_display_size(avail.x);
+            const int H = preview_display_size(avail.y);
+            const float scale = preview_scale(W, H);
+            const unsigned tex = pump_hardware(std::max(1, int(W * scale)), std::max(1, int(H * scale)));
             ImGui::Image((ImTextureID)(intptr_t)tex, ImVec2(float(W), float(H)), ImVec2(0,1), ImVec2(1,0));
             if (_wipe_splits) draw_wipe(ImGui::GetItemRectMin(), ImGui::GetItemRectSize());
             handle_input(float(H));
@@ -1904,9 +1925,39 @@ unsigned ViewportPanel::pump_hardware(int W, int H) {
     return _hardware_tex;
 }
 
+void ViewportPanel::limit_preview_pixels(int pixels) {
+    if (!_preview_max_side) {
+        int texture = 0, renderbuffer = 0;
+        glGetIntegerv(GL_MAX_TEXTURE_SIZE, &texture);
+        glGetIntegerv(0x84e8 /* GL_MAX_RENDERBUFFER_SIZE */, &renderbuffer);
+        _preview_max_side = std::max(1, std::min(texture, renderbuffer));
+    }
+    if (_preview_limit != pixels) _dirty = true;
+    _preview_limit = pixels;
+}
+
+int ViewportPanel::preview_display_size(float extent) const {
+    return int(_preview_limit ? std::max(extent, 64.f) : std::clamp(extent, 64.f, 4096.f));
+}
+
+float ViewportPanel::preview_scale(int w, int h) const {
+    if (!_preview_limit) return 1;
+    return std::min({1.f, float(_preview_max_side) / std::max(w, h),
+                     std::sqrt(float(_preview_limit) / (float(w) * h))});
+}
+
 unsigned ViewportPanel::pump_preview(const ImVec2& avail, int& W, int& H) {
-    W = (int)std::clamp(avail.x, 64.0f, 4096.0f);
-    H = (int)std::clamp(avail.y, 64.0f, 4096.0f);
+    W = preview_display_size(avail.x);
+    H = preview_display_size(avail.y);
+    float scale = 1.0f;
+    if (_preview_limit > 0) {
+        if (_preview_tex && !_dirty && !_moved_last_draw && W == _preview_display_w && H == _preview_display_h)
+            return _preview_tex;
+        _preview_display_w = W;
+        _preview_display_h = H;
+        _dirty = false;
+        scale = preview_scale(W, H);
+    }
     float view[16];
     view_matrix(view);
     float fx, fy;
@@ -1917,8 +1968,8 @@ unsigned ViewportPanel::pump_preview(const ImVec2& avail, int& W, int& H) {
     _preview.set_overlay(_roi_preview, _show_roi);
     _preview.dim_points_outside(_roi_points_inside, _show_roi);
     PreviewStyle style;
-    style.point_px = _point_px;
-    _preview_tex = _preview.render(W, H, view,
+    style.point_px = _point_px * scale;
+    _preview_tex = _preview.render(std::max(1, int(W * scale)), std::max(1, int(H * scale)), view,
                                    (PreviewProjection)_cam_model,
                                    fx / (0.5f * W), fy / (0.5f * H),
                                    _home_dist, nav_dist() / _m2s_scale, target,

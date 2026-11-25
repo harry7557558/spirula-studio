@@ -82,6 +82,13 @@ int main() {
         c.work(10.0, 0.25, 30.0);
         expect(close_to(c.fraction(), 0.25, 1e-6) && close_to(c.remaining(10.0), 30.0, 1e-9),
                "a time left the job computed is taken as given");
+        const float fill = c.fraction();
+        c.work(12.0, 0.25, 50.0);
+        expect(c.fraction() == fill && close_to(c.remaining(12.0), 50.0, 1e-9),
+               "a higher forecast updates the ETA at the same work count");
+        c.work(15.0, 0.3, 60.0);
+        expect(c.fraction() == fill && close_to(c.remaining(15.0), 60.0, 1e-9),
+               "more work with a higher forecast preserves the fill");
         c.finish(20.0);
         expect(c.fraction() == 1.0f && c.remaining(30.0) == 0.0 && close_to(c.elapsed(99.0), 20.0, 1e-9),
                "finished is full, nothing left, and the clock stops");

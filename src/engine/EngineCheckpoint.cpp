@@ -8,19 +8,23 @@
 #include "checkpoint/SplatPly.h"
 #include "checkpoint/SplatYUp.h"
 #include "checkpoint/Resume.h"
-#include "core/BufferedFile.h"
-#include <future>
-#include "core/AtomicFile.h"
+#include "checkpoint/StagedFiles.h"
 #include "core/CheckpointIO.h"
-#include "external/npy.hpp"
+#include "core/HostMemory.h"
+
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <limits>
+#include <memory>
+#include <new>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <vector>
 #ifdef _OPENMP
 #include <omp.h>
@@ -31,42 +35,8 @@ namespace {
 
 namespace fs = std::filesystem;
 
-static void _ckpt_mkdir(const fs::path& p) {
-    std::error_code ec;
-    fs::create_directories(p, ec);
-    if (ec) throw std::runtime_error("create_directories failed: " + p.string() + " (" + ec.message() + ")");
-}
+std::function<void()> g_checkpoint_writer_gate;
 
-// D->H copy into a freshly sized host buffer.
-template<typename T>
-static std::vector<T> _ckpt_d2h(const T* d_ptr, size_t n) {
-    std::vector<T> host(n);
-    if (n > 0 && d_ptr != nullptr) {
-        backend::memcpy_sync(host.data(), d_ptr, n * sizeof(T), backend::MemcpyKind::DeviceToHost);
-    }
-    return host;
-}
-
-// Save a device-side buffer of `numel` elements as a .npy with the given shape.
-template<typename Scalar>
-static void _ckpt_save_npy(const fs::path& path, const Scalar* d_ptr, size_t numel,
-                           const npy::shape_t& shape) {
-    if (d_ptr == nullptr || numel == 0) return;
-    auto host = _ckpt_d2h<Scalar>(d_ptr, numel);
-    npy::npy_data_ptr<Scalar> data{host.data(), shape, false};
-    npy::write_npy(path.string(), data);
-}
-
-template<typename T>
-static npy::shape_t _ckpt_shape_5d(const DeviceTensor5D<T>& t) {
-    return {
-        (unsigned long)t.template size<0>(),
-        (unsigned long)t.template size<1>(),
-        (unsigned long)t.template size<2>(),
-        (unsigned long)t.template size<3>(),
-        (unsigned long)t.template size<4>(),
-    };
-}
 
 // Runtime scalars and layout validation; run configuration lives in config.json.
 static std::string _build_state_json(EngineState& s, int step, bool full) {
@@ -162,67 +132,129 @@ static std::string _json_str(const std::string& s, const std::string& key) {
     return (e == std::string::npos) ? "" : s.substr(v + 1, e - v - 1);
 }
 
-// Interrupted writes must not look complete to viewers or --resume.
-// Files keep a .tmp suffix until every stream has closed successfully.
-struct StagedFiles {
-    std::vector<fs::path> finals;
+constexpr size_t kNoRange = std::numeric_limits<size_t>::max();
+constexpr uint64_t kSnapshotHeadroom = uint64_t{1} << 30;
+constexpr size_t kSnapshotAlignment = alignof(float4);
 
-    static fs::path temp_of(const fs::path& p) { return fs::path(p).concat(".tmp"); }
-    fs::path add(const fs::path& final_path) {
-        finals.push_back(final_path);
-        return temp_of(final_path);
+struct SnapshotDelete {
+    void operator()(char* p) const { ::operator delete(p, std::align_val_t{kSnapshotAlignment}); }
+};
+using SnapshotBytes = std::unique_ptr<char[], SnapshotDelete>;
+
+struct CheckpointData {
+    struct Range { size_t offset, bytes; };
+    struct Member { std::string name; uint8_t dtype; };
+    std::vector<Range> ranges;
+    std::vector<Member> members;
+    SnapshotBytes host;
+    size_t bytes = 0;
+    std::string state_json, primitive;
+    int64_t splats = 0;
+    ColorBasis basis{};
+    int sh_bits = 32;
+    bool quant = false, fpbo = false;
+    int bg_degree = 0, bg_transfer = 0;
+    bool bg_linear = false;
+    size_t means = kNoRange, quats = kNoRange, scales = kNoRange, opacity = kNoRange, dc = kNoRange;
+    size_t sh = kNoRange, values = kNoRange, bounds = kNoRange;
+    size_t bg = kNoRange, matrix = kNoRange, bg_count = 0;
+
+    int64_t chunk_rows() const {
+        // Both quantization layouts restart on a 256-splat boundary.
+        return std::max<size_t>(256, spirula::kFileBufferBytes /
+            (spirula::splat_ply_row_floats(basis) * sizeof(float)) / 256 * 256);
     }
-    void publish() {
-        for (const fs::path& p : finals) spirula::replace_file(temp_of(p), p);
-        finals.clear();
+
+    uint64_t writer_bytes(int height) const {
+        const size_t rows = size_t(std::min(splats, chunk_rows()));
+        const size_t ply = rows * (spirula::splat_ply_row_floats(basis) * sizeof(float) + sizeof(int64_t));
+        // RGB, predictor and encoder storage, including vector growth and encoded bytes.
+        const uint64_t webp = bg == kNoRange ? 0 : uint64_t{64} * height * (2 * height);
+        return spirula::kFileBufferBytes + std::max(uint64_t(ply), webp) + (16u << 20);
     }
-    ~StagedFiles() {
-        std::error_code ec;
-        for (const fs::path& p : finals) fs::remove(temp_of(p), ec);
+
+    const char* source(size_t i, const std::vector<const void*>* device) const {
+        return device ? static_cast<const char*>((*device)[i]) : host.get() + ranges[i].offset;
     }
 };
 
-} // anon namespace
+struct Capture {
+    CheckpointData data;
+    std::vector<const void*> device;
 
+    size_t add(const void* ptr, size_t bytes) {
+        if (!bytes) return kNoRange;
+        if (!ptr) throw std::runtime_error("checkpoint: missing device buffer");
+        constexpr size_t mask = kSnapshotAlignment - 1;
+        if (bytes > std::numeric_limits<size_t>::max() - data.bytes - mask)
+            throw std::length_error("checkpoint snapshot size overflow");
+        const size_t index = device.size();
+        device.push_back(ptr);
+        data.ranges.push_back({data.bytes, bytes});
+        data.bytes += (bytes + mask) & ~mask;
+        return index;
+    }
 
-void engine_save_checkpoint(
-    std::string output_dir,
-    bool full_dump,
-    int step,
-    int background_export_height,
-    std::string basename,
-    bool y_up,
-    std::string region_camera_hash
-) {
-    if (background_export_height < 1 || background_export_height > 8192)
+    template<class T>
+    size_t view(const T* ptr, size_t count) {
+        const size_t bytes = count * sizeof(T);
+        if (!bytes) return kNoRange;
+        for (size_t i = 0; i < device.size(); ++i)
+            if (device[i] == ptr && bytes <= data.ranges[i].bytes) return i;
+        return add(ptr, bytes);
+    }
+};
+
+static void check_device_copy() {
+    if (const char* err = backend::last_error())
+        throw std::runtime_error(std::string("checkpoint device transfer: ") + err);
+}
+
+static void validate_height(int height) {
+    if (height < 1 || height > 8192)
         throw std::runtime_error("background_export_height must be in [1, 8192]");
-    EngineState& s = engine();
+}
 
-    fs::path out_root(output_dir);
-    _ckpt_mkdir(out_root);
-
-    backend::device_synchronize();
-
-    const int64_t N = s.cur_num_splats;
-    const int K = s.num_sh;
-    ColorBasis basis{0, s.sb_lobes};
-    while (ColorBasis::sh_coeffs_of(basis.sh_degree + 1) <= K - basis.sb_coeffs())
-        basis.sh_degree++;
-    if (basis.coeffs() != K || basis.sh_degree > spirula::ShRotation::kMaxDegree)
+static Capture describe_checkpoint(bool full) {
+    auto& s = engine();
+    Capture capture;
+    auto& d = capture.data;
+    d.primitive = s.primitive;
+    d.splats = s.cur_num_splats;
+    const size_t n = size_t(d.splats);
+    const int k = s.num_sh;
+    d.basis = {0, s.sb_lobes};
+    while (ColorBasis::sh_coeffs_of(d.basis.sh_degree + 1) <= k - d.basis.sb_coeffs())
+        d.basis.sh_degree++;
+    if (d.basis.coeffs() != k || d.basis.sh_degree > spirula::ShRotation::kMaxDegree)
         throw std::runtime_error("engine_save_checkpoint: invalid colour basis");
-    const bool quant = K > 0 && s.world.sh_value_quantize_enabled();
-    const int bits = s.world.sh_value_bits;
-    const uint8_t* packed = nullptr;
-    const float2* bounds = nullptr;
-    bool fpbo = false;
-    auto use_quant = [&](const auto& q, bool fused) {
-        if (!q.initialized()) return;
-        packed = q.packed.data_ptr();
-        bounds = q.bounds.data_ptr();
-        fpbo = fused;
-    };
-    if (quant) {
-        if (bits == 8) {
+
+    auto slots = DevicePool::global().saved(full ? SaveClass::Resume : SaveClass::Always);
+    capture.device.reserve(slots.size() + 9);
+    d.ranges.reserve(slots.size() + 9);
+    d.members.reserve(slots.size());
+    for (auto& slot : slots) {
+        capture.add(slot.ptr, slot.nbytes);
+        d.members.push_back({std::move(slot.name), slot.dtype_tag});
+    }
+
+    d.means = capture.view(s.world.means.data_ptr(), n);
+    d.quats = capture.view(s.world.quats.data_ptr(), n);
+    d.scales = capture.view(s.world.scales.data_ptr(), n);
+    d.opacity = capture.view(s.world.opacities.data_ptr(), n);
+    d.dc = capture.view(s.world.features_dc.data_ptr(), n);
+    d.quant = k > 0 && s.world.sh_value_quantize_enabled();
+    d.sh_bits = s.world.sh_value_bits;
+    if (d.quant) {
+        const uint8_t* packed = nullptr;
+        const float2* bounds = nullptr;
+        auto use_quant = [&](const auto& q, bool fused) {
+            if (!q.initialized()) return;
+            packed = q.packed.data_ptr();
+            bounds = q.bounds.data_ptr();
+            d.fpbo = fused;
+        };
+        if (d.sh_bits == 8) {
             use_quant(s.world.features_sh_quant8, false);
             use_quant(s.world.features_sh_quant8_fpbo, true);
         } else {
@@ -230,148 +262,268 @@ void engine_save_checkpoint(
             use_quant(s.world.features_sh_quant16_fpbo, true);
         }
         if (!packed || !bounds) throw std::runtime_error("checkpoint: missing quantized colour buffers");
+        const size_t cells = d.fpbo ? size_t(sh_fpbo_cells(d.splats, k)) : n * 3 * k;
+        d.values = capture.view(packed, cells * (d.sh_bits / 8));
+        d.bounds = capture.view(bounds, ((d.fpbo ? n : cells) + 255) / 256);
+    } else if (k > 0) {
+        d.sh = capture.view(s.world.features_sh.data_ptr(), n * k);
     }
-    const ShQuantAddr addr = sh_quant_addr((uint32_t)K, fpbo ? 0 : 256);
-    const int row_floats = spirula::splat_ply_row_floats(basis);
-    // Both quantization layouts restart on a 256-splat boundary.
-    const int64_t chunk_rows = std::max<size_t>(256,
-        spirula::kFileBufferBytes / (row_floats * sizeof(float)) / 256 * 256);
-    StagedFiles staged;
-    const fs::path ply_path = staged.add(out_root / (basename.empty() ? "splat.ply" : basename + ".ply"));
-    {
-        spirula::BufferedOutputFile ply(ply_path, std::ios::binary);
-        if (!ply) throw std::runtime_error("Failed to open PLY for write: " + ply_path.string());
-        ply << spirula::splat_ply_header(0, basis, s.primitive, y_up, region_camera_hash);
-        const spirula::SplatYUp turn;
-        std::vector<float3> means, scales, dc, sh;
-        std::vector<float4> quats;
-        std::vector<float> opacity, buf(chunk_rows * row_floats), writing(buf.size());
-        std::vector<uint8_t> values;
-        std::vector<float2> limits;
-        std::vector<int64_t> indices(chunk_rows);
-        std::future<void> pending;
-        int64_t kept = 0;
-        auto copy = [](auto& host, const auto* device, size_t count) {
-            host.resize(count);
-            if (count) backend::memcpy_sync(host.data(), device, count * sizeof(*device),
-                                           backend::MemcpyKind::DeviceToHost);
-        };
-        for (int64_t first = 0; first < N; first += chunk_rows) {
-            const int64_t n = std::min(chunk_rows, N-first);
-            copy(means, s.world.means.data_ptr()+first, n);
-            copy(quats, s.world.quats.data_ptr()+first, n);
-            copy(scales, s.world.scales.data_ptr()+first, n);
-            copy(opacity, s.world.opacities.data_ptr()+first, n);
-            copy(dc, s.world.features_dc.data_ptr()+first, n);
-            if (quant) {
-                const int64_t cells = fpbo ? sh_fpbo_cells(n, K) : n*3*K;
-                const int64_t start = fpbo ? sh_fpbo_cells(first, K) : first*3*K;
-                copy(values, packed+start*(bits/8), cells*(bits/8));
-                copy(limits, bounds+(fpbo ? first : start)/256,
-                     ((fpbo ? n : cells)+255)/256);
-            } else if (K > 0) {
-                copy(sh, s.world.features_sh.data_ptr()+first*K, n*K);
-            }
-            auto finite3 = [](const float3& v) {
-                return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
-            };
-            int rows = 0;
-            for (int64_t i = 0; i < n; ++i) {
-                const auto& q = quats[i];
-                bool valid = finite3(means[i]) && finite3(scales[i]) && finite3(dc[i]) &&
-                    std::isfinite(opacity[i]) && std::isfinite(q.x) && std::isfinite(q.y) &&
-                    std::isfinite(q.z) && std::isfinite(q.w);
-                if (!quant)
-                    for (int j = 0; valid && j < K; ++j) valid = finite3(sh[i*K+j]);
-                if (valid && opacity[i] >= -5.5373f &&
-                    std::max({scales[i].x, scales[i].y, scales[i].z}) > -40.0f)
-                    indices[rows++] = i;
-            }
-#pragma omp parallel num_threads(8) if(rows >= 4096)
-            {
-                std::vector<float> rest(3*K);
-#pragma omp for schedule(static)
-                for (int r = 0; r < rows; ++r) {
-                    const int64_t i = indices[r];
-                    for (int j = 0; j < 3*K; ++j) {
-                        if (quant) {
-                            const int64_t cell = addr.cell(addr.base(i), j);
-                            const auto mm = limits[fpbo ? i/256 : cell/256];
-                            uint16_t q = values[cell];
-                            if (bits == 16) std::memcpy(&q, values.data()+2*cell, 2);
-                            rest[j] = mm.x + (mm.y-mm.x) * (float(q) / (bits == 8 ? 255.f : 65535.f));
-                        } else rest[j] = (&sh[i*K].x)[j];
-                    }
-                    float mean[3] = {means[i].x, means[i].y, means[i].z};
-                    float quat[4] = {quats[i].x, quats[i].y, quats[i].z, quats[i].w};
-                    if (y_up) turn.apply(mean, quat, K ? rest.data() : nullptr, basis);
-                    float* row = buf.data() + size_t(r)*row_floats;
-                    std::copy(mean, mean+3, row);
-                    std::fill(row+3, row+6, 0.f);
-                    row[6] = dc[i].x; row[7] = dc[i].y; row[8] = dc[i].z;
-                    if (K) spirula::splat_ply_put_rest(rest.data(), basis, row+9);
-                    int p = 9+3*K;
-                    row[p++] = opacity[i];
-                    row[p++] = scales[i].x; row[p++] = scales[i].y; row[p++] = scales[i].z;
-                    std::copy(quat, quat+4, row+p);
-                }
-            }
-            if (pending.valid()) pending.get();
-            buf.swap(writing);
-            pending = std::async(std::launch::async, [&, rows] {
-                ply.write(reinterpret_cast<const char*>(writing.data()),
-                          std::streamsize(rows)*row_floats*sizeof(float));
-                if (!ply) throw std::runtime_error("Failed to write " + ply_path.string());
-            });
-            kept += rows;
-        }
-        if (pending.valid()) pending.get();
-        // The fixed-width vertex count lets filtering finish in a single pass.
-        ply.seekp(0);
-        ply << spirula::splat_ply_header(kept, basis, s.primitive, y_up, region_camera_hash);
-        ply.close();
-        if (!ply) throw std::runtime_error("Failed to write " + ply_path.string());
-    }
-
-    // --- state.tar: metadata-driven resume payload (see file header) ---------
-    const SaveClass save_min = full_dump ? SaveClass::Resume : SaveClass::Always;
-
-    const fs::path tar_path = staged.add(out_root / (basename.empty() ? "state.tar" : basename + ".tar"));
-    spirula::BufferedOutputFile tar(tar_path, std::ios::binary);
-    if (!tar)
-        throw std::runtime_error("Failed to open state.tar for write: " + tar_path.string());
-
-    {
-        std::string sj = _build_state_json(s, step, full_dump);
-        ckpt::tar_write_bytes(tar, "state.json", sj.data(), sj.size());
-    }
-
-    std::vector<char> host_stage;
-    for (const auto& sl : DevicePool::global().saved(save_min)) {
-        ckpt::tar_write_npy_device(tar, sl.name + ".npy",
-                                   sl.ptr, sl.nbytes, sl.dtype_tag, host_stage);
-    }
-    ckpt::tar_finish(tar);
-    tar.close();
-    if (!tar) throw std::runtime_error("Failed to write " + tar_path.string());
 
     if (s.background.mode == EngineBackground::Mode::Sh && s.background.sh_coeffs.size() > 0) {
-        std::vector<float3> h_bg((size_t)s.background.sh_coeffs.size());
-        backend::memcpy_sync(h_bg.data(), s.background.sh_coeffs.data_ptr(),
-                             h_bg.size() * sizeof(float3),
-                             backend::MemcpyKind::DeviceToHost);
-        std::vector<float> matrix;
+        d.bg_count = size_t(s.background.sh_coeffs.size());
+        d.bg = capture.view(s.background.sh_coeffs.data_ptr(), d.bg_count);
+        d.bg_degree = s.background.sh_degree;
+        d.bg_transfer = s.background.splat_transfer;
+        d.bg_linear = s.background.splat_is_linear;
         if (s.color_space.splat_enabled)
-            matrix = _ckpt_d2h(reinterpret_cast<const float*>(s.color_space.splat_color_matrix.data_ptr()), 9);
-        const fs::path webp_path = staged.add(out_root / "background.webp");
-        if (!ckpt::export_background_sh_webp(webp_path, h_bg.data(),
-                                        s.background.sh_degree, 2 * background_export_height, background_export_height,
-                                        s.background.splat_transfer,
-                                        s.background.splat_is_linear,
-                                        matrix.empty() ? nullptr : matrix.data()))
-            throw std::runtime_error("failed to write " + webp_path.string());
+            d.matrix = capture.view(reinterpret_cast<const float*>(s.color_space.splat_color_matrix.data_ptr()), 9);
     }
+    return capture;
+}
+
+static const char* snapshot_rejection(double peak, uint64_t bytes, uint64_t scratch) {
+    const auto mem = backend::memory_usage();
+#ifdef _WIN32
+    const uint64_t free = mem.has_commit ? mem.commit_free_bytes : 0;
+#else
+    const uint64_t free = spirula::availableRamBytes();
+#endif
+    if (!free) return "headroom_unavailable";
+    const double growth = mem.has_process && std::isfinite(peak) ? peak - double(mem.process_bytes) : 0;
+    if (bytes > free || scratch > free - bytes ||
+        double(free - bytes - scratch) < std::max(double(kSnapshotHeadroom), growth))
+        return "insufficient_headroom";
+    return nullptr;
+}
+
+template<class T>
+static const T* checkpoint_view(const CheckpointData& d, const std::vector<const void*>* device,
+                                std::vector<T>& scratch, size_t range, size_t first, size_t count) {
+    const char* src = d.source(range, device) + first * sizeof(T);
+    if (!device) return reinterpret_cast<const T*>(src);
+    scratch.resize(count);
+    backend::memcpy_sync(scratch.data(), src, count * sizeof(T), backend::MemcpyKind::DeviceToHost);
+    check_device_copy();
+    return scratch.data();
+}
+
+static void write_ply(std::ostream& ply, const CheckpointData& d,
+                      const std::vector<const void*>* device, bool y_up, const std::string& camera_hash) {
+    const int64_t N = d.splats;
+    const ColorBasis basis = d.basis;
+    const int K = basis.coeffs();
+    const bool quant = d.quant, fpbo = d.fpbo;
+    const int bits = d.sh_bits;
+    const ShQuantAddr addr = sh_quant_addr((uint32_t)K, fpbo ? 0 : 256);
+    const int row_floats = spirula::splat_ply_row_floats(basis);
+    const int64_t chunk_rows = d.chunk_rows();
+    const size_t max_rows = size_t(std::min(N, chunk_rows));
+    ply << spirula::splat_ply_header(0, basis, d.primitive, y_up, camera_hash);
+    const spirula::SplatYUp turn;
+    std::vector<float3> h_means, h_scales, h_dc, h_sh;
+    std::vector<float4> h_quats;
+    std::vector<float> h_opacity, buf(max_rows * row_floats), writing(device ? buf.size() : 0);
+    std::vector<uint8_t> h_values;
+    std::vector<float2> h_limits;
+    std::vector<int64_t> indices(max_rows);
+    std::future<void> pending;
+    int64_t kept = 0;
+    for (int64_t first = 0; first < N; first += chunk_rows) {
+        const int64_t n = std::min(chunk_rows, N-first);
+        auto view = [&](auto& scratch, size_t range, size_t start, size_t count) {
+            return checkpoint_view(d, device, scratch, range, start, count);
+        };
+        const auto* means = view(h_means, d.means, first, n);
+        const auto* quats = view(h_quats, d.quats, first, n);
+        const auto* scales = view(h_scales, d.scales, first, n);
+        const auto* opacity = view(h_opacity, d.opacity, first, n);
+        const auto* dc = view(h_dc, d.dc, first, n);
+        const uint8_t* values = nullptr;
+        const float2* limits = nullptr;
+        const float3* sh = nullptr;
+        if (quant) {
+            const int64_t cells = fpbo ? sh_fpbo_cells(n, K) : n*3*K;
+            const int64_t start = fpbo ? sh_fpbo_cells(first, K) : first*3*K;
+            values = view(h_values, d.values, start*(bits/8), cells*(bits/8));
+            limits = view(h_limits, d.bounds, (fpbo ? first : start)/256,
+                          ((fpbo ? n : cells)+255)/256);
+        } else if (K > 0) {
+            sh = view(h_sh, d.sh, first*K, n*K);
+        }
+        auto finite3 = [](const float3& v) {
+            return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+        };
+        int rows = 0;
+        for (int64_t i = 0; i < n; ++i) {
+            const auto& q = quats[i];
+            bool valid = finite3(means[i]) && finite3(scales[i]) && finite3(dc[i]) &&
+                std::isfinite(opacity[i]) && std::isfinite(q.x) && std::isfinite(q.y) &&
+                std::isfinite(q.z) && std::isfinite(q.w);
+            if (!quant)
+                for (int j = 0; valid && j < K; ++j) valid = finite3(sh[i*K+j]);
+            if (valid && opacity[i] >= -5.5373f &&
+                std::max({scales[i].x, scales[i].y, scales[i].z}) > -40.0f)
+                indices[rows++] = i;
+        }
+#pragma omp parallel num_threads(8) if(rows >= 4096)
+        {
+            std::vector<float> rest(3*K);
+#pragma omp for schedule(static)
+            for (int r = 0; r < rows; ++r) {
+                const int64_t i = indices[r];
+                for (int j = 0; j < 3*K; ++j) {
+                    if (quant) {
+                        const int64_t cell = addr.cell(addr.base(i), j);
+                        const auto mm = limits[fpbo ? i/256 : cell/256];
+                        uint16_t q;
+                        if (bits == 16) std::memcpy(&q, values+2*cell, 2);
+                        else q = values[cell];
+                        rest[j] = mm.x + (mm.y-mm.x) * (float(q) / (bits == 8 ? 255.f : 65535.f));
+                    } else rest[j] = (&sh[i*K].x)[j];
+                }
+                float mean[3] = {means[i].x, means[i].y, means[i].z};
+                float quat[4] = {quats[i].x, quats[i].y, quats[i].z, quats[i].w};
+                if (y_up) turn.apply(mean, quat, K ? rest.data() : nullptr, basis);
+                float* row = buf.data() + size_t(r)*row_floats;
+                std::copy(mean, mean+3, row);
+                std::fill(row+3, row+6, 0.f);
+                row[6] = dc[i].x; row[7] = dc[i].y; row[8] = dc[i].z;
+                if (K) spirula::splat_ply_put_rest(rest.data(), basis, row+9);
+                int p = 9+3*K;
+                row[p++] = opacity[i];
+                row[p++] = scales[i].x; row[p++] = scales[i].y; row[p++] = scales[i].z;
+                std::copy(quat, quat+4, row+p);
+            }
+        }
+        const auto write = [&ply, rows, row_floats](const float* data) {
+            if (!ply.write(reinterpret_cast<const char*>(data),
+                           std::streamsize(rows)*row_floats*sizeof(float)))
+                throw std::runtime_error("failed to write checkpoint PLY");
+        };
+        if (device) {
+            if (pending.valid()) pending.get();
+            buf.swap(writing);
+            pending = std::async(std::launch::async, [write, &writing] { write(writing.data()); });
+        } else {
+            write(buf.data());
+        }
+        kept += rows;
+    }
+    if (pending.valid()) pending.get();
+    // The fixed-width vertex count lets filtering finish in a single pass.
+    ply.seekp(0);
+    ply << spirula::splat_ply_header(kept, basis, d.primitive, y_up, camera_hash);
+}
+
+static void write_checkpoint(const CheckpointData& d, const std::vector<const void*>* device,
+                             const fs::path& root, int height, const std::string& basename,
+                             bool y_up, const std::string& camera_hash) {
+    fs::create_directories(root);
+    ckpt::StagedFiles staged;
+    staged.write(root / (basename.empty() ? "splat.ply" : basename + ".ply"),
+                 [&](std::ostream& ply) { write_ply(ply, d, device, y_up, camera_hash); });
+    if (d.bg != kNoRange) {
+        staged.write(root / "background.webp", [&](std::ostream& webp) {
+            std::vector<float3> coeffs;
+            std::vector<float> matrix;
+            const auto* bg = checkpoint_view(d, device, coeffs, d.bg, 0, d.bg_count);
+            const auto* transform = d.matrix == kNoRange ? nullptr :
+                checkpoint_view(d, device, matrix, d.matrix, 0, 9);
+            if (!ckpt::export_background_sh_webp(webp, bg, d.bg_degree, 2 * height, height,
+                                                 d.bg_transfer, d.bg_linear, transform))
+                throw std::runtime_error("failed to write checkpoint background.webp");
+        });
+    }
+    staged.write(root / (basename.empty() ? "state.tar" : basename + ".tar"), [&](std::ostream& tar) {
+        ckpt::tar_write_bytes(tar, "state.json", d.state_json.data(), d.state_json.size());
+        std::vector<char> scratch;
+        for (size_t i = 0; i < d.members.size(); ++i) {
+            const auto& m = d.members[i];
+            ckpt::tar_write_npy(tar, m.name + ".npy", d.source(i, device), d.ranges[i].bytes,
+                                m.dtype, device ? &scratch : nullptr);
+            if (device) check_device_copy();
+        }
+        ckpt::tar_finish(tar);
+    });
     staged.publish();
+}
+
+}  // namespace
+
+void engine_save_checkpoint(std::string output_dir, bool full_dump, int step,
+                            int background_export_height, std::string basename,
+                            bool y_up, std::string region_camera_hash) {
+    validate_height(background_export_height);
+    backend::device_synchronize();
+    check_device_copy();
+    auto c = describe_checkpoint(full_dump);
+    c.data.state_json = _build_state_json(engine(), step, full_dump);
+    write_checkpoint(c.data, &c.device, output_dir, background_export_height,
+                     basename, y_up, region_camera_hash);
+}
+
+CheckpointSubmission engine_try_save_checkpoint_async(
+    std::mutex& engine_mutex, double projected_device_peak,
+    const std::string& output_dir, bool full_dump, int step, int background_export_height,
+    const std::string& basename, bool y_up, const std::string& region_camera_hash) try {
+    validate_height(background_export_height);
+    std::unique_lock<std::mutex> lock(engine_mutex);
+    const auto sizing = [&] {
+        const auto c = describe_checkpoint(full_dump);
+        return std::make_pair(c.data.bytes, c.data.writer_bytes(background_export_height));
+    }();
+    const auto [bytes, scratch] = sizing;
+    lock.unlock();
+    if (const char* reason = snapshot_rejection(projected_device_peak, bytes, scratch))
+        return {{}, reason};
+    SnapshotBytes host(static_cast<char*>(::operator new(bytes, std::align_val_t{kSnapshotAlignment})));
+    // Touch at least once per page before rechecking headroom.
+    volatile char* pages = host.get();
+    for (size_t off = 0; off < bytes; off += 4096) pages[off] = 0;
+    if (bytes) pages[bytes - 1] = 0;
+
+    lock.lock();
+    backend::device_synchronize();
+    check_device_copy();
+    auto c = describe_checkpoint(full_dump);
+    const auto actual_scratch = c.data.writer_bytes(background_export_height);
+    if (c.data.bytes != bytes || actual_scratch > scratch) {
+        lock.unlock();
+        return {{}, "layout_changed"};
+    }
+    if (const char* reason = snapshot_rejection(projected_device_peak, 0, actual_scratch)) {
+        lock.unlock();
+        return {{}, reason};
+    }
+    c.data.state_json = _build_state_json(engine(), step, full_dump);
+    for (size_t i = 0; i < c.device.size(); ++i) {
+        const auto& range = c.data.ranges[i];
+        backend::memcpy_sync(host.get() + range.offset, c.device[i], range.bytes,
+                             backend::MemcpyKind::DeviceToHost);
+        check_device_copy();
+    }
+    lock.unlock();
+    c.data.host = std::move(host);
+    try {
+        auto pending = std::async(std::launch::async, [snapshot = std::move(c.data), root = fs::absolute(output_dir),
+                          background_export_height, basename, y_up, region_camera_hash,
+                          writer_gate = g_checkpoint_writer_gate]() mutable {
+            const auto data = std::move(snapshot);
+            if (writer_gate) writer_gate();
+            write_checkpoint(data, nullptr, root, background_export_height,
+                             basename, y_up, region_camera_hash);
+        });
+        return {std::move(pending), "snapshot"};
+    } catch (const std::system_error& e) {
+        if (e.code() != std::errc::resource_unavailable_try_again) throw;
+        return {{}, "worker_unavailable"};
+    }
+} catch (const std::bad_alloc&) {
+    return {{}, "allocation_failed"};
+}
+
+void engine_set_checkpoint_writer_gate(std::function<void()> gate) {
+    g_checkpoint_writer_gate = std::move(gate);
 }
 
 

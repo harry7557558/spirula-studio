@@ -56,6 +56,7 @@ public:
     // Reads the child's report into the bar and the memory strip. UI thread,
     // every frame while the screen or the batch shows the run; at most twice a second.
     void poll();
+    const std::string& progress_dir() const { return _progress_dir; }
     const ProgressClock& clock() const { return _clock; }
     const RunMemoryView& memory() const { return _memory; }
 

@@ -568,7 +568,7 @@ void GeometryPanel::draw(const GeometryJob& job) {
         n_frames = (int)_frames.size();
         if (!_source_note.empty()) ui::TextDisabledRaw(_source_note);
         if (!_error.empty())
-            ui::TextColoredWrappedRaw(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), _error);
+            ui::TextColoredWrappedRaw(kErr, _error);
         else if (!_status.empty())
             ui::TextDisabledRaw(_status);
         else if (!_cost_note.empty())

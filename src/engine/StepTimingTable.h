@@ -95,6 +95,7 @@
   X("fused_ssim.ssim_bt_bwd_wide",                   Loss,        Pixels) \
   X("fused_ssim.ssim_bwd_inplace",                   Loss,        Pixels) \
   X("fused_ssim.ssim_mask_cov",                      Loss,        Pixels) \
+  X("intersect_tile.active_radii_accum",             Render,      Splats) \
   X("intersect_tile.intersect_offset",               Render,      SplatsPixels) \
   X("intersect_tile.intersect_tile_count",           Render,      SplatsPixels) \
   X("intersect_tile.intersect_tile_write",           Render,      SplatsPixels) \

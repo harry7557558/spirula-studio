@@ -415,8 +415,6 @@ void normalize_source_fps(std::vector<PrepInput>& sources, float& video_fps) {
             s.fps = 0.0f;
             above = video_fps;
             first = false;
-        } else if (s.fps != 0.0f && rate == above) {
-            s.fps = 0.0f;
         } else if (s.fps != 0.0f) {
             above = rate;
         }
@@ -476,12 +474,10 @@ void apply_pano_lens(std::vector<PrepInput>& sources, SfmJob& sfm,
 }
 
 
-void apply_capture_order(const std::vector<PrepInput>& sources, SfmJob& sfm,
-                         ColmapJob& colmap) {
+void apply_capture_order(const std::vector<PrepInput>& sources, ColmapJob& colmap) {
     if (sources.empty()) return;
     const PrepInput& head = sources[0];
     const bool ordered = head.is_video && head.sequential;
-    if (sfm.data_type != 2) sfm.data_type = ordered ? 1 : 0;
     // NOT sequential for a dual-lens video or a 360 file's views: temporal
     // neighbours miss every cross-lens pair -- 68/118 registered on an X5
     // capture against 116/118 for automatic, which is content-based.
@@ -495,8 +491,8 @@ void apply_capture_defaults(std::vector<PrepInput>& sources, SfmJob& sfm,
     normalize_source_fps(sources, sfm.prep.video_fps);
     if (sources.empty()) return;
     const bool dual = is_dual_lens(sources[0]);
-    sfm.pairs = 0;               // automatic
-    apply_capture_order(sources, sfm, colmap);
+    sfm.pairs = kPairsPrefilter;
+    apply_capture_order(sources, colmap);
     colmap.seq_loop_closure = true;   // if switched to sequential
     if (has_fisheye_lens(sources[0])) {
         colmap.camera_model = "THIN_PRISM_FISHEYE";

@@ -40,10 +40,11 @@ void TrainRunner::fetch_eval_models(const TrainConfig& cfg) {
         dl.start(d);
         while (dl.state() == FileDownload::State::Running) {
             if (_session && _session->stop_requested.load()) dl.cancel();
+            const float fill = dl.clock().fraction();
             {
                 std::lock_guard<std::mutex> lk(_mu);
                 _fetch_line = spirula::i18n::format(gmsg::fetching_lpips, {f.file, dl.status()});
-                _fetch_progress = dl.progress();
+                _fetch_progress = dl.progress() < 0.0f && fill == 0.0f ? -1.0f : fill;
             }
             for (const std::string& line : dl.drain_log()) push_log(line);
             std::this_thread::sleep_for(std::chrono::milliseconds(100));

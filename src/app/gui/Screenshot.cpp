@@ -479,12 +479,12 @@ void GuiApp::draw_screenshot_settings() {
     if (!ImGui::BeginPopup("##shotpopup")) return;
     bool changed = false;
     ui::Text(msg::screenshot_folder);
-    ImGui::SetNextItemWidth(px(300.0f));
+    ImGui::SetNextItemWidth(px(kPathFieldW));
     ui::InputTextRaw("##shotdir", &_shot.folder);
     changed |= ImGui::IsItemDeactivatedAfterEdit();
     ui::help_on_hover(msg::screenshot_folder_help);
     ui::Text(msg::screenshot_name);
-    ImGui::SetNextItemWidth(px(300.0f));
+    ImGui::SetNextItemWidth(px(kPathFieldW));
     ui::InputTextRaw("##shotname", &_shot.name);
     changed |= ImGui::IsItemDeactivatedAfterEdit();
     ui::help_on_hover(msg::screenshot_name_help);

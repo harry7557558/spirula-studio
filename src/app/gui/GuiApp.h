@@ -31,12 +31,13 @@
 #include "app/gui/Layout.h"
 #include "app/gui/LidarStep.h"
 #include "app/gui/MeshRunner.h"
+#include "app/gui/MeshMonitor.h"
 #include "app/gui/ModelCache.h"
 #include "app/gui/RecentList.h"
 #include "app/gui/Screenshot.h"
 #include "app/gui/SegmentPanel.h"
 #include "app/gui/mask/MaskSession.h"
-#include "app/gui/SfmRunner.h"
+#include "app/gui/SfmOptions.h"
 #include "app/gui/SourceList.h"
 #include "app/gui/SourceProbe.h"
 #include "app/gui/SourcePreview.h"
@@ -334,6 +335,7 @@ private:
     // as it reaches it (SfmRunner::update).
     void update_dataset_job();
     void advance_dataset_training();
+    void poll_dataset_finish_command();
     // Copies the panel-level state into whichever job struct will run.
     void sync_dataset_jobs();
     // The selected checkpoint and detector; empty paths until both are here.
@@ -502,6 +504,7 @@ private:
     // panel as it stands; the runner asks the same question of the same job.
     const DatasetPlan& dataset_plan();
     void draw_dataset_plan(const DatasetPlan& plan);
+    bool draw_plan_rows(const DatasetPlan& plan, bool interactive);
     // A rebuild nobody asked for -- the frames or the reconstruction differ
     // from the panel -- is confirmed first, with the option to keep them.
     void draw_rebuild_confirm_modal();
@@ -537,6 +540,7 @@ private:
     void open_mask_preview();
     void draw_color_space_options(bool with_point_color);
     void draw_sfm_advanced();
+    void draw_dataset_finish_command();
     void draw_feature_download();
     void draw_colmap_options();
     void draw_tool_locations();
@@ -610,13 +614,12 @@ private:
     // running task belongs to, so neither has to be guessed from the other.
     void draw_batch_progress();
     void draw_batch_stop_buttons();
-    // How far through the running task its own runner says it is, -1 when it
-    // cannot say, and how long it has been going.
-    float batch_task_fraction();
+    // The runner's progress and ETA. Negative values indicate unknowns.
+    float batch_task_fraction(double& remaining);
     double batch_task_elapsed() const;
     ProgressClock _batch_queue_clock, _batch_task_clock;
     ProgressClock _train_clock, _eval_clock;
-    void tick_train_clock();
+    double tick_train_clock(TrainRunner::Phase phase, const spirula::TrainerProgress& p);
     int _batch_clock_task = -1;
     // The row the running task belongs to, null when nothing is running.
     // `_batch_current` indexes the TASKS, which outnumber the rows.
@@ -633,6 +636,7 @@ private:
     void draw_train_settings();      // left panel
     void draw_device_issue_banner();
     // Native picker and frozen identity, available from shared settings/View menu.
+    void draw_engine_device_picker(bool busy);
     void draw_device_picker(bool as_menu = false);
     // Lists the native devices once per session. Enumeration is side-effect
     // free (a throwaway Vulkan instance) and never creates a logical device.
@@ -837,6 +841,9 @@ private:
     // it is _compare holding the splats it came from and the surface.
     MeshRunner _mesh;
     MeshJob _mesh_job;
+    MeshMonitor _mesh_monitor;
+    std::string _mesh_search;
+    int _mesh_tier = 0;
     bool _mesh_preview_open = false; // _compare is showing this screen's result
     // The MeshRunner::run_id() whose result has already been opened. The
     // runner stays Done for the rest of the session, so without this the
@@ -873,8 +880,10 @@ private:
     ColmapJob _colmap_job;
     SfmRunner _sfm;
     SfmJob _sfm_job;
+    bool _dataset_run_builtin = false;
+    std::string _dataset_finish_command, _pending_dataset_finish_command;
     struct DatasetTraining {
-        bool enabled = false, pending = false, builtin = false;
+        bool enabled = false, pending = false;
         BatchRun run;
         TrainPreset preset;
         std::string error;
@@ -977,6 +986,7 @@ private:
     // have to read -- an input's LUT, starting focal, rig -- shows in place only
     // while it is open, so the input list is never drawn twice.
     bool _ds_advanced = false;
+    SfmOptionFilter _detector_filter, _matcher_filter, _mapper_filter;
     // What each input's IMU / GPS holds, read on its own thread and keyed by
     // path, so re-choosing a file already read costs nothing.
     TelemetryProbe _telemetry;
@@ -1205,7 +1215,7 @@ private:
     // one). Not persisted, like every masking setting: a fresh session never
     // runs a model the last one happened to pick.
     std::string _model_id = "sam2.1-base-plus";
-    std::string _mask_detector_id = "gdino-tiny";   // its words (TextDetector)
+    std::string _mask_detector_id = "gdino-base";   // its words (TextDetector)
     std::string _mask_editor_model_id = "sam2.1-base-plus";
     ModelDownload _download;
     // The pick _download is fetching: with a detector it is three files,
@@ -1321,6 +1331,7 @@ private:
     // The New Dataset screen's own column width; the trainer's _panel_w is a
     // different screen with a different sensible size.
     float _ds_panel_w = kDefaultDsPanelW;
+    float _mesh_panel_w = 560.0f;
     // The editing panel's own width, dragged like the other two.
     float _edit_panel_w = kEditPanelW;
     bool _show_settings = true;

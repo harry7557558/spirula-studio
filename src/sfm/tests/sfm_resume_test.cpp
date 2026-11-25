@@ -111,9 +111,7 @@ static void testSignatures(int& fails) {
               "empty masks keep extract signature invariant across moves", fails);
         SfmConfig a = base, b = base;
         a.mask_dir = "/tmp/old/dataset/masks";
-        a.feature_mask_dir = "/tmp/old/dataset/feature_masks";
         b.mask_dir = "/mnt/nas/moved/dataset/masks";
-        b.feature_mask_dir = "/mnt/nas/moved/dataset/feature_masks";
         check(stageSignature(a, CMD_EXTRACT, "/tmp/old/dataset") ==
                   stageSignature(b, CMD_EXTRACT, "/mnt/nas/moved/dataset"),
               "workspace-relative masks keep extract signature invariant across moves", fails);
@@ -124,8 +122,10 @@ static void testSignatures(int& fails) {
         check(spirula::relative_to_dir("/tmp/old/videos/a.OSV", "/tmp/old/dataset") ==
                   "../videos/a.OSV",
               "relative_to_dir keeps a file under the dataset's parent relative", fails);
-        check(spirula::relative_to_dir("/home/u/Videos/a.OSV", "/tmp/old/dataset") ==
-                  fs::absolute("/home/u/Videos/a.OSV").lexically_normal().u8string(),
+        const fs::path root = fs::temp_directory_path();
+        const fs::path video = root / "videos" / "a.OSV";
+        check(spirula::relative_to_dir(video.u8string(), (root / "old" / "dataset").u8string()) ==
+                  fs::absolute(video).lexically_normal().u8string(),
               "relative_to_dir keeps a file further away absolute", fails);
     }
 }

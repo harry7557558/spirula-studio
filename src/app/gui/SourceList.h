@@ -82,8 +82,8 @@ void normalize_source_lenses(std::vector<PrepInput>& sources,
                              std::string& camera_model);
 
 // The same for the kept frame rate: "^" is a per-input 0, and the first VIDEO
-// row's rate lives in `video_fps` (0 = every frame) rather than in the row,
-// because that is what a preset saves and what every batch item starts from.
+// row's rate lives in `video_fps` (0 = every frame), which is what a preset
+// saves. A row stating the rate above it stays: it is its own adaptive group.
 void normalize_source_fps(std::vector<PrepInput>& sources, float& video_fps);
 
 // And the LUT: a row choosing what automatic would give it anyway goes back to
@@ -100,11 +100,10 @@ void apply_lens_to_sources(std::vector<PrepInput>& sources, SfmJob& sfm,
 void apply_pano_lens(std::vector<PrepInput>& sources, SfmJob& sfm,
                      ColmapJob& colmap);
 
-// What the first input's Sequential switch decides: a video handed over in
-// order is captured as one (temporal pairing); anything else pairs by content.
-// Run when that switch moves; "internet" and the vocabulary tree are left be.
-void apply_capture_order(const std::vector<PrepInput>& sources, SfmJob& sfm,
-                         ColmapJob& colmap);
+// What the first input's Sequential switch decides for COLMAP, which has one
+// matcher for the run: temporal for a video in order, by content otherwise.
+// The built-in engine takes each row's order as a sequence instead.
+void apply_capture_order(const std::vector<PrepInput>& sources, ColmapJob& colmap);
 
 // The reconstruction settings the LIST decides: the capture order above, a
 // dual-lens file is a rig, a 360 file is one camera warped into views. Run

@@ -73,7 +73,7 @@ inline std::vector<std::string> worker_devices_for(
 
 inline uint64_t default_worker_memory_bytes() {
     return std::max(uint64_t(4) * 1024 * 1024 * 1024,
-        uint64_t(spirula::physicalRamBytes()) / 2);
+        uint64_t(spirula::totalRamBytes()) / 2);
 }
 
 inline std::vector<std::string> parse_worker_devices(const std::string& csv) {

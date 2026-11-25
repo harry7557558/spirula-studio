@@ -399,7 +399,7 @@ void PartitionPanel::draw_controls() {
             ImGui::EndDisabled();
         }
     } else if (!_status.empty()) {
-        ui::TextColoredWrappedRaw(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), _status);
+        ui::TextColoredWrappedRaw(kErr, _status);
     } else if (_notice) {
         ui::TextDisabledWrapped(*_notice);
     } else if (_part_valid) {
@@ -430,7 +430,7 @@ void PartitionPanel::draw_controls() {
         ui::TextDisabled(pmsg::log_dataset,
                          {(long long)_ds.num_cameras, (long long)_ds.points.num(),
                           tracked ? pmsg::word_yes.get() : pmsg::word_no.get()});
-        if (!tracked) ui::TextColoredWrapped(ImVec4(1.0f, 0.75f, 0.30f, 1.0f), pmsg::warn_no_tracks);
+        if (!tracked) ui::TextColoredWrapped(kWarn, pmsg::warn_no_tracks);
     }
 
     ui::Text(pmsg::lbl_split_by);
@@ -438,7 +438,7 @@ void PartitionPanel::draw_controls() {
     ImGui::SameLine();
     if (ui::RadioButton(pmsg::mode_max, _mode == 1)) _mode = 1;
     ui::help_on_hover(pmsg::mode_help);
-    ImGui::SetNextItemWidth(px(120.0f));
+    ImGui::SetNextItemWidth(px(kCompactFieldW));
     if (_mode == 0) {
         int parts = std::max(2, _opt.parts);
         if (ui::InputIntRaw("##parts", &parts)) _opt.parts = std::max(2, parts);
@@ -458,7 +458,7 @@ void PartitionPanel::draw_controls() {
         int idx = 2;
         for (int i = 0; i < 5; i++)
             if (kSeeds[i] == _opt.max_seeds) idx = i;
-        ImGui::SetNextItemWidth(px(120.0f));
+        ImGui::SetNextItemWidth(px(kCompactFieldW));
         if (ui::ComboRaw(ui::detail::label(pmsg::lbl_seeds), &idx, kSeedNames, 5))
             _opt.max_seeds = kSeeds[idx];
         ui::help_on_hover(pmsg::lbl_seeds_help);
@@ -631,7 +631,7 @@ void PartitionPanel::draw_merge() {
     }
     ImGui::EndDisabled();
     if (!_merge_error.empty())
-        ui::TextColoredWrappedRaw(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), _merge_error);
+        ui::TextColoredWrappedRaw(kErr, _merge_error);
     if (!_merge_status.empty()) {
         ui::TextWrappedRaw(_merge_status);
         if (_hooks.open_splat && !_merged_path.empty() && ui::Button(pmsg::btn_open_merged))

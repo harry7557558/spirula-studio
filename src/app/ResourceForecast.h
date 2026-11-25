@@ -14,7 +14,7 @@ enum class OomRisk : uint8_t { Unknown, Low, Medium, High };
 
 struct ResourceForecast {
     bool known = false;          // something has been measured
-    double capacity = 0.0;       // the machine's: device size or physical RAM
+    double capacity = 0.0;       // device size, or RAM: physical or a lower memory limit
     double ours = 0.0;           // this job, now
     double others = 0.0;         // everything else, now
     double others_sigma = 0.0;

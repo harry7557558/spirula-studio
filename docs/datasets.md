@@ -195,7 +195,11 @@ water; wave`), 255 elsewhere. SfM, COLMAP (through a binary copy) and dense
 matching drop the 128 band whatever else they keep; `spirula sfm
 --mask-segment-only` drops nothing else. Training reads 128 as keep, and so
 still learns the sky, unless `--mask-mode segment_and_ignore` trains it as
-empty space. Older datasets may carry a `feature_masks/` that nothing reads.
+empty space. In that mode, sidecar bytes 0–127 mean ignore, 128–250 mean
+segment and 251–255 mean keep. `mask_boundary_offset` moves only the edges of
+ignore there; where segment meets keep, the edge stays put. Binary mask modes
+treat every nonzero sidecar byte as keep before applying `flip_mask`. Older
+datasets may carry a `feature_masks/` that nothing reads.
 
 A segment is trained as empty space, and what shows through it is the
 background (`background_mode`: `black`, `color` or `skybox`).
@@ -726,7 +730,8 @@ default) keeps the shrunk colour images beside the originals, at
 `<image_dir>_<d>/<same relative path>` (`data/DownscaleCache.h`), and later
 loads decode those, so a run over large images stops being bound by decoding
 them. JPEG and PNG only (8/16-bit, grey, RGB, RGBA; RGBA is filtered with
-premultiplied alpha), each in its own format, JPEG at quality 95. A file
+premultiplied alpha), each in its own format, JPEG at quality 95. Sidecar
+masks and training mask settings have no effect on the cached colour. A file
 already there is used when its size is the original's divided by `d` under any
 rounding mode and it ends like a whole file; otherwise the original loads, and
 that file is never overwritten. Masks, depths and normals are not affected:
@@ -860,7 +865,7 @@ rectilinear face would take 4/pi = 1.27x, and the extra goes to the corners.
 
 Ten views per frame multiply the image count, and the views of one frame share
 no features: they are held together by pairs across TIME, so pairing must stay
-content-based (`--pairs auto`, or COLMAP's vocabulary tree) rather than
+content-based (`--pairs prefilter`, or COLMAP's vocabulary tree) rather than
 sequential, which would give ten disconnected chains. The rig ties them
 together directly -- `docs/notes/sfm-rig-constraints.md`.
 
@@ -909,6 +914,23 @@ for batch training and partition queueing.
 The training settings are captured when dataset creation starts. Failed or
 cancelled dataset jobs do not start training. Training uses the resulting image
 and mask folders and writes runs under the dataset's `outputs/` folder.
+
+## Dataset finish command
+
+In New Dataset, open **Advanced → Additional Options** and enter a
+**Command to run at the end**. The app remembers it for individual dataset jobs.
+Click **Test** to run it with a sample message and see the result in the log.
+From the CLI, pass `--finish-command` to `spirula sfm auto`:
+
+```sh
+spirula sfm auto photos/ -o dataset/ --finish-command \
+  "curl --fail https://example.invalid/webhook --json '{\"content\":\"{message}\"}'"
+```
+
+The command runs on success or failure. Cancelling skips it. `{message}` is
+replaced with a one-line result and stays within a single argument, including
+inside a webhook's JSON payload. The program runs directly without a shell.
+The CLI waits for the command and returns the reconstruction's exit status.
 
 ## Frames out of a video
 

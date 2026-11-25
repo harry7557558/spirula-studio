@@ -2,6 +2,8 @@
 
 #include "app/gui/SfmRunner.h"
 
+#include "app/gui/SfmOptions.h"
+
 #include "app/gui/SfmInProcess.h"
 
 #include "sfm/core/Resume.h"
@@ -46,8 +48,10 @@
 #include <cstring>
 #include <filesystem>
 #include <sstream>
+#include <stdexcept>
 
 namespace fs = std::filesystem;
+namespace dmsg = spirula::i18n::msg::dataset;
 namespace lmsg = spirula::i18n::msg::log;
 using spirula::i18n::format;
 
@@ -218,6 +222,9 @@ void SfmRunner::start(const SfmJob& job, RunFilms films) {
         _sfm_image_dir.clear();
         _sfm_mask_dir.clear();
         sweep.swap(_sweep_dir);
+        // A run over the same folder plans against those files: they stay
+        // until it reaches the reconstruction and decides.
+        if (sweep == job.prep.workspace) sweep.swap(_sweep_dir);
         _live = job;
     }
     _state = State::Running;
@@ -234,30 +241,7 @@ void SfmRunner::update(const SfmJob& job) {
 
 void SfmRunner::take_reconstruction(SfmJob& job) {
     std::lock_guard<std::mutex> lk(_mu);
-    job.quality = _live.quality;
-    job.data_type = _live.data_type;
-    job.camera_model = _live.camera_model;
-    job.camera_mode = _live.camera_mode;
-    job.pairs = _live.pairs;
-    job.overlap = _live.overlap;
-    job.loop_closure = _live.loop_closure;
-    job.prefilter_sequential = _live.prefilter_sequential;
-    job.init_focal_px = _live.init_focal_px;
-    job.init_distortion = _live.init_distortion;
-    job.distortion_refine = _live.distortion_refine;
-    job.final_per_image_intrinsics = _live.final_per_image_intrinsics;
-    job.final_free_rig = _live.final_free_rig;
-    job.max_features = _live.max_features;
-    job.max_image_size = _live.max_image_size;
-    job.mapper = _live.mapper;
-    job.features = _live.features;
-    job.matcher = _live.matcher;
-    job.metric_gps = _live.metric_gps;
-    job.sensor_gauge = _live.sensor_gauge;
-    job.exif_attitude = _live.exif_attitude;
-    job.keep_intermediate = _live.keep_intermediate;
-    job.ba_cpu = _live.ba_cpu;
-    job.extra_args = _live.extra_args;
+    static_cast<SfmReconSettings&>(job) = _live;
     // The lens is a reconstruction setting that happens to be stored on the
     // input it describes. The list itself cannot change while a run is live.
     for (size_t i = 0; i < job.prep.inputs.size() &&
@@ -697,7 +681,6 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
                                                const PrepResult& prep) {
     std::vector<std::string> argv = {
         "--quality", sfm_pick(kSfmQuality, job.quality, 2),
-        "--data-type", sfm_pick(kSfmDataType, job.data_type),
         "--camera-model", job.camera_model,
         "--camera-mode", sfm_pick(kSfmCameraMode, job.camera_mode, 1),
         "--mapper", sfm_pick(kSfmMapper, job.mapper),
@@ -705,21 +688,14 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         // A descriptor-reading matcher with SIFT is a usage error, so the
         // choice goes through the frontend.
         "--matcher", sfm_matcher_for(job.features, job.matcher),
+        "--pairs", sfm_pick(kSfmPairs, sfm_pairs(job.pairs)),
     };
-    if (job.pairs > 0) {
-        argv.push_back("--pairs");
-        argv.push_back(sfm_pick(kSfmPairs, job.pairs));
-    }
-    // Only when it says something: a run at the default passes nothing.
-    if (job.pairs == 2 || (sequential_window_applies(job) && job.overlap != 10)) {
+    // Only where they mean something: they are in the match stage's signature.
+    if (sequential_pairing(job)) {
         argv.push_back("--overlap");
         argv.push_back(std::to_string(job.overlap));
+        if (!job.loop_closure) argv.push_back("--no-loop-closure");
     }
-    // Sequential is what `auto` resolves to for video, and pair selection what
-    // it resolves to at 100 images, so both are passed whenever reachable. Each
-    // is a no-op under the other pair modes.
-    if (!job.loop_closure) argv.push_back("--no-loop-closure");
-    if (!job.prefilter_sequential) argv.push_back("--no-prefilter-sequential");
     if (job.init_focal_px > 0) {
         char buf[32];
         std::snprintf(buf, sizeof buf, "%g", job.init_focal_px);
@@ -752,19 +728,7 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         argv.push_back(manifest);
     }
 #endif
-    if (job.max_features > 0) {
-        // Each frontend has its own count flag: the budgets are not comparable,
-        // a learned detector emitting a few thousand better-localized points
-        // where SIFT wants tens of thousands. One spinner, routed to the live one.
-        argv.push_back(job.features == 0     ? "--max-features"
-                       : job.features >= 3   ? "--loma-max-features"
-                                             : "--aliked-max-features");
-        argv.push_back(std::to_string(job.max_features));
-    }
-    if (job.max_image_size > 0) {
-        argv.push_back("--max-image-size");
-        argv.push_back(std::to_string(job.max_image_size));
-    }
+    append_sfm_option_args(active_sfm_options(job), argv);
     argv.push_back("--metric-gps");
     argv.push_back(sfm_pick(kSfmMetricGps, job.metric_gps, 3));
     if (job.sensor_gauge != 2) {
@@ -804,8 +768,11 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         // from an earlier run with masking on.
         argv.push_back("--no-masks");
     }
-    for (const std::string& a : split_args(job.extra_args))
+    for (const std::string& a : split_args(job.extra_args)) {
+        if (a == "--finish-command" || a.rfind("--finish-command=", 0) == 0)
+            throw std::runtime_error(dmsg::finish_command_in_extra_flags.get());
         argv.push_back(a);
+    }
     return argv;
 }
 
@@ -843,7 +810,7 @@ void SfmRunner::run(SfmJob job) {
         const DatasetRecord rec = read_plan_record(ws.string(), job.prep);
         const PlanRequest req = job.request;
         DatasetPlan plan = plan_dataset(plan_job(job), prior, rec, req);
-        if (!req.redo_frames && !plan[Step::Frames].can_keep)
+        if (!req.redo_frames && plan[Step::Frames].ask && !plan[Step::Frames].can_keep)
             return fail(spirula::i18n::msg::dataset::rerun_section_help.get());
         StepRecorder record(ws.string(), rec);
         auto say = [&](Step s) {
@@ -891,6 +858,9 @@ void SfmRunner::run(SfmJob job) {
             std::string err;
             auto refresh = [&](PrepJob& p) {
                 take_masking(p);
+                // The run's own copy too: the reconstruction is planned and
+                // recorded from it.
+                take_masking(job.prep);
                 SfmJob now = job;
                 now.prep = p;
                 plan = plan_dataset(plan_job(now), prior, rec, req, &plan, Step::Masks);
@@ -945,10 +915,6 @@ void SfmRunner::run(SfmJob job) {
             std::error_code fec;
             fs::remove(ws / "matches.bin", fec);
         }
-        if (prep.per_folder_cameras && job.camera_mode == 0) {
-            log(lmsg::one_camera_per_folder.get());
-            job.camera_mode = 1;
-        }
         // A scan without photographs is matched through views of it.
         if (job.lidar.enabled()) {
             std::string err;
@@ -970,6 +936,10 @@ void SfmRunner::run(SfmJob job) {
 
         // ---- 2. reconstruction --------------------------------------------
         take_reconstruction(job);
+        if (prep.per_folder_cameras && job.camera_mode == 0) {
+            log(lmsg::one_camera_per_folder.get());
+            job.camera_mode = 1;
+        }
         if (!lidar.sfm_args.empty()) job.camera_mode = std::max(job.camera_mode, 1);
         PlanJob planned = plan_job(job);
         // The rendered views' lens makes the model as much as the panel does.
@@ -1034,6 +1004,14 @@ void SfmRunner::run(SfmJob job) {
                 mapping = mapping || _prog.current() == Stage::Mapping;
                 if (mapping && child_line_is_gpu_failure(l)) gpu_failure = true;
             };
+            // Reaching matching ended the extraction and reaching mapping wrote
+            // the matches: what the next plan may reuse if this run is cut short.
+            auto note_stages = [&] {
+                if (_prog.stage(Stage::Matching).status != StageStatus::Pending)
+                    record.note(Step::Model, kMadeFeatures);
+                if (_prog.stage(Stage::Mapping).status != StageStatus::Pending)
+                    record.note(Step::Model, kMadeMatches);
+            };
             int rc = 0;
             if (job.subprocess) {
                 std::vector<std::string> argv = {
@@ -1055,6 +1033,7 @@ void SfmRunner::run(SfmJob job) {
                 // its verdict; the loop above may have missed it between lines.
                 _status_mtime = 0;
                 poll_status();
+                note_stages();
                 if (rc == kSpawnFailed)
                     return fail(fmt(lmsg::err_spawn_recon, {argv[0]}));
             } else {
@@ -1065,6 +1044,7 @@ void SfmRunner::run(SfmJob job) {
                         note_line(l);
                     },
                     [this](const RunStatus& st) { apply_status(st); }, _cancel);
+                note_stages();
                 rc = r.exit_code;
                 if (r.cancelled) rc = kCancelled;
                 if (!r.error.empty()) return fail(r.error);

@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <iosfwd>
 #include <vector>
 
 namespace ckpt {
@@ -23,6 +24,10 @@ bool export_background_sh_webp(const std::filesystem::path& out_path,
                                int width = 1024, int height = 512,
                                int transfer = 0, bool is_linear = false,
                                const float* color_matrix = nullptr);
+
+bool export_background_sh_webp(std::ostream& out, const float3* coeffs, int degree,
+                               int width, int height, int transfer, bool is_linear,
+                               const float* color_matrix);
 
 // Missing color metadata leaves the caller's transfer and linear defaults intact.
 bool load_background_sh(const std::filesystem::path& ckpt_dir,

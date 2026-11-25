@@ -43,6 +43,8 @@
 #include "sfm/map/Mapper.h"
 #include "sfm/map/Merge.h"
 
+namespace spirula { namespace i18n { struct Msg; } }
+
 namespace sfm {
 
 // Which subcommands accept a flag. A name may be reused across commands as long
@@ -61,7 +63,7 @@ enum CmdMask : uint32_t {
 // Basic is what a first-time user has to think about and what the GUI shows
 // unfolded; Advanced is everything else; Alias is a second spelling of a field
 // already listed (parsed, but not printed twice or offered to the GUI).
-enum class Tier { Basic, Advanced, Alias };
+enum class Tier { Basic, Advanced, Expert, Alias };
 
 // One video whose IMU and GPS cover the images under `prefix` ("" = all).
 struct TelemetryInput {
@@ -78,31 +80,20 @@ struct TelemetryInput {
 // -- the tests, the mapper's own defaults -- are unaffected by anything here.
 struct SfmConfig {
     // ---- pipeline-level knobs ----
-    // Presets (auto only). Applied before the table's overrides, so an explicit
+    // Preset (auto only). Applied before the table's overrides, so an explicit
     // flag always wins; see applyPresets().
     std::string quality = "high";
-    std::string data_type = "individual";
-    // "auto" resolves at run time: prefilter at 100 images or more, sequential
-    // for video below that, exhaustive otherwise. `match` reads it as
-    // exhaustive (it has not counted the images).
-    std::string pairs = "auto";
+    // Pair selection whatever the image count: one default, so two runs differ
+    // only by what their flags say.
+    std::string pairs = "prefilter";
     int overlap = 10;
-    // Sequential pairing is a chain: image i with the next `overlap`. A capture
-    // that walks around a subject and comes back has no link across the seam,
-    // so one weak step anywhere breaks the reconstruction into pieces (a
-    // 262-frame walk around a plaza came out as four models). This adds the
-    // pair-selection shortlist -- the same content-based scoring `--pairs
-    // prefilter` uses -- on top of the temporal window, which is what COLMAP's
-    // SequentialMatching.loop_detection does with a vocabulary tree.
-    // Sequential only; the other modes already consider every pair.
+    // Sequential only: adds the `--pairs prefilter` shortlist to the window, so a
+    // walk that comes back on itself links across the seam (COLMAP's
+    // loop_detection); see src/sfm/README.md.
     bool loop_closure = true;
     // Every sequential window also links i to i + 2^k for k < overlap
     // (COLMAP's SequentialMatching.quadratic_overlap).
     bool quadratic_overlap = false;
-    // The converse of loop_closure: pair selection also takes the sequential
-    // window, so a link the content score ranked just out of an image's top-k
-    // is still matched when the file order says the two are neighbours.
-    bool prefilter_sequential = false;
     // Match the rig-mates of every chosen pair of two rig frames, by what the
     // members' known rotations say faces what (sfm/feature/RigPairs.h).
     bool rig_pairs = true;
@@ -148,10 +139,9 @@ struct SfmConfig {
     // Starting distortion coefficients, "k1,k2,..." in the camera model's BA
     // order. Empty starts at zero, as COLMAP does.
     std::string distortion;
-    // Whether camera_mode is pinned: set by an explicit --camera-mode, and by
-    // the internet preset, which chooses per-image cameras deliberately (D20).
-    // Unpinned, buildCameras may still switch a Folder default to Image for a
-    // set that is plainly a photo collection (D48).
+    // Whether camera_mode is pinned, by an explicit --camera-mode or a
+    // manifest's (D20). Unpinned, buildCameras may still switch a Folder
+    // default to Image for a set that is plainly a photo collection (D48).
     bool camera_mode_pinned = false;
 
     // Stage switches that are not a field of any stage's options.
@@ -300,55 +290,27 @@ struct SfmConfig {
     static std::string selectorForDevice(const std::string& request,
                                          bool request_set, std::string& error);
 
-    // What --pairs names, with "auto" resolving to exhaustive. `auto` alone
-    // additionally switches to pair selection above 100 images, which it can
-    // only decide once extraction has counted them -- see cmdAuto.
     PairMode pairMode() const;
     // Whether the GPS sets the written metric frame; an unresolved "auto" does not.
     bool metricGps() const { return metric_gps == "horizontal" || metric_gps == "full"; }
 };
 
-// ---------------------------------------------------------------------------
-// The descriptor table
-// ---------------------------------------------------------------------------
 // F(member, name, cmds, tier, group, lo, hi, choices, help)
-//
-//   member   path inside SfmConfig; its declared type is the field's type
-//            (bool switch, integer, real, string), deduced at each expansion
-//   name     the CLI flag without "--"; the GUI's id; the key applyPresets logs
-//   cmds     CmdMask bits. A field an editor should offer must include
-//            CMD_AUTO, since `auto` is the whole pipeline
-//   tier     Tier::Basic is the short list; Tier::Alias is a second spelling
-//   group    display group, in the order the rows appear here
-//   lo, hi   accepted range; lo >= hi means unbounded
-//   choices  "a|b|c" for string fields, "" otherwise
-//   help     the NAME of a message in i18n/catalog/SfmFields.h -- a token, not
-//            a string: `quality` resolves to `msg::sfmfield::quality_help`.
-//            One sentence, no trailing default (the printer appends it). It
-//            lives there rather than here so that `spirula sfm --help` can be
-//            read in the language the rest of the program is in, and a row
-//            added with no entry there is a compile error naming the flag.
-//
-// A bool field is a switch: `--name` sets it true and `--no-name` false, so a
-// field defaulting to true reads as `--no-name` on the command line and is
-// printed that way. Keep the name positive.
-#define SFM_CONFIG_FIELDS(F)                                                                       \
+// G also supplies localized labels and help for GUI folds.
+// See src/sfm/README.md for column definitions.
+#define SFM_CONFIG_FIELDS(F, G)                                                                    \
     /* ---- pipeline ---- */                                                                       \
     F(quality, "quality", CMD_AUTO, Tier::Basic, "pipeline", 0, 0, "low|medium|high|extreme",      \
       quality)                                                                                     \
-    F(data_type, "data-type", CMD_AUTO, Tier::Basic, "pipeline", 0, 0,                             \
-      "individual|video|internet", data_type)                                                      \
     F(pairs, "pairs", CMD_AUTO | CMD_MATCH, Tier::Basic, "pipeline", 0, 0,                         \
-      "auto|exhaustive|sequential|prefilter", pairs)                                               \
-    F(overlap, "overlap", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Advanced, "pipeline", 1, 1000000, \
+      "exhaustive|sequential|prefilter", pairs)                                                    \
+    F(overlap, "overlap", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Advanced, "pipeline", 1, 1000000,  \
       "",                                                                                          \
       overlap)                                                                                     \
     F(loop_closure, "loop-closure", CMD_AUTO | CMD_MATCH, Tier::Advanced, "pipeline", 0, 0, "",    \
       loop_closure)                                                                                \
     F(quadratic_overlap, "quadratic-overlap", CMD_AUTO | CMD_MATCH, Tier::Advanced, "pipeline", 0, \
       0, "", quadratic_overlap)                                                                    \
-    F(prefilter_sequential, "prefilter-sequential", CMD_AUTO | CMD_MATCH, Tier::Advanced,          \
-      "pipeline", 0, 0, "", prefilter_sequential)                                                  \
     F(rig_pairs, "rig-pairs", CMD_AUTO | CMD_MATCH, Tier::Advanced, "pipeline", 0, 0, "",          \
       rig_pairs)                                                                                   \
     F(rig_pair_angle, "rig-pair-angle", CMD_AUTO | CMD_MATCH, Tier::Advanced, "pipeline", 0, 180,  \
@@ -363,7 +325,7 @@ struct SfmConfig {
     F(mask_dir, "mask-dir", CMD_AUTO | CMD_EXTRACT, Tier::Alias, "pipeline", 0, 0, "", mask_dir)   \
     F(flip_mask, "flip-mask", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "pipeline", 0, 0, "",        \
       flip_mask)                                                                                   \
-    F(mask_segment_only, "mask-segment-only", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "pipeline", \
+    F(mask_segment_only, "mask-segment-only", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "pipeline",  \
       0, 0, "", mask_segment_only)                                                                 \
     /* ---- colour ---- */                                                                         \
     F(image_gamut, "image-gamut", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "colour", 0, 0,          \
@@ -378,7 +340,7 @@ struct SfmConfig {
     F(camera_mode, "camera-mode", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Basic, "camera", 0, 0,     \
       "single|folder|image", camera_mode)                                                          \
     F(camera_model, "camera-model", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Basic, "camera", 0, 0,   \
-      "simple-pinhole|pinhole|radial|opencv|full-opencv|opencv-fisheye|thin-prism-fisheye|equirectangular",\
+      "simple-pinhole|pinhole|radial|opencv|full-opencv|opencv-fisheye|thin-prism-fisheye|equirectangular", \
       camera_model)                                                                                \
     F(focal, "focal", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Basic, "camera", 0, 10000000, "",      \
       focal)                                                                                       \
@@ -395,87 +357,87 @@ struct SfmConfig {
     /* ---- features ---- */                                                                       \
     F(features, "features", CMD_AUTO | CMD_EXTRACT, Tier::Basic, "features", 0, 0,                 \
       "sift|aliked-n16rot|aliked-n32|loma-b128|loma-b", features)                                  \
-    F(sift.max_num_features, "max-features", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features",   \
+    F(sift.max_num_features, "max-features", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features/sift", \
       128, 1000000, "", max_features)                                                              \
     F(aliked.max_num_features, "aliked-max-features", CMD_AUTO | CMD_EXTRACT, Tier::Advanced,      \
-      "features", 128, 1000000, "", aliked_max_features)                                           \
-    F(aliked.min_score, "aliked-min-score", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features", 0, \
+      "features/aliked", 128, 1000000, "", aliked_max_features)                                    \
+    G(aliked.min_score, "aliked-min-score", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features/aliked", 0, \
       1, "", aliked_min_score)                                                                     \
-    F(aliked.model, "aliked-model", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features", 0, 0, "",  \
+    F(aliked.model, "aliked-model", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features/aliked", 0, 0, "", \
       aliked_model)                                                                                \
     F(loma.max_num_features, "loma-max-features", CMD_AUTO | CMD_EXTRACT, Tier::Advanced,          \
-      "features", 128, 1000000, "", aliked_max_features)                                           \
-    F(loma.min_score, "loma-min-score", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features", 0,     \
+      "features/loma", 128, 1000000, "", aliked_max_features)                                      \
+    G(loma.min_score, "loma-min-score", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features/loma", 0, \
       1, "", aliked_min_score)                                                                     \
     F(loma.detector_model, "loma-detector-model", CMD_AUTO | CMD_EXTRACT, Tier::Advanced,          \
-      "features", 0, 0, "", loma_model)                                                            \
+      "features/loma", 0, 0, "", loma_model)                                                       \
     F(loma.descriptor_model, "loma-descriptor-model", CMD_AUTO | CMD_EXTRACT, Tier::Advanced,      \
-      "features", 0, 0, "", loma_model)                                                            \
-    F(sift.num_octaves, "octaves", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features", 1, 8, "",   \
+      "features/loma", 0, 0, "", loma_model)                                                       \
+    G(sift.num_octaves, "octaves", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features/sift", 1, 8, "", \
       octaves)                                                                                     \
-    F(sift.peak_threshold, "peak-threshold", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features",   \
+    G(sift.peak_threshold, "peak-threshold", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features/sift", \
       0, 1, "", peak_threshold)                                                                    \
-    F(sift.edge_threshold, "edge-threshold", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features",   \
+    G(sift.edge_threshold, "edge-threshold", CMD_AUTO | CMD_EXTRACT, Tier::Expert, "features/sift", \
       1, 1000, "", edge_threshold)                                                                 \
-    F(sift.max_num_orientations, "max-orientations", CMD_AUTO | CMD_EXTRACT, Tier::Advanced,       \
-      "features", 1, 8, "", max_orientations)                                                      \
-    F(sift.profile, "profile", CMD_EXTRACT, Tier::Advanced, "features", 0, 0, "", profile)         \
-    F(sift.spv_path, "spv-path", CMD_EXTRACT, Tier::Advanced, "features", 0, 0, "", spv_path)      \
+    G(sift.max_num_orientations, "max-orientations", CMD_AUTO | CMD_EXTRACT, Tier::Expert,         \
+      "features/sift", 1, 8, "", max_orientations)                                                 \
+    F(sift.profile, "profile", CMD_EXTRACT, Tier::Advanced, "features/sift", 0, 0, "", profile)    \
+    F(sift.spv_path, "spv-path", CMD_EXTRACT, Tier::Advanced, "features/sift", 0, 0, "", spv_path) \
     /* ---- matching ---- */                                                                       \
     F(matcher, "matcher", CMD_AUTO | CMD_MATCH, Tier::Basic, "matching", 0, 0,                     \
       "bruteforce|lightglue|flexglue|loma-b128|loma-b|loma-r|loma-l|loma-g", matcher)              \
-    F(lightglue.min_score, "lightglue-min-score", CMD_AUTO | CMD_MATCH, Tier::Advanced,            \
-      "matching", 0, 1, "", lightglue_min_score)                                                   \
-    F(lightglue.model, "lightglue-model", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, 0,  \
+    G(lightglue.min_score, "lightglue-min-score", CMD_AUTO | CMD_MATCH, Tier::Advanced,            \
+      "matching/lightglue", 0, 1, "", lightglue_min_score)                                         \
+    F(lightglue.model, "lightglue-model", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching/lightglue", 0, 0, \
       "", lightglue_model)                                                                         \
-    F(flexglue.min_covisibility, "flexglue-min-covisibility", CMD_AUTO | CMD_MATCH,               \
-      Tier::Advanced, "matching", 0, 1, "", flexglue_min_covisibility)                             \
-    F(flexglue.min_score, "flexglue-min-score", CMD_AUTO | CMD_MATCH, Tier::Advanced,              \
-      "matching", 0, 1, "", flexglue_min_score)                                                    \
-    F(flexglue.max_distance, "flexglue-max-distance", CMD_AUTO | CMD_MATCH, Tier::Advanced,        \
-      "matching", 0, 512, "", flexglue_max_distance)                                               \
-    F(flexglue.early_stop_decay, "flexglue-early-stop-decay", CMD_AUTO | CMD_MATCH,               \
-      Tier::Advanced, "matching", 0, 1, "", flexglue_early_stop_decay)                             \
-    F(flexglue.cache_size, "flexglue-cache", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 2,  \
+    G(flexglue.min_covisibility, "flexglue-min-covisibility", CMD_AUTO | CMD_MATCH,                \
+      Tier::Advanced, "matching/flexglue", 0, 1, "", flexglue_min_covisibility)                    \
+    G(flexglue.min_score, "flexglue-min-score", CMD_AUTO | CMD_MATCH, Tier::Advanced,              \
+      "matching/flexglue", 0, 1, "", flexglue_min_score)                                           \
+    G(flexglue.max_distance, "flexglue-max-distance", CMD_AUTO | CMD_MATCH, Tier::Advanced,        \
+      "matching/flexglue", 0, 512, "", flexglue_max_distance)                                      \
+    G(flexglue.early_stop_decay, "flexglue-early-stop-decay", CMD_AUTO | CMD_MATCH,                \
+      Tier::Expert, "matching/flexglue", 0, 1, "", flexglue_early_stop_decay)                      \
+    G(flexglue.cache_size, "flexglue-cache", CMD_AUTO | CMD_MATCH, Tier::Expert, "matching/flexglue", 2, \
       1000000, "", flexglue_cache)                                                                 \
-    F(flexglue.model, "flexglue-model", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, 0,    \
+    F(flexglue.model, "flexglue-model", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching/flexglue", 0, 0, \
       "", flexglue_model)                                                                          \
-    F(flexglue.image_dir, "flexglue-images", CMD_MATCH, Tier::Advanced, "matching", 0, 0, "",      \
+    F(flexglue.image_dir, "flexglue-images", CMD_MATCH, Tier::Advanced, "matching/flexglue", 0, 0, "", \
       flexglue_images)                                                                             \
-    F(loma_match.min_score, "loma-min-match-score", CMD_AUTO | CMD_MATCH, Tier::Advanced,          \
-      "matching", 0, 1, "", loma_min_match_score)                                                  \
-    F(loma_match.model, "loma-matcher-model", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching",    \
+    G(loma_match.min_score, "loma-min-match-score", CMD_AUTO | CMD_MATCH, Tier::Advanced,          \
+      "matching/loma", 0, 1, "", loma_min_match_score)                                             \
+    F(loma_match.model, "loma-matcher-model", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching/loma", \
       0, 0, "", loma_model)                                                                        \
-    F(match.max_ratio, "ratio", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, 1, "", ratio) \
-    F(match.min_similarity, "min-similarity", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, \
+    G(match.max_ratio, "ratio", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching/bruteforce", 0, 1, "", ratio) \
+    G(match.min_similarity, "min-similarity", CMD_AUTO | CMD_MATCH, Tier::Expert, "matching/bruteforce", 0, \
       1, "", min_similarity)                                                                       \
-    F(match.cross_check, "cross-check", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, 0,    \
+    G(match.cross_check, "cross-check", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching/bruteforce", 0, 0, \
       "", cross_check)                                                                             \
-    F(match.max_num_matches, "max-matches", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0,   \
+    F(match.max_num_matches, "max-matches", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, \
       1000000000, "", max_matches)                                                                 \
     F(verify, "verify", CMD_MATCH, Tier::Advanced, "matching", 0, 0, "", verify)                   \
     F(twoview.min_num_inliers, "min-inliers", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 4, \
       1000000, "", min_inliers)                                                                    \
     F(prefilter.num_features, "prefilter-features", CMD_AUTO | CMD_MATCH, Tier::Advanced,          \
-      "matching", 16, 100000, "", prefilter_features)                                              \
+      "matching/prefilter", 16, 100000, "", prefilter_features)                                    \
     F(prefilter.train_features, "prefilter-train", CMD_AUTO | CMD_MATCH, Tier::Advanced,           \
-      "matching", 0, 1000000, "", prefilter_train)                                                 \
+      "matching/prefilter", 0, 1000000, "", prefilter_train)                                       \
     F(prefilter.num_neighbors, "prefilter-neighbors", CMD_AUTO | CMD_MATCH, Tier::Advanced,        \
-      "matching", 1, 100000, "", prefilter_neighbors)                                              \
+      "matching/prefilter", 1, 100000, "", prefilter_neighbors)                                    \
     F(prefilter.min_score, "prefilter-min-score", CMD_AUTO | CMD_MATCH, Tier::Advanced,            \
-      "matching", 0, 1000000, "", prefilter_min_score)                                             \
-    F(prefilter.ratio, "prefilter-ratio", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, 1,  \
+      "matching/prefilter", 0, 1000000, "", prefilter_min_score)                                   \
+    F(prefilter.ratio, "prefilter-ratio", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching/prefilter", 0, 1, \
       "", prefilter_ratio)                                                                         \
     /* ---- mapper ---- */                                                                         \
-    F(compact_unused_features, "compact-unused-features", CMD_AUTO | CMD_MAP, Tier::Advanced,     \
+    G(compact_unused_features, "compact-unused-features", CMD_AUTO | CMD_MAP, Tier::Expert,      \
       "mapper", 0, 0, "", compact_unused_features)                                                 \
-    F(mapper.focal_trials, "focal-trials", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 1000,  \
+    G(mapper.focal_trials, "focal-trials", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 1000,  \
       "", focal_trials)                                                                            \
-    F(mapper.refine_principal_point, "refine-principal-point", CMD_AUTO | CMD_MAP, Tier::Advanced, \
+    G(mapper.refine_principal_point, "refine-principal-point", CMD_AUTO | CMD_MAP, Tier::Expert, \
       "mapper", 0, 0, "", refine_principal_point)                                                  \
-    F(final_principal_point, "final-principal-point", CMD_AUTO | CMD_MAP, Tier::Advanced,          \
+    G(final_principal_point, "final-principal-point", CMD_AUTO | CMD_MAP, Tier::Expert,          \
       "mapper", 0, 0, "", final_principal_point)                                                   \
-    F(mapper.pp_min_images, "pp-min-images", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 2,      \
+    G(mapper.pp_min_images, "pp-min-images", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 2,      \
       1000000, "", pp_min_images)                                                                  \
     F(mapper.refine_extra_params, "refine-extra-params", CMD_AUTO | CMD_MAP, Tier::Advanced,       \
       "mapper", 0, 0, "", refine_extra_params)                                                     \
@@ -483,119 +445,119 @@ struct SfmConfig {
       0, "", final_extra_params)                                                                   \
     F(final_per_image_intrinsics, "final-per-image-intrinsics", CMD_AUTO | CMD_MAP,                \
       Tier::Advanced, "mapper", 0, 0, "", final_per_image_intrinsics)                              \
-    F(orient, "orient", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0, 0, "",        \
+    G(orient, "orient", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0, 0, "",        \
       orient)                                                                                      \
-    F(level, "level", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0, 0,              \
+    G(level, "level", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0, 0,              \
       "ground|cameras", level)                                                                     \
-    F(metric_positions, "metric-positions", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced,        \
+    G(metric_positions, "metric-positions", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Expert,        \
       "mapper", 0, 0, "", metric_positions)                                                        \
     F(metric_gps, "metric-gps", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0, 0,    \
-      "auto|none|horizontal|full", metric_gps)                                                          \
+      "auto|none|horizontal|full", metric_gps)                                                     \
     F(exif_attitude, "exif-attitude", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0, \
       0, "auto|up|none", exif_attitude)                                                            \
-    F(metric_max_error, "metric-max-error", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced,        \
+    G(metric_max_error, "metric-max-error", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Expert,        \
       "mapper", 0, 1000000, "", metric_max_error)                                                  \
-    F(metric_max_error_frac, "metric-max-error-frac", CMD_AUTO | CMD_MAP | CMD_MERGE,              \
-      Tier::Advanced, "mapper", 0, 1, "", metric_max_error_frac)                                   \
-    F(telemetry, "telemetry", CMD_AUTO | CMD_MATCH | CMD_MAP | CMD_MERGE, Tier::Advanced,           \
+    G(metric_max_error_frac, "metric-max-error-frac", CMD_AUTO | CMD_MAP | CMD_MERGE,              \
+      Tier::Expert, "mapper", 0, 1, "", metric_max_error_frac)                                   \
+    F(telemetry, "telemetry", CMD_AUTO | CMD_MATCH | CMD_MAP | CMD_MERGE, Tier::Advanced,          \
       "mapper", 0, 0, "", telemetry)                                                               \
     F(sensor_gauge, "sensor-gauge", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0,   \
       0, "auto|up|none", sensor_gauge)                                                             \
-    F(sensor_verify, "sensor-verify", CMD_AUTO | CMD_MATCH, Tier::Advanced, "mapper", 0, 0, "",    \
+    G(sensor_verify, "sensor-verify", CMD_AUTO | CMD_MATCH, Tier::Expert, "mapper", 0, 0, "",    \
       sensor_verify)                                                                               \
-    F(sensor_map, "sensor-map", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0, "",            \
+    G(sensor_map, "sensor-map", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0, 0, "",            \
       sensor_map)                                                                                  \
-    F(level_erp, "level-erp", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0, "",              \
+    G(level_erp, "level-erp", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0, 0, "",              \
       level_erp)                                                                                   \
-    F(sensor_pairs, "sensor-pairs", CMD_AUTO | CMD_MATCH, Tier::Advanced, "mapper", 0, 0, "",      \
+    G(sensor_pairs, "sensor-pairs", CMD_AUTO | CMD_MATCH, Tier::Expert, "mapper", 0, 0, "",      \
       sensor_pairs)                                                                                \
-    F(sensor_pair_radius, "sensor-pair-radius", CMD_AUTO | CMD_MATCH, Tier::Advanced, "mapper",    \
+    G(sensor_pair_radius, "sensor-pair-radius", CMD_AUTO | CMD_MATCH, Tier::Expert, "mapper",    \
       0, 100000, "", sensor_pair_radius)                                                           \
-    F(sensor_max_dt, "sensor-max-dt", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Advanced, "mapper",    \
+    G(sensor_max_dt, "sensor-max-dt", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Expert, "mapper",    \
       0.01, 1000, "", sensor_max_dt)                                                               \
-    F(mapper.min_tri_angle_deg, "min-tri-angle", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0,  \
+    G(mapper.min_tri_angle_deg, "min-tri-angle", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0,  \
       90, "", min_tri_angle)                                                                       \
-    F(mapper.init_min_tri_angle_deg, "init-min-tri-angle", CMD_AUTO | CMD_MAP, Tier::Advanced,     \
+    G(mapper.init_min_tri_angle_deg, "init-min-tri-angle", CMD_AUTO | CMD_MAP, Tier::Expert,     \
       "mapper", 0, 90, "", init_min_tri_angle)                                                     \
-    F(mapper.min_num_pnp_inliers, "min-pnp-inliers", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", \
+    G(mapper.min_num_pnp_inliers, "min-pnp-inliers", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", \
       4, 1000000, "", min_pnp_inliers)                                                             \
-    F(mapper.min_pnp_inlier_ratio, "min-pnp-ratio", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper",  \
+    G(mapper.min_pnp_inlier_ratio, "min-pnp-ratio", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper",  \
       0, 1, "", min_pnp_ratio)                                                                     \
-    F(mapper.min_image_points, "min-image-points", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper",   \
+    G(mapper.min_image_points, "min-image-points", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper",   \
       1, 1000000, "", min_image_points)                                                            \
-    F(mapper.ba_loss, "ba-loss", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0,               \
+    G(mapper.ba_loss, "ba-loss", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0, 0,               \
       "trivial|huber|cauchy", ba_loss)                                                             \
-    F(mapper.ba_loss_param, "ba-loss-param", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0,      \
+    G(mapper.ba_loss_param, "ba-loss-param", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0,      \
       1000, "", ba_loss_param)                                                                     \
-    F(mapper.seed_homography, "seed-homography", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0,  \
+    G(mapper.seed_homography, "seed-homography", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0,  \
       0, "", seed_homography)                                                                      \
     F(mapper.ba_real, "ba-real", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0,               \
       "float|double|df|cpu", ba_real)                                                              \
     F(mapper.ba_real_coarse, "ba-real-coarse", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0, \
       "float|double|df|cpu", ba_real_coarse)                                                       \
-    F(mapper.ba_solver, "ba-solver", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0,           \
+    G(mapper.ba_solver, "ba-solver", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0, 0,           \
       "auto|dense|cg", ba_solver)                                                                  \
-    F(mapper.retri_scale, "retri-scale", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 10, "",  \
+    G(mapper.retri_scale, "retri-scale", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0, 10, "",  \
       retri_scale)                                                                                 \
-    F(mapper.merge_tracks, "merge-tracks", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0, "", \
+    G(mapper.merge_tracks, "merge-tracks", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0, 0, "", \
       merge_tracks)                                                                                \
-    F(mapper.seam_weld_frac, "seam-weld", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 1, "",  \
+    G(mapper.seam_weld_frac, "seam-weld", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0, 1, "",  \
       seam_weld)                                                                                   \
-    F(mapper.gps_scale_band, "gps-scale-band", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 1, \
+    G(mapper.gps_scale_band, "gps-scale-band", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0, 1, \
       "", gps_scale_band)                                                                          \
-    F(mapper.rank_by_visibility, "rank-by-visibility", CMD_AUTO | CMD_MAP, Tier::Advanced,         \
+    G(mapper.rank_by_visibility, "rank-by-visibility", CMD_AUTO | CMD_MAP, Tier::Expert,         \
       "mapper", 0, 0, "", rank_by_visibility)                                                      \
-    F(mapper.seed_blocking, "seed-blocking", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0,   \
+    G(mapper.seed_blocking, "seed-blocking", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0, 0,   \
       "", seed_blocking)                                                                           \
     F(mapper_mode, "mapper", CMD_AUTO | CMD_MAP, Tier::Basic, "mapper", 0, 0, "flat|bottom-up|global", \
       mapper)                                                                                      \
-    F(bup.partition.leaf_max_images, "bup-atom-size", CMD_AUTO | CMD_MAP, Tier::Advanced,          \
-      "mapper", 8, 100000, "", bup_atom_size)                                                      \
-    F(bup.partition.overlap, "bup-overlap", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0,       \
-      100000, "", bup_overlap)                                                                     \
-    F(assemble.max_rounds, "bup-rounds", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 1, 100, "", \
+    G(bup.partition.leaf_max_images, "bup-atom-size", CMD_AUTO | CMD_MAP, Tier::Advanced,          \
+      "mapper/bottom-up", 8, 100000, "", bup_atom_size)                                            \
+    G(bup.partition.overlap, "bup-overlap", CMD_AUTO | CMD_MAP, Tier::Advanced,                    \
+      "mapper/bottom-up", 0, 100000, "", bup_overlap)                                              \
+    G(assemble.max_rounds, "bup-rounds", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 1, 100, "", \
       bup_rounds)                                                                                  \
-    F(bup.atom.threads, "bup-atom-threads", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 1024, \
-      "", bup_atom_threads)                                                                        \
-    F(bup.atom.ba_growth, "bup-atom-ba-growth", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 1,   \
-      1000000, "", bup_atom_ba_growth)                                                             \
-    F(assemble.joint_every, "bup-joint-every", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 1,    \
+    G(bup.atom.threads, "bup-atom-threads", CMD_AUTO | CMD_MAP, Tier::Expert,                    \
+      "mapper/bottom-up", 0, 1024, "", bup_atom_threads)                                           \
+    G(bup.atom.ba_growth, "bup-atom-ba-growth", CMD_AUTO | CMD_MAP, Tier::Expert,                \
+      "mapper/bottom-up", 1, 1000000, "", bup_atom_ba_growth)                                      \
+    G(assemble.joint_every, "bup-joint-every", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 1,    \
       100, "", bup_joint_every)                                                                    \
-    F(bup.atom.tight_final_ba, "bup-atom-tight-final", CMD_AUTO | CMD_MAP, Tier::Advanced,         \
-      "mapper", 0, 0, "", bup_atom_tight_final)                                                    \
-    F(assemble.coarse_joint_ba, "bup-coarse-ba", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0,  \
+    G(bup.atom.tight_final_ba, "bup-atom-tight-final", CMD_AUTO | CMD_MAP, Tier::Expert,         \
+      "mapper/bottom-up", 0, 0, "", bup_atom_tight_final)                                          \
+    G(assemble.coarse_joint_ba, "bup-coarse-ba", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0,  \
       0, "", bup_coarse_ba)                                                                        \
-    F(bup.atom.init_trials, "bup-atom-init-trials", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper",  \
-      1, 1000, "", bup_atom_init_trials)                                                           \
-    F(bup.atom.min_model_fraction, "bup-atom-min-fraction", CMD_AUTO | CMD_MAP, Tier::Advanced,    \
-      "mapper", 0, 1, "", bup_atom_min_fraction)                                                   \
-    F(assemble.joint_intrinsics, "bup-joint-intrinsics", CMD_AUTO | CMD_MAP, Tier::Advanced,       \
+    G(bup.atom.init_trials, "bup-atom-init-trials", CMD_AUTO | CMD_MAP, Tier::Expert,            \
+      "mapper/bottom-up", 1, 1000, "", bup_atom_init_trials)                                       \
+    G(bup.atom.min_model_fraction, "bup-atom-min-fraction", CMD_AUTO | CMD_MAP, Tier::Expert,    \
+      "mapper/bottom-up", 0, 1, "", bup_atom_min_fraction)                                         \
+    G(assemble.joint_intrinsics, "bup-joint-intrinsics", CMD_AUTO | CMD_MAP, Tier::Expert,       \
       "mapper", 0, 0, "", bup_joint_intrinsics)                                                    \
-    F(assemble.grow_every, "bup-grow-every", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 100, \
+    G(assemble.grow_every, "bup-grow-every", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0, 100, \
       "", bup_grow_every)                                                                          \
-    F(assemble.grow_budget_frac, "bup-grow-budget", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper",  \
+    G(assemble.grow_budget_frac, "bup-grow-budget", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper",  \
       0, 1000, "", bup_grow_budget)                                                                \
-    F(mapper.ba_growth_ratio, "ba-growth", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 1, 100,   \
+    G(mapper.ba_growth_ratio, "ba-growth", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 1, 100,   \
       "", ba_growth)                                                                               \
-    F(mapper.ba_growth_rtol, "ba-growth-rtol", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 1, \
+    G(mapper.ba_growth_rtol, "ba-growth-rtol", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0, 1, \
       "", ba_growth_rtol)                                                                          \
-    F(mapper.ba_growth_patience, "ba-growth-patience", CMD_AUTO | CMD_MAP, Tier::Advanced,         \
+    G(mapper.ba_growth_patience, "ba-growth-patience", CMD_AUTO | CMD_MAP, Tier::Expert,         \
       "mapper", 1, 1000, "", ba_growth_patience)                                                   \
-    F(mapper.max_num_models, "max-models", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 1,        \
+    G(mapper.max_num_models, "max-models", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 1,        \
       100000, "", max_models)                                                                      \
-    F(mapper.max_model_overlap, "model-overlap", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0,  \
+    G(mapper.max_model_overlap, "model-overlap", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper", 0,  \
       1000000, "", model_overlap)                                                                  \
-    F(mapper.model_overlap_ratio, "model-overlap-ratio", CMD_AUTO | CMD_MAP, Tier::Advanced,       \
+    G(mapper.model_overlap_ratio, "model-overlap-ratio", CMD_AUTO | CMD_MAP, Tier::Expert,       \
       "mapper", 0, 1000, "", model_overlap_ratio)                                                  \
-    F(mapper.min_model_size, "min-model-size", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 2,    \
+    G(mapper.min_model_size, "min-model-size", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 2,    \
       1000000, "", min_model_size)                                                                 \
-    F(mapper.pnp_ratio_visible_only, "pnp-ratio-visible", CMD_AUTO | CMD_MAP, Tier::Advanced,      \
+    G(mapper.pnp_ratio_visible_only, "pnp-ratio-visible", CMD_AUTO | CMD_MAP, Tier::Expert,      \
       "mapper", 0, 0, "", pnp_ratio_visible)                                                       \
-    F(mapper.strong_pnp_inliers, "strong-pnp-inliers", CMD_AUTO | CMD_MAP, Tier::Advanced,         \
+    G(mapper.strong_pnp_inliers, "strong-pnp-inliers", CMD_AUTO | CMD_MAP, Tier::Expert,         \
       "mapper", 0, 1000000, "", strong_pnp_inliers)                                                \
-    F(mapper.strong_pnp_max_rival, "strong-pnp-max-rival", CMD_AUTO | CMD_MAP, Tier::Advanced,     \
+    G(mapper.strong_pnp_max_rival, "strong-pnp-max-rival", CMD_AUTO | CMD_MAP, Tier::Expert,     \
       "mapper", 0, 1, "", strong_pnp_max_rival)                                                    \
-    F(mapper.audit_min_evidence, "audit-evidence", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper",   \
+    G(mapper.audit_min_evidence, "audit-evidence", CMD_AUTO | CMD_MAP, Tier::Expert, "mapper",   \
       0, 1000000, "", audit_evidence)                                                              \
     /* ---- rigs ---- */                                                                           \
     F(mapper.use_rigs, "rigs", CMD_AUTO | CMD_MAP, Tier::Advanced, "rig", 0, 0, "", rigs)          \
@@ -696,10 +658,46 @@ struct PresetChange {
     std::string flag, from, to;
 };
 
-// Apply --quality / --data-type. Fields in `seen` are left alone, so an
-// explicit flag always wins; everything the presets do move is logged.
+// Apply --quality and what the chosen frontend implies. Fields in `seen` are
+// left alone, so an explicit flag always wins; every move is logged.
 std::string applyPresets(SfmConfig& cfg, const std::set<std::string>& seen,
                          std::vector<PresetChange>& moved);
+
+// What declared sequences imply, once the manifest has named them: ordered
+// frames subtend less angle, so the seed pair is held to half the threshold.
+void applySequenceDefaults(SfmConfig& cfg, const std::set<std::string>& seen,
+                           std::vector<PresetChange>& moved);
+
+// One row of the table at run time, for an editor that is not a macro
+// expansion (the GUI's option folds).
+enum class FieldType { Switch, Integer, Real, Text };
+struct FieldInfo {
+    const char* name;
+    uint32_t cmds;
+    Tier tier;
+    const char* group;
+    double lo, hi;
+    const char* choices;
+    FieldType type;
+    const spirula::i18n::Msg* label;
+    const spirula::i18n::Msg* help;
+};
+const std::vector<FieldInfo>& configFields();
+// The `auto` row of that name, or null. Aliases resolve like any other row.
+const FieldInfo* findConfigField(const std::string& name);
+// A group spelled "base/owner" files its row under one detector, matcher, pair
+// mode or mapper schedule, which an editor offers only while that one is
+// selected: "sift" of "features/sift". Empty for a row they all share.
+std::string fieldOwner(const FieldInfo& f);
+// The first stage whose signature carries the row: CMD_EXTRACT, CMD_MATCH or
+// CMD_MAP. A row only `auto` has (--quality) counts from extraction.
+uint32_t fieldStage(const FieldInfo& f);
+// The row's value in `cfg` as a flag would spell it: "on"/"off" for a switch,
+// "" for an unset string. False when `auto` has no such row.
+bool configFieldValue(const SfmConfig& cfg, const std::string& name, std::string& out);
+// `--name value` (or `--name` / `--no-name` for a switch) checked against the
+// row's type, range and choices. Empty, or what is wrong with it.
+std::string checkConfigValue(const FieldInfo& f, const std::string& value);
 
 // The option block of `--help` for one subcommand: the table's rows for `cmd`,
 // grouped, with each field's current value as the printed default.

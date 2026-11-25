@@ -5,16 +5,26 @@
 #include <thread>
 #include <cstdint>
 #include <string>
+#include <stdexcept>
 #include <vector>
 
+namespace spirula { struct SplatCloud; }
+
 namespace gui {
+
+class SplatMemoryError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
 
 // Shares projection and fragment shaders with the standalone WebGL viewer.
 class HardwareSplatRenderer {
 public:
     ~HardwareSplatRenderer();
     static bool available();
-    void load(const std::string& ply, const float center[3], float unit);
+    static uint64_t free_device_bytes();
+    void load(const std::string& ply, const float center[3], float unit,
+              const spirula::SplatCloud* sample = nullptr);
     // The viewer buffers it draws, as the compute view shows them
     // (viewer_buffer_keys); false for a key it has no equivalent of.
     enum class Buffer { Rgb, RgbRaw, Depth, Alpha, DepthNormal, RenderNormal, Sh };
