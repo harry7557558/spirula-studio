@@ -14,7 +14,6 @@
 #include "data/ScenePartition.h"
 #include "dense/Artifact.h"
 #include "external/stb_image.h"
-#include "i18n/TimeFormat.h"
 #include "i18n/catalog/Gui.h"
 #include "i18n/catalog/MaskEdit.h"
 #include "i18n/catalog/Render.h"
@@ -34,7 +33,6 @@ namespace runlog = spirula::runlog;
 namespace rmsg = spirula::i18n::msg::render;
 namespace mmsg = spirula::i18n::msg::maskedit;
 using spirula::i18n::Msg;
-using spirula::i18n::format_duration_coarse;
 
 namespace gui {
 
@@ -80,6 +78,7 @@ void GuiApp::launch_training(const TrainConfig& cfg, const std::string& preset) 
         runlog::open(_train_log, runlog::dataset_dir(cfg.data), "train", runlog::file_stamp());
     set_ss_env("UNREG_LOG", "");
     write_run_settings(_train_log);
+    _train_clock = ProgressClock{};
     _runner.start_training(cfg, preset, log_file.string());
 }
 
@@ -892,21 +891,18 @@ void GuiApp::draw_metrics() {
                     {format_count(last.num_splats), psnr, ssim, loss});
 }
 
-// The bar is the trainer's own time forecast, so a run whose steps get dearer
-// as the model grows does not crawl through its last half.
-void GuiApp::tick_train_clock() {
-    const TrainRunner::Phase ph = _runner.phase();
-    const spirula::TrainerProgress p = _runner.latest_progress();
-    const double now = progress_now();
+// Active training time excludes pauses, including when used as the clock's time base.
+double GuiApp::tick_train_clock(TrainRunner::Phase ph, const spirula::TrainerProgress& p) {
+    const double elapsed = _runner.elapsed_seconds();
     if (ph == TrainRunner::Phase::Training && p.total_steps > 0) {
-        const double elapsed = _runner.elapsed_seconds();
-        if (!_train_clock.started() || elapsed + 1.0 < _train_clock.elapsed(now))
-            _train_clock.start(now - elapsed);
-        _train_clock.work(now, (double)(p.step + 1) / (double)p.total_steps,
+        if (!_train_clock.started()) _train_clock.start(0.0);
+        _train_clock.work(elapsed, (double)(p.step + 1) / (double)p.total_steps,
                           _runner.eta_seconds());
-    } else if (ph == TrainRunner::Phase::Done && _train_clock.started()) {
-        _train_clock.finish(now);
+    } else if (ph == TrainRunner::Phase::Done && p.total_steps > 0) {
+        if (!_train_clock.started()) _train_clock.start(0.0);
+        _train_clock.finish(elapsed);
     }
+    return elapsed;
 }
 
 void GuiApp::draw_status_strip() {
@@ -919,7 +915,7 @@ void GuiApp::draw_status_strip() {
     spirula::TrainerProgress p = _runner.latest_progress();
     const double now = progress_now();
     if (ph != TrainRunner::Phase::Evaluating) _eval_clock = ProgressClock{};
-    tick_train_clock();
+    const double elapsed = tick_train_clock(ph, p);
     if (ph == TrainRunner::Phase::Training && p.total_steps > 0) {
         ui::ProgressBar(_train_clock.fraction(), ImVec2(-8, 0), msg::status_step,
                         {p.step + 1, p.total_steps, (int)(_train_clock.fraction() * 100.0f)});
@@ -928,13 +924,14 @@ void GuiApp::draw_status_strip() {
         std::snprintf(ms, sizeof ms, "%.0f",
                       (avg >= 0.0 ? avg : p.step_latency) * 1000.0);
         ui::Text(_runner.paused() ? msg::status_rate_paused : msg::status_rate,
-                 {ms, format_duration_coarse(_train_clock.elapsed(now)),
-                  format_duration_coarse(_train_clock.remaining(now)),
+                 {ms, progress_time_text(elapsed, _train_clock.remaining(elapsed)),
                   format_count((double)p.num_splats)});
+        ui::help_on_hover(msg::progress_time_help);
         draw_timing_link();
     } else if (ph == TrainRunner::Phase::Done && p.total_steps > 0) {
-        ui::ProgressBar(1.0f, ImVec2(-8, 0), msg::status_done_steps,
-                        {p.step + 1, format_duration_coarse(_runner.elapsed_seconds())});
+        ui::ProgressBar(1.0f, ImVec2(-8, 0), msg::status_done_steps, {p.step + 1});
+        progress_time_line(_train_clock, elapsed);
+        ImGui::SameLine();
         ui::TextDisabled(msg::status_explore);
         draw_timing_link();
     } else if (ph == TrainRunner::Phase::Preparing) {
@@ -949,15 +946,13 @@ void GuiApp::draw_status_strip() {
     } else if (ph == TrainRunner::Phase::Evaluating) {
         const spirula::EvalProgress p = _runner.latest_eval_progress();
         if (!_eval_clock.started()) _eval_clock.start(now);
+        std::string caption = msg::status_evaluating.get();
         if (p.total > 0) {
             _eval_clock.work(now, std::clamp((double)p.completed / (double)p.total, 0.0, 1.0));
-            ui::ProgressBar(_eval_clock.fraction(), ImVec2(-8, 0), msg::status_eval_views,
-                            {p.completed, p.total, (int)(_eval_clock.fraction() * 100.0f)});
-        } else {
-            ui::ProgressBar(-(float)ImGui::GetTime(), ImVec2(-8, 0),
-                            msg::status_evaluating);
+            caption = spirula::i18n::format(
+                msg::status_eval_views, {p.completed, p.total, (int)(_eval_clock.fraction() * 100.0f)});
         }
-        progress_time_line(_eval_clock);
+        timed_progress_bar(_eval_clock, caption.c_str(), -8, p.total <= 0);
     } else if (ph == TrainRunner::Phase::Ready) {
         ui::ProgressBar(0.0f, ImVec2(-8, 0), msg::status_ready);
         ui::TextDisabled(msg::status_ready_hint);

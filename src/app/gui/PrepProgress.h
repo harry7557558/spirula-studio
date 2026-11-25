@@ -34,7 +34,7 @@ struct StageProgress {
     StageStatus status = StageStatus::Pending;
     float   fraction = -1.0f;    // 0..1 of the work, or -1 when the step cannot estimate one
     int64_t done = 0, total = 0;
-    std::string detail;          // already formatted; the line under the bar
+    std::string detail;          // localized status caption
     ProgressClock clock;         // what the bar draws: time, not `fraction`
 };
 

@@ -611,13 +611,12 @@ private:
     // running task belongs to, so neither has to be guessed from the other.
     void draw_batch_progress();
     void draw_batch_stop_buttons();
-    // How far through the running task its own runner says it is, -1 when it
-    // cannot say, and how long it has been going.
-    float batch_task_fraction();
+    // The runner's progress and ETA. Negative values indicate unknowns.
+    float batch_task_fraction(double& remaining);
     double batch_task_elapsed() const;
     ProgressClock _batch_queue_clock, _batch_task_clock;
     ProgressClock _train_clock, _eval_clock;
-    void tick_train_clock();
+    double tick_train_clock(TrainRunner::Phase phase, const spirula::TrainerProgress& p);
     int _batch_clock_task = -1;
     // The row the running task belongs to, null when nothing is running.
     // `_batch_current` indexes the TASKS, which outnumber the rows.

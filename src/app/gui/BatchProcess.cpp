@@ -295,7 +295,7 @@ std::vector<BatchTask> batch_plan(const std::vector<BatchRow>& rows) {
 
 
 BatchProgress batch_progress(const std::vector<BatchTask>& tasks, int current,
-                             double frac, double elapsed) {
+                             double frac, double elapsed, double runner_remaining) {
     BatchProgress p;
     p.total = (int)tasks.size();
     // What a finished task of each stage took, which is the only honest thing
@@ -323,15 +323,14 @@ BatchProgress batch_progress(const std::vector<BatchTask>& tasks, int current,
     for (int i = 0; i < (int)tasks.size(); i++) {
         const BatchTask& t = tasks[(size_t)i];
         if (i == current) {
-            // Its own runner knows best, except a dataset run, whose fraction
-            // counts steps rather than time: there a finished one's length wins.
-            // A task cannot be estimated to finish before now.
-            double rem = -1.0;
-            const double g = guess(t.stage);
-            if (t.stage == BatchStage::Dataset && stage_n[(int)t.stage] > 0)
-                rem = std::max(g - elapsed, 0.0);
-            else if (frac > 0.02 && frac < 1.0) rem = elapsed * (1.0 - frac) / frac;
-            else if (g > 0.0) rem = std::max(g - elapsed, 0.0);
+            double rem = runner_remaining;
+            if (rem < 0.0) {
+                const double g = guess(t.stage);
+                if (t.stage == BatchStage::Dataset && stage_n[(int)t.stage] > 0)
+                    rem = std::max(g - elapsed, 0.0);
+                else if (frac > 0.02 && frac < 1.0) rem = elapsed * (1.0 - frac) / frac;
+                else if (g > 0.0) rem = std::max(g - elapsed, 0.0);
+            }
             p.task_remaining = rem;
             if (rem < 0.0) known = false;
             else total += rem;

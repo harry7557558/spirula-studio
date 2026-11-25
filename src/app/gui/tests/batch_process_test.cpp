@@ -244,6 +244,20 @@ static void queue_save_denial() {
     SS_CHECK(loaded.size() == 1 && loaded.front().dataset == row.dataset);
 }
 
+static void running_task_forecast() {
+    std::vector<gui::BatchTask> tasks(3);
+    tasks[0].status = gui::BatchStatus::Done;
+    tasks[0].seconds = 100.0;
+    tasks[1].status = gui::BatchStatus::Running;
+
+    const auto fallback = gui::batch_progress(tasks, 1, 0.5, 50.0, -1.0);
+    SS_CHECK(fallback.task_remaining == 50.0 && fallback.remaining == 150.0);
+    const auto forecast = gui::batch_progress(tasks, 1, 0.5, 50.0, 80.0);
+    SS_CHECK(forecast.task_remaining == 80.0 && forecast.remaining == 180.0);
+    const auto revised = gui::batch_progress(tasks, 1, 0.5, 51.0, 90.0);
+    SS_CHECK(revised.task_remaining == 90.0 && revised.remaining == 190.0);
+}
+
 int main() {
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
     const fs::path root = fs::temp_directory_path() /
@@ -259,6 +273,7 @@ int main() {
     region_per_run(root);
     queue_roundtrip(root);
     queue_save_denial();
+    running_task_forecast();
     fs::remove_all(root);
     std::printf("batch_process_test: %d failures\n", failures);
     return failures ? 1 : 0;

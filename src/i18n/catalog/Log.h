@@ -3060,21 +3060,6 @@ SS_MSG(prog_count_total_rate,
     RU("  {0}: {1} / {2}  ({3})"),
     TR("  {0}: {1} / {2}  ({3})"));
 
-SS_MSG(prog_count_total_rate_eta,
-    EN("  {0}: {1} / {2}  ({3}, about {4} left)"),
-    JA("  {0}: {1} / {2}（{3}、残り約 {4}）"),
-    ZH_HANS("  {0}：{1} / {2}（{3}，大约还剩 {4}）"),
-    ZH_HANT("  {0}：{1} / {2}（{3}，大約還剩 {4}）"),
-    KO("  {0}: {1} / {2}({3}, 약 {4} 남음)"),
-    DE("  {0}: {1} / {2}  ({3}, noch etwa {4})"),
-    FR("  {0} : {1} / {2}  ({3}, encore {4} environ)"),
-    ES("  {0}: {1} / {2}  ({3}, quedan unos {4})"),
-    PT("  {0}: {1} / {2}  ({3}, faltam cerca de {4})"),
-    IT("  {0}: {1} / {2}  ({3}, mancano circa {4})"),
-    NL("  {0}: {1} / {2}  ({3}, nog ongeveer {4})"),
-    RU("  {0}: {1} / {2}  ({3}, осталось около {4})"),
-    TR("  {0}: {1} / {2}  ({3}, yaklaşık {4} kaldı)"));
-
 SS_MSG(rate_each,
     EN("{0} s each"),
     JA("1 件あたり {0} 秒"),
@@ -3104,21 +3089,6 @@ SS_MSG(rate_per_second,
     NL("{0} per seconde"),
     RU("{0} в секунду"),
     TR("saniyede {0}"));
-
-SS_MSG(dur_moment,
-    EN("a moment"),
-    JA("わずか"),
-    ZH_HANS("一会儿"),
-    ZH_HANT("一會兒"),
-    KO("잠깐"),
-    DE("einen Augenblick"),
-    FR("un instant"),
-    ES("un momento"),
-    PT("um instante"),
-    IT("un istante"),
-    NL("een ogenblik"),
-    RU("мгновение"),
-    TR("bir an"));
 
 SS_MSG(dur_seconds,
     EN("{0} s"),

@@ -526,6 +526,21 @@ SS_MSG(log_progress,
     RU("{0} / {1} изображений, по {2} мс, осталось {3}"),
     TR("{0} / {1} görüntü, her biri {2} ms, {3} kaldı"));
 
+SS_MSG(progress_caption,
+    EN("{0} / {1} images, {2} ms each"),
+    JA("{0} / {1} 枚、1 枚あたり {2} ms"),
+    ZH_HANS("{0} / {1} 张，每张 {2} ms"),
+    ZH_HANT("{0} / {1} 張，每張 {2} ms"),
+    KO("{0} / {1} 장, 장당 {2} ms"),
+    DE("{0} / {1} Bilder, {2} ms je Bild"),
+    FR("{0} / {1} images, {2} ms chacune"),
+    ES("{0} / {1} imágenes, {2} ms cada una"),
+    PT("{0} / {1} imagens, {2} ms cada"),
+    IT("{0} / {1} immagini, {2} ms ciascuna"),
+    NL("{0} / {1} afbeeldingen, {2} ms per stuk"),
+    RU("{0} / {1} изображений, по {2} мс"),
+    TR("{0} / {1} görüntü, her biri {2} ms"));
+
 SS_MSG(log_done,
     EN("done: {0} written, {1} already there, in {2}"),
     JA("完了: {0} 枚を書き出し、{1} 枚は既存、所要 {2}"),

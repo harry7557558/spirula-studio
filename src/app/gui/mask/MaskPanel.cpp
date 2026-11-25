@@ -380,7 +380,7 @@ void MaskSession::draw_workflow_row() {
     ui::help_on_hover_disabled(msg::prop_undo_help);
     ImGui::EndDisabled();
     note_row_width();
-    // In the warning's row and at its height, so a run moves nothing below it.
+    // Propagation replaces the warning while it runs.
     if (const int total = propagate_total(); total > 0) {
         const int done = std::min(propagate_done(), total);
         const double now = progress_now();
@@ -394,7 +394,7 @@ void MaskSession::draw_workflow_row() {
         if (ui::SmallButton(msg::prop_cancel)) cancel_propagate();
         ImGui::EndDisabled();
         ui::help_on_hover_disabled(msg::prop_cancel_help);
-        ImGui::SameLine();
+        note_row_width();
         progress_time_line(_prop_clock);
     } else {
         _prop_clock = ProgressClock{};

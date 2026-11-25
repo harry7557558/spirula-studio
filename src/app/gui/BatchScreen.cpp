@@ -1082,9 +1082,8 @@ void GuiApp::draw_batch_plan() {
 }
 
 
-// How far through the running task its own runner says it is. Every stage
-// answers in its own terms, which is why this is not one number somewhere.
-float GuiApp::batch_task_fraction() {
+float GuiApp::batch_task_fraction(double& remaining) {
+    remaining = -1.0;
     if (!_batch_active || _batch_current < 0 ||
         _batch_current >= (int)_batch_tasks.size())
         return -1.0f;
@@ -1098,12 +1097,18 @@ float GuiApp::batch_task_fraction() {
             const float inner = sp.fraction >= 0.0f ? sp.fraction : 0.5f;
             return std::min(1.0f, ((float)at + inner) / (float)kNumStages);
         }
-        case BatchStage::Train:
-            tick_train_clock();
-            return _train_clock.started() ? _train_clock.fraction() : -1.0f;
+        case BatchStage::Train: {
+            const TrainRunner::Phase phase = _runner.phase();
+            if (phase != TrainRunner::Phase::Training) return -1.0f;
+            const double elapsed = tick_train_clock(phase, _runner.latest_progress());
+            if (!_train_clock.started()) return -1.0f;
+            remaining = _train_clock.remaining(elapsed);
+            return _train_clock.fraction();
+        }
         case BatchStage::Merge: return 0.5f;
         case BatchStage::Mesh:
             _mesh.poll();
+            remaining = _mesh.clock().remaining(progress_now());
             return _mesh.clock().started() ? _mesh.clock().fraction() : -1.0f;
     }
     return -1.0f;
@@ -1152,10 +1157,11 @@ void GuiApp::draw_batch_stop_buttons() {
 // screen shows the job; this says where in the QUEUE it is.
 void GuiApp::draw_batch_progress() {
     ui::SeparatorText(msg::batch_title);
-    const float frac = batch_task_fraction();
+    double runner_remaining;
+    const float frac = batch_task_fraction(runner_remaining);
     const double elapsed = batch_task_elapsed();
     const BatchProgress p =
-        batch_progress(_batch_tasks, _batch_current, frac, elapsed);
+        batch_progress(_batch_tasks, _batch_current, frac, elapsed, runner_remaining);
     const double now = progress_now();
     if (!_batch_queue_clock.started()) _batch_queue_clock.start(now);
     _batch_queue_clock.work(now, p.total > 0 ? (double)p.done / (double)p.total : 0.0,
@@ -1164,7 +1170,8 @@ void GuiApp::draw_batch_progress() {
         _batch_task_clock.start(now - elapsed);
         _batch_clock_task = _batch_current;
     }
-    if (frac >= 0.0f) _batch_task_clock.work(now, frac, p.task_remaining);
+    if (frac >= 0.0f || p.task_remaining >= 0.0)
+        _batch_task_clock.work(now, std::max(0.0f, frac), p.task_remaining);
 
     ui::Text(msg::batch_running_banner,
              {(long long)(_batch_current + 1), (long long)_batch_tasks.size()});
