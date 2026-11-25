@@ -1,6 +1,7 @@
 // FrameRenderer.cpp -- see FrameRenderer.h.
 
 #include "app/gui/render/FrameRenderer.h"
+#include "checkpoint/BackgroundExport.h"
 
 #include "app/gui/render/TransitionFx.h"
 
@@ -85,6 +86,22 @@ uniform float u_mix;
 uniform vec2 u_dir;
 uniform float u_aspect;
 uniform vec4 u_bg;
+uniform sampler2D u_sky;
+uniform int u_use_sky;
+uniform vec3 u_sk0;
+uniform vec3 u_sk1;
+uniform vec3 u_sk2;
+uniform float u_focal;
+// Skybox behind the layers along each pixel's ray; alpha 0 stays transparent.
+vec4 sky_bg() {
+    if (u_use_sky == 0) return u_bg;
+    vec3 d = vec3((v_uv.x - 0.5) / u_focal,
+                  (v_uv.y - 0.5) / (u_focal * u_aspect), -1.0);
+    d = normalize(vec3(dot(u_sk0, d), dot(u_sk1, d), dot(u_sk2, d)));
+    vec2 st = vec2(atan(d.x, d.z) / 6.28318530718 + 0.5,
+                   0.5 - asin(clamp(d.y, -1.0, 1.0)) / 3.14159265359);
+    return vec4(texture(u_sky, st).rgb * u_bg.a, u_bg.a);
+}
 uniform vec4 u_tint0;
 uniform vec4 u_tint1;
 uniform float u_soft;
@@ -139,14 +156,15 @@ vec4 layer(sampler2D t, int has, int flip, vec4 la, vec4 lb, int keep_out) {
     return c * (m * la.x);
 }
 void main() {
+    vec4 bgc = sky_bg();
     vec4 a = u_has_a == 1 ? fetch(u_a, u_flip_a, v_uv) : vec4(0.0);
     vec4 b = u_has_b == 1 ? fetch(u_b, u_flip_b, v_uv) : vec4(0.0);
     vec4 c;
     if (u_mode == 1) {
-        c = over(over(b, a), u_bg);
+        c = over(over(b, a), bgc);
     } else if (u_mode == 3) {
         c = over(layer(u_b, u_has_b, u_flip_b, u_la1, u_lb1, u_lo1),
-                 over(layer(u_a, u_has_a, u_flip_a, u_la0, u_lb0, u_lo0), u_bg));
+                 over(layer(u_a, u_has_a, u_flip_a, u_la0, u_lb0, u_lo0), bgc));
     } else if (u_mode == 2) {
         // The old picture rushes past the camera, the new one arrives from far.
         float m = u_mix;
@@ -154,7 +172,7 @@ void main() {
         float zb = 1.0 / (1.0 + 2.0 * u_zoom * (1.0 - m) * (1.0 - m));
         vec4 ca = u_has_a == 1 ? zoomed(u_a, u_flip_a, v_uv, za, u_zoom * m) : vec4(0.0);
         vec4 cb = u_has_b == 1 ? zoomed(u_b, u_flip_b, v_uv, zb, u_zoom * (1.0 - m)) : vec4(0.0);
-        c = mix(over(ca, u_bg), over(cb, u_bg), smoothstep(0.3, 0.7, m));
+        c = mix(over(ca, bgc), over(cb, bgc), smoothstep(0.3, 0.7, m));
     } else {
         float m = u_mix;
         vec2 img = vec2(v_uv.x, 1.0 - v_uv.y);
@@ -168,7 +186,7 @@ void main() {
             float r = length(d) / (0.5 * sqrt(u_aspect * u_aspect + 1.0));
             m = 1.0 - smoothstep(u_mix - e, u_mix + e, r);
         }
-        c = mix(over(a, u_bg), over(b, u_bg), m);
+        c = mix(over(a, bgc), over(b, bgc), m);
     }
     frag = tint(tint(c, u_tint0), u_tint1);
 }
@@ -289,6 +307,8 @@ FrameRenderer::~FrameRenderer() {
 }
 
 void FrameRenderer::destroy_gl() {
+    if (_sky_tex) { GLuint g = _sky_tex; glDeleteTextures(1, &g); _sky_tex = 0; }
+    _sky_key.clear();
     for (auto& s : _slots)
         if (s->gl) s->gl->destroy_gl();
     for (unsigned& t : _tex_pool)
@@ -852,8 +872,9 @@ bool FrameRenderer::ensure_compositor() {
     const char* names[] = {"u_a", "u_b", "u_has_a", "u_has_b", "u_flip_a",
                            "u_flip_b", "u_mode", "u_mask", "u_mix", "u_dir",
                            "u_aspect", "u_bg", "u_tint0", "u_tint1", "u_soft", "u_zoom",
-                           "u_la0", "u_lb0", "u_lo0", "u_la1", "u_lb1", "u_lo1"};
-    for (int i = 0; i < 22; i++) _u[i] = glx::GetUniformLocation(_prog, names[i]);
+                           "u_la0", "u_lb0", "u_lo0", "u_la1", "u_lb1", "u_lo1",
+                           "u_sky", "u_use_sky", "u_sk0", "u_sk1", "u_sk2", "u_focal"};
+    for (int i = 0; i < 28; i++) _u[i] = glx::GetUniformLocation(_prog, names[i]);
     GLuint vao = 0;
     glx::GenVertexArrays(1, &vao);
     _vao = vao;
@@ -912,6 +933,59 @@ void FrameRenderer::composite() {
         glx::ActiveTexture(GL_TEXTURE0 + i);
         glBindTexture(GL_TEXTURE_2D, _layer_tex[i]);
     }
+    bool sky = false;
+    spirula::Sim3 sky_n2w;
+    const bool black = _spec.background[0] == 0.0f && _spec.background[1] == 0.0f &&
+                       _spec.background[2] == 0.0f;
+    if (black && _spec.cam.lens.projection == Projection::Perspective) {
+        for (auto& sp : _slots) {
+            const SourceView& v = sp->view;
+            if (v.kind != SourceView::Splats || v.file.empty()) continue;
+            if (_sky_key != v.file) {
+                _sky_key = v.file;
+                if (_sky_tex) { GLuint g = _sky_tex; glDeleteTextures(1, &g); _sky_tex = 0; }
+                int deg = 0, transfer = 0;
+                bool lin = false;
+                std::vector<float3> coeffs;
+                std::vector<float> mat;
+                std::vector<uint8_t> rgb;
+                if (ckpt::load_background_sh(std::filesystem::path(v.file).parent_path(),
+                                             deg, coeffs, transfer, lin, &mat) &&
+                    ckpt::render_background_sh_equirectangular(
+                        coeffs.data(), deg, 1024, 512, rgb, transfer, lin,
+                        mat.empty() ? nullptr : mat.data())) {
+                    GLuint t = 0;
+                    glGenTextures(1, &t);
+                    _sky_tex = t;
+                    glx::ActiveTexture(GL_TEXTURE2);
+                    glBindTexture(GL_TEXTURE_2D, t);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1024, 512, 0, GL_RGB,
+                                 GL_UNSIGNED_BYTE, rgb.data());
+                    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+                }
+            }
+            sky = _sky_tex != 0;
+            sky_n2w = v.norm_to_world;
+            break;
+        }
+    }
+    glx::ActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, sky ? _sky_tex : 0);
+    glx::Uniform1i(_u[22], 2);
+    glx::Uniform1i(_u[23], sky ? 1 : 0);
+    if (sky) {
+        float q[12];
+        camera_in(_spec.cam, sky_n2w, q);
+        glx::Uniform3f(_u[24], (float)q[0], (float)q[1], (float)q[2]);
+        glx::Uniform3f(_u[25], (float)q[4], (float)q[5], (float)q[6]);
+        glx::Uniform3f(_u[26], (float)q[8], (float)q[9], (float)q[10]);
+        glx::Uniform1f(_u[27], (float)_spec.cam.lens.focal);
+    }
     glx::Uniform1i(_u[0], 0);
     glx::Uniform1i(_u[1], 1);
     glx::Uniform1i(_u[2], _layer_tex[0] ? 1 : 0);
@@ -940,7 +1014,7 @@ void FrameRenderer::composite() {
     glx::BindVertexArray(_vao);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glx::BindVertexArray(0);
-    for (int i = 1; i >= 0; i--) {
+    for (int i = 2; i >= 0; i--) {
         glx::ActiveTexture(GL_TEXTURE0 + i);
         glBindTexture(GL_TEXTURE_2D, 0);
     }

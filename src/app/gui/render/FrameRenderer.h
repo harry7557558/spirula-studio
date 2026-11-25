@@ -168,6 +168,8 @@ public:
 
 private:
     struct SplatHost;
+    unsigned _sky_tex = 0;
+    std::string _sky_key;
     struct Slot;
     enum class Stage { Idle, Rendering };
 
@@ -201,7 +203,7 @@ private:
 
     unsigned _prog = 0, _vao = 0, _fbo = 0, _out_tex = 0;
     int _out_w = 0, _out_h = 0;
-    int _u[22] = {};
+    int _u[28] = {};
     // The blend pass and the textures passes and layers land in.
     unsigned _blend_prog = 0, _blend_fbo = 0;
     int _bu[6] = {};
