@@ -9,6 +9,7 @@
 #include "app/gui/Ui.h"
 #include "core/Env.h"
 #include "i18n/catalog/Gui.h"
+#include "i18n/catalog/Mesh.h"
 #if defined(SS_BUILD_SAM) || defined(SS_TOOL_SFM) || defined(SS_BACKEND_VULKAN)
 #include "core/VulkanDeviceSelection.h"
 #endif
@@ -91,6 +92,44 @@ void GuiApp::load_native_devices() {
     }
 #endif
     _native_devices_loaded = true;
+}
+
+void GuiApp::draw_engine_device_picker(bool busy) {
+#ifdef SS_BACKEND_VULKAN
+    draw_device_picker();
+#else
+    ui::SeparatorText(msg::section_device);
+    {
+        int n_dev = backend::device_count();
+        int cur = backend::device_current();
+        backend::DeviceInfo curd = backend::device_info(cur);
+        ImGui::BeginDisabled(_cuda_device_locked || busy || n_dev == 0);
+        ImGui::SetNextItemWidth(px(-8.0f));
+        // Device names come from the driver; only the "none found" and
+        // "unsupported" notes are ours.
+        if (ui::BeginComboRaw("##device",
+                              cur >= 0 ? curd.name : msg::no_device_found.get())) {
+            for (int i = 0; i < n_dev; i++) {
+                backend::DeviceInfo d = backend::device_info(i);
+                char label[324];
+                std::snprintf(label, sizeof(label), "%s (%s, %llu MB)%s##d%d",
+                              d.name, d.type,
+                              (unsigned long long)(d.vram_bytes >> 20),
+                              d.usable ? "" : msg::device_unsupported.get(), i);
+                ImGui::BeginDisabled(!d.usable);
+                bool sel = i == cur;
+                if (ui::SelectableRaw(label, sel)) backend::device_select(i);
+                if (sel) ImGui::SetItemDefaultFocus();
+                ImGui::EndDisabled();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::EndDisabled();
+        ui::help_on_hover_disabled(spirula::i18n::msg::mesh::help_device_cuda);
+        if (_cuda_device_locked)
+            ui::TextColoredWrapped(kDim, msg::device_cuda_locked);
+    }
+#endif
 }
 
 void GuiApp::draw_device_picker(bool as_menu) {
@@ -201,6 +240,7 @@ void GuiApp::draw_device_picker(bool as_menu) {
             ImGui::EndCombo();
         }
         ImGui::EndDisabled();
+        ui::help_on_hover_disabled(msg::device_help);
     }
 
     if (!_native_device_error.empty())

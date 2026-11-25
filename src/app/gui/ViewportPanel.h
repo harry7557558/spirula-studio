@@ -86,6 +86,8 @@ public:
         std::function<void()> on_primitive_changed);
     void attach_hardware(const ViewerRenderConfig& cfg, const std::string& path,
                          const std::string& key, const float center[3], float unit);
+    void attach_splat_preview(const spirula::SplatCloud& sample, const std::string& key,
+                             const float center[3], float unit);
     void detach();
     // A saved placement can change the frame without changing element counts.
     void invalidate_framing() { _framed_key.clear(); }
@@ -232,6 +234,8 @@ public:
     // training iteration that has just finished (< 0 when unknown), which is
     // what paces the refresh while nobody is steering the camera.
     void draw(bool training, int step = -1);
+    // For a job monitor sharing the GPU: budget framebuffer pixels and reuse idle frames.
+    void limit_preview_pixels(int pixels);
 
     // Free GL resources. Call while the GL context is still current
     // (before ImGui/GLFW shutdown).
@@ -334,6 +338,8 @@ private:
     void handle_input(float item_h);         // mouse/keys/gamepad on last item
     void draw_engine(bool training, const ImVec2& avail, int step);
     void pump_engine(bool training, const ImVec2& avail, int step);
+    int preview_display_size(float extent) const;
+    float preview_scale(int w, int h) const;
     unsigned pump_preview(const ImVec2& avail, int& W, int& H);
     unsigned pump_hardware(int W, int H);
     void draw_preview(const ImVec2& avail);
@@ -344,6 +350,7 @@ private:
     int _wipe_drag = -1;
     float _last_avail_w = 0.0f, _last_avail_h = 0.0f;
     unsigned _preview_tex = 0;
+    int _preview_limit = 0, _preview_max_side = 0, _preview_display_w = 0, _preview_display_h = 0;
 
     Mode _mode = Mode::None;
     HardwareSplatRenderer _hardware;

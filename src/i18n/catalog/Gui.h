@@ -4035,6 +4035,17 @@ SS_MSG(cfg_tier_advanced,
     PT("Avançado"),      IT("Avanzate"),     NL("Geavanceerd"),  RU("Дополнительные"),
     TR("Gelişmiş"));
 
+SS_MSG(mesh_preview_surface,
+    EN("Surface preview"), JA("表面プレビュー"), ZH_HANS("表面预览"), ZH_HANT("表面預覽"),
+    KO("표면 미리보기"), DE("Oberflächenvorschau"), FR("Aperçu de surface"), ES("Vista previa de la superficie"),
+    PT("Prévia da superfície"), RU("Предпросмотр поверхности"), IT("Anteprima superficie"),
+    TR("Yüzey önizlemesi"), NL("Oppervlaktevoorbeeld"));
+
+SS_MSG(mesh_tier_expert,
+    EN("Expert"), JA("エキスパート"), ZH_HANS("专家"), ZH_HANT("專家"),
+    KO("전문가"), DE("Experte"), FR("Expert"), ES("Experto"), PT("Especialista"),
+    RU("Эксперт"), IT("Esperto"), TR("Uzman"), NL("Expert"));
+
 SS_MSG(cfg_tier_all,
     EN("Everything"),    JA("すべて"),        ZH_HANS("全部"),     ZH_HANT("全部"),
     KO("전체"),           DE("Alles"),        FR("Tout"),         ES("Todo"),

@@ -304,15 +304,11 @@ void GuiApp::draw_new_dataset() {
     // watched entirely through.
     const float log_h = log_height(ImGui::GetContentRegionAvail().y - strip_h);
 
-    // Side by side only when there is a preview AND room for both. On a narrow
-    // window the preview goes under the form instead, which is worth less but
-    // costs the form nothing it cannot scroll.
     const bool wide = ImGui::GetContentRegionAvail().x >= px(1000.0f);
     update_source_preview_gpu();
-    const bool two_col = (preview_has_content() || source_preview_available()) && wide;
 
     ImGui::BeginChild("##dsbody", ImVec2(0, body_height(log_h) - strip_h));
-    if (two_col) {
+    if (wide) {
         const float w = std::clamp(_ds_panel_w * ui_scale(), px(320.0f),
                                    std::max(px(320.0f),
                                             ImGui::GetContentRegionAvail().x * 0.6f));
@@ -328,7 +324,12 @@ void GuiApp::draw_new_dataset() {
         }
         ImGui::BeginGroup();
         if (running || preview_has_content()) draw_dataset_steps();
-        draw_dataset_right(ImGui::GetContentRegionAvail().y);
+        if (!running && !source_preview_available() && !run_preview_available()) {
+            _source_view.pause();
+            ImGui::BeginChild("##dsEmptyPreview", ImVec2(0, col_h));
+            ui::CenteredText(dmsg::preview_choose_source);
+            ImGui::EndChild();
+        } else draw_dataset_right(ImGui::GetContentRegionAvail().y);
         ImGui::EndGroup();
     } else {
         const float avail = ImGui::GetContentRegionAvail().y;

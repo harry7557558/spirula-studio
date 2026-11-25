@@ -27,6 +27,15 @@ namespace dataset {
 // Screen chrome
 // ===========================================================================
 
+SS_MSG(preview_choose_source,
+    EN("Add photos, a video or a scan to preview your input."), JA("写真、動画、スキャンを追加すると、ここで確認できます。"),
+    ZH_HANS("添加照片、视频或扫描数据即可预览输入。"), ZH_HANT("新增照片、影片或掃描資料即可預覽輸入。"),
+    KO("사진, 동영상 또는 스캔을 추가해 입력을 미리 보세요."), DE("Fotos, ein Video oder einen Scan für die Vorschau hinzufügen."),
+    FR("Ajoutez des photos, une vidéo ou un scan pour voir un aperçu."), ES("Añade fotos, un vídeo o un escaneo para ver la vista previa."),
+    PT("Adicione fotos, um vídeo ou uma digitalização para ver a prévia."), IT("Aggiungi foto, un video o una scansione per vedere l’anteprima."),
+    NL("Voeg foto’s, een video of een scan toe voor een voorbeeld."), RU("Добавьте фотографии, видео или скан для предпросмотра."),
+    TR("Önizleme için fotoğraf, video veya tarama ekleyin."));
+
 SS_MSG(title_from_video,
     EN("Create Dataset from Video"),
     JA("動画からデータセットを作成"),

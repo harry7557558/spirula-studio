@@ -1,6 +1,8 @@
 // MeshRunner.cpp -- see MeshRunner.h.
 
 #include "app/gui/MeshRunner.h"
+#include "app/gui/HardwareSplatRenderer.h"
+#include "app/MeshPreviewFile.h"
 
 #include "app/AppPaths.h"
 #include "app/gui/Subprocess.h"
@@ -10,10 +12,13 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <iomanip>
+#include <limits>
+#include <locale>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -82,6 +87,7 @@ void MeshRunner::start(const MeshJob& job) {
                          std::to_string((uint64_t)(progress_now() * 1e3) * 1000 + id % 1000))
                             .string();
     }
+    spirula::save_preview_device_free(_progress_dir, HardwareSplatRenderer::free_device_bytes());
     _state = State::Running;
     _worker = std::thread([this, job] { run(job); });
 }
@@ -238,26 +244,20 @@ void MeshRunner::run(MeshJob job) {
         argv.push_back("--texture-size");
         argv.push_back(std::to_string(job.texture_size));
     }
-    if (job.iso > 0.0f) {
-        char buf[32];
-        std::snprintf(buf, sizeof buf, "%g", job.iso);
-        argv.push_back("--iso");
-        argv.push_back(buf);
-    }
-    if (job.bisection_iters != 3) {
-        argv.push_back("--bisection-iters");
-        argv.push_back(std::to_string(job.bisection_iters));
-    }
-    if (job.merge_factor != 1.0f) {
-        char buf[32];
-        std::snprintf(buf, sizeof buf, "%g", job.merge_factor);
-        argv.push_back("--merge-factor");
-        argv.push_back(buf);
-    }
-    if (job.quality_iters != 3) {
-        argv.push_back("--quality-iters");
-        argv.push_back(std::to_string(job.quality_iters));
-    }
+    if (job.use_data && !job.data_format.empty())
+        argv.insert(argv.end(), {"--data-format", job.data_format});
+    if (job.quiet) argv.push_back("--quiet");
+    auto number = [&](const char* flag, auto value) {
+        std::ostringstream out;
+        out.imbue(std::locale::classic());
+        out << std::setprecision(std::numeric_limits<decltype(value)>::max_digits10) << value;
+        argv.insert(argv.end(), {flag, out.str()});
+    };
+#define SS_MESH_ARG(type, name, flag, initial, group, tier, help, visible) \
+    if (job.name != initial) number("--" flag, job.name);
+    SS_MESH_NUMERIC_FIELDS(SS_MESH_ARG)
+#undef SS_MESH_ARG
+    if (job.merge_factor != 1.0f) number("--merge-factor", job.merge_factor);
     if (job.floater_min_faces != 10) {
         argv.push_back("--floater-min-faces");
         argv.push_back(std::to_string(job.floater_min_faces));

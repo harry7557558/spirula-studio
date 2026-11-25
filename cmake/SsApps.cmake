@@ -123,7 +123,8 @@ list(APPEND SS_TOOL_DEFS SS_TOOL_DENSE=1)
 # ---- mesh extraction ----
 # Both backends: the host side is portable (mesh/OccupancyEvaluator.cpp) and
 # each has kernels (mesh/Meshing.cu, backend/vulkan/kernels/Meshing.cpp).
-list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/mesh_main.cpp)
+list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/mesh_main.cpp
+     ${SS_SRC}/app/MeshPreviewFile.cpp ${SS_SRC}/app/MeshPreviewBudget.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_MESH=1)
 
 # ---- a dataset from an E57 laser scan: host only, both backends ----
@@ -458,6 +459,12 @@ add_executable(cube_lut_test
     ${SS_SRC}/app/CubeLut.cpp
     ${SS_SRC}/app/LogLuts.cpp)
 ss_configure_app(cube_lut_test)
+
+add_executable(mesh_preview_test
+    ${SS_SRC}/app/tests/mesh_preview_test.cpp
+    ${SS_SRC}/app/MeshPreviewBudget.cpp
+    ${SS_SRC}/app/MeshPreviewFile.cpp)
+ss_configure_app(mesh_preview_test)
 
 # The frame plan: no device, no GUI, and a wrong answer is silent.
 add_executable(frame_motion_test

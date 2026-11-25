@@ -17,12 +17,11 @@ namespace {
 #define SS_MESH_PRESET_FIELDS(X)                                              \
     X("use_data",          use_data)                                          \
     X("max_cameras",       max_cameras)                                       \
+    X("data_format",       data_format)                                       \
+    X("quiet",             quiet)                                             \
     X("tsdf",              tsdf)                                              \
     X("texture_size",      texture_size)                                      \
-    X("iso",               iso)                                               \
-    X("bisection_iters",   bisection_iters)                                   \
     X("merge_factor",      merge_factor)                                      \
-    X("quality_iters",     quality_iters)                                     \
     X("floater_min_faces", floater_min_faces)                                 \
     X("cull_unseen",       cull_unseen)                                       \
     X("extra_args",        extra_args)                                        \
@@ -54,10 +53,14 @@ bool read_tokens(const JsonValue* v, bool* on, const char* const* names, int n) 
 void sanitize_mesh_job(MeshJob& job) {
     job.max_cameras = std::clamp(job.max_cameras, 0, 1000000);
     job.texture_size = std::clamp(job.texture_size, 0, 16384);
+    job.iso = std::max(0.0f, job.iso);
     job.bisection_iters = std::clamp(job.bisection_iters, 0, 32);
     job.quality_iters = std::clamp(job.quality_iters, 0, 32);
     job.floater_min_faces = std::clamp(job.floater_min_faces, 0, 10000000);
-    job.merge_factor = std::clamp(job.merge_factor, 0.05f, 16.0f);
+    job.merge_factor = std::clamp(job.merge_factor, 0.0f, 16.0f);
+
+    job.samples_per_gaussian = job.samples_per_gaussian == 1 ? 1 : 7;
+    job.check = std::clamp(job.check, 0, 2);
 
     bool any_color = false, any_format = false;
     for (int i = 0; i < kNumMeshColorModes; i++) any_color |= job.colors[i];
@@ -79,6 +82,9 @@ void save_mesh_preset(const MeshPreset& p, const std::string& path) {
     w.key("settings").object();
 #define SS_MESH_EMIT(key, member) w.field_raw(key, json_field::emit(p.job.member));
     SS_MESH_PRESET_FIELDS(SS_MESH_EMIT)
+#define SS_MESH_NUMBER(type, name, flag, initial, group, tier, help, visible) SS_MESH_EMIT(#name, name)
+    SS_MESH_NUMERIC_FIELDS(SS_MESH_NUMBER)
+#undef SS_MESH_NUMBER
 #undef SS_MESH_EMIT
     write_tokens(w, "colors", p.job.colors, kMeshColorModes, kNumMeshColorModes);
     write_tokens(w, "formats", p.job.formats, kMeshFormats, kNumMeshFormats);
@@ -103,6 +109,9 @@ MeshPreset load_mesh_preset(const std::string& path) {
     if (const JsonValue* v = fields->find(key))                               \
         json_field::assign(p.job.member, *v);
     SS_MESH_PRESET_FIELDS(SS_MESH_LOAD)
+#define SS_MESH_NUMBER(type, name, flag, initial, group, tier, help, visible) SS_MESH_LOAD(#name, name)
+    SS_MESH_NUMERIC_FIELDS(SS_MESH_NUMBER)
+#undef SS_MESH_NUMBER
 #undef SS_MESH_LOAD
 
     read_tokens(fields->find("formats"), p.job.formats, kMeshFormats,

@@ -96,6 +96,7 @@ struct MeshingConfig {
 
     // Told at every stage how far the run is and the memory it expects.
     MeshProgressSink on_progress;
+    std::function<void(const MeshData&, int stage, bool cleaned)> on_preview_mesh;
 };
 
 // Full camera intrinsics/extrinsics for the rasterize-and-sample (dataset)

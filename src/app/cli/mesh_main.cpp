@@ -18,9 +18,11 @@
 #include "backend/api/BackendRuntime.h"
 #include "checkpoint/SplatPly.h"
 #include "mesh/Meshing.h"
+#include "app/MeshPreviewFile.h"
 #include "mesh/MeshCheck.h"
 #include "mesh/MeshImport.h"
 #include "core/Camera.h"
+#include "core/HostMemory.h"
 #include "data/DatasetParser.h"
 #include "data/ImageProbe.h"
 #include "data/Json.h"
@@ -30,6 +32,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -363,12 +366,29 @@ int spirula_mesh_main(int argc, char** argv) {
             d.others = m.has_used && m.used_bytes > m.process_bytes ? m.used_bytes - m.process_bytes : 0;
             return true;
         });
-        if (!o.progress_dir.empty())
-            o.m.on_progress = [&report](const meshing::MeshProgressReport& r) {
+        meshing::MeshProgressReport forecast;
+        std::chrono::steady_clock::time_point next_intermediate{};
+        if (!o.progress_dir.empty()) {
+            o.m.on_progress = [&](const meshing::MeshProgressReport& r) {
+                forecast = r;
                 report.work(r.work);
                 report.host_peak({r.host_peak, r.host_sigma});
                 report.device_peak({r.device_peak, r.device_sigma});
             };
+            const uint64_t gl_free = spirula::load_preview_device_free(o.progress_dir);
+            o.m.on_preview_mesh = [&, gl_free](const meshing::MeshData& mesh, int stage, bool cleaned) {
+                const auto now = std::chrono::steady_clock::now();
+                if (!cleaned && now < next_intermediate) return;
+                const auto m = backend::memory_usage();
+                uint64_t free = spirula::mesh_preview_device_free(m);
+                if (gl_free) free = free ? std::min(gl_free, free) : gl_free;
+                const auto budget = spirula::mesh_preview_budget(free,
+                    forecast.host_peak + forecast.host_sigma - spirula::processRamBytes(),
+                    forecast.device_peak + forecast.device_sigma - m.process_bytes);
+                spirula::write_mesh_preview(o.progress_dir, mesh, stage, budget, cleaned);
+                next_intermediate = now + std::chrono::seconds(2);
+            };
+        }
 
         // The identity API is Vulkan-only; a CUDA child receives its ordinal.
 #ifdef SS_BACKEND_VULKAN

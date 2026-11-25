@@ -68,6 +68,22 @@ void run(const fs::path& dir, int64_t n, ColorBasis basis, int bits, bool fused,
         require(entry.path().extension() != ".tmp", "checkpoint left a temporary file");
     if (verify) {
         const auto saved = spirula::read_splat_ply((dir / "splat.ply").string());
+        const auto sample = spirula::read_splat_ply_sample((dir / "splat.ply").string(), 75);
+        require(sample.num == std::min<int64_t>(saved.num, 75), "wrong preview sample size");
+        require(sample.features_sh.empty(), "preview loaded view-dependent color");
+        const auto colored = spirula::read_splat_ply_sample((dir / "splat.ply").string(), 75, true);
+        require(colored.basis() == saved.basis() && colored.num == sample.num, "preview color basis mismatch");
+        for (int64_t i = 0; i < sample.num; ++i) {
+            const auto block = (i / 32) * 32;
+            const auto source = block * saved.num / sample.num + i - block;
+            for (int64_t k = 0; k < saved.coeffs()*3; ++k)
+                require(colored.features_sh[i*saved.coeffs()*3+k] == saved.features_sh[source*saved.coeffs()*3+k],
+                        "preview coefficient mismatch");
+            for (int axis = 0; axis < 3; ++axis) {
+                require(sample.means[i*3+axis] == saved.means[source*3+axis], "preview position mismatch");
+                require(sample.features_dc[i*3+axis] == saved.features_dc[source*3+axis], "preview color mismatch");
+            }
+        }
         require(saved.basis() == basis, "checkpoint changed the colour basis");
         int64_t row = 0;
         for (int64_t i = 0; i < n; ++i) {

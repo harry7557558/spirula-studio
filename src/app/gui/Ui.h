@@ -202,6 +202,18 @@ inline void TextWrapped(const Msg& m, std::initializer_list<Arg> a) {
     ImGui::PopTextWrapPos();
 }
 
+inline void CenteredText(const Msg& m) {
+    const ImVec2 area = ImGui::GetContentRegionAvail();
+    const ImVec2 pos = ImGui::GetCursorPos();
+    const float width = std::max(1.f, area.x);
+    const ImVec2 size = ImGui::CalcTextSize(m.get(), nullptr, false, width);
+    const float x = pos.x + std::max(0.f, (area.x - size.x) * .5f);
+    ImGui::SetCursorPos(ImVec2(x, pos.y + std::max(0.f, (area.y - size.y) * .5f)));
+    ImGui::PushTextWrapPos(pos.x + width);
+    Text(m);
+    ImGui::PopTextWrapPos();
+}
+
 inline void TextDisabled(const Msg& m) {
     ImGui::TextDisabled("%s", m.get());
 }

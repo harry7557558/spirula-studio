@@ -1,6 +1,7 @@
 // ViewportPanel.cpp -- see ViewportPanel.h.
 
 #include "app/gui/ViewportPanel.h"
+#include "checkpoint/SplatPly.h"
 #include "app/gui/ViewBookmarks.h"
 #include "data/FrustumTemplate.h"
 
@@ -957,6 +958,22 @@ void ViewportPanel::attach_hardware(const ViewerRenderConfig& cfg,
     refresh_buffer_keys();
 }
 
+void ViewportPanel::attach_splat_preview(const spirula::SplatCloud& sample, const std::string& key,
+                                        const float center[3], float unit) {
+    ViewerRenderConfig cfg;
+    _preview.destroy_gl();
+    attach_hardware(cfg, {}, key, center, unit);
+    _primitive_idx = 0;
+    for (int i = 0; i < kNumViewerPrimitives; ++i)
+        if (sample.primitive == kViewerPrimitives[i]) _primitive_idx = i;
+    try {
+        _hardware.load({}, center, unit, &sample);
+    } catch (...) {
+        detach();
+        throw;
+    }
+}
+
 void ViewportPanel::detach() {
     if (_mode == Mode::Hardware) _hardware.destroy();
     _hardware_path.clear();
@@ -1579,7 +1596,7 @@ void ViewportPanel::draw_controls(bool engine) {
     }
     // The "dataset preview" note explains why the image is points and not a
     // render; over a mesh it would be simply wrong.
-    if (!engine && !_preview.has_mesh()) {
+    if (!engine && !_preview.has_mesh() && !_preview_limit) {
         place(text_w(msg::viewport_dataset_preview.get()));
         ui::TextDisabled(msg::viewport_dataset_preview);
         ui::help_on_hover(msg::viewport_dataset_preview_help);
@@ -1877,9 +1894,10 @@ void ViewportPanel::draw(bool training, int step) {
 
     if (_mode == Mode::Hardware) {
         try {
-            const int W = int(std::clamp(avail.x, 64.f, 4096.f));
-            const int H = int(std::clamp(avail.y, 64.f, 4096.f));
-            const unsigned tex = pump_hardware(W, H);
+            const int W = preview_display_size(avail.x);
+            const int H = preview_display_size(avail.y);
+            const float scale = preview_scale(W, H);
+            const unsigned tex = pump_hardware(std::max(1, int(W * scale)), std::max(1, int(H * scale)));
             ImGui::Image((ImTextureID)(intptr_t)tex, ImVec2(float(W), float(H)), ImVec2(0,1), ImVec2(1,0));
             if (_wipe_splits) draw_wipe(ImGui::GetItemRectMin(), ImGui::GetItemRectSize());
             handle_input(float(H));
@@ -1907,9 +1925,39 @@ unsigned ViewportPanel::pump_hardware(int W, int H) {
     return _hardware_tex;
 }
 
+void ViewportPanel::limit_preview_pixels(int pixels) {
+    if (!_preview_max_side) {
+        int texture = 0, renderbuffer = 0;
+        glGetIntegerv(GL_MAX_TEXTURE_SIZE, &texture);
+        glGetIntegerv(0x84e8 /* GL_MAX_RENDERBUFFER_SIZE */, &renderbuffer);
+        _preview_max_side = std::max(1, std::min(texture, renderbuffer));
+    }
+    if (_preview_limit != pixels) _dirty = true;
+    _preview_limit = pixels;
+}
+
+int ViewportPanel::preview_display_size(float extent) const {
+    return int(_preview_limit ? std::max(extent, 64.f) : std::clamp(extent, 64.f, 4096.f));
+}
+
+float ViewportPanel::preview_scale(int w, int h) const {
+    if (!_preview_limit) return 1;
+    return std::min({1.f, float(_preview_max_side) / std::max(w, h),
+                     std::sqrt(float(_preview_limit) / (float(w) * h))});
+}
+
 unsigned ViewportPanel::pump_preview(const ImVec2& avail, int& W, int& H) {
-    W = (int)std::clamp(avail.x, 64.0f, 4096.0f);
-    H = (int)std::clamp(avail.y, 64.0f, 4096.0f);
+    W = preview_display_size(avail.x);
+    H = preview_display_size(avail.y);
+    float scale = 1.0f;
+    if (_preview_limit > 0) {
+        if (_preview_tex && !_dirty && !_moved_last_draw && W == _preview_display_w && H == _preview_display_h)
+            return _preview_tex;
+        _preview_display_w = W;
+        _preview_display_h = H;
+        _dirty = false;
+        scale = preview_scale(W, H);
+    }
     float view[16];
     view_matrix(view);
     float fx, fy;
@@ -1920,8 +1968,8 @@ unsigned ViewportPanel::pump_preview(const ImVec2& avail, int& W, int& H) {
     _preview.set_overlay(_roi_preview, _show_roi);
     _preview.dim_points_outside(_roi_points_inside, _show_roi);
     PreviewStyle style;
-    style.point_px = _point_px;
-    _preview_tex = _preview.render(W, H, view,
+    style.point_px = _point_px * scale;
+    _preview_tex = _preview.render(std::max(1, int(W * scale)), std::max(1, int(H * scale)), view,
                                    (PreviewProjection)_cam_model,
                                    fx / (0.5f * W), fy / (0.5f * H),
                                    _home_dist, nav_dist() / _m2s_scale, target,

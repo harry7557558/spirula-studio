@@ -165,6 +165,7 @@ void GuiApp::shutdown() {
     }
     _batch_active = false;
     detach_session_views();
+    _mesh_monitor.clear();
     _viewport.destroy_gl();
     _images.destroy_gl();
     _mesh.cancel();
@@ -266,6 +267,7 @@ void GuiApp::load_settings() {
                                                              0.0f, 3.0f));
         else if (k == "panel_w") _panel_w = (float)atof(v.c_str());
         else if (k == "ds_panel_w") _ds_panel_w = (float)atof(v.c_str());
+        else if (k == "mesh_panel_w") _mesh_panel_w = (float)atof(v.c_str());
         else if (k == "edit_panel_w") _edit_panel_w = (float)atof(v.c_str());
         else if (k == "log_h") _log_h = (float)atof(v.c_str());
         else if (k == "show_log") _show_log = v != "0";
@@ -288,6 +290,7 @@ void GuiApp::load_settings() {
     _log_h = std::clamp(_log_h, 60.0f, 800.0f);
     _preview_h = std::clamp(_preview_h, 60.0f, 800.0f);
     _ds_panel_w = std::clamp(_ds_panel_w, 320.0f, 1200.0f);
+    _mesh_panel_w = std::max(320.0f, _mesh_panel_w);
     _edit_panel_w = std::clamp(_edit_panel_w, 220.0f, 900.0f);
 
     // The settings file is the third step of the chain and loses to both
@@ -318,6 +321,7 @@ void GuiApp::save_settings() {
     std::fprintf(f, "ui_scale=%.3f\n", _scale.user());
     std::fprintf(f, "panel_w=%.1f\n", _panel_w);
     std::fprintf(f, "ds_panel_w=%.1f\n", _ds_panel_w);
+    std::fprintf(f, "mesh_panel_w=%.1f\n", _mesh_panel_w);
     std::fprintf(f, "edit_panel_w=%.1f\n", _edit_panel_w);
     std::fprintf(f, "log_h=%.1f\n", _log_h);
     std::fprintf(f, "show_log=%d\n", _show_log ? 1 : 0);

@@ -31,6 +31,7 @@ void GuiApp::draw_menu_bar() {
                       FileDialog::Mode::FileOrFolder, {".tar", ".ply"});
         ui::help_on_hover_disabled(msg::resume_training_help);
         if (ui::MenuItem(msg::menu_new_dataset) && !native_work_busy()) {
+            close_mesh_preview();
             close_splat();
             _screen = Screen::NewDataset;
         }
@@ -60,8 +61,10 @@ void GuiApp::draw_menu_bar() {
             if (picked) open_recent(go);
         }
         ImGui::Separator();
-        if (ui::MenuItem(msg::menu_batch) && !native_work_busy())
+        if (ui::MenuItem(msg::menu_batch) && !native_work_busy()) {
+            close_mesh_preview();
             _screen = Screen::Batch;
+        }
         ImGui::Separator();
         if (ui::MenuItem(msg::menu_quit)) request_close();
         ImGui::EndMenu();

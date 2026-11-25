@@ -182,9 +182,8 @@ void init() {
 }
 void check_gl() {
     const unsigned error = glGetError();
-    if (error) throw std::runtime_error(error == GL_OUT_OF_MEMORY
-        ? "Insufficient GPU memory for hardware splat rendering"
-        : "Hardware splat renderer OpenGL error " + std::to_string(error));
+    if (error == GL_OUT_OF_MEMORY) throw SplatMemoryError("Insufficient GPU memory for hardware splat rendering");
+    if (error) throw std::runtime_error("Hardware splat renderer OpenGL error " + std::to_string(error));
 }
 std::string shader(const std::string& name);
 // Substitutes ${NAME} with the shaders.js source of that name.
@@ -315,6 +314,15 @@ uint pcgHash(uint v) {
 }
 }
 
+uint64_t HardwareSplatRenderer::free_device_bytes() {
+    // Free texture memory on the actual OpenGL adapter, in KiB. It may differ from the compute adapter.
+    GLint kib[4]{};
+    if (glfwExtensionSupported("GL_NVX_gpu_memory_info")) glGetIntegerv(0x9049, kib);
+    else if (glfwExtensionSupported("GL_ATI_meminfo")) glGetIntegerv(0x87fc, kib);
+    else return 0;
+    return std::max<int64_t>(1, int64_t(kib[0]) * 1024);
+}
+
 HardwareSplatRenderer::Texture HardwareSplatRenderer::allocate(
         int64_t count, unsigned internal, unsigned format, unsigned type) {
     Texture t;
@@ -325,16 +333,15 @@ HardwareSplatRenderer::Texture HardwareSplatRenderer::allocate(
     t.layers = int((count + int64_t(t.width) * t.height - 1) / (int64_t(t.width) * t.height));
     t.layers = std::max(1, t.layers);
     int limit; glGetIntegerv(0x88ff, &limit);
-    if (t.layers > limit) throw std::runtime_error("Splat texture exceeds OpenGL array layer limit");
+    if (t.layers > limit) throw SplatMemoryError("Splat texture exceeds OpenGL array layer limit");
     glGenTextures(1, &t.id); glBindTexture(array_texture, t.id);
     glTexParameteri(array_texture, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(array_texture, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     image3(array_texture, 0, internal, t.width, t.height, t.layers, 0, format, type, nullptr);
     if (const auto error = glGetError()) {
         glDeleteTextures(1, &t.id);
-        throw std::runtime_error(error == GL_OUT_OF_MEMORY
-            ? "Insufficient GPU memory for hardware splat attributes"
-            : "OpenGL texture allocation failed: " + std::to_string(error));
+        if (error == GL_OUT_OF_MEMORY) throw SplatMemoryError("Insufficient GPU memory for hardware splat attributes");
+        throw std::runtime_error("OpenGL texture allocation failed: " + std::to_string(error));
     }
     return t;
 }
@@ -356,12 +363,13 @@ void HardwareSplatRenderer::upload(const Texture& t, int64_t first, int64_t coun
     check_gl();
 }
 
-void HardwareSplatRenderer::load(const std::string& path, const float center[3], float unit) {
+void HardwareSplatRenderer::load(const std::string& path, const float center[3], float unit,
+                                 const spirula::SplatCloud* sample) {
     destroy(); init();
     while (glGetError()) {}
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     try {
-        spirula::read_splat_ply_chunks(path, 65536, [&](const spirula::SplatCloud& c, int64_t first, int64_t total) {
+        auto upload_rows = [&](const spirula::SplatCloud& c, int64_t first, int64_t total) {
             const int64_t row = c.coeffs();
             if (!first) {
                 if (c.sh_degree > 4)
@@ -370,9 +378,9 @@ void HardwareSplatRenderer::load(const std::string& path, const float center[3],
                     throw std::runtime_error("Splat count exceeds signed OpenGL texture indexing capacity");
                 const auto available = spirula::availableRamBytes();
                 // Driver texture backing raised measured SH3 RSS to 139 bytes per splat at 100M.
-                const uint64_t host_estimate = uint64_t(total)*(88+4*row)+(256ull<<20);
+                const uint64_t host_estimate = uint64_t(total)*(88+4*row) + (sample ? 8ull << 20 : 256ull << 20);
                 if (available && host_estimate > available * 3 / 4)
-                    throw std::runtime_error("Insufficient host memory for hardware viewer positions and sorting");
+                    throw SplatMemoryError("Insufficient host memory for hardware viewer positions and sorting");
                 _count = uint32_t(total); _degree = c.sh_degree;
                 _rest = c.basis().sh_coeffs(); _lobes = c.sb_lobes;
                 _positions.resize(size_t(total) * 3);
@@ -426,7 +434,7 @@ void HardwareSplatRenderer::load(const std::string& path, const float center[3],
                 }
                 rot[i*4+3] = norm ? c.quats[i*4]*norm : 1;
                 pos[i*4+3] = 1/(1+std::exp(-c.opacities[i]));
-                const float* rest = c.features_sh.data() + i*row*3;
+                const float* rest = row ? c.features_sh.data() + i*row*3 : nullptr;
                 float max_sh = 0;
                 for (int j = 0; j < _rest*3; ++j) {
                     if (!std::isfinite(rest[j]) || std::abs(rest[j]) > 32768)
@@ -475,7 +483,9 @@ void HardwareSplatRenderer::load(const std::string& path, const float center[3],
                 upload(_textures[8+sb_at/sb_chunk], sb_at%sb_chunk, n, 4, GL_RGBA, GL_FLOAT, q);
                 sb_left -= n; sb_at += n; q += n*4;
             }
-        });
+        };
+        if (sample) upload_rows(*sample, 0, sample->num);
+        else spirula::read_splat_ply_chunks(path, 65536, upload_rows);
         glx::GenVertexArrays(1, &_vao); glx::BindVertexArray(_vao);
         glx::GenBuffers(1, &_indices); glx::BindBuffer(GL_ARRAY_BUFFER, _indices);
         _stochastic = engine_stochastic_enabled();

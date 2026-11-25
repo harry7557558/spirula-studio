@@ -17,6 +17,7 @@
 #include <fstream>
 #include <future>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 
@@ -302,6 +303,26 @@ public:
     // The file's count, basis and primitive; no rows.
     const SplatCloud& shape() const { return _shape; }
 
+    void read_sample(SplatCloud& dst, int64_t limit, const std::function<bool()>& cancelled) {
+        if (cancelled && cancelled()) return;
+        dst = shape();
+        dst.num = std::min(dst.num, limit);
+        size(dst, dst.num);
+        // ASCII has no row offsets. Its preview uses the first rows.
+        if (_h.binary_le && uint64_t(_h.num_vertex) >
+            uint64_t(std::numeric_limits<std::streamoff>::max() - std::streamoff(_h.data_start)) / _h.row_bytes)
+            throw std::runtime_error(_path + ": invalid binary vertex count");
+        const int64_t block = dst.num == _h.num_vertex ? 4096 : std::clamp<int64_t>(dst.num / 1024, 32, 4096);
+        for (int64_t i = 0; i < dst.num; i += block) {
+            if (cancelled && cancelled()) { dst = {}; return; }
+            if (_h.binary_le && dst.num < _h.num_vertex) {
+                const int64_t row = (_h.num_vertex / dst.num) * i + (_h.num_vertex % dst.num) * i / dst.num;
+                _f.seekg(_h.data_start + std::streamoff(row * _h.row_bytes));
+            }
+            read(dst, i, std::min(block, dst.num - i));
+        }
+    }
+
     // Sizes dst's arrays for n rows of this file's basis.
     void size(SplatCloud& dst, int64_t n) const {
         dst.means.resize((size_t)n * 3);
@@ -399,6 +420,14 @@ SplatCloud read_splat_ply(const std::string& path, bool want_sh) {
     r.size(out, out.num);
     r.read(out, 0, out.num);
     return out;
+}
+
+SplatCloud read_splat_ply_sample(const std::string& path, int limit, bool want_sh,
+                                 const std::function<bool()>& cancelled) {
+    SplatRowReader reader(path, want_sh);
+    SplatCloud sample;
+    reader.read_sample(sample, std::max(0, limit), cancelled);
+    return sample;
 }
 
 void read_splat_ply_chunks(

@@ -31,6 +31,7 @@
 #include "app/gui/Layout.h"
 #include "app/gui/LidarStep.h"
 #include "app/gui/MeshRunner.h"
+#include "app/gui/MeshMonitor.h"
 #include "app/gui/ModelCache.h"
 #include "app/gui/RecentList.h"
 #include "app/gui/Screenshot.h"
@@ -635,6 +636,7 @@ private:
     void draw_train_settings();      // left panel
     void draw_device_issue_banner();
     // Native picker and frozen identity, available from shared settings/View menu.
+    void draw_engine_device_picker(bool busy);
     void draw_device_picker(bool as_menu = false);
     // Lists the native devices once per session. Enumeration is side-effect
     // free (a throwaway Vulkan instance) and never creates a logical device.
@@ -839,6 +841,9 @@ private:
     // it is _compare holding the splats it came from and the surface.
     MeshRunner _mesh;
     MeshJob _mesh_job;
+    MeshMonitor _mesh_monitor;
+    std::string _mesh_search;
+    int _mesh_tier = 0;
     bool _mesh_preview_open = false; // _compare is showing this screen's result
     // The MeshRunner::run_id() whose result has already been opened. The
     // runner stays Done for the rest of the session, so without this the
@@ -1326,6 +1331,7 @@ private:
     // The New Dataset screen's own column width; the trainer's _panel_w is a
     // different screen with a different sensible size.
     float _ds_panel_w = kDefaultDsPanelW;
+    float _mesh_panel_w = 560.0f;
     // The editing panel's own width, dragged like the other two.
     float _edit_panel_w = kEditPanelW;
     bool _show_settings = true;

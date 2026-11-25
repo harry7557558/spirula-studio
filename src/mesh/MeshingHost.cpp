@@ -191,6 +191,7 @@ bool finish_mesh(Mesh& mesh, OccupancyEvaluator& ev, MeshProgress& prog,
     auto t6 = Clock::now();
     prog.raw_faces((double)mesh.F.size());
     prog.enter(MeshPhase::Merge);
+    if (cfg.on_preview_mesh) cfg.on_preview_mesh(mesh, 1, false);
     if (cfg.merge_factor > 0.0f)
         merge_vertices(mesh, merge_limits(mesh, ev, cfg, true),
                        cfg.merge_max_flip_deg, false, cfg.verbose, cfg.num_threads);
@@ -274,6 +275,7 @@ bool finish_mesh(Mesh& mesh, OccupancyEvaluator& ev, MeshProgress& prog,
     remove_floaters(mesh, cfg.floater_min_faces, cfg.verbose);
     split_nonmanifold_vertices(mesh, cfg.verbose);
     stage_check("split" + pass);
+    if (cfg.on_preview_mesh) cfg.on_preview_mesh(mesh, 2 + 2 * iter, false);
     fill_holes(mesh, cfg.fill_hole_ratio, cfg.fill_hole_max_edges, cfg.verbose);
     stage_check("fill" + pass);
     split_nonmanifold_vertices(mesh, cfg.verbose);
@@ -283,6 +285,7 @@ bool finish_mesh(Mesh& mesh, OccupancyEvaluator& ev, MeshProgress& prog,
                                          : cfg.degenerate_angle_deg, cfg.verbose, cfg.num_threads);
     dedup_faces(mesh, cfg.verbose);
     stage_check("cleanup" + pass);
+    if (cfg.on_preview_mesh) cfg.on_preview_mesh(mesh, 3 + 2 * iter, true);
     if (cfg.verbose)
         mlog::out(mlog::Stage::Cleanup, mmsg::seconds,
                   {mlog::num(secs_since(tcl), 2)});
