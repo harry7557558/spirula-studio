@@ -265,7 +265,7 @@ void ImageCompare::attach(spirula::TrainerSession& session) {
     _shot = Shot{};
     _requested = Job{-1, false, false, false};
     _has_error_map =
-        spirula::build_step_config(session.cfg, session.st, 0).loss.compute_loss_map;
+        spirula::build_step_config(session.cfg, session.st, 0).loss.loss_map_mode != 0;
     if ((!_has_error_map && blends_error(_blend_pair)) ||
         (!session.has_depth && _blend_pair == DepthRender) ||
         (!session.has_normal && _blend_pair == NormalRender))
@@ -469,8 +469,11 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
         if (j.error_map) {
             q.err = _werr.size();
             _werr.resize(q.err + (size_t)(B * H * W));
+            // Allow inspecting the configured error map even after densification stops.
+            LossConfig preview_loss = loss;
+            preview_loss.compute_loss_map = (preview_loss.loss_map_mode != 0);
             got_err = engine_preview_loss_map(
-                          loss, tv(_werr, q.err, B, H, W, 1)) || got_err;
+                          preview_loss, tv(_werr, q.err, B, H, W, 1)) || got_err;
         }
 
         // Scored over the pixels the loss is computed on, which is why the

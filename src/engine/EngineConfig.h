@@ -304,10 +304,29 @@ struct DensifyConfig {
 
 // The schedule engine_densify_step grows the model on; the trainer's ETA and
 // VRAM forecasts replay it.
+inline int densify_stop_step(int refine_stop_iter, int refine_stop_num_iter,
+                             int max_steps) {
+    return std::max(refine_stop_iter, max_steps - refine_stop_num_iter);
+}
+inline bool densify_scoring_active(bool use_revised, int refine_every,
+                                   int refine_stop_iter,
+                                   int refine_stop_num_iter,
+                                   int step, int max_steps) {
+    return use_revised && refine_every > 0 &&
+           step < densify_stop_step(refine_stop_iter, refine_stop_num_iter,
+                                    max_steps);
+}
+inline bool densify_scoring_active(const DensifyConfig& c, int step,
+                                   int max_steps) {
+    return densify_scoring_active(c.use_revised_densification, c.refine_every,
+                                  c.refine_stop_iter, c.refine_stop_num_iter,
+                                  step, max_steps);
+}
 inline bool densify_grows_at(const DensifyConfig& c, int step, int max_steps) {
     return c.refine_every > 0 && step > c.refine_start_iter &&
            step % c.refine_every == 0 &&
-           step < std::max(c.refine_stop_iter, max_steps - c.refine_stop_num_iter);
+           step < densify_stop_step(c.refine_stop_iter, c.refine_stop_num_iter,
+                                    max_steps);
 }
 inline int64_t densify_target(const DensifyConfig& c, int64_t cur, int64_t cap) {
     return std::max(cur, std::min(cap, (int64_t)(c.growth_factor * (float)cur)));
