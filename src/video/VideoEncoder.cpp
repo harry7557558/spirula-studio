@@ -1022,7 +1022,7 @@ bool VideoEncoder::Impl::record_and_submit(bool idr, std::vector<uint8_t>& out,
                                  : VK_VIDEO_ENCODE_AV1_RATE_CONTROL_GROUP_PREDICTIVE_KHR;
     piav1.constantQIndex = cqp ? (uint32_t)qp : 0;
     piav1.pStdPictureInfo = &pav1;
-    for (int k = 0; k < VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR; k++)
+    for (int k = 0; k < int(VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR); k++)
         piav1.referenceNameSlotIndices[k] = -1;
     if (!idr) piav1.referenceNameSlotIndices[av1_name] = ref;
 

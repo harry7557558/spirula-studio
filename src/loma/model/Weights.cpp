@@ -11,6 +11,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <string_view>
 #include <map>
 #include <set>
 
@@ -47,11 +48,12 @@ bool f16_allowed() {
     return !force_f32;
 }
 
-const OnnxTensor& need(const OnnxFile& f, const std::string& name, const char* path,
+// string_view keeps GCC's -Wdangling-reference off `need(f, a + b, ...)`.
+const OnnxTensor& need(const OnnxFile& f, std::string_view name, const char* path,
                        const char* what) {
-    if (const OnnxTensor* t = f.find(name)) return *t;
+    if (const OnnxTensor* t = f.find(std::string(name))) return *t;
     nn::fail("'%s' has no initializer '%s'; is this a LoMa %s checkpoint?", path,
-             name.c_str(), what);
+             std::string(name).c_str(), what);
 }
 
 void take(const OnnxFile& f, const char* path, const char* what, const std::string& name,

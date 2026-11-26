@@ -394,7 +394,7 @@ void test_distance_thresholds() {
     for (int trial = 0; trial < 50; ++trial) {
         const int w = 1 + rng() % 15, h = 1 + rng() % 15;
         std::vector<uint8_t> mask(w * h);
-        for (auto& v : mask) v = rng() % 100 < (trial * 17) % 101;
+        for (auto& v : mask) v = rng() % 100 < (uint32_t)((trial * 17) % 101);
         if (trial < 2) std::fill(mask.begin(), mask.end(), trial);
         for (float offset : {-3.5f, -2.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 2.0f, 3.5f}) {
             auto got = mask;

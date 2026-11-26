@@ -982,7 +982,6 @@ static std::map<std::string, float> _engine_loss(
 
 
 std::map<std::string, float> engine_compute_loss_backward(
-    int step,
     std::array<float, (int)LossWeightIndex::length> loss_weights,
     float w_ssim,
     int perceptual_loss,

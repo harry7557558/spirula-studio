@@ -10,9 +10,3 @@
 #include <stdexcept>
 #include <string>
 
-namespace {
-[[noreturn]] void _vk_stub(const char* name) {
-    throw std::runtime_error(std::string("Vulkan backend: ") + name +
-                             " is not implemented yet (training phase)");
-}
-}  // namespace

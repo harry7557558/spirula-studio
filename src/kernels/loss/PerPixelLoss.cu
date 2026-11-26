@@ -829,7 +829,7 @@ __global__ void avg_pool_downsample_bool_kernel(
 
 static void _avg_pool_downsample_float(const TorchTensorView& src, const TorchTensorView& dst) {
     const auto& s = std::get<2>(dst);
-    long b = s[0], h = s[1], w = s[2], c = s[3];
+    long b = s[0], h = s[1], w = s[2];
     avg_pool_downsample_float_kernel<<<_LAUNCH_ARGS_3D(w, h, b, 16, 16, 1)>>>(
         _pool_src(src), _pool_dst(dst));
     CHECK_DEVICE_ERROR(cudaGetLastError());
@@ -905,8 +905,8 @@ static void _avg_pool_downsample_bool(const TorchTensorView& src, const TorchTen
 
 
 __global__ void vector_add_scaled_kernel(
-    float* __restrict__ dst,
-    const float* __restrict__ src,
+    float* dst,
+    const float* src,  // may alias dst
     float scale,
     int n
 ) {

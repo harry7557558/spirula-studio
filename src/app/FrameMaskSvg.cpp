@@ -181,10 +181,10 @@ void apply_style(const Attrs& a, Style& st) {
             props[lower(trim(decl.substr(0, colon)))] = trim(decl.substr(colon + 1));
         }
     }
-    Ink ink;
+    Ink ink{};
     if (props.count("fill") && parse_ink(props["fill"], ink)) st.fill = ink;
     if (props.count("stroke") && parse_ink(props["stroke"], ink)) st.stroke = ink;
-    float w;
+    float w = 0.0f;
     if (props.count("stroke-width") && parse_length(props["stroke-width"], w)) st.stroke_width = w;
     if (lower(props["display"]) == "none" || lower(props["visibility"]) == "hidden")
         st.hidden = true;

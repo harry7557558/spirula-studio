@@ -9,6 +9,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <string_view>
 
 namespace aliked {
 namespace {
@@ -24,13 +25,15 @@ struct Staged {
     std::vector<float>   data;
 };
 
-const OnnxTensor& need(const OnnxFile& f, const std::string& name, const char* path) {
-    const OnnxTensor* t = f.find(name);
+// string_view: a std::string& parameter makes GCC's -Wdangling-reference
+// flag every `need(f, prefix + ".weight", ...)` bound to a reference.
+const OnnxTensor& need(const OnnxFile& f, std::string_view name, const char* path) {
+    const OnnxTensor* t = f.find(std::string(name));
     if (t) return *t;
     // Name every miss with the file, because the usual cause is pointing
     // --aliked-model at the wrong .onnx (the LightGlue one, say).
     nn::fail("'%s' has no initializer '%s'; is this an ALIKED checkpoint?", path,
-             name.c_str());
+             std::string(name).c_str());
 }
 
 void check_shape(const OnnxTensor& t, std::initializer_list<int64_t> want,

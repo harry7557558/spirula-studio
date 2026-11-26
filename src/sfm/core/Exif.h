@@ -657,9 +657,9 @@ enum ExifExposurePart : unsigned { kExifTime = 1, kExifAperture = 2, kExifIso = 
 // Which of the three exposure factors the file records.
 inline unsigned exifExposureParts(const ExifData& e) {
     if (!e.valid) return 0;
-    return (e.exposure_time > 0 || std::isfinite(e.shutter_apex) ? kExifTime : 0) |
-           (e.f_number > 0 || std::isfinite(e.aperture_apex) ? kExifAperture : 0) |
-           (e.iso > 0 ? kExifIso : 0);
+    return (e.exposure_time > 0 || std::isfinite(e.shutter_apex) ? unsigned(kExifTime) : 0u) |
+           (e.f_number > 0 || std::isfinite(e.aperture_apex) ? unsigned(kExifAperture) : 0u) |
+           (e.iso > 0 ? unsigned(kExifIso) : 0u);
 }
 
 // Relative capture exposure in EV stops, log2(t / N^2 * ISO), preferring the

@@ -59,15 +59,6 @@ std::string decode_failure(const std::string& path) {
                   {path});
 }
 
-// File suffix (lowercased extension). Returns "" if none.
-std::string lower_suffix(const std::string& path) {
-    auto dot = path.find_last_of('.');
-    if (dot == std::string::npos) return {};
-    std::string s = path.substr(dot);
-    for (auto& c : s) c = (char)std::tolower((unsigned char)c);
-    return s;
-}
-
 // Bounded MPMC queue used by the disk-mode prefetch pipeline. One mutex
 // guards both ends — this is for low-rate batch coordination (jobs/sec, not
 // allocations/sec), so the contention cost is negligible.

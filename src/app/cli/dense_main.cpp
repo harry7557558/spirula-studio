@@ -18,11 +18,13 @@ namespace {
 using namespace spirula::dense;
 using spirula::i18n::format;
 namespace D = spirula::i18n::msg::dense;
+#ifdef SS_HAVE_ROMA
 std::atomic<bool> interrupted{false};
 // The first Ctrl+C stops at the next check and keeps finished pairs; a second one ends the process.
 void interrupt(int signal) {
     if (interrupted.exchange(true)) { std::signal(signal, SIG_DFL); std::raise(signal); }
 }
+#endif
 
 template<class T> void command_value(DenseConfig& config, const char* key, const T&, const std::string& text) {
     JsonValue value;

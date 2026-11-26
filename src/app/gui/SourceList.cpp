@@ -404,20 +404,12 @@ void normalize_source_lenses(std::vector<PrepInput>& sources,
 
 
 void normalize_source_fps(std::vector<PrepInput>& sources, float& video_fps) {
-    float above = 0.0f;
-    bool first = true;
     for (PrepInput& s : sources) {
         if (!s.is_video) continue;
-        const float rate = std::max(s.fps, 0.0f);
-        if (first) {
-            if (s.fps != 0.0f) video_fps = rate;
-            if (!(video_fps >= 0.0f)) video_fps = 2.0f;
-            s.fps = 0.0f;
-            above = video_fps;
-            first = false;
-        } else if (s.fps != 0.0f) {
-            above = rate;
-        }
+        if (s.fps != 0.0f) video_fps = std::max(s.fps, 0.0f);
+        if (!(video_fps >= 0.0f)) video_fps = 2.0f;
+        s.fps = 0.0f;
+        break;
     }
 }
 

@@ -65,13 +65,13 @@ inline int deviceTypeRank(VkPhysicalDeviceType t) {
 }
 
 inline bool uuidIsZero(const uint8_t uuid[VK_UUID_SIZE]) {
-    for (int i = 0; i < VK_UUID_SIZE; i++)
+    for (uint32_t i = 0; i < VK_UUID_SIZE; i++)
         if (uuid[i]) return false;
     return true;
 }
 
 inline bool uuidEquals(const uint8_t a[VK_UUID_SIZE], const uint8_t b[VK_UUID_SIZE]) {
-    for (int i = 0; i < VK_UUID_SIZE; i++)
+    for (uint32_t i = 0; i < VK_UUID_SIZE; i++)
         if (a[i] != b[i]) return false;
     return true;
 }
@@ -80,7 +80,7 @@ inline bool uuidEquals(const uint8_t a[VK_UUID_SIZE], const uint8_t b[VK_UUID_SI
 inline std::string uuidSelector(const uint8_t uuid[VK_UUID_SIZE]) {
     static const char* hex = "0123456789abcdef";
     std::string s = "uuid:";
-    for (int i = 0; i < VK_UUID_SIZE; i++) {
+    for (uint32_t i = 0; i < VK_UUID_SIZE; i++) {
         s += hex[uuid[i] >> 4];
         s += hex[uuid[i] & 0xf];
     }
@@ -320,7 +320,7 @@ inline Resolution resolveRequest(const Request& r,
     } else if (r.kind == Request::Kind::Uuid) {
         uint8_t want[VK_UUID_SIZE] = {};
         const std::string hex = r.text.substr(5);
-        for (int i = 0; i < VK_UUID_SIZE; i++) {
+        for (uint32_t i = 0; i < VK_UUID_SIZE; i++) {
             auto nibble = [](char c) {
                 return (uint8_t)(c <= '9' ? c - '0'
                                           : std::tolower((unsigned char)c) - 'a' + 10);

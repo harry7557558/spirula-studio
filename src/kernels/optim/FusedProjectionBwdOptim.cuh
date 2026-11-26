@@ -52,7 +52,7 @@ void fused_projection_bwd_optimizer_3dgs(
     const float lr_opacs,
     const float lr_features_dc,
     const float lr_features_sh,
-    const float lr_features_sb,
+    [[maybe_unused]] const float lr_features_sb,  // SH-only primitive
     const float max_gauss_ratio,
     const float scale_regularization_weight,
     const float mcmc_opacity_reg_weight,
@@ -105,7 +105,7 @@ void fused_projection_bwd_optimizer_mip(
     const float lr_opacs,
     const float lr_features_dc,
     const float lr_features_sh,
-    const float lr_features_sb,
+    [[maybe_unused]] const float lr_features_sb,  // SH-only primitive
     const float max_gauss_ratio,
     const float scale_regularization_weight,
     const float mcmc_opacity_reg_weight,
@@ -158,7 +158,7 @@ void fused_projection_bwd_optimizer_3dgut(
     const float lr_opacs,
     const float lr_features_dc,
     const float lr_features_sh,
-    const float lr_features_sb,
+    [[maybe_unused]] const float lr_features_sb,  // SH-only primitive
     const float max_gauss_ratio,
     const float scale_regularization_weight,
     const float mcmc_opacity_reg_weight,

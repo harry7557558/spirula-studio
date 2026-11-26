@@ -96,7 +96,7 @@ bool valid_supervision(const Outcome& result, int64_t w, bool masked) {
     bool nonzero = false;
     for (size_t i = 0; i < result.gradient.size(); ++i) {
         const float value = result.gradient[i];
-        if (!std::isfinite(value) || (masked && i % w < w / 2 && value != 0.0f)) return false;
+        if (!std::isfinite(value) || (masked && (int64_t)(i % w) < w / 2 && value != 0.0f)) return false;
         nonzero |= value != 0.0f;
     }
     return std::isfinite(result.loss) && result.loss > 0.0f && nonzero;

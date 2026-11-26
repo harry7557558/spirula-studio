@@ -27,7 +27,6 @@ void quantile_of_positive_finite_elements_internal(
 int32_t* weighted_sample_without_replacement_internal(
     int64_t numel,
     float* weights_ptr,
-    int64_t weights_numel,
     bool* masks_ptr,
     uint32_t num_sample,
     uint32_t seed,

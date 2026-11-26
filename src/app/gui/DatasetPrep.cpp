@@ -97,6 +97,11 @@ inline std::string fmt(const spirula::i18n::Msg& m,
 
 namespace gui {
 
+// Not decltype(&std::fclose): GCC drops fclose's attributes there and warns.
+struct FileClose {
+    void operator()(std::FILE* f) const { std::fclose(f); }
+};
+
 const char* const kVideoExtensions[kNumVideoExtensions] = {
     ".mp4", ".mov", ".mkv", ".webm", ".m4v", ".insv", ".osv", ".avi",
     ".mts", ".m2ts", ".360", ".ts", ".wmv", ".lrv", ".prx",
@@ -248,6 +253,7 @@ bool inside(const fs::path& p, const fs::path& root) {
     return !rel.empty() && *rel.begin() != "..";
 }
 
+#ifdef SS_BUILD_SAM
 bool separate_frame_dirs(const fs::path& a, const fs::path& b) {
     std::error_code ec;
     const auto left = fs::weakly_canonical(a, ec);
@@ -285,7 +291,6 @@ bool frame_ids_from_stems(const std::vector<fs::path>& files,
     return true;
 }
 
-#ifdef SS_BUILD_SAM
 class HostBytes {
 public:
     explicit HostBytes(uint64_t total) : _total(total), _free(total) {}
@@ -324,9 +329,9 @@ bool valid_retained_mask(const fs::path& path, uint64_t size, int width, int hei
         ~Lease() { if (bytes) host.release(bytes); }
     } lease{host, need};
 #ifdef _WIN32
-    std::unique_ptr<std::FILE, decltype(&std::fclose)> file(_wfopen(path.c_str(), L"rb"), std::fclose);
+    std::unique_ptr<std::FILE, FileClose> file(_wfopen(path.c_str(), L"rb"));
 #else
-    std::unique_ptr<std::FILE, decltype(&std::fclose)> file(std::fopen(path.c_str(), "rb"), std::fclose);
+    std::unique_ptr<std::FILE, FileClose> file(std::fopen(path.c_str(), "rb"));
 #endif
     if (!file) return false;
     std::FILE* f = file.get();
@@ -1313,7 +1318,7 @@ static std::string hash_frame_source(const fs::path& file, uintmax_t size,
 #else
         auto* opened = std::fopen(file.c_str(), "rb");
 #endif
-        std::unique_ptr<std::FILE, decltype(&std::fclose)> stream(opened, &std::fclose);
+        std::unique_ptr<std::FILE, FileClose> stream(opened);
         if (!stream || std::setvbuf(stream.get(), nullptr, _IONBF, 0) != 0) return false;
         size_t slot = 0;
         for (uintmax_t left = size; left;) {

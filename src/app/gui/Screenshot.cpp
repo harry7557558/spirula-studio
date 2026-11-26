@@ -19,7 +19,16 @@
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STBTT_STATIC
+#if defined(_MSC_VER)
+#pragma warning(disable : 4505)  // unused statics; reported at end of TU, so not popped
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"  // the parts never called
+#endif
 #include "imstb_truetype.h"
+#if defined(__GNUC__) && !defined(_MSC_VER)
+#pragma GCC diagnostic pop
+#endif
 
 #include "imgui.h"
 

@@ -17,11 +17,13 @@ namespace gui {
 
 namespace {
 
+#ifdef SS_TOOL_SFM
 bool is_photo(const fs::path& p) {
     std::string e = p.extension().string();
     for (char& c : e) c = (char)std::tolower((unsigned char)c);
     return e == ".jpg" || e == ".jpeg" || e == ".tif" || e == ".tiff";
 }
+#endif
 
 TelemetryInfo probe(const std::string& path, bool is_video) {
     TelemetryInfo out;

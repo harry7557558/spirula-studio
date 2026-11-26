@@ -238,7 +238,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    auto one_call = [&](int step) {
+    auto one_call = [&]() {
         if (adam) {
             SbOptimCells sb;
             if (color.sb_lobes > 0) sb = {3 * color.sh_coeffs(), 2.5e-3f};
@@ -282,12 +282,12 @@ int main(int argc, char** argv) {
             1e-4f, ttv(d_steps, {N, 1}), /*quantization_level=*/1);
     };
 
-    for (int i = 0; i < 3; i++) one_call(i);
+    for (int i = 0; i < 3; i++) one_call();
     backend::device_synchronize();
     if (check_error("warmup")) return 1;
 
     auto t0 = std::chrono::steady_clock::now();
-    for (int i = 0; i < iters; i++) one_call(i);
+    for (int i = 0; i < iters; i++) one_call();
     backend::device_synchronize();
     auto t1 = std::chrono::steady_clock::now();
     if (check_error("bench")) return 1;

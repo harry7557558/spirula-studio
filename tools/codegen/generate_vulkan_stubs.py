@@ -198,15 +198,16 @@ def main():
     lines.append("#include <stdexcept>")
     lines.append("#include <string>")
     lines.append("")
-    lines.append("namespace {")
-    lines.append("[[noreturn]] void _vk_stub(const char* name) {")
-    lines.append("    throw std::runtime_error(std::string(\"Vulkan backend: "
-                 "\") + name +")
-    lines.append("                             \" is not implemented yet "
-                 "(training phase)\");")
-    lines.append("}")
-    lines.append("}  // namespace")
-    lines.append("")
+    if stubs:  # else the unused helper trips -Wunused-function
+        lines.append("namespace {")
+        lines.append("[[noreturn]] void _vk_stub(const char* name) {")
+        lines.append("    throw std::runtime_error(std::string(\"Vulkan backend: "
+                     "\") + name +")
+        lines.append("                             \" is not implemented yet "
+                     "(training phase)\");")
+        lines.append("}")
+        lines.append("}  // namespace")
+        lines.append("")
     for hdr, base, decl in stubs:
         lines.append(f"// from {hdr}")
         lines.append(f"{decl} {{ _vk_stub(\"{base}\"); }}")

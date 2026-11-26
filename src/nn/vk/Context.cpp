@@ -438,6 +438,8 @@ std::string Context::current_selector() {
     return g_ctx ? g_ctx->info().uuid : std::string();
 }
 
+Context& Context::get() { return get(ContextOptions{}); }
+
 Context& Context::get(const ContextOptions& opts) {
     std::lock_guard<std::mutex> lock(g_state_mu);
 

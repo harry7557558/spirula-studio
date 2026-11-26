@@ -59,7 +59,7 @@ static TensorView<U, 4> _dt3d_to_tv4(const DeviceTensor3D<T>& dt) {
 }
 
 // Build a TensorView<float,4> for [B,H,W,1] from a DeviceTensor3D<float>
-static TensorView<float, 4> _dt3d_float_to_tv4_1ch(const DeviceTensor3D<float>& dt) {
+inline TensorView<float, 4> _dt3d_float_to_tv4_1ch(const DeviceTensor3D<float>& dt) {
     TensorView<float, 4> v;
     v.data = (float*)dt.data_ptr();
     v.shape[0] = dt.template size<0>();

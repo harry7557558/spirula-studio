@@ -848,7 +848,6 @@ namespace {
             return std::max(work_end_ - work_begin_ + 1, index_t(0));
         }
 
-        index_t nb_threads() const;
         Delaunay3dThread* thread(index_t t);
 
         void run() override {
@@ -1671,9 +1670,6 @@ namespace {
         v4_ = NO_INDEX;
     }
 
-    index_t Delaunay3dThread::nb_threads() const {
-        return index_t(master_->threads_.size());
-    }
     Delaunay3dThread* Delaunay3dThread::thread(index_t t) {
         return static_cast<Delaunay3dThread*>(master_->threads_[t].get());
     }

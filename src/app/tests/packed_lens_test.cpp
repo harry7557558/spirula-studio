@@ -6,6 +6,7 @@
 #include "app/Pano360.h"
 
 #include <cstdio>
+#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -54,8 +55,8 @@ void cut(int w, int h, bool stacked) {
 
 std::string field(const char* name, const char* type, uint32_t count, const std::string& data) {
     char head[40] = {};
-    std::strncpy(head, name, 32);
-    std::strncpy(head + 32, type, 8);
+    std::memcpy(head, name, std::min<size_t>(std::strlen(name), 32));
+    std::memcpy(head + 32, type, std::min<size_t>(std::strlen(type), 8));
     return std::string(head, 40) + std::string((const char*)&count, 4) + data;
 }
 

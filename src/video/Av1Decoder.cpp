@@ -881,7 +881,7 @@ void Av1Decoder::cdefParams(BitReader& br) {
     cdef_.cdef_damping_minus_3 = (uint8_t)br.u(2);
     cdef_.cdef_bits = (uint8_t)br.u(2);
     const int n = 1 << cdef_.cdef_bits;
-    for (int i = 0; i < n && i < STD_VIDEO_AV1_MAX_CDEF_FILTER_STRENGTHS; ++i) {
+    for (int i = 0; i < n && i < int(STD_VIDEO_AV1_MAX_CDEF_FILTER_STRENGTHS); ++i) {
         // Secondary strengths stay as coded (0..3); the driver applies 3 -> 4.
         cdef_.cdef_y_pri_strength[i] = (uint8_t)br.u(4);
         cdef_.cdef_y_sec_strength[i] = (uint8_t)br.u(2);
@@ -897,11 +897,11 @@ void Av1Decoder::lrParams(BitReader& br) {
     uses_lr_ = false;
     uses_chroma_lr_ = false;
     if (all_lossless_ || allow_intrabc_ || !seq_.flags.enable_restoration) {
-        for (int i = 0; i < STD_VIDEO_AV1_MAX_NUM_PLANES; ++i)
+        for (int i = 0; i < int(STD_VIDEO_AV1_MAX_NUM_PLANES); ++i)
             lr_.FrameRestorationType[i] = STD_VIDEO_AV1_FRAME_RESTORATION_TYPE_NONE;
         return;
     }
-    for (int i = 0; i < num_planes_ && i < STD_VIDEO_AV1_MAX_NUM_PLANES; ++i) {
+    for (int i = 0; i < num_planes_ && i < int(STD_VIDEO_AV1_MAX_NUM_PLANES); ++i) {
         const uint32_t t = br.u(2);
         lr_.FrameRestorationType[i] = kRemapLrType[t];
         if (lr_.FrameRestorationType[i] != STD_VIDEO_AV1_FRAME_RESTORATION_TYPE_NONE) {
@@ -1559,7 +1559,7 @@ bool Av1Decoder::decodeFrame(const uint8_t* data, size_t size, int nal_length_si
     out.refs.clear();
     vk_pic_ = VkVideoDecodeAV1PictureInfoKHR{
         VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_PICTURE_INFO_KHR};
-    for (int i = 0; i < VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR; ++i)
+    for (int i = 0; i < int(VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR); ++i)
         vk_pic_.referenceNameSlotIndices[i] = -1;
     if (!frame_is_intra_) {
         for (int i = 0; i < kRefsPerFrame; ++i) {

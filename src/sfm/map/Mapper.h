@@ -845,7 +845,8 @@ public:
     // seam be reconciled at all?) the last digits of convergence decide
     // nothing, and something else optimizes the model properly afterwards.
     Reconstruction refine(const Reconstruction& m, bool coarse = false,
-                          bool fixed_rotation_stage = false) {
+                          // Never forwarded to globalRefine (since #223).
+                          [[maybe_unused]] bool fixed_rotation_stage = false) {
         ensureSetup();
         resetModel();
         adopt(m);

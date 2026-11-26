@@ -14,6 +14,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -467,7 +468,7 @@ BilagridState bilagrid_state(const JsonValue& state, const char* which) {
 }
 
 const std::optional<std::array<int, 3>>& target_grid(const TargetLayout& t,
-                                                     const std::string& which) {
+                                                     std::string_view which) {
     if (which == "rgb")   return t.bilagrid_rgb;
     if (which == "depth") return t.bilagrid_depth;
     return t.bilagrid_normal;

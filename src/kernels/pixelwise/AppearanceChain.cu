@@ -166,10 +166,12 @@ __global__ void appearance_chain_backward_kernel(
     const unsigned y = inside ? gid / W : 0u, x = inside ? gid % W : 0u;
     constexpr int P = kAppParams<PL>;
 
-    FixedArray<float, P> params, v_params;
+    // maybe_unused: only `if constexpr (PL >= 0)` reads these.
+    [[maybe_unused]] FixedArray<float, P> params;
+    FixedArray<float, P> v_params;
     #pragma unroll
     for (int i = 0; i < P; i++) v_params[i] = 0.0f;
-    int slot = 0;
+    [[maybe_unused]] int slot = 0;
     if constexpr (PL >= 0) {
         __shared__ float params_shared[P];
         slot = p.cam_indices ? p.cam_indices[bid] : (int)bid;
@@ -200,7 +202,7 @@ __global__ void appearance_chain_backward_kernel(
             const float2 px = make_float2((float)x, (float)y);
             const float2 center = make_float2(intr.z, intr.w);
             const float2 size = make_float2((float)W, (float)H);
-            const bool clamp = p.ppisp_clamp != 0;
+            [[maybe_unused]] const bool clamp = p.ppisp_clamp != 0;
             float3 c_pre = c_bg;
             if constexpr (PL >= 0)
                 if (p.ppisp == AppearancePpisp::BeforeEncode)

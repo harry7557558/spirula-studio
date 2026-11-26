@@ -508,7 +508,9 @@ void install_crash_log(const std::string& dir) {
         std::thread([] { throw std::runtime_error("SS_CRASH_TEST"); }).join();
         return;
     }
-    *(volatile int*)(uintptr_t)8 = 0;
+    // Through a volatile pointer: a constant address trips -Warray-bounds.
+    int* volatile bad = reinterpret_cast<int*>(uintptr_t(8));
+    *bad = 0;
 }
 
 }  // namespace app

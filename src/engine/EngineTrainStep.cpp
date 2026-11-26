@@ -237,7 +237,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
 
     engine_prepare_projective_depth(cfg.optim);
     auto losses = engine_compute_loss_backward(
-        step, cfg.loss.weights, cfg.loss.w_ssim, cfg.loss.perceptual_loss,
+        cfg.loss.weights, cfg.loss.w_ssim, cfg.loss.perceptual_loss,
         cfg.loss.num_loss_scales, cfg.loss.loss_scale_min_pixels,
         cfg.loss.compute_loss_map,
         cfg.loss.loss_map_mode,

@@ -80,7 +80,7 @@ __global__ void rasterize_stochastic_kernel(
     const float py = (float)i + 0.5f;
     bool inside = (i < image_height && j < image_width);
 
-    float3x3 R = {1.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f};
+    [[maybe_unused]] float3x3 R = {1.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f};
     float3 ray_o = make_float3(0.0f), ray_d = make_float3(0.0f, 0.0f, 1.0f);
     if constexpr (eval3d) {
         const float* vm = viewmats + image_id * 16;
@@ -117,7 +117,7 @@ __global__ void rasterize_stochastic_kernel(
     const float mt_bx0 = (float)(mt_x * TILE_SIZE_X);
     const float mt_by0 = (float)(mt_y * TILE_SIZE_Y);
     const float2 mt_half = {0.5f * (TILE_SIZE_X - 1), 0.5f * (TILE_SIZE_Y - 1)};
-    const float2 mt_centre = {mt_bx0 + 0.5f + mt_half.x, mt_by0 + 0.5f + mt_half.y};
+    [[maybe_unused]] const float2 mt_centre = {mt_bx0 + 0.5f + mt_half.x, mt_by0 + 0.5f + mt_half.y};
 
     __shared__ typename Prim::FragmentFwd batch[TILE_AREA_S];
     __shared__ uint32_t s_hit[TILE_AREA_S], s_key[TILE_AREA_S], s_id[TILE_AREA_S], s_wi[TILE_AREA_S];

@@ -403,7 +403,7 @@ void Model::encode_text(Text& t) {
 uint64_t Model::planArena(int H, int W, int T) const {
     const int64_t h1 = (H + 7) / 8, w1 = (W + 7) / 8;
     int64_t N = 0;
-    for (int l = 0; l < 4; ++l) N += ((h1 + (1 << l) - 1) >> l) * ((w1 + (1 << l) - 1) >> l);
+    for (int l = 0; l < 4; ++l) N += ((h1 + (int64_t(1) << l) - 1) >> l) * ((w1 + (int64_t(1) << l) - 1) >> l);
     const int64_t D = hp_.d_model;
     // vis, pos-added query, value, offsets, weights, deform out, ffn hidden
     // (2048), the fusion's three 1024-wide maps, and the decoder's value map.

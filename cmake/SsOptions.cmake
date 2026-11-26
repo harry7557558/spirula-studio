@@ -298,7 +298,6 @@ if(MSVC)
     set(SPLAT_C_FLAGS "/O2")
 else()
     set(SPLAT_CXX_FLAGS "-O3")
-    list(APPEND SPLAT_CXX_FLAGS "-Wno-sign-compare")
     set(SPLAT_C_FLAGS "-O3")
 endif()
 

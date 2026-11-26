@@ -124,6 +124,7 @@ double median_rate(const std::vector<float>& t) {
     return 1.0 / dt[dt.size() / 2];
 }
 
+#ifdef SS_TOOL_SFM
 // An angle carried across +-180 so a slow turn is a line, not a saw.
 void unwrap_deg(std::vector<float>& a) {
     float offset = 0.0f;
@@ -141,7 +142,9 @@ void unwrap_deg(std::vector<float>& a) {
         a[i] = a[i - 1] + d;
     }
 }
+#endif
 
+#ifdef SS_TOOL_SFM
 // Samples in time order, which every plot's search assumes. A carrier
 // almost always writes them so; the odd one that does not is sorted.
 void time_order(SensorSeries& s) {
@@ -158,6 +161,7 @@ void time_order(SensorSeries& s) {
     apply(s.t);
     for (std::vector<float>& v : s.v) apply(v);
 }
+#endif
 
 SensorSeries& add_series(SensorData& d, SensorSeries::Kind kind, int channels) {
     d.series.emplace_back();
@@ -288,6 +292,7 @@ float height_stretch(const SensorData& d, int choice) {
     return kHeightScales[std::size(kHeightScales) - 1];
 }
 
+#ifdef SS_TOOL_SFM
 // How long a stream may go quiet before it is a gap: a few of its own
 // intervals. Any channel's reading counts -- derived speed has none while a
 // position repeats, and that is not the receiver falling silent.
@@ -305,6 +310,7 @@ void set_gap(SensorSeries& s) {
     std::nth_element(dt.begin(), dt.begin() + dt.size() / 2, dt.end());
     s.gap = std::max(5.0f * dt[dt.size() / 2], 0.5f);
 }
+#endif
 
 // Each factor as the stops of light it lets in (log2 t, log2 ISO, -2 log2 N),
 // and their sum over the factors every record has: for one source, what

@@ -327,7 +327,7 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     const bool floor = min_split_opacity > 0.0f;
     int32_t* src_indices = weighted_sample_without_replacement_internal(
         cur_num_splats, (float*)weights.data_ptr(),
-        weights.size() * 2, mask, num_relocate, seed, &num_eligible,
+        mask, num_relocate, seed, &num_eligible,
         floor ? opacs.data_ptr() : nullptr, floor ? split_floor_logit(min_split_opacity) : 0.0f);
     // Past the live splats of positive weight the draw returns dead ones,
     // each also some pair's dst: the two writes race and the revival is lost.
@@ -416,7 +416,7 @@ int64_t add_splats_with_long_axis_split_tensor(
     uint32_t num_eligible = 0;
     int32_t* split_indices = weighted_sample_without_replacement_internal(
         cur_num_splats, (float*)weights.data_ptr(),
-        weights.size() * 2, nullptr, num_new_splats, seed,
+        nullptr, num_new_splats, seed,
         floor ? &num_eligible : nullptr,
         floor ? opacs.data_ptr() : nullptr, floor ? split_floor_logit(min_split_opacity) : 0.0f,
         oversize_accum.data_ptr(), oversize_blend);
