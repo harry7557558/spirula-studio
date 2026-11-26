@@ -108,6 +108,9 @@ empty list uses serial inference unless `SS_WORKERS_PER_GPU` is greater than 1,
 in which case it uses that many workers on the resolved primary GPU.
 Obtain UUIDs with `spirula sam devices`.
 Geometry output ownership, reuse and `--overwrite` rules are unchanged.
+`spirula sam track --worker-devices <uuid,...>` takes the same list, with the
+same `SS_WORKERS_PER_GPU` fallback, and runs the dataset screen's masking loop
+(`app/MaskFrames.h`). Its masks match the in-process run byte for byte.
 
 ### Reusing generated frames and geometry
 

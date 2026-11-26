@@ -241,6 +241,32 @@ SS_MSG(trk_neg_text,
     RU("понятия, которые СОХРАНЯЮТСЯ, даже если под --text они подходят"),
     TR("--text uysa bile KORUNACAK kavramlar"));
 
+SS_MSG(trk_feature_text,
+    EN("phrases kept out of SfM but still trained, such as \"sky; cloud\"; marked gray "
+       "(128) in the same mask"),
+    JA("SfM からは除き、学習には残す語句（\"sky; cloud\" など）。同じマスクに灰色（128）"
+       "で記録します"),
+    ZH_HANS("从 SfM 中排除但仍参与训练的短语，如 \"sky; cloud\"；在同一掩码中记为灰色（128）"),
+    ZH_HANT("從 SfM 中排除但仍參與訓練的短語，如 \"sky; cloud\"；在同一遮罩中記為灰色（128）"),
+    KO("SfM 에서는 빼고 학습에는 남길 구절(예: \"sky; cloud\"). 같은 마스크에 회색(128)으로 "
+       "표시합니다"),
+    DE("Begriffe, die aus SfM herausgehalten, aber trainiert werden, etwa \"sky; cloud\"; "
+       "grau (128) in derselben Maske"),
+    FR("expressions exclues de la SfM mais pas de l'entraînement, comme \"sky; cloud\" ; "
+       "en gris (128) dans le même masque"),
+    ES("frases excluidas de la SfM pero no del entrenamiento, como \"sky; cloud\"; en "
+       "gris (128) en la misma máscara"),
+    PT("frases excluídas da SfM mas não do treino, como \"sky; cloud\"; a cinzento (128) "
+       "na mesma máscara"),
+    IT("frasi escluse dalla SfM ma non dall'addestramento, come \"sky; cloud\"; in grigio "
+       "(128) nella stessa maschera"),
+    NL("zinsdelen die buiten SfM blijven maar wel getraind worden, zoals \"sky; cloud\"; "
+       "grijs (128) in hetzelfde masker"),
+    RU("фразы, исключаемые из SfM, но не из обучения, например \"sky; cloud\"; серым (128) "
+       "в той же маске"),
+    TR("SfM dışında tutulan ama eğitimde kalan ifadeler, örneğin \"sky; cloud\"; aynı "
+       "maskede gri (128)"));
+
 SS_MSG(trk_point,
     EN("click on an object to track; repeatable"),
     JA("追跡する対象をクリックします。複数回指定できます"),
@@ -524,6 +550,29 @@ SS_MSG(trk_overlay,
     NL("in plaats daarvan een kleurenoverlay schrijven"),
     RU("вместо этого записать цветное наложение"),
     TR("bunun yerine renkli bir bindirme yaz"));
+
+SS_MSG(trk_worker_devices,
+    EN("mask in isolated workers, one per comma-separated device UUID. Default: in process"),
+    JA("カンマ区切りのデバイス UUID ごとに分離ワーカーでマスクします。既定: このプロセス内"),
+    ZH_HANS("在隔离工作进程中生成掩码，每个逗号分隔的设备 UUID 一个。默认：在本进程内"),
+    ZH_HANT("在隔離工作行程中產生遮罩，每個逗號分隔的裝置 UUID 一個。預設：在本行程內"),
+    KO("쉼표로 구분한 장치 UUID마다 격리 작업자에서 마스크를 만듭니다. 기본값: 이 프로세스 안"),
+    DE("in isolierten Workern maskieren, je einer pro kommagetrennter Geräte-UUID. "
+       "Standard: im Prozess"),
+    FR("masquer dans des processus isolés, un par UUID de périphérique, séparés par des "
+       "virgules. Défaut : dans le processus"),
+    ES("enmascarar en procesos aislados, uno por UUID de dispositivo, separados por comas. "
+       "Predeterminado: en el proceso"),
+    PT("mascarar em processos isolados, um por UUID de dispositivo, separados por "
+       "vírgulas. Padrão: no processo"),
+    IT("mascherare in processi isolati, uno per UUID dispositivo, separati da virgole. "
+       "Predefinito: nel processo"),
+    NL("maskeren in geïsoleerde workers, één per door komma's gescheiden apparaat-UUID. "
+       "Standaard: in het proces"),
+    RU("строить маски в изолированных процессах, по одному на UUID устройства через "
+       "запятую. По умолчанию: в этом процессе"),
+    TR("virgülle ayrılmış her aygıt UUID'si için yalıtılmış işçide maskele. Varsayılan: "
+       "süreç içinde"));
 
 // ---- video, extract, and the common tail ----
 
