@@ -1,4 +1,4 @@
-// Two-view geometry: F, H, E, P3P, triangulation, RANSAC (host only).
+// Two-view geometry and PnP: F, H, E, P3P, EPnP, triangulation, RANSAC (host only).
 //
 // Prints PASS/FAIL and returns 0/1. See docs/testing.md.
 #include <algorithm>
@@ -16,6 +16,7 @@
 #include "sfm/core/Matches.h"
 #include "sfm/feature/Verification.h"
 #include "sfm/geometry/AbsolutePose.h"
+#include "sfm/geometry/EPnP.h"
 #include "sfm/geometry/TwoView.h"
 #include "sfm/tests/TestMain.h"
 
@@ -612,6 +613,107 @@ int cmdGeomSelftest(int, char**) {
         }
         printf("geom: null space (7x9, 8x9) max |A x| %.2e, orthonormality %.2e\n", axErr, nsOrth);
         if (axErr > 1e-12 || nsOrth > 1e-12) { printf("  FAIL: nullVectors9\n"); fails++; }
+    }
+
+    // ---- EPnP: 3D, planar, wide-angle, noisy, degenerate, LO-RANSAC ----
+    {
+        std::mt19937 erng(91);
+        std::uniform_real_distribution<double> uxy(-2.0, 2.0), uz3(-1.5, 1.5);
+        std::uniform_real_distribution<double> ua(-1.0, 1.0), u01(0.0, 1.0);
+        std::normal_distribution<double> pnoise(0.0, 0.5 / 800.0);
+
+        auto runSuite = [&](const char* label, int n, bool planar, bool wide, double zscale,
+                            double worldScale, Vec3 shift, double sig) {
+            int ok = 0;
+            const int trials = 25;
+            for (int t = 0; t < trials; t++) {
+                Mat3 Rgt = angleAxisToRotation({ua(erng) * 0.6, ua(erng) * 0.6, ua(erng) * 0.6});
+                Vec3 tgt = Vec3{ua(erng), ua(erng), wide ? 1.5 : 7.0} * worldScale - mul(Rgt, shift);
+                Vec3 Cgt = cameraCenter({Rgt, tgt});
+                std::vector<Vec3> X, br;
+                while ((int)X.size() < n) {
+                    Vec3 Xw;
+                    if (planar) {
+                        double x = uxy(erng), y = uxy(erng);
+                        Xw = Vec3{x, y, 0.2 * x - 0.1 * y + 1.0} * worldScale + shift;
+                    } else {
+                        Xw = Vec3{uxy(erng), uxy(erng), uz3(erng) * zscale} * worldScale + shift;
+                    }
+                    Vec3 xc = mul(Rgt, Xw) + tgt;
+                    double xcNorm = xc.norm();
+                    if (xcNorm < 0.2 * worldScale) continue;
+                    double ang = std::acos(std::max(-1.0, std::min(1.0, xc.z / xcNorm)));
+                    if (wide ? ang > 110.0 * M_PI / 180.0 : xc.z < 0.5 * worldScale) continue;
+                    Vec3 ray = xc * (1.0 / xcNorm);
+                    if (sig > 0.0)
+                        ray = (ray + Vec3{pnoise(erng), pnoise(erng), pnoise(erng)}).normalized();
+                    X.push_back(Xw);
+                    br.push_back(ray);
+                }
+                std::vector<Pose> got = epnp(X, br);
+                if (got.size() == 1) {
+                    double rErr = rotationErrorDeg(got[0].R, Rgt);
+                    double cErr = (cameraCenter(got[0]) - Cgt).norm() / worldScale;
+                    double rTol = sig > 0.0 ? 2.5 : 1e-3;
+                    double cTol = sig > 0.0 ? 0.35 : 1e-3;
+                    if (rErr < rTol && cErr < cTol) ok++;
+                }
+            }
+            const int minOk = sig > 0.0 ? trials - 1 : trials;
+            printf("geom: EPnP %-22s %d/%d\n", label, ok, trials);
+            if (ok < minOk) { printf("  FAIL: EPnP %s\n", label); fails++; }
+        };
+
+        runSuite("3d n=4 shifted", 4, false, false, 1.0, 1.0, {1000.0, -500.0, 200.0}, 0.0);
+        runSuite("3d n=5 scaled", 5, false, false, 1.0, 1e-3, {0.0, 0.0, 0.0}, 0.0);
+        runSuite("3d n=25 noisy", 25, false, false, 1.0, 100.0, {1000.0, -500.0, 200.0}, 1.0);
+        runSuite("near-planar 1e-4", 20, false, false, 1e-4, 1.0, {0.0, 0.0, 0.0}, 0.0);
+        runSuite("planar n=4", 4, true, false, 0.0, 1.0, {0.0, 0.0, 0.0}, 0.0);
+        runSuite("planar n=15 noisy", 15, true, false, 0.0, 1.0, {0.0, 0.0, 0.0}, 1.0);
+        runSuite("wide 110deg 3d", 20, false, true, 1.0, 1.0, {0.0, 0.0, 0.0}, 1.0);
+        runSuite("wide 110deg planar", 15, true, true, 0.0, 1.0, {0.0, 0.0, 0.0}, 0.0);
+
+        // Degenerate / malformed inputs must fail cleanly without NaNs.
+        std::vector<Vec3> dX = {{0, 0, 5}, {1, 0, 5}, {2, 0, 5}, {3, 0, 5}};  // collinear
+        std::vector<Vec3> dB = {Vec3{0, 0, 1}, Vec3{0.1, 0, 1}.normalized(),
+                                Vec3{0.2, 0, 1}.normalized(), Vec3{0.3, 0, 1}.normalized()};
+        if (!epnp({{0, 0, 5}, {1, 0, 5}, {0, 1, 5}}, {dB[0], dB[1], dB[2]}).empty() ||
+            !epnp(std::vector<Vec3>(4, {1, 2, 3}), dB).empty() ||
+            !epnp(dX, dB).empty() ||
+            !epnp(dX, {dB[0], dB[1], dB[2], {0, 0, 0}}).empty() ||
+            !epnp(dX, {dB[0], dB[1], dB[2]}).empty()) {
+            printf("  FAIL: EPnP degenerate inputs\n");
+            fails++;
+        }
+
+        // RANSAC PnP on planar + wide-angle outlier-rich scenes via EPnP refit.
+        for (int mode = 0; mode < 2; mode++) {
+            const bool isPlanar = (mode == 0);
+            Mat3 Rgt = rotationY(isPlanar ? 18.0 : 12.0);
+            Vec3 tgt = isPlanar ? Vec3{0.6, -0.3, 5.0} : Vec3{0.8, 0.1, 1.2};
+            std::vector<Vec3> rX, rB;
+            while ((int)rX.size() < 40) {
+                Vec3 Xw = isPlanar ? Vec3{uxy(erng), uxy(erng), 0.15 * uxy(erng) + 1.0}
+                                   : Vec3{uxy(erng), uxy(erng), uz3(erng)};
+                Vec3 xc = mul(Rgt, Xw) + tgt;
+                if (xc.norm() < 0.3 || (isPlanar && xc.z < 1.0)) continue;
+                rX.push_back(Xw);
+                rB.push_back((xc.normalized() + Vec3{pnoise(erng), pnoise(erng), pnoise(erng)}).normalized());
+            }
+            for (int i = 0; i < 15; i++) {
+                rX.push_back({uxy(erng) * 3.0, uxy(erng) * 3.0, 2.0 + u01(erng) * 5.0});
+                rB.push_back(Vec3{ua(erng), ua(erng), isPlanar ? 1.0 : ua(erng)}.normalized());
+            }
+            PnPResult pr = ransacPnP(rX, rB, 800.0, 4.0, 7);
+            double rErr = rotationErrorDeg(pr.pose.R, Rgt);
+            double tErr = (pr.pose.t - tgt).norm();
+            printf("geom: ransacPnP (%s+outliers): %d/%zu inliers, R %.2f deg, t %.3f\n",
+                   isPlanar ? "planar" : "wide", pr.num_inliers, rX.size(), rErr, tErr);
+            if (!pr.success || pr.num_inliers < 35 || rErr > 1.0 || tErr > 0.15) {
+                printf("  FAIL: ransacPnP (%s)\n", isPlanar ? "planar" : "wide");
+                fails++;
+            }
+        }
     }
 
     printf("%s\n", fails == 0 ? "PASS" : "FAIL");
