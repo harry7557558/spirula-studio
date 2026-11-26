@@ -71,10 +71,11 @@ inline std::string rig_letter(int letter) {
     return s;
 }
 
-// Which parts of a row of the fixed-areas table follow the row above it
-// (StencilRows.h); a part that does not is the row's own choice.
+// A row of the fixed-areas table (StencilRows.h): whether its drawn areas
+// follow the row above, and the lens circle it shares. Rows of a job with one
+// nonzero `share` get one border fit over all their frames; 0 fits its own.
 struct StencilFollow {
-    bool border = false;
+    int share = 0;
     bool areas = false;
 };
 
@@ -167,7 +168,8 @@ struct PrepInput {
     // resolved per camera folder when it asks for the border to be fitted
     // (app::FrameStencil), which is what gives a dual-fisheye file two circles.
     app::FrameStencil stencil;
-    // Its rows' "same as above", by FrameStencil camera key (settle_follow).
+    // Its rows' "same as above" and shared borders, by FrameStencil camera key
+    // (settle_follow).
     std::map<std::string, StencilFollow> stencil_follow;
     // The laser scan these photographs came out of (LidarStep.h), "" for
     // anything else. Their drawn areas are the scan's, PrepJob::scan_stencils.
@@ -562,6 +564,10 @@ bool is_packed_lens_path(const std::string& path);
 inline bool is_dual_lens(const PrepInput& in) {
     return in.active_lens < 0 && (is_dual_fisheye_path(in.path) || in.packed_lenses >= 2);
 }
+// The camera behind a dual-fisheye input, as far as its file tells: its type
+// and frame size (0 when not measured). Only inputs of one setup share a lens
+// circle by default (settle_follow). "" for any other input.
+std::string lens_setup(const PrepInput& in, int width = 0, int height = 0);
 // The video track the lens kept is decoded from; -1 for every track, which is
 // also a packed frame's case: its lens is cut out of the picture afterwards.
 inline int kept_track(const PrepInput& in) {
@@ -875,6 +881,10 @@ private:
     bool apply_stencil(const PrepJob& job, const PrepInput& in,
                        const std::string& images, const std::string& masks,
                        const std::string& merge_from, std::string& error);
+    // Each lens circle rows share (StencilFollow::share), fitted once over all
+    // their frames and drawn into their stencils. `images`/`masks` by input.
+    void fit_shared_borders(PrepJob& job, const std::vector<std::string>& images,
+                            const std::vector<std::string>& masks);
     int exec(const std::vector<std::string>& argv,
              const std::function<void(const std::string&)>& on_line = {});
     // What this input is expected to put in images/, for the step's bar: the

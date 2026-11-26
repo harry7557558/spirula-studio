@@ -49,7 +49,8 @@ axes. On an input with several cameras it first turns on **Separate areas for
 each camera** (below), so the ellipse is the shown camera's alone and the other
 lenses keep their own fitted borders. Automatic detection must receive
 `shrink=0` before conversion; the stencil's shrink is applied once when the
-ellipse is inserted.
+ellipse is inserted. Rows of other inputs that share the camera's circle (see
+the table below) get the same ellipse and stop fitting too.
 
 ## Tools
 
@@ -245,43 +246,82 @@ Under **Remove fixed areas of the frame**, while it is ticked, the dataset
 screen lists a row per input, or per camera of an input with several
 (`stencil_cameras`: its camera folders, a dual-fisheye file's lenses, and any
 camera its stencil already names; a 360 file's views share one row until the
-panel splits them). Each row has the border fit (Cut away / Off, with the
-shrink slider) and its drawn areas (None, a saved set, or Draw..., which opens
-Try the mask on that row's camera, with separate areas enabled when the
-input has several cameras). The frame slider can still visit other cameras;
-the tools edit the camera shown. The logic is `app/gui/StencilRows.h`, with no
-ImGui; `stencil_rows_test` covers it.
+panel splits them). Each row has the border fit (Cut away, Off, or Shared,
+with the shrink slider) and its drawn areas (None, a saved set, or Draw...,
+which opens Try the mask on that row's camera, with separate areas enabled
+when the input has several cameras). The frame slider can still visit other
+cameras; the tools edit the camera shown. The logic is
+`app/gui/StencilRows.h`, with no ImGui; `stencil_rows_test` covers it.
 
-Each row follows a row above it. An input's first row follows the same
-camera of the input directly above when that input has one, else the row
-before it; its other rows follow the row before them. So the two lenses of a
-dual-fisheye file share by default, as they usually do (the same pole, the
-same operator), each file's `cam0` follows the `cam0` above, and nothing
+### Drawn areas follow the row above
+
+Each row's drawn areas follow a row above it. An input's first row follows
+the same camera of the input directly above when that input has one, else the
+row before it; its other rows follow the row before them. So the two lenses
+of a dual-fisheye file share by default, as they usually do (the same pole,
+the same operator), each file's `cam0` follows the `cam0` above, and nothing
 reaches past the input above: a GoPro sphere under a dual-fisheye file follows
 that file's last lens, not a sphere further up.
 
-Whether each part of a row follows is stored, per camera, in
-`PrepInput::stencil_follow`. A row seen for the first time follows each part
-that matches the row above (`settle_follow`), which is what makes a capture
-shot on one camera read "(same as above)" all the way down -- its drawn areas
-only when the border fit is alike too, since a row whose fit differs is
-another kind of lens (that sphere again), whose areas would mean nothing on
-the one above. From then on it
-is the user's choice: picking anything other than "(same as above)" makes the
-part the row's own even when it equals the row above -- a row set to None
-under a row drawing nothing stays None and ignores what is drawn above it
-later -- and picking "(same as above)" copies the row followed and follows it
-again. A following row that stops matching keeps its value as its own: the
-panel drew on it, or an input was removed and it now follows another row.
-Comparing values instead, as the lens column does, turned every explicit
-choice that happened to equal the row above back into "(same as above)".
+Whether a row follows is stored, per camera, in `PrepInput::stencil_follow`.
+A row seen for the first time follows when its areas match the row above
+(`settle_follow`) and the border fit is alike too, since a row whose fit
+differs is another kind of lens (that sphere again), whose areas would mean
+nothing on the one above. From then on it is the user's choice: picking
+anything other than "(same as above)" makes the areas the row's own even when
+they equal the row above -- a row set to None under a row drawing nothing
+stays None and ignores what is drawn above it later -- and picking "(same as
+above)" copies the row followed and follows it again. A following row that
+stops matching keeps its value as its own: the panel drew on it, or an input
+was removed and it now follows another row. Comparing values instead, as the
+lens column does, turned every explicit choice that happened to equal the row
+above back into "(same as above)".
 
-Changing a part changes it on every row following it, through any number of
-rows (`set_row_border`, `set_row_areas`). The border and the areas follow and
-are set separately: drawn areas never turn the border fit on or off, even a
-list starting with a keep shape, which the panel's Load does (above). A border
-that is off matches any other that is off whatever its shrink, which it keeps
-for when it is turned back on.
+Changing a row's areas changes them on every row following it, through any
+number of rows (`set_row_areas`). Drawn areas never turn the border fit on or
+off, even a list starting with a keep shape, which the panel's Load does
+(above).
+
+### The border: a fit of its own, or one circle shared
+
+The border does not follow the row above. "(same as above)" there copied the
+setting, while every row still fitted its own circle on its own frames, so
+three clips of one camera were cut with three circles (issue #420). The fit is
+fragile on a lens whose rim the scene rarely reaches: on one Insta360 lens,
+24 frames from each third of a clip gave radii from 0.503 to 0.518 of the
+width, with the centre moving too.
+
+So a row's border is Cut away (its own fit), Off, or **Shared with** another
+row: rows sharing a circle get one fit over the frames of all of them, and the
+shrink slider of any of them sets them all. A share is a number in
+`StencilFollow::share`; rows of the job with the same number share, so
+joining a row to another (`share_border`) joins its group, Cut away or Off
+(`set_row_border`) leaves it, and `settle_follow` ends a share on a row that
+stops cutting and a share left with one row. The submenu lists every input's
+other rows that cut; a scan's photographs fit their own.
+
+A lens of a dual-fisheye file seen for the first time shares with the same
+lens of the nearest input above of its setup whose lens cuts, and takes its
+shrink. The setup (`lens_setup`, passed to `stencil_owners`) is the file type
+and frame size: an `.osv` and an `.insv` are two cameras whose circles differ,
+and an 8K and a 5.7K clip of one camera are two lens modes the run fits apart
+anyway. Rows of other setups, phone clips and rows turned off are passed over,
+so clips of two cameras taking turns form one share per camera. `cam0` and
+`cam1` never share by default: the two circles of one file differ. Every other
+kind of input fits its own until told otherwise, since a mixed list of
+perspective, fisheye and 360 captures has nothing to share. The screen settles
+the rows before each run and plan even when the table is hidden, measuring the
+frame size its probe found, and a batch row does so when it builds its job.
+
+The run (`DatasetPrep::fit_shared_borders`, once the frames exist) fits each
+share once with `detect_fisheye_border` over `samples` frames of every row,
+draws the circle into each row's stencil with that row's shrink, and logs one
+line naming the rows. Frames of another size are another lens mode and fit
+apart. When the joint fit finds nothing, each row still tries its own. The
+plan records who shares with whom (`stencil_share`), so a changed share
+remakes the masks.
+
+### Writing the stencils
 
 Rows write `PrepInput::stencil`, so the run, the plan and the saved
 `frame_stencil/` files see nothing new. An input whose rows all agree is one
@@ -289,12 +329,15 @@ stencil; one whose rows differ gets an entry per camera, as Separate areas for
 each camera would.
 
 Edits in Try the mask are carried the same way: the screen snapshots the rows
-before the panel draws and, after, passes each changed row of that input to
-the rows of other inputs that follow it (`follow_edit`). The input's own
-other rows stay as the panel left them, so drawing on `cam0` with separate
-areas on does not reach `cam1`. An input added later takes the drawn areas
-and the shrink of the row it follows when both are, or both are not, fisheye
-files (`adopt_rows_above`).
+before the panel draws and, after, passes each changed row of that input on
+(`follow_edit`): its areas to the rows of other inputs that follow it, and a
+shrink or an edited border ellipse to the rows sharing its circle. The
+ellipse is that lens's, so it never goes down the areas: a `cam1` following
+`cam0`'s areas does not get `cam0`'s circle. The input's own other rows stay
+as the panel left them, so drawing on `cam0` with separate areas on does not
+reach `cam1`. An input added later takes the drawn areas and the shrink of
+the row it follows when both are, or both are not, fisheye files
+(`adopt_rows_above`).
 
 ### A laser scan's photographs
 
@@ -304,7 +347,7 @@ camera folder once Try the mask splits it (`pinhole` and `panorama` when it
 has both). They are a chain of their own, whose first row follows nothing,
 so a scan's photographs never take a video's areas (issue #99); the rows edit
 `LidarInput::stencil`. A row works on owners rather than inputs
-(`StencilOwner`: a stencil and its "same as above" flags) for exactly this.
+(`StencilOwner`: a stencil and its follow and share state) for exactly this.
 
 **Draw...** on a scan row extracts its photographs where a run puts them,
 `<workspace>/lidar/photos/<scan folder>/` (`extract_scan_photos`, on a

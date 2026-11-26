@@ -530,17 +530,6 @@ MaskShape to_shape(const Circle& c, float shrink, int w, int h) {
     return shrink_border(s, shrink);
 }
 
-float kept_fraction(const MaskShape& s, int w, int h) {
-    FrameMask m;
-    m.shapes.push_back(s);
-    std::vector<uint8_t> px;
-    std::string err;
-    if (!rasterize_frame_mask(m, w, h, px, err)) return 1.0f;
-    size_t keep = 0;
-    for (uint8_t v : px) keep += v ? 1 : 0;
-    return (float)keep / (float)std::max<size_t>(px.size(), 1);
-}
-
 // A round-capped polyline as the union of capsules, measured in units of the
 // stroke's half-width on each axis: the brush becomes a unit circle.
 void fill_stroke(const MaskShape& s, int W, int H, uint8_t* out) {
@@ -576,6 +565,17 @@ MaskShape shrink_border(MaskShape shape, float shrink) {
     shape.rx *= scale;
     shape.ry *= scale;
     return shape;
+}
+
+float kept_fraction(const MaskShape& s, int w, int h) {
+    FrameMask m;
+    m.shapes.push_back(s);
+    std::vector<uint8_t> px;
+    std::string err;
+    if (!rasterize_frame_mask(m, w, h, px, err)) return 1.0f;
+    size_t keep = 0;
+    for (uint8_t v : px) keep += v ? 1 : 0;
+    return (float)keep / (float)std::max<size_t>(px.size(), 1);
 }
 
 bool edit_detected_border(CameraStencil& stencil, const BorderDetect& border) {
@@ -1003,20 +1003,26 @@ BorderDetect BorderAccumulator::finish(const BorderDetectOptions& o) const {
 
 BorderDetect detect_fisheye_border(const std::vector<std::string>& files,
                                    const BorderDetectOptions& o) {
-    if (files.empty()) return BorderDetect{};
+    return detect_fisheye_border(std::vector<std::vector<std::string>>{files}, o);
+}
+
+BorderDetect detect_fisheye_border(const std::vector<std::vector<std::string>>& captures,
+                                   const BorderDetectOptions& o) {
     const int want = std::max(2, o.samples);
-    std::vector<size_t> pick;
-    if ((int)files.size() <= want) {
-        for (size_t i = 0; i < files.size(); i++) pick.push_back(i);
-    } else {
-        for (int i = 0; i < want; i++)
-            pick.push_back((size_t)((double)i * (files.size() - 1) / (want - 1) + 0.5));
-        pick.erase(std::unique(pick.begin(), pick.end()), pick.end());
-    }
     BorderAccumulator acc;
-    for (size_t i : pick) {
-        Gray f = load_gray(files[i]);
-        if (!f.px.empty()) acc.add(f.px.data(), f.w, f.h, 1);
+    for (const std::vector<std::string>& files : captures) {
+        std::vector<size_t> pick;
+        if ((int)files.size() <= want) {
+            for (size_t i = 0; i < files.size(); i++) pick.push_back(i);
+        } else {
+            for (int i = 0; i < want; i++)
+                pick.push_back((size_t)((double)i * (files.size() - 1) / (want - 1) + 0.5));
+            pick.erase(std::unique(pick.begin(), pick.end()), pick.end());
+        }
+        for (size_t i : pick) {
+            Gray f = load_gray(files[i]);
+            if (!f.px.empty()) acc.add(f.px.data(), f.w, f.h, 1);
+        }
     }
     return acc.finish(o);
 }

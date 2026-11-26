@@ -3,10 +3,10 @@
 // over the masks it rewrites, the camera scan never takes mask_edits/ or
 // feature_masks/ for a camera, and the sky's 128 band survives every fold.
 // Real DatasetPrep::run, no model: the re-mask is the frame stencil, which is
-// also checked per camera folder. Built without SS_BUILD_SAM, so it also
-// checks that asking for a model fails; that `sparse/0` is not a dataset;
-// what becomes of the pictures a blur threshold leaves out; and that the frames
-// reel lists every image, not every instant.
+// also checked per camera folder and with a lens circle shared between inputs.
+// Built without SS_BUILD_SAM, so it also checks that asking for a model fails;
+// that `sparse/0` is not a dataset; what becomes of the pictures a blur
+// threshold leaves out; and that the frames reel lists every image.
 
 #include "app/FrameMask.h"
 #include "app/gui/DatasetPrep.h"
@@ -250,6 +250,81 @@ void test_per_camera_stencil() {
           "per camera: cam0 has the input's shapes, the left half out");
     check(at(m1, W, 5, 10) == 255 && at(m1, W, 35, 10) == 0,
           "per camera: cam1 has its own, the right half out");
+}
+
+// A lit, changing circle of `radius` (of the frame) on black.
+void write_fisheye(const fs::path& p, int size, int seed, float radius) {
+    std::vector<uint8_t> px((size_t)size * size * 3, 0);
+    const float c = 0.5f * (float)size, r = radius * (float)size;
+    uint32_t s = 2654435761u * (uint32_t)(seed + 1);
+    for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++) {
+            s = s * 1664525u + 1013904223u;
+            const float dx = (float)x + 0.5f - c, dy = (float)y + 0.5f - c;
+            if (dx * dx + dy * dy > r * r) continue;
+            for (int k = 0; k < 3; k++) px[((size_t)y * size + x) * 3 + k] = (uint8_t)(40 + (s >> 25));
+        }
+    std::error_code ec;
+    fs::create_directories(p.parent_path(), ec);
+    stbi_write_png(p.string().c_str(), size, size, 3, px.data(), size * 3);
+}
+
+// Pixels where two masks of one size disagree.
+size_t mask_diff(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
+    size_t n = a.size() == b.size() ? 0 : a.size() + b.size();
+    for (size_t i = 0; i < a.size() && i < b.size(); i++) n += a[i] != b[i];
+    return n;
+}
+
+// Two captures of one lens (issue #420): sharing its circle, both are cut by
+// one fit over all their frames, though the second, dimmer at the rim, alone
+// would fit a smaller one.
+void test_shared_border() {
+    const int S = 256;
+    const fs::path root = scratch("shared_border");
+    const fs::path a = root / "a", b = root / "b";
+    for (int k = 0; k < 8; k++) {
+        const std::string f = "f" + std::to_string(k) + ".png";
+        write_fisheye(a / "cam0" / f, S, k, 0.42f);
+        write_fisheye(b / "cam0" / f, S, 100 + k, 0.34f);
+    }
+    // A dataset each: masks already written would be intersected with.
+    auto run = [&](bool share, std::vector<uint8_t>& ma, std::vector<uint8_t>& mb) {
+        const fs::path ws = root / (share ? "shared" : "own");
+        gui::PrepJob job;
+        job.workspace = ws.string();
+        gui::PrepInput one, two;
+        one.path = a.string();
+        one.subdir = "a";
+        two.path = b.string();
+        two.subdir = "b";
+        for (gui::PrepInput* in : {&one, &two}) {
+            in->stencil.detect_border = true;
+            in->stencil.shrink = 0.0f;
+            in->stencil_follow["cam0"].share = share ? 3 : 0;
+        }
+        job.inputs = {one, two};
+        gui::RunProgress prog;
+        std::string err;
+        int w = 0, h = 0;
+        const bool ok = run_prep(job, prog, err) &&
+                        app::load_stencil((ws / "masks" / "a" / "cam0" / "f0.png").string(), w, h, ma) &&
+                        app::load_stencil((ws / "masks" / "b" / "cam0" / "f0.png").string(), w, h, mb);
+        check(ok, std::string("shared border: run, ") + (share ? "shared: " : "own: ") + err);
+        bool line = false;
+        for (const gui::RunLine& l : prog.drain())
+            line = line || l.text.rfind("a/cam0, b/cam0: ", 0) == 0;
+        return line;
+    };
+    std::vector<uint8_t> own_a, own_b, shared_a, shared_b;
+    const bool own_line = run(false, own_a, own_b);
+    check(!own_line && mask_diff(own_a, own_b) > (size_t)S * S / 20,
+          "shared border fixture: alone, the second capture fits a smaller circle");
+    const bool shared_line = run(true, shared_a, shared_b);
+    check(shared_line, "shared border: one fit, logged for both rows");
+    check(!shared_a.empty() && shared_a == shared_b, "shared border: both captures get the same mask");
+    check(mask_diff(shared_a, own_a) < (size_t)S * S / 50,
+          "shared border: the circle is the one the whole lens shows");
 }
 
 // A lone input keeps images/ to itself, and a scan's photographs join it in a
@@ -1060,6 +1135,7 @@ int main() {
     test_rerun_reapplies_corrections();
     test_camera_scan_skips_mask_edits();
     test_per_camera_stencil();
+    test_shared_border();
     test_nested_input_stencils();
     test_segment_masks_workspace();
     test_model_masking_needs_segmentation();

@@ -76,6 +76,7 @@
 #include <mutex>
 #include <set>
 #include <thread>
+#include <tuple>
 
 namespace fs = std::filesystem;
 namespace lmsg = spirula::i18n::msg::log;
@@ -673,6 +674,14 @@ bool is_pano360_path(const std::string& path) {
 bool is_packed_lens_path(const std::string& path) {
     const std::string e = lower_ext(path);
     return e == ".insp" || e == ".lrv" || e == ".prx";
+}
+
+std::string lens_setup(const PrepInput& in, int width, int height) {
+    if (!is_dual_lens(in)) return {};
+    // A folder holds .insp photos, the only packed kind that comes as one.
+    const std::string kind = in.is_video ? lower_ext(in.path) : "/";
+    return kind + " " + std::to_string(std::max(width, 0)) + "x" +
+           std::to_string(std::max(height, 0));
 }
 
 int probe_packed_lenses(const std::string& dir) {
@@ -1909,6 +1918,14 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
     // The frames exist now, so what masking is asked to do can still be the
     // answer the user gave while watching them go by.
     if (refresh_masks) refresh_masks(job);
+    if (!job.keep_masks) {
+        std::vector<std::string> images, masks;
+        for (const Prepared& p : per) {
+            images.push_back(p.images);
+            masks.push_back(p.masks);
+        }
+        fit_shared_borders(job, images, masks);
+    }
 
 
     // Masks kept whole skip both passes below and only name their folders.
@@ -3990,6 +4007,69 @@ bool DatasetPrep::apply_stencil(const PrepJob& job, const PrepInput& in,
     }
     if (in_place && job.flip_found_masks) std::ofstream(marker.string());
     return true;
+}
+
+void DatasetPrep::fit_shared_borders(PrepJob& job, const std::vector<std::string>& images,
+                                     const std::vector<std::string>& masks) {
+    struct Member {
+        size_t input;
+        std::string camera;
+        std::vector<std::string> files;
+    };
+    // Frames of another size are another lens mode, so they fit apart.
+    std::map<std::tuple<int, int, int>, std::vector<Member>> groups;   // share, w, h
+    for (size_t i = 0; i < job.inputs.size() && i < images.size(); i++) {
+        const PrepInput& in = job.inputs[i];
+        std::map<std::string, std::vector<std::string>> by_camera;
+        bool listed = false;
+        for (const auto& [camera, f] : in.stencil_follow) {
+            if (!f.share || !in.stencil.for_camera(camera).detect_border) continue;
+            if (!listed)
+                for (const fs::path& p : own_images(job, in, images[i], masks[i]))
+                    by_camera[under_root(p, images[i]).parent_path().generic_string()]
+                        .push_back(p.string());
+            listed = true;
+            const auto it = by_camera.find(camera);
+            int w = 0, h = 0;
+            if (it == by_camera.end() || !app::image_size(it->second.front(), w, h)) continue;
+            groups[{f.share, w, h}].push_back({i, camera, it->second});
+        }
+    }
+    bool entered = false;
+    for (const auto& [key, members] : groups) {
+        if (members.size() < 2 || _cancel.load()) continue;
+        if (!entered) enter(Stage::Masks, lmsg::stage_frame_mask.get());
+        entered = true;
+        std::vector<std::vector<std::string>> captures;
+        std::string names;
+        for (const Member& m : members) {
+            captures.push_back(m.files);
+            const PrepInput& in = job.inputs[m.input];
+            std::string name = in.subdir.empty() || m.camera.empty() ? in.subdir + m.camera
+                                                                    : in.subdir + "/" + m.camera;
+            names += (names.empty() ? "" : ", ") + (name.empty() ? in.path : name);
+        }
+        // Unshrunk: each row applies its own shrink to the one circle.
+        app::BorderDetectOptions o;
+        o.shrink = 0.0f;
+        const app::BorderDetect d = app::detect_fisheye_border(captures, o);
+        // Not found together, each row still looks for its own.
+        if (!d.found) continue;
+        std::vector<app::MaskShape> circles;
+        for (const Member& m : members) {
+            app::FrameStencil& st = job.inputs[m.input].stencil;
+            app::CameraStencil cs = st.for_camera(m.camera);
+            circles.push_back(app::shrink_border(d.shape, cs.shrink));
+            cs.detect_border = false;
+            cs.mask.shapes.insert(cs.mask.shapes.begin(), circles.back());
+            st.cameras[m.camera] = cs;
+        }
+        const int w = std::get<1>(key), h = std::get<2>(key);
+        char pct[16];
+        std::snprintf(pct, sizeof pct, "%.0f",
+                      100.0f * app::kept_fraction(circles[0], 512, std::max(1, 512 * h / w)));
+        log(fmt(lmsg::frame_mask_border, {names, pct}), /*detail=*/false);
+    }
 }
 
 }  // namespace gui

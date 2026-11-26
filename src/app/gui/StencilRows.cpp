@@ -1,5 +1,6 @@
 #include "app/gui/StencilRows.h"
 
+#include <algorithm>
 #include <functional>
 #include <iterator>
 #include <map>
@@ -34,13 +35,12 @@ const std::vector<app::MaskShape>& row_list(const app::MaskSet& set, const std::
     return set.cameras.begin()->second;
 }
 
-// Whether a row seen for the first time follows part `p` of `above`. Not the
-// areas of a row whose fit differs: that is another kind of lens, whose drawn
-// areas mean nothing on this one (a GoPro sphere under a dual fisheye).
-bool starts_following(const app::CameraStencil& row, const app::CameraStencil& above,
-                      StencilPart p) {
-    return same_part(row, above, p) &&
-           (p == StencilPart::Border || row.detect_border == above.detect_border);
+// Whether a row seen for the first time follows the areas of `above`. Not on
+// a row whose fit differs: that is another kind of lens, whose drawn areas mean
+// nothing on this one (a GoPro sphere under a dual fisheye).
+bool starts_following(const app::CameraStencil& row, const app::CameraStencil& above) {
+    return same_part(row, above, StencilPart::Areas) &&
+           row.detect_border == above.detect_border;
 }
 
 // Writes `want` back to where each row of a touched input reads it from. An
@@ -77,33 +77,57 @@ void store(const StencilOwners& in, const std::vector<StencilRow>& rows,
     }
 }
 
-bool& flag(StencilFollow& f, StencilPart p) {
-    return p == StencilPart::Border ? f.border : f.areas;
+// Changes the rows in `which` and stores them.
+void write_rows(const StencilOwners& in, const std::vector<StencilRow>& rows,
+                const std::vector<size_t>& which,
+                const std::function<void(app::CameraStencil&)>& assign) {
+    std::vector<app::CameraStencil> want = row_stencils(in, rows);
+    std::vector<bool> touched(in.size(), false);
+    for (size_t j : which) {
+        assign(want[j]);
+        touched[rows[j].input] = true;
+    }
+    store(in, rows, want, touched);
 }
 
-// The row's choice, or before settle_follow has given it one, whether it
-// matches the row above in `vals`.
+StencilFollow* entry(const StencilOwners& in, const StencilRow& r) {
+    const auto it = in[r.input].follow->find(r.camera);
+    return it == in[r.input].follow->end() ? nullptr : &it->second;
+}
+
+int share_of(const StencilOwners& in, const StencilRow& r) {
+    const StencilFollow* f = entry(in, r);
+    return f ? f->share : 0;
+}
+
+int next_share(const StencilOwners& in) {
+    int top = 0;
+    for (const StencilOwner& o : in)
+        for (const auto& [camera, f] : *o.follow) top = std::max(top, f.share);
+    return top + 1;
+}
+
+// The row's choice, or before settle_follow has given it one, whether its
+// areas match the row above in `vals`.
 bool follows_in(const StencilOwners& in, const std::vector<StencilRow>& rows,
-                const std::vector<app::CameraStencil>& vals, size_t j, StencilPart p) {
+                const std::vector<app::CameraStencil>& vals, size_t j) {
     const int a = rows[j].above;
     if (a < 0) return false;
-    const auto& choices = (*in[rows[j].input].follow);
-    const auto it = choices.find(rows[j].camera);
-    if (it == choices.end()) return starts_following(vals[j], vals[(size_t)a], p);
-    return p == StencilPart::Border ? it->second.border : it->second.areas;
+    const StencilFollow* f = entry(in, rows[j]);
+    return f ? f->areas : starts_following(vals[j], vals[(size_t)a]);
 }
 
-// from[j] >= 0 marks a changed row: the row whose new value it takes. A row
+// from[j] >= 0 marks a changed row: the row whose new areas it takes. A row
 // joins the one it follows, as `before` found them. Rows in `fixed` are
 // neither joined nor written, so nothing passes through one but a seed.
 using Assign = std::function<void(size_t row, size_t from, app::CameraStencil& cs)>;
 void spread(const StencilOwners& in, const std::vector<StencilRow>& rows,
-            const std::vector<app::CameraStencil>& before, StencilPart p, std::vector<int> from,
+            const std::vector<app::CameraStencil>& before, std::vector<int> from,
             const std::vector<bool>& fixed, const Assign& assign) {
     for (size_t j = 0; j < rows.size(); j++) {
         const int a = rows[j].above;
         if (from[j] >= 0 || fixed[j] || a < 0 || from[(size_t)a] < 0) continue;
-        if (follows_in(in, rows, before, j, p)) from[j] = from[(size_t)a];
+        if (follows_in(in, rows, before, j)) from[j] = from[(size_t)a];
     }
     std::vector<app::CameraStencil> want = row_stencils(in, rows);
     std::vector<bool> touched(in.size(), false);
@@ -115,34 +139,26 @@ void spread(const StencilOwners& in, const std::vector<StencilRow>& rows,
     store(in, rows, want, touched);
 }
 
-void set_border(const StencilOwners& in, const std::vector<StencilRow>& rows, size_t r,
-                bool on, float shrink, bool follow) {
-    settle_follow(in, rows);
-    std::vector<int> from(rows.size(), -1);
-    from[r] = (int)r;
-    spread(in, rows, row_stencils(in, rows), StencilPart::Border, from,
-           std::vector<bool>(rows.size(), false),
-           [&](size_t, size_t, app::CameraStencil& cs) {
-               cs.detect_border = on;
-               // Kept while off, so turning it back on finds it.
-               if (on) cs.shrink = shrink;
-           });
-    (*in[rows[r].input].follow)[rows[r].camera].border = follow;
-    settle_follow(in, rows);
-}
-
 void set_areas(const StencilOwners& in, const std::vector<StencilRow>& rows, size_t r,
                const app::MaskSet& set, bool follow) {
     settle_follow(in, rows);
     std::vector<int> from(rows.size(), -1);
     from[r] = (int)r;
-    spread(in, rows, row_stencils(in, rows), StencilPart::Areas, from,
-           std::vector<bool>(rows.size(), false),
+    spread(in, rows, row_stencils(in, rows), from, std::vector<bool>(rows.size(), false),
            [&](size_t j, size_t, app::CameraStencil& cs) {
                cs.mask.shapes = row_list(set, rows[j].camera);
            });
     (*in[rows[r].input].follow)[rows[r].camera].areas = follow;
     settle_follow(in, rows);
+}
+
+// What Edit border ellipse leaves: the fit turned off and a keep ellipse put
+// first, which is this lens's circle rather than anything drawn.
+bool border_edited(const app::CameraStencil& before, const app::CameraStencil& after) {
+    const auto& s = after.mask.shapes;
+    return before.detect_border && !after.detect_border && !s.empty() && !s[0].remove &&
+           s[0].kind == app::MaskShape::Kind::Ellipse &&
+           (before.mask.shapes.empty() || !same_shape(before.mask.shapes[0], s[0]));
 }
 
 }  // namespace
@@ -194,40 +210,105 @@ bool same_part(const app::CameraStencil& a, const app::CameraStencil& b, Stencil
 
 void settle_follow(const StencilOwners& in, const std::vector<StencilRow>& rows) {
     const std::vector<app::CameraStencil> vals = row_stencils(in, rows);
+    std::vector<app::CameraStencil> want = vals;
+    std::vector<bool> joined(in.size(), false);
     for (size_t j = 0; j < rows.size(); j++) {
-        std::map<std::string, StencilFollow>& choices = (*in[rows[j].input].follow);
+        const size_t i = rows[j].input;
+        const std::string& camera = rows[j].camera;
         const int a = rows[j].above;
-        const auto it = choices.find(rows[j].camera);
-        for (const StencilPart p : {StencilPart::Border, StencilPart::Areas}) {
-            if (it == choices.end())
-                flag(choices[rows[j].camera], p) =
-                    a >= 0 && starts_following(vals[j], vals[(size_t)a], p);
-            else
-                flag(it->second, p) =
-                    flag(it->second, p) && a >= 0 && same_part(vals[j], vals[(size_t)a], p);
+        if (StencilFollow* f = entry(in, rows[j])) {
+            f->areas = f->areas && a >= 0 &&
+                       same_part(vals[j], vals[(size_t)a], StencilPart::Areas);
+            continue;
         }
+        StencilFollow f;
+        f.areas = a >= 0 && starts_following(vals[j], vals[(size_t)a]);
+        // Rows above were settled first, so each has its entry.
+        const bool shares = !in[i].setup.empty() && !camera.empty() && vals[j].detect_border;
+        for (size_t k = j; shares && k-- > 0;) {
+            const size_t ki = rows[k].input;
+            if (ki == i || in[ki].setup != in[i].setup || rows[k].camera != camera ||
+                !vals[k].detect_border)
+                continue;
+            StencilFollow& above = (*in[ki].follow)[camera];
+            if (!above.share) above.share = next_share(in);
+            f.share = above.share;
+            want[j].shrink = want[k].shrink;
+            joined[i] = true;
+            break;
+        }
+        (*in[i].follow)[camera] = f;
+    }
+    store(in, rows, want, joined);
+    std::map<int, int> count;
+    for (size_t j = 0; j < rows.size(); j++) {
+        StencilFollow& f = *entry(in, rows[j]);
+        if (!vals[j].detect_border) f.share = 0;
+        if (f.share) count[f.share]++;
+    }
+    for (const StencilRow& r : rows) {
+        StencilFollow& f = *entry(in, r);
+        if (f.share && count[f.share] < 2) f.share = 0;
     }
     for (size_t i = 0; i < in.size(); i++)
         for (auto it = (*in[i].follow).begin(); it != (*in[i].follow).end();) {
             bool listed = false;
-            for (const StencilRow& r : rows) listed = listed || (r.input == i && r.camera == it->first);
+            for (const StencilRow& r : rows)
+                listed = listed || (r.input == i && r.camera == it->first);
             it = listed ? std::next(it) : (*in[i].follow).erase(it);
         }
 }
 
-bool row_follows(const StencilOwners& in, const std::vector<StencilRow>& rows,
-                 size_t r, StencilPart p) {
+bool row_follows(const StencilOwners& in, const std::vector<StencilRow>& rows, size_t r) {
     const int a = rows[r].above;
     if (a < 0) return false;
-    const auto& choices = (*in[rows[r].input].follow);
-    const auto it = choices.find(rows[r].camera);
-    if (it != choices.end()) return p == StencilPart::Border ? it->second.border : it->second.areas;
-    return starts_following(row_stencil(in, rows[r]), row_stencil(in, rows[(size_t)a]), p);
+    if (const StencilFollow* f = entry(in, rows[r])) return f->areas;
+    return starts_following(row_stencil(in, rows[r]), row_stencil(in, rows[(size_t)a]));
 }
 
 void set_row_border(const StencilOwners& in, const std::vector<StencilRow>& rows, size_t r,
                     bool on, float shrink) {
-    set_border(in, rows, r, on, shrink, /*follow=*/false);
+    settle_follow(in, rows);
+    entry(in, rows[r])->share = 0;
+    write_rows(in, rows, {r}, [&](app::CameraStencil& cs) {
+        cs.detect_border = on;
+        // Kept while off, so turning it back on finds it.
+        if (on) cs.shrink = shrink;
+    });
+    settle_follow(in, rows);
+}
+
+void set_row_shrink(const StencilOwners& in, const std::vector<StencilRow>& rows, size_t r,
+                    float shrink) {
+    settle_follow(in, rows);
+    std::vector<size_t> which = border_sharers(in, rows, r);
+    if (which.empty()) which = {r};
+    write_rows(in, rows, which, [&](app::CameraStencil& cs) { cs.shrink = shrink; });
+    settle_follow(in, rows);
+}
+
+void share_border(const StencilOwners& in, const std::vector<StencilRow>& rows, size_t r,
+                  size_t with) {
+    settle_follow(in, rows);
+    const app::CameraStencil target = row_stencil(in, rows[with]);
+    if (with == r || !target.detect_border) return;
+    StencilFollow& t = *entry(in, rows[with]);
+    if (!t.share) t.share = next_share(in);
+    entry(in, rows[r])->share = t.share;
+    write_rows(in, rows, {r}, [&](app::CameraStencil& cs) {
+        cs.detect_border = true;
+        cs.shrink = target.shrink;
+    });
+    settle_follow(in, rows);
+}
+
+std::vector<size_t> border_sharers(const StencilOwners& in, const std::vector<StencilRow>& rows,
+                                   size_t r) {
+    std::vector<size_t> out;
+    const int share = share_of(in, rows[r]);
+    for (size_t j = 0; share && j < rows.size(); j++)
+        if (share_of(in, rows[j]) == share) out.push_back(j);
+    return out;
 }
 
 void set_row_areas(const StencilOwners& in, const std::vector<StencilRow>& rows, size_t r,
@@ -235,17 +316,11 @@ void set_row_areas(const StencilOwners& in, const std::vector<StencilRow>& rows,
     set_areas(in, rows, r, set, /*follow=*/false);
 }
 
-void follow_above(const StencilOwners& in, const std::vector<StencilRow>& rows, size_t r,
-                  StencilPart p) {
+void follow_above(const StencilOwners& in, const std::vector<StencilRow>& rows, size_t r) {
     const int a = rows[r].above;
     if (a < 0) return;
-    const app::CameraStencil above = row_stencil(in, rows[(size_t)a]);
-    if (p == StencilPart::Border) {
-        set_border(in, rows, r, above.detect_border, above.shrink, /*follow=*/true);
-        return;
-    }
     app::MaskSet set;
-    set.shapes = above.mask.shapes;
+    set.shapes = row_stencil(in, rows[(size_t)a]).mask.shapes;
     set_areas(in, rows, r, set, /*follow=*/true);
 }
 
@@ -253,27 +328,47 @@ void follow_edit(const StencilOwners& in, const std::vector<StencilRow>& rows,
                  const std::vector<app::CameraStencil>& before, size_t edited) {
     if (before.size() != rows.size()) return;
     const std::vector<app::CameraStencil> after = row_stencils(in, rows);
-    std::vector<bool> fixed(rows.size(), false);
-    for (size_t j = 0; j < rows.size(); j++) fixed[j] = rows[j].input == edited;
-    for (const StencilPart p : {StencilPart::Border, StencilPart::Areas}) {
-        std::vector<int> from(rows.size(), -1);
-        bool any = false;
-        for (size_t j = 0; j < rows.size(); j++)
-            if (fixed[j] && !same_part(before[j], after[j], p)) {
-                from[j] = (int)j;
-                any = true;
-            }
-        if (!any) continue;
-        spread(in, rows, before, p, from, fixed,
-               [&](size_t, size_t src, app::CameraStencil& cs) {
-                   if (p == StencilPart::Border) {
-                       cs.detect_border = after[src].detect_border;
-                       if (cs.detect_border) cs.shrink = after[src].shrink;
-                   } else {
-                       cs.mask.shapes = after[src].mask.shapes;
-                   }
-               });
+    std::vector<bool> fixed(rows.size(), false), ellipse(rows.size(), false);
+    // The areas as drawn: an edited border ellipse belongs to the lens and goes
+    // only where its circle is shared, never down the areas.
+    std::vector<app::CameraStencil> drawn = after;
+    for (size_t j = 0; j < rows.size(); j++) {
+        fixed[j] = rows[j].input == edited;
+        ellipse[j] = fixed[j] && border_edited(before[j], after[j]);
+        if (ellipse[j]) drawn[j].mask.shapes.erase(drawn[j].mask.shapes.begin());
     }
+    std::vector<int> from(rows.size(), -1);
+    bool any = false;
+    for (size_t j = 0; j < rows.size(); j++)
+        if (fixed[j] && !same_part(before[j], drawn[j], StencilPart::Areas)) {
+            from[j] = (int)j;
+            any = true;
+        }
+    if (any)
+        spread(in, rows, before, from, fixed, [&](size_t, size_t src, app::CameraStencil& cs) {
+            cs.mask.shapes = drawn[src].mask.shapes;
+        });
+
+    std::vector<app::CameraStencil> want = row_stencils(in, rows);
+    std::vector<bool> touched(in.size(), false), done(rows.size(), false);
+    for (size_t j = 0; j < rows.size(); j++) {
+        if (!fixed[j]) continue;
+        const bool shrink = before[j].detect_border && after[j].detect_border &&
+                            before[j].shrink != after[j].shrink;
+        if (!shrink && !ellipse[j]) continue;
+        for (size_t k : border_sharers(in, rows, j)) {
+            if (fixed[k] || done[k]) continue;
+            done[k] = true;
+            touched[rows[k].input] = true;
+            if (!ellipse[j]) {
+                want[k].shrink = after[j].shrink;
+                continue;
+            }
+            want[k].detect_border = false;
+            want[k].mask.shapes.insert(want[k].mask.shapes.begin(), after[j].mask.shapes[0]);
+        }
+    }
+    store(in, rows, want, touched);
     settle_follow(in, rows);
 }
 
@@ -317,10 +412,12 @@ int common_set(const std::vector<app::MaskSet>& sets, const StencilOwners& in,
     return -1;
 }
 
-StencilOwners stencil_owners(std::vector<PrepInput>& in) {
+StencilOwners stencil_owners(std::vector<PrepInput>& in, const std::vector<std::string>& setups) {
     StencilOwners out;
     out.reserve(in.size());
-    for (PrepInput& i : in) out.push_back({&i.stencil, &i.stencil_follow});
+    for (size_t i = 0; i < in.size(); i++)
+        out.push_back({&in[i].stencil, &in[i].stencil_follow,
+                       i < setups.size() ? setups[i] : std::string()});
     return out;
 }
 

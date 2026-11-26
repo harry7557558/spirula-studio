@@ -78,7 +78,13 @@ void GuiApp::refresh_frame_shapes(const std::vector<PrepInput>& inputs,
 
 GuiApp::StencilTable GuiApp::stencil_table() {
     StencilTable t;
-    t.owners = stencil_owners(_sources);
+    std::vector<std::string> setups;
+    for (const PrepInput& in : _sources) {
+        int w = 0, h = 0;
+        if (is_dual_lens(in)) input_pixel_size(in.path, in.is_video, w, h);
+        setups.push_back(lens_setup(in, w, h));
+    }
+    t.owners = stencil_owners(_sources, setups);
     t.inputs = _sources.size();
     for (const PrepInput& in : _sources) {
         fs::path path(in.path);
@@ -196,27 +202,47 @@ void GuiApp::draw_stencil_rows(const MaskingPanel& p) {
         }
 
         ImGui::TableNextColumn();
-        const bool border_follows = row_follows(owners, rows, r, StencilPart::Border);
-        const char* border_shown = border_follows    ? dmsg::lens_same_as_above.get()
+        const std::vector<size_t> sharers = border_sharers(owners, rows, r);
+        std::string sharing;
+        for (size_t k : sharers)
+            if (k != r) sharing += (sharing.empty() ? "" : ", ") + names[k];
+        const char* border_shown = !sharers.empty() ? dmsg::stencil_rows_shared.get()
                                    : cs.detect_border ? dmsg::stencil_rows_cut.get()
                                                       : dmsg::stencil_rows_off.get();
         ImGui::SetNextItemWidth(combo_w);
         if (ui::BeginComboRaw("##border", border_shown)) {
-            if (row.above >= 0) {
-                if (ui::Selectable(dmsg::lens_same_as_above, border_follows))
-                    follow_above(owners, rows, r, StencilPart::Border);
-                ui::help_on_hover(dmsg::stencil_rows_same_help, {above});
-                ImGui::Separator();
-            }
-            if (ui::Selectable(dmsg::stencil_rows_cut, !border_follows && cs.detect_border))
+            if (ui::Selectable(dmsg::stencil_rows_cut, sharers.empty() && cs.detect_border))
                 set_row_border(owners, rows, r, true, cs.shrink);
             ui::help_on_hover(dmsg::stencil_border_help);
-            if (ui::Selectable(dmsg::stencil_rows_off, !border_follows && !cs.detect_border))
+            if (ui::Selectable(dmsg::stencil_rows_off, !cs.detect_border))
                 set_row_border(owners, rows, r, false, cs.shrink);
             ui::help_on_hover(dmsg::stencil_rows_off_help);
+            // Any input's other row that cuts; a scan's photographs fit their own.
+            std::vector<size_t> others;
+            for (size_t k = 0; !scan && k < rows.size(); k++)
+                if (k != r && rows[k].input < t.inputs &&
+                    row_stencil(owners, rows[k]).detect_border)
+                    others.push_back(k);
+            if (!scan) {
+                ImGui::Separator();
+                if (ui::BeginMenu(dmsg::stencil_rows_share_with, !others.empty())) {
+                    for (size_t k : others) {
+                        ImGui::PushID((int)k);
+                        const bool joined =
+                            std::find(sharers.begin(), sharers.end(), k) != sharers.end();
+                        if (ui::MenuItemRaw(names[k].c_str(), joined) && !joined)
+                            share_border(owners, rows, r, k);
+                        ImGui::PopID();
+                    }
+                    ImGui::EndMenu();
+                } else {
+                    // Only while closed: an open submenu is where the tooltip would go.
+                    ui::help_on_hover_disabled(dmsg::stencil_rows_share_help);
+                }
+            }
             ImGui::EndCombo();
         }
-        if (border_follows) ui::help_on_hover(dmsg::stencil_rows_same_help, {above});
+        if (!sharers.empty()) ui::help_on_hover(dmsg::stencil_rows_shared_help, {sharing});
         else ui::help_on_hover(cs.detect_border ? dmsg::stencil_border_help
                                                 : dmsg::stencil_rows_off_help);
         if (cs.detect_border) {
@@ -225,12 +251,12 @@ void GuiApp::draw_stencil_rows(const MaskingPanel& p) {
             float pct = cs.shrink * 100.0f;
             if (ui::SliderFloatRaw("##shrink", &pct, -10.0f, 30.0f, "%.1f%%",
                                    ImGuiSliderFlags_AlwaysClamp))
-                set_row_border(owners, rows, r, true, pct / 100.0f);
+                set_row_shrink(owners, rows, r, pct / 100.0f);
             ui::help_on_hover(dmsg::stencil_shrink_help);
         }
 
         ImGui::TableNextColumn();
-        const bool areas_follow = row_follows(owners, rows, r, StencilPart::Areas);
+        const bool areas_follow = row_follows(owners, rows, r);
         const int set = row_set(_stencil_set_shapes, row, cs);
         const std::string areas_shown =
             areas_follow           ? std::string(dmsg::lens_same_as_above.get())
@@ -242,7 +268,7 @@ void GuiApp::draw_stencil_rows(const MaskingPanel& p) {
         if (ui::BeginComboRaw("##areas", areas_shown.c_str(), ImGuiComboFlags_HeightLarge)) {
             if (row.above >= 0) {
                 if (ui::Selectable(dmsg::lens_same_as_above, areas_follow))
-                    follow_above(owners, rows, r, StencilPart::Areas);
+                    follow_above(owners, rows, r);
                 ui::help_on_hover(dmsg::stencil_rows_same_help, {above});
                 ImGui::Separator();
             }

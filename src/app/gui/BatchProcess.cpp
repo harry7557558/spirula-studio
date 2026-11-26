@@ -3,6 +3,7 @@
 #include "app/gui/BatchProcess.h"
 
 #include "app/gui/StencilPreset.h"
+#include "app/gui/StencilRows.h"
 
 #include "app/AppPaths.h"
 #include "app/TrainerCore.h"
@@ -763,6 +764,18 @@ bool batch_build_dataset_job(const BatchRow& row, const std::string& ffmpeg_exe,
     refresh_subcameras(sources);
     guess_source_rigs(sources, /*force=*/false);
     normalize_source_lenses(sources, settings.sfm.camera_model);
+    // No table meets these rows, so each dual lens's shared circle starts here.
+    if (settings.border_enable) {
+        std::vector<std::vector<std::string>> keys;
+        std::vector<std::string> setups;
+        for (const PrepInput& in : sources) {
+            keys.push_back(stencil_cameras(settings.sfm.prep, in));
+            int w = 0, h = 0;
+            if (is_dual_lens(in)) source_pixel_size(in, ffmpeg_exe, w, h);
+            setups.push_back(lens_setup(in, w, h));
+        }
+        settle_follow(sources, stencil_rows(keys), setups);
+    }
 
     workspace = batch_dataset_workspace(row);
     if (workspace.empty()) {

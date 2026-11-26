@@ -79,6 +79,8 @@ const WorkspaceState& GuiApp::workspace_state() {
         _ws_state_at = now;
         _ws_state = probe_workspace(_workspace, _sources);
         _ws_artifacts = workspace_artifacts(_workspace, _sources);
+        const StencilTable t = stencil_table();
+        settle_follow(t.owners, t.rows);
         PrepJob job = _sfm_job.prep;
         job.inputs = _sources;
         job.workspace = _workspace;
@@ -116,6 +118,11 @@ void GuiApp::fill_masking(PrepJob& prep) const {
 }
 
 void GuiApp::sync_dataset_jobs() {
+    // Shared lens circles start where the rows are first met, table shown or not.
+    {
+        const StencilTable t = stencil_table();
+        settle_follow(t.owners, t.rows);
+    }
     PrepJob prep;
     prep.inputs = _sources;
     // The checkbox decides whether the run is given the stencils; the drawings

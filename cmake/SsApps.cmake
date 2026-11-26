@@ -841,6 +841,7 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/gui/MeshPreset.cpp
         ${SS_SRC}/app/gui/MeshJob.cpp
         ${SS_SRC}/app/gui/StencilPreset.cpp
+        ${SS_SRC}/app/gui/StencilRows.cpp
         ${SS_SRC}/app/gui/PresetFile.cpp
         ${SS_SRC}/app/AppPaths.cpp)
     ss_configure_app(batch_process_test)

@@ -1071,6 +1071,23 @@ int main() {
                "... and a scan's photographs joining is a model change");
     }
 
+    {
+        // Two clips' lenses fitting one circle: who shares is a masks setting.
+        PrepJob own = video_job(ws).prep;
+        own.inputs.push_back(own.inputs[0]);
+        own.inputs[0].subdir = "a";
+        own.inputs[1].subdir = "b";
+        for (PrepInput& in : own.inputs) in.stencil.detect_border = true;
+        PrepJob shared = own;
+        for (PrepInput& in : shared.inputs) in.stencil_follow[""].share = 1;
+        expect(!(masks_fields(shared) == masks_fields(own)),
+               "lenses sharing their border circle is a masks setting changed");
+        PrepJob renumbered = shared;
+        for (PrepInput& in : renumbered.inputs) in.stencil_follow[""].share = 7;
+        expect(masks_fields(renumbered) == masks_fields(shared),
+               "... recorded by who shares, not by the share's number");
+    }
+
     // ---- and what the old stamps still say, back on the panel --------------
     {
         std::ofstream(ws / ".spirula-recon")
@@ -1191,6 +1208,16 @@ int main() {
         in.stencil.cameras["cam1"].mask.shapes.resize(2);
         expect(stencil_cameras(PrepJob{}, in) == std::vector<std::string>{"cam1"},
                "the fixed areas list the extracted lens only");
+        expect(lens_setup(in).empty(), "one lens of a dual file has no setup to share");
+        in.active_lens = -1;
+        in.path = "/captures/VID_1.INSV";
+        expect(lens_setup(in, 2880, 2880) == ".insv 2880x2880",
+               "a dual file's type and frame size name its setup");
+        in.path = "/captures/VID_1.osv";
+        expect(lens_setup(in, 2880, 2880) != ".insv 2880x2880", "another type is another setup");
+        PrepInput phone = insv();
+        phone.path = "/captures/phone.mp4";
+        expect(lens_setup(phone).empty(), "a phone clip has none");
     }
     {
         PrepInput in = insv();

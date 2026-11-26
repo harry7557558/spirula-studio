@@ -98,10 +98,15 @@ struct BorderDetect {
 };
 
 MaskShape shrink_border(MaskShape shape, float shrink);
+// The part of a width x height frame that `shape` alone keeps, 0..1.
+float kept_fraction(const MaskShape& shape, int width, int height);
 
 // Reads `samples` frames spread across `files` and fits the boundary of the
 // image circle. `files` is one camera's frames, in capture order.
 BorderDetect detect_fisheye_border(const std::vector<std::string>& files,
+                                   const BorderDetectOptions& o);
+// One lens across several captures: `samples` frames of each, fitted as one.
+BorderDetect detect_fisheye_border(const std::vector<std::vector<std::string>>& captures,
                                    const BorderDetectOptions& o);
 
 // The same, for a caller that produces frames itself. Holding 24 frames of a

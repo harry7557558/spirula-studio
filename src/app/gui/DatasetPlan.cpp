@@ -114,6 +114,20 @@ std::string stencil_digest(const app::FrameStencil& st) {
     return digest(s);
 }
 
+// The rows each cutting lens of `in` fits one circle with; "" when none.
+std::string share_digest(const PrepJob& job, const PrepInput& in) {
+    std::string s;
+    for (const auto& [camera, own] : in.stencil_follow) {
+        if (!own.share || !in.stencil.for_camera(camera).detect_border) continue;
+        std::vector<std::string> with;
+        for (const PrepInput& o : job.inputs)
+            for (const auto& [c, f] : o.stencil_follow)
+                if (f.share == own.share) with.push_back(o.subdir + "/" + c);
+        s += camera + "|" + joined(with) + "\n";
+    }
+    return s.empty() ? s : digest(s);
+}
+
 std::string clicks_digest(const std::vector<MaskClick>& clicks) {
     std::string s;
     for (const MaskClick& c : clicks)
@@ -776,8 +790,11 @@ StepFields masks_fields(const PrepJob& job) {
         else if (!input_masks_in_dataset(job, in))
             add(f, "found_masks", scope, norm_path(in.mask_dir));
         if (!in.mask_dir.empty() && job.flip_found_masks) add(f, "flip_masks", scope, "on");
-        if (!in.stencil.empty() && in.scan.empty())
+        if (!in.stencil.empty() && in.scan.empty()) {
             add(f, "stencil", scope, stencil_digest(in.stencil));
+            const std::string shared = share_digest(job, in);
+            if (!shared.empty()) add(f, "stencil_share", scope, shared);
+        }
     }
     // Under the scan, which the plan knows before its photographs are inputs.
     for (const auto& [scan, st] : job.scan_stencils)

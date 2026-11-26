@@ -329,6 +329,7 @@ std::string plan_key_label(const std::string& key) {
     static const std::pair<const char*, const Msg*> labels[] = {
         {"quality", &dmsg::quality}, {"lens", &dmsg::camera_lens},
         {"stencil", &dmsg::stencil_section}, {"scan_stencil", &dmsg::stencil_section},
+        {"stencil_share", &dmsg::stencil_section},
         {"scan_photos", &ldmsg::use_scan_photos},
         {"camera_mode", &dmsg::camera_sharing}, {"pairs", &dmsg::image_matching},
         {"features", &dmsg::features},

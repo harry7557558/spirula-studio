@@ -5107,19 +5107,19 @@ SS_MSG(stencil_border,
     TR("Balıkgözü kenarını kes"));
 
 SS_MSG(stencil_border_help,
-    EN("Detects the lens circle and keeps its interior. Recomputed per camera when building the dataset, including both lenses of 360° cameras."),
-    JA("レンズ円を検出して内側を残します。データセット作成時にカメラごとに再計算し、360度カメラの両レンズにも個別に適用します。"),
-    ZH_HANS("检测镜头圆形并保留内部。创建数据集时逐相机重新计算，360° 相机的双镜头分别处理。"),
-    ZH_HANT("偵測鏡頭圓形並保留內部。建立資料集時逐相機重新計算，360° 相機的雙鏡頭分別處理。"),
-    KO("렌즈 원을 감지해 안쪽만 남깁니다. 데이터셋을 만들 때 360° 카메라 양쪽 렌즈를 포함해 카메라별로 다시 계산합니다."),
-    DE("Erkennt den Objektivkreis und behält sein Inneres. Beim Datensatzbau je Kamera neu berechnet, auch für beide 360°-Objektive."),
-    FR("Détecte le cercle de l’objectif et garde l’intérieur. Recalculé par caméra à la création du jeu, y compris pour les deux objectifs 360°."),
-    ES("Detecta el círculo de lente y conserva el interior. Se recalcula por cámara al crear el dataset, incluidas ambas lentes 360°."),
-    PT("Deteta o círculo da lente e mantém o interior. Recalculado por câmara ao criar o conjunto, incluindo ambas as lentes 360°."),
-    IT("Rileva il cerchio della lente e tiene l’interno. Ricalcolato per camera alla creazione del dataset, anche per entrambe le lenti 360°."),
-    NL("Detecteert de lenscirkel en behoudt de binnenkant. Bij datasetbouw per camera herberekend, ook voor beide 360°-lenzen."),
-    RU("Находит круг объектива и сохраняет внутренность. При сборке набора вычисляется для каждой камеры, включая обе линзы 360°."),
-    TR("Mercek çemberini algılar ve içini tutar. Veri kümesi oluşturulurken iki 360° merceği de dâhil her kamera için yeniden hesaplar."));
+    EN("Detects the lens circle and keeps its interior. Fitted per camera when building the dataset, or once over all the rows that share it."),
+    JA("レンズ円を検出して内側を残します。データセット作成時にカメラごとに求め、円を共有する行はまとめて1回で求めます。"),
+    ZH_HANS("检测镜头圆形并保留内部。创建数据集时逐相机拟合，共用此圆的行则合在一起拟合一次。"),
+    ZH_HANT("偵測鏡頭圓形並保留內部。建立資料集時逐相機擬合，共用此圓的行則合在一起擬合一次。"),
+    KO("렌즈 원을 감지해 안쪽만 남깁니다. 데이터셋을 만들 때 카메라별로 맞추며, 원을 공유하는 행은 한 번에 함께 맞춥니다."),
+    DE("Erkennt den Objektivkreis und behält sein Inneres. Beim Datensatzbau je Kamera angepasst, für Zeilen mit geteiltem Kreis einmal gemeinsam."),
+    FR("Détecte le cercle de l’objectif et garde l’intérieur. Ajusté par caméra à la création du jeu, ou une fois pour les lignes qui le partagent."),
+    ES("Detecta el círculo de lente y conserva el interior. Se ajusta por cámara al crear el dataset, o una vez para las filas que lo comparten."),
+    PT("Deteta o círculo da lente e mantém o interior. Ajustado por câmara ao criar o conjunto, ou uma vez para as linhas que o partilham."),
+    IT("Rileva il cerchio della lente e tiene l’interno. Adattato per camera alla creazione del dataset, o una volta per le righe che lo condividono."),
+    NL("Detecteert de lenscirkel en behoudt de binnenkant. Bij datasetbouw per camera aangepast, of één keer voor de rijen die hem delen."),
+    RU("Находит круг объектива и сохраняет внутренность. При сборке набора подбирается для каждой камеры, а для строк с общим кругом -- один раз."),
+    TR("Mercek çemberini algılar ve içini tutar. Veri kümesi oluşturulurken her kamera için, çemberi paylaşan satırlar için bir kez oturtulur."));
 
 SS_MSG(stencil_shrink,
     EN("Shrink"),
@@ -5161,19 +5161,19 @@ SS_MSG(stencil_edit_border,
     TR("Sınır elipsini düzenle"));
 
 SS_MSG(stencil_edit_border_help,
-    EN("Turns the detected border into a movable, resizable ellipse and disables auto-detection. Enables per-camera areas; other cameras keep their borders."),
-    JA("検出した縁を移動・拡縮可能な楕円にし、自動検出を止めます。カメラ別領域を有効にし、他カメラの縁は保持します。"),
-    ZH_HANS("将检测边框转为可移动缩放的椭圆，并停用自动检测。启用逐相机区域；其他相机保留各自边框。"),
-    ZH_HANT("將偵測邊框轉為可移動縮放的橢圓，並停用自動偵測。啟用逐相機區域；其他相機保留各自邊框。"),
-    KO("검출된 경계를 이동·크기 변경 가능한 타원으로 바꾸고 자동 감지를 끕니다. 카메라별 영역을 켜며 다른 카메라 경계는 유지합니다."),
-    DE("Macht den Rand zur beweglichen, skalierbaren Ellipse und deaktiviert die Automatik. Aktiviert Bereiche je Kamera; andere Kameras behalten ihre Ränder."),
-    FR("Transforme le bord en ellipse déplaçable et redimensionnable, sans détection auto. Active les zones par caméra ; les autres gardent leurs bords."),
-    ES("Convierte el borde en elipse movible y escalable, desactiva detección automática. Activa zonas por cámara; las otras conservan sus bordes."),
-    PT("Torna a borda numa elipse móvel e redimensionável, desliga a deteção automática. Ativa zonas por câmara; as outras mantêm as bordas."),
-    IT("Trasforma il bordo in ellisse mobile e ridimensionabile, senza rilevamento auto. Attiva aree per camera; le altre mantengono i propri bordi."),
-    NL("Maakt de rand een verplaatsbare, schaalbare ellips en zet autodetectie uit. Activeert gebieden per camera; andere camera’s behouden hun rand."),
-    RU("Превращает край в перемещаемый и масштабируемый эллипс без автопоиска. Включает области по камерам; остальные сохраняют края."),
-    TR("Kenarı taşınabilir, ölçeklenebilir elipse çevirip otomatik algılamayı kapatır. Kamera başına alanları açar; diğer kameralar kenarlarını korur."));
+    EN("Turns the detected border into a movable, resizable ellipse without auto-detection, here and on rows sharing its circle. Other cameras keep theirs."),
+    JA("検出した縁を移動・拡縮可能な楕円にし、自動検出を止めます。円を共有する行も同様です。他カメラの縁は保持します。"),
+    ZH_HANS("将检测边框转为可移动缩放的椭圆并停用自动检测，共用此圆的行也一样。其他相机保留各自边框。"),
+    ZH_HANT("將偵測邊框轉為可移動縮放的橢圓並停用自動偵測，共用此圓的行也一樣。其他相機保留各自邊框。"),
+    KO("검출된 경계를 이동·크기 변경 가능한 타원으로 바꾸고 자동 감지를 끕니다. 이 원을 공유하는 행도 같습니다. 다른 카메라 경계는 유지합니다."),
+    DE("Macht den Rand zur beweglichen Ellipse ohne Automatik, hier und in Zeilen mit geteiltem Kreis. Andere Kameras behalten ihre Ränder."),
+    FR("Transforme le bord en ellipse déplaçable, sans détection auto, ici et sur les lignes qui partagent son cercle. Les autres caméras gardent le leur."),
+    ES("Convierte el borde en una elipse movible, sin detección automática, aquí y en las filas que comparten su círculo. Las otras cámaras conservan el suyo."),
+    PT("Torna a borda numa elipse móvel, sem deteção automática, aqui e nas linhas que partilham o círculo. As outras câmaras mantêm as suas."),
+    IT("Trasforma il bordo in un'ellisse mobile, senza rilevamento auto, qui e nelle righe che condividono il cerchio. Le altre camere tengono il loro."),
+    NL("Maakt de rand een verplaatsbare ellips zonder autodetectie, hier en in rijen die de cirkel delen. Andere camera’s houden hun rand."),
+    RU("Превращает край в подвижный эллипс без автопоиска, здесь и в строках с общим кругом. Остальные камеры сохраняют свои края."),
+    TR("Kenarı otomatik algılamasız, taşınabilir bir elipse çevirir; çemberi paylaşan satırlarda da. Diğer kameralar kenarlarını korur."));
 
 SS_MSG(stencil_looking,
     EN("Looking for the border..."),
@@ -5584,19 +5584,19 @@ SS_MSG(stencil_areas_help,
     TR("Hiç sahne olmayanın üstüne çizilen biçimler: filigran, çeken kişi, çubuk.\n- \"Maskeyi dene…\" içinden kaydedilmiş bir set seçin ya da orada bu girdiye çizmek için \"Çiz...\".\n- İzleyen mercekler setten kendi merceğinin alanlarını, yoksa ilk merceğinkini alır.\n- Her satır aynı seti çiziyorsa, veri kümesi ön ayarı adını toplu işlem için saklar."));
 
 SS_MSG(stencil_rows_help,
-    EN("There is one row per input lens.\n- A matching row follows the one above until you choose different settings. It shows “same as above.”\n- An input’s first lens follows the previous input’s first lens. For one camera, set up the first row."),
-    JA("入力ごと、複数レンズのカメラならレンズごとに 1 行です。追従先の行（すぐ上の行、入力の最初のレンズならすぐ上の入力の最初のレンズ）と最初から同じ行は「（上と同じ）」と表示され、別の選択肢を選ぶまでその行と一緒に変わります。\n1台のカメラで撮った素材なら最初の行だけで設定できます。"),
-    ZH_HANS("每个输入一行，有多个镜头的相机则每个镜头一行。一开始就与它跟随的那一行（上一行，输入的第一个镜头则是正上方那个输入的第一个镜头）相同的行显示“（同上）”，在给它选别的选项之前，那一行变了它也跟着变。\n所以用一台相机拍的素材在第一行设好即可。"),
-    ZH_HANT("每個輸入一行，有多個鏡頭的相機則每個鏡頭一行。一開始就與它跟隨的那一行（上一行，輸入的第一個鏡頭則是正上方那個輸入的第一個鏡頭）相同的行顯示「（同上）」，在給它選別的選項之前，那一行變了它也跟著變。\n所以用一台相機拍的素材在第一行設好即可。"),
-    KO("입력마다 한 행, 렌즈가 여럿인 카메라는 렌즈마다 한 행입니다. 따르는 행(바로 위 행, 입력의 첫 렌즈라면 바로 위 입력의 첫 렌즈)과 처음부터 같은 행은 '(위와 같음)'으로 보이고, 다른 것을 고르기 전까지 그 행이 바뀌면 함께 바뀝니다.\n한 카메라로 찍은 촬영은 첫 행에서 설정하면 됩니다."),
-    DE("Eine Zeile je Eingabe, bei einer Kamera mit mehreren Objektiven je Objektiv. Eine Zeile, die anfangs der Zeile gleicht, der sie folgt -- der darüber, beim ersten Objektiv einer Eingabe dem ersten Objektiv der Eingabe direkt darüber --, zeigt (wie oben) und ändert sich mit ihr, bis für sie etwas anderes gewählt wird.\nEine Aufnahme mit einer Kamera wird also in ihrer ersten Zeile eingerichtet."),
-    FR("Une ligne par entrée, et par objectif pour une caméra qui en a plusieurs. Une ligne qui égale au départ la ligne qu'elle suit -- celle du dessus, ou pour le premier objectif d'une entrée le premier objectif de l'entrée juste au-dessus -- affiche (comme ci-dessus) et change avec elle, jusqu'à ce qu'on lui choisisse autre chose.\nUne prise faite avec une seule caméra se règle donc sur sa première ligne."),
-    ES("Una fila por entrada, y por objetivo en una cámara con varios. Una fila que al principio coincide con la fila a la que sigue -- la de arriba, o para el primer objetivo de una entrada el primer objetivo de la entrada justo encima -- muestra (igual que arriba) y cambia con ella hasta que se le elija otra cosa.\nAsí, una captura hecha con una cámara se ajusta en su primera fila."),
-    PT("Uma linha por entrada, e por lente numa câmera com várias. Uma linha que de início coincide com a linha que segue -- a de cima, ou, para a primeira lente de uma entrada, a primeira lente da entrada logo acima -- mostra (igual ao de cima) e muda com ela até que se escolha outra coisa para ela.\nAssim, uma captura feita com uma câmera se ajusta na primeira linha."),
-    IT("Una riga per input, e per obiettivo in una fotocamera che ne ha più d'uno.\n- Una riga che all'inizio coincide con la riga che segue -- quella sopra, o per il primo obiettivo di un input il primo obiettivo dell'input subito sopra -- mostra (come sopra) e cambia con quella finché non le si sceglie altro.\n- Una ripresa fatta con una sola fotocamera si imposta quindi sulla prima riga."),
-    NL("Eén rij per invoer, en per lens bij een camera met meerdere. Een rij die aanvankelijk gelijk is aan de rij die hij volgt -- de rij erboven, of voor de eerste lens van een invoer de eerste lens van de invoer direct erboven -- toont (zelfde als hierboven) en verandert mee tot je er iets anders voor kiest.\nEen opname met één camera stel je dus in op de eerste rij."),
-    RU("Строка на каждый вход, а у камеры с несколькими объективами -- на каждый объектив. Строка, которая сначала совпадает со строкой, за которой следует, -- верхней, а для первого объектива входа первым объективом входа прямо над ней, -- показывает «(как выше)» и меняется вместе с ней, пока для неё не выбрано что-то другое.\nСъёмку одной камерой достаточно настроить в первой строке."),
-    TR("Her girdi için bir satır, birden çok merceği olan kamerada her mercek için bir satır.\n- İzlediği satırla -- üstteki satır ya da bir girdinin ilk merceği için hemen üstteki girdinin ilk merceği -- başta aynı olan bir satır (yukarıdakiyle aynı) gösterir ve onun için başka bir şey seçilene kadar onunla birlikte değişir.\n- Tek kamerayla çekilmiş bir çekim bu yüzden ilk satırında ayarlanır."));
+    EN("There is one row per input lens.\n- Drawn areas of a matching row follow the row above until you pick others. It shows “same as above.”\n- A dual-fisheye lens shares its border with the same lens above from the same kind of camera."),
+    JA("入力のレンズごとに1行です。\n- 描画範囲が同じ行は、別のものを選ぶまで上の行に従い、「（上と同じ）」と表示されます。\n- デュアル魚眼の各レンズは、上にある同じ種類のカメラの同じレンズと黒枠を共有します。"),
+    ZH_HANS("每个输入镜头一行。\n- 绘制区域相同的行跟随上一行，显示“（同上）”，直到你另选。\n- 双鱼眼的每个镜头与上方同类相机的同一镜头共用黑边。"),
+    ZH_HANT("每個輸入鏡頭一行。\n- 繪製區域相同的行跟隨上一行，顯示「（同上）」，直到你另選。\n- 雙魚眼的每個鏡頭與上方同類相機的同一鏡頭共用黑邊。"),
+    KO("입력 렌즈마다 한 행입니다.\n- 그린 영역이 같은 행은 다른 것을 고를 때까지 위 행을 따르며 '(위와 같음)'으로 보입니다.\n- 듀얼 어안 렌즈는 위에 있는 같은 종류 카메라의 같은 렌즈와 테두리를 공유합니다."),
+    DE("Eine Zeile je Objektiv einer Eingabe.\n- Gezeichnete Bereiche einer gleichen Zeile folgen der darüber, bis etwas anderes gewählt wird. Sie zeigt (wie oben).\n- Ein Dual-Fisheye-Objektiv teilt seinen Rand mit demselben Objektiv einer gleichartigen Kamera darüber."),
+    FR("Une ligne par objectif d'entrée.\n- Les zones dessinées d'une ligne identique suivent celle du dessus jusqu'à un autre choix. Elle affiche (comme ci-dessus).\n- Un objectif double fisheye partage son bord avec le même objectif d'une caméra du même type au-dessus."),
+    ES("Una fila por objetivo de cada entrada.\n- Las áreas dibujadas de una fila igual siguen a la de arriba hasta elegir otras. Muestra (igual que arriba).\n- Una lente de doble ojo de pez comparte su borde con la misma lente de una cámara del mismo tipo de arriba."),
+    PT("Uma linha por lente de cada entrada.\n- As áreas desenhadas de uma linha igual seguem a de cima até se escolher outras. Ela mostra (igual ao de cima).\n- Uma lente olho-de-peixe dupla compartilha a borda com a mesma lente de uma câmera do mesmo tipo acima."),
+    IT("Una riga per obiettivo di ogni input.\n- Le aree disegnate di una riga uguale seguono quella sopra finché non se ne scelgono altre. Mostra (come sopra).\n- Una lente doppio fisheye condivide il bordo con la stessa lente di una fotocamera dello stesso tipo sopra."),
+    NL("Eén rij per lens van een invoer.\n- Getekende gebieden van een gelijke rij volgen de rij erboven tot je iets anders kiest. Die toont (zelfde als hierboven).\n- Een dubbele fisheyelens deelt zijn rand met dezelfde lens van een gelijksoortige camera erboven."),
+    RU("Строка на каждый объектив входа.\n- Нарисованные области совпадающей строки следуют за верхней, пока не выбрано другое. Она показывает «(как выше)».\n- Объектив двойного фишая делит край с тем же объективом камеры того же типа выше."),
+    TR("Her girdi merceği için bir satır.\n- Aynı çizili alanlara sahip satır, başka seçilene kadar üstteki satırı izler ve (yukarıdakiyle aynı) gösterir.\n- Çift balıkgözü mercek, kenarını üstteki aynı tür kameranın aynı merceğiyle paylaşır."));
 
 SS_MSG(stencil_rows_same_help,
     EN("The same as {0}, and changes when it does. Pick a choice of this row's own "
@@ -5661,6 +5661,69 @@ SS_MSG(stencil_rows_off_help,
     NL("Het hele beeld tot de rand houden. Getekende gebieden gelden nog steeds."),
     RU("Оставить кадр целиком до края. Нарисованные области по-прежнему действуют."),
     TR("Kareyi kenarına kadar tut. Çizili alanlar yine uygulanır."));
+
+SS_MSG(stencil_rows_shared,
+    EN("Shared"), JA("共有"), ZH_HANS("共用"), ZH_HANT("共用"), KO("공유"),
+    DE("Geteilt"), FR("Partagé"), ES("Compartido"), PT("Compartilhado"),
+    IT("Condiviso"), NL("Gedeeld"), RU("Общий"), TR("Ortak"));
+
+SS_MSG(stencil_rows_share_with,
+    EN("Shared with"), JA("共有先"), ZH_HANS("共用对象"), ZH_HANT("共用對象"),
+    KO("공유 대상"), DE("Geteilt mit"), FR("Partagé avec"), ES("Compartido con"),
+    PT("Compartilhado com"), IT("Condiviso con"), NL("Gedeeld met"), RU("Общий с"),
+    TR("Şununla ortak"));
+
+SS_MSG(stencil_rows_share_help,
+    EN("Fits one lens circle over the frames of this row and of another that cuts its "
+       "border. For clips from the same lens."),
+    JA("この行と、黒枠を切り落とす別の行のフレームから、レンズ円を1つ求めます。同じ"
+       "レンズで撮ったクリップに使います。"),
+    ZH_HANS("用这一行和另一个裁掉黑边的行的帧共同拟合一个镜头圆。适用于同一镜头拍的片段。"),
+    ZH_HANT("用這一行和另一個裁掉黑邊的行的影格共同擬合一個鏡頭圓。適用於同一鏡頭拍的片段。"),
+    KO("이 행과 테두리를 잘라내는 다른 행의 프레임으로 렌즈 원 하나를 맞춥니다. 같은 "
+       "렌즈로 찍은 클립에 씁니다."),
+    DE("Passt einen Objektivkreis an die Bilder dieser und einer anderen Zeile an, die "
+       "den Rand wegschneidet. Für Clips desselben Objektivs."),
+    FR("Ajuste un seul cercle d'objectif sur les images de cette ligne et d'une autre "
+       "qui découpe le bord. Pour des clips du même objectif."),
+    ES("Ajusta un solo círculo de lente con los fotogramas de esta fila y de otra que "
+       "recorte el borde. Para clips de la misma lente."),
+    PT("Ajusta um único círculo da lente com os quadros desta linha e de outra que "
+       "recorte a borda. Para clipes da mesma lente."),
+    IT("Adatta un solo cerchio della lente ai fotogrammi di questa riga e di un'altra "
+       "che ritaglia il bordo. Per clip della stessa lente."),
+    NL("Past één lenscirkel aan op de beelden van deze rij en van een andere die de "
+       "rand wegsnijdt. Voor clips van dezelfde lens."),
+    RU("Подбирает один круг объектива по кадрам этой строки и другой, где край "
+       "срезается. Для клипов с одного объектива."),
+    TR("Bu satırın ve kenarı kesen başka bir satırın karelerine tek bir mercek çemberi "
+       "oturtur. Aynı mercekle çekilmiş klipler için."));
+
+SS_MSG(stencil_rows_shared_help,
+    EN("One lens circle, fitted over the frames of this row and {0}. Its shrink "
+       "applies to all of them."),
+    JA("この行と {0} のフレームから求めた、1つのレンズ円です。内側への寄せ幅は"
+       "すべてに共通です。"),
+    ZH_HANS("由这一行和 {0} 的帧共同拟合的一个镜头圆。往里收的量对它们全都生效。"),
+    ZH_HANT("由這一行和 {0} 的影格共同擬合的一個鏡頭圓。往裡收的量對它們全都生效。"),
+    KO("이 행과 {0}의 프레임으로 맞춘 렌즈 원 하나입니다. 안쪽으로 줄인 값은 모두에 "
+       "적용됩니다."),
+    DE("Ein Objektivkreis, angepasst an die Bilder dieser Zeile und von {0}. „Enger“ "
+       "gilt für alle."),
+    FR("Un seul cercle d'objectif, ajusté sur les images de cette ligne et de {0}. "
+       "« Resserrer » s'applique à toutes."),
+    ES("Un solo círculo de lente, ajustado con los fotogramas de esta fila y de {0}. "
+       "«Estrechar» se aplica a todas."),
+    PT("Um único círculo da lente, ajustado com os quadros desta linha e de {0}. "
+       "«Estreitar» vale para todas."),
+    IT("Un solo cerchio della lente, adattato ai fotogrammi di questa riga e di {0}. "
+       "«Stringi» vale per tutte."),
+    NL("Eén lenscirkel, aangepast op de beelden van deze rij en {0}. ‘Krimpen’ geldt "
+       "voor allemaal."),
+    RU("Один круг объектива, подобранный по кадрам этой строки и {0}. «Сузить» "
+       "действует на все."),
+    TR("Bu satırın ve {0} karelerine oturtulmuş tek bir mercek çemberi. Daraltma "
+       "hepsine uygulanır."));
 
 SS_MSG(stencil_rows_none,
     EN("None"), JA("なし"), ZH_HANS("无"), ZH_HANT("無"), KO("없음"),
