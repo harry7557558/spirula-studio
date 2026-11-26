@@ -101,7 +101,7 @@ namespace {
 
 // Half-size luma, smoothed: sensor noise makes false extrema an edge walk
 // would stop at. 5 taps of a Gaussian of sigma 0.8.
-void half_grey(const uint8_t* rgb, int W, int H, int w, int h, std::vector<float>& out) {
+void half_grey(const uint8_t* rgb, int W, int w, int h, std::vector<float>& out) {
     std::vector<float> raw((size_t)w * h), row((size_t)w * h);
     for (int y = 0; y < h; y++) {
         const uint8_t* a = rgb + (size_t)(2 * y) * W * 3;
@@ -189,7 +189,7 @@ float edge_width_px(const uint8_t* rgb, int width, int height) {
     const int w = width / 2, h = height / 2;
     if (!rgb || w < 64 || h < 64) return -1.0f;
     std::vector<float> g;
-    half_grey(rgb, width, height, w, h, g);
+    half_grey(rgb, width, w, h, g);
     const float x = axis_width(g, w, h, true), y = axis_width(g, w, h, false);
     if (x < 0.0f || y < 0.0f) return -1.0f;
     return 2.0f * std::max(x, y);

@@ -67,7 +67,10 @@ struct ContextOptions {
 class Context {
 public:
     // Creates the process context if needed and returns it. Thread-safe.
-    static Context& get(const ContextOptions& opts = {});
+    static Context& get(const ContextOptions& opts);
+    // An overload, not a default argument: GCC's -Wdangling-reference flags
+    // `const Context& c = get()` when get() binds a temporary ContextOptions.
+    static Context& get();
     // True once get() has run; lets callers avoid forcing device creation.
     static bool     initialized();
     // Releases the device. Every buffer, pipeline and pool must already be

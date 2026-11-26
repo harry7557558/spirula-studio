@@ -650,7 +650,7 @@ void Context::init() {
     if (const char* env = spirula::env("VK_POLL_WAIT"); env && env[0])
         _poll_waits = env[0] != '0';
 
-    for (int i = 0; i < VK_UUID_SIZE; i++)
+    for (uint32_t i = 0; i < VK_UUID_SIZE; i++)
         g_context_uuid[i] = chosen.device.uuid[i];
     g_context_uuid_set.store(true);
     g_context_created.store(true);
@@ -841,7 +841,7 @@ bool device_select_identity(const char* selector) {
         vk::set_selection_error({});
         return true;
     }
-    for (int i = 0; i < VK_UUID_SIZE; i++)
+    for (uint32_t i = 0; i < VK_UUID_SIZE; i++)
         vk::g_requested_uuid[i] = res.device.uuid[i];
     vk::g_requested_uuid_set.store(true);
     vk::set_selection_error({});

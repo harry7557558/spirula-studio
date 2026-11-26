@@ -66,7 +66,7 @@ sel::DeviceRecord makeRecord(int index, const char* name, VkPhysicalDeviceType t
     r.props.deviceType = type;
     if (uuidHex && uuidHex[0]) {
         const std::string hex = uuidHex;
-        for (int i = 0; i < VK_UUID_SIZE; i++) {
+        for (uint32_t i = 0; i < VK_UUID_SIZE; i++) {
             auto nibble = [](char c) {
                 return (uint8_t)(c <= '9' ? c - '0' : std::tolower((unsigned char)c) - 'a' + 10);
             };
@@ -191,7 +191,7 @@ void testFailures() {
     };
     // A duplicate UUID resolves to its first record, so every runtime agrees.
     std::vector<sel::DeviceRecord> duplicate = devices;
-    for (int i = 0; i < VK_UUID_SIZE; i++) duplicate[1].uuid[i] = duplicate[0].uuid[i];
+    for (uint32_t i = 0; i < VK_UUID_SIZE; i++) duplicate[1].uuid[i] = duplicate[0].uuid[i];
     duplicate[1].name = "other";
     auto first = [&](const std::string& request) {
         const sel::Resolution res =

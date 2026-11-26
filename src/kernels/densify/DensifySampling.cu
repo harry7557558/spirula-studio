@@ -339,7 +339,6 @@ __global__ void iota_kernel(
 int32_t* weighted_sample_without_replacement_internal(
     int64_t numel,
     float* weights_ptr,
-    int64_t weights_numel,
     bool* masks_ptr,
     uint32_t num_sample,
     uint32_t seed,
@@ -454,7 +453,6 @@ void weighted_sample_without_replacement_tensor(
     int32_t* result = weighted_sample_without_replacement_internal(
         numel,
         weights.data_ptr(),
-        weights.size(),
         masks_ptr,
         num_sample,
         seed

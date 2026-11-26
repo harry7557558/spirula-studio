@@ -272,7 +272,6 @@ HostGrad host_grad(const Cloud& c, const std::vector<int32_t>& perm,
         const double gap = std::min(s.ev[1] - s.ev[0], s.ev[2] - s.ev[1]);
         const bool ill = gap < 1e-2 * std::max(s.ev[2], 1e-30);
         const double spread = s.ev[0] + s.ev[1] + s.ev[2];
-        const D3 at = c.at(self);
         const double inv_t = !sa ? 1.0 : spread > 1e-30 ? 1.0 / spread : 0.0;
         const double g = 2.0 / (double)pts.size() * inv_t;
         for (size_t m = 0; m < ids.size(); m++) {

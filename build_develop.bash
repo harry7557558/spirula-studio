@@ -165,7 +165,7 @@ echo "CPU cores     : ${CPU_CORES}"
 echo "Using jobs    : ${JOBS}"
 echo ""
 # Propagate the build's exit status.
-if ! cmake --build "$build_dir" --verbose -j"${JOBS}"; then
+if ! cmake --build "$build_dir" -j"${JOBS}"; then
     echo "BUILD FAILED" >&2
     exit 1
 fi

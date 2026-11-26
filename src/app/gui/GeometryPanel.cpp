@@ -41,6 +41,7 @@ struct GeometryPanel::Rgb {
 
 namespace {
 
+#ifdef SS_TOOL_GEOMETRY
 std::unique_ptr<GeometryPanel::Rgb> make_rgb(int w, int h) {
     auto r = std::make_unique<GeometryPanel::Rgb>();
     r->w = w;
@@ -56,8 +57,6 @@ std::string human_time(double ms) {
     else std::snprintf(buf, sizeof buf, "%.1fh", ms / 3600000.0);
     return buf;
 }
-
-#ifdef SS_TOOL_GEOMETRY
 
 // The name the picker shows for a lens, so the sentence about it points at a
 // control the reader is looking at rather than at a flag value.
@@ -274,7 +273,7 @@ void GeometryPanel::start_job(const GeometryJob& settings) {
 
 #ifndef SS_TOOL_GEOMETRY
         (void)settings; (void)src; (void)dataset; (void)image_dir; (void)lens;
-        (void)focal_factor; (void)idx; (void)frame_dirty;
+        (void)focal_factor; (void)idx; (void)frame_dirty; (void)set_status;
         set_error(lmsg::err_no_geometry_module.get());
 #else
         try {

@@ -233,7 +233,7 @@ private:
 // Split at the neck: everything from the SAM prompt encoder down is shared
 // between the two families, which is exactly what the two converters produce.
 void emit_sam3_tensors(ModelWriter& w, const Config& c) {
-    const int E = c.embed, D = c.neck, TW = c.text_width, MD = c.mem_dim;
+    const int E = c.embed, D = c.neck, TW = c.text_width;
     const int G = c.grid();
     const int pg = c.img_size / c.patch / 3;   // pretrained pos-embed grid
     const int hd = E / c.heads;

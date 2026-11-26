@@ -145,7 +145,6 @@ int cmdGeomSelftest(int, char**) {
 
     // ---- PnP with distant points / small baseline (mapper-like) ----
     {
-        Mat3 Kp = {777.6, 0, 324, 0, 777.6, 210, 0, 0, 1};
         Camera pc;
         pc.setFocal(777.6); pc.cx = 324; pc.cy = 210;
         Mat3 Rp = rotationY(8.0);

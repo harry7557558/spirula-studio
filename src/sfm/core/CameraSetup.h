@@ -410,8 +410,6 @@ inline CameraSetup buildCameras(const std::vector<ImageEntry>& images,
     }
 
     for (size_t i = 0; i < images.size(); i++) {
-        const std::string& name = images[i].name;
-        const CameraOverride* ovr = detail::cameraOverrideFor(name, opt.overrides);
         std::string key = base_key[i];
         if (opt.exif_groups) {
             if (!feats[i].exif_camera.empty()) key += "|" + feats[i].exif_camera;

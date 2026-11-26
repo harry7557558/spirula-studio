@@ -47,12 +47,7 @@ std::mutex& viewer_mutex() {
     return m;
 }
 
-// Order-preserving float<->u32 mapping (host mirror of the shader helpers).
-uint32_t fmap_ordered(float f) {
-    uint32_t b;
-    std::memcpy(&b, &f, 4);
-    return (b & 0x80000000u) != 0 ? ~b : (b | 0x80000000u);
-}
+// Host inverse of visualizer.slang's order-preserving fmap_ordered.
 float funmap_ordered(uint32_t u) {
     uint32_t b = (u & 0x80000000u) != 0 ? (u ^ 0x80000000u) : ~u;
     float f;

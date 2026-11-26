@@ -136,7 +136,7 @@ __global__ void channel_mean_backward_kernel(
 
 
 void channel_mean_backward(
-    BilagridReader bilagrid,
+    [[maybe_unused]] BilagridReader bilagrid,  // the Vulkan side reads it
     const float* v_tv_loss,
     float* v_bilagrid,
     int N, int C, int L, int H, int W, bool inplace,

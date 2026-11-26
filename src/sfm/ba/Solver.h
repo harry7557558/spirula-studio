@@ -114,9 +114,9 @@ public:
         const bool validate_request =
             explicit_req || (opt_.real != RealCfg::CPU && !ctx_.initialized());
         if (validate_request) {
+            const auto request = deviceOnlyOpt(opt_.device, opt_.device_selector);
             const spirula::vkselect::Resolution& res =
-                VkContext::cachedResolution(
-                    deviceOnlyOpt(opt_.device, opt_.device_selector));
+                VkContext::cachedResolution(request);
             if (res.ok())
                 selector_ = res.selector;
             else if (explicit_req ||

@@ -550,6 +550,7 @@ void SegmentPanel::start_job(const MaskSettings& s,
             const bool wants_model =
                 subject || !prompt.empty() || !clicks.empty() || !feature.empty();
 #ifndef SS_BUILD_SAM
+            (void)stencil_keeps;
             stencil_only();
             if (wants_model)
                 set_error(spirula::i18n::msg::log::err_no_builtin_segmentation.get());
@@ -1262,7 +1263,7 @@ bool SegmentPanel::pen_on_shape(app::FrameStencil& stencil, app::MaskShape& s, f
 // ---------------------------------------------------------------------------
 
 bool SegmentPanel::stroke_removes(bool ctrl) const {
-    return !(_subtract != (_draw == DrawTool::Eraser) != ctrl);
+    return !((_subtract != (_draw == DrawTool::Eraser)) != ctrl);
 }
 
 void SegmentPanel::change_shapes(app::FrameStencil& stencil, bool& edited) {

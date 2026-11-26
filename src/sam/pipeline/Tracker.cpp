@@ -24,8 +24,6 @@ namespace sam {
 
 namespace {
 
-float sigmoid(float x) { return 1.0f / (1.0f + std::exp(-x)); }
-
 // Device buffers for memory-bank slots are keyed by a small integer that is
 // recycled as instances come and go, so the VRAM report stays readable and the
 // allocation count stays bounded by (live instances x num_maskmem).

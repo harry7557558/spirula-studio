@@ -52,7 +52,7 @@ int main() {
     double polynomial[11] = {-120, 274, -225, 85, -15, 1};
     double roots[10];
     const int count = realPolynomialRoots(polynomial, 5, roots);
-    std::sort(roots, roots + count);
+    std::sort(roots, roots + std::min(count, 10));
     bool root_ok = count == 5;
     for (int i = 0; i < count; ++i) root_ok = root_ok && std::fabs(roots[i] - i - 1) < 1e-9;
     printf("%s: real polynomial roots, %s: degenerate finite output\n",

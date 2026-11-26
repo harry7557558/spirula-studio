@@ -190,7 +190,7 @@ std::vector<uint8_t> gif_encode_frame(const uint8_t* rgb, int w, int h, int colo
     const int used = (int)pal.size() / 3;
     int bits = 1;
     while ((1 << bits) < used) bits++;
-    pal.resize((size_t)(1 << bits) * 3, 0);
+    pal.resize((size_t(1) << bits) * 3, 0);
 
     // Nearest palette entry for every bin.
     std::vector<uint8_t> lut(kBins);

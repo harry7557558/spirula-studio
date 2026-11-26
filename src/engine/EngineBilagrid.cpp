@@ -950,13 +950,9 @@ void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
     auto& brgb = engine().bilagrid_rgb;
     auto& bdep = engine().bilagrid_depth;
     auto& bnor = engine().bilagrid_normal;
-    // Use the value-bit-aware shape source for dims (when value-quant, fp32
-    // grids is empty so we need to fall back to grids_quant cell count).
-    auto get_dims = [](auto& bg, int channels) {
-        // Returns (N, L, H, W, C). When grids is alive use its size<>(); else
-        // derive from grids_quant.n_cells and channels (grids cells = N*L*H*W*C).
-        // We stash L/H/W in bg.value_LHW... actually simpler: keep grids
-        // alive as a shape-only descriptor (data_ptr can be null).
+    // (N, L, H, W, C). Under value quantization `grids` stays alive as a
+    // shape-only descriptor (null data), so its sizes are always valid.
+    auto get_dims = [](auto& bg) {
         return std::make_tuple(
             (int)bg.grids.template size<0>(),
             (int)bg.grids.template size<1>(),
@@ -965,7 +961,7 @@ void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
             (int)bg.grids.template size<4>());
     };
     {
-        auto [N, L, H, W, C] = get_dims(brgb, brgb.C);
+        auto [N, L, H, W, C] = get_dims(brgb);
         run(0, brgb.grids, brgb.image_grad, brgb.g1, brgb.g2,
             brgb.quant_state, brgb.accum_f, brgb.adagrad_quant,
             brgb.grids_quant,
@@ -974,7 +970,7 @@ void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
             cfg.lr_rgb, cfg.tv_weight_rgb);
     }
     {
-        auto [N, L, H, W, C] = get_dims(bdep, 2);
+        auto [N, L, H, W, C] = get_dims(bdep);
         run(1, bdep.grids, bdep.image_grad, bdep.g1, bdep.g2,
             bdep.quant_state, bdep.accum_f, bdep.adagrad_quant,
             bdep.grids_quant,
@@ -983,7 +979,7 @@ void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
             cfg.lr_depth, cfg.tv_weight_depth);
     }
     {
-        auto [N, L, H, W, C] = get_dims(bnor, 3);
+        auto [N, L, H, W, C] = get_dims(bnor);
         run(2, bnor.grids, bnor.image_grad, bnor.g1, bnor.g2,
             bnor.quant_state, bnor.accum_f, bnor.adagrad_quant,
             bnor.grids_quant,

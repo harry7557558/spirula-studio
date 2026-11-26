@@ -439,7 +439,7 @@ static int cmdManifestTest(int, char**) {
         check(gcam.fx == 850 && gcam.fy == 850 && gcam.cx == 1200 && gcam.cy == 1190,
               "a dataset-wide CLI focal wins while preserving the principal point");
 
-        for (const std::string& body : {
+        for (const char* body : {
                  "params: [1, 2, 3, 4]",
                  "model: opencv-fisheye\n    params: [1, 2, 3, 4]",
                  "model: opencv-fisheye\n    params: [1, 0, 3, 4, 0, 0, 0, 0]",
@@ -447,7 +447,7 @@ static int cmdManifestTest(int, char**) {
                  "model: opencv-fisheye\n    params: [1, 2, NaN, 4, 0, 0, 0, 0]",
                  "model: opencv-fisheye\n    params: [1, 2, 3, 4, 0, 0, 0, 0]\n    focal: 1",
                  "model: opencv-fisheye\n    params: [1, 2, 3, 4, 0, 0, 0, 0]\n    distortion: []"}) {
-            write_file(dir + "/bad.yaml", "cameras:\n  - prefix: cam0\n    " + body + "\n");
+            write_file(dir + "/bad.yaml", "cameras:\n  - prefix: cam0\n    " + std::string(body) + "\n");
             bool rejected = false;
             try { manifest_read(dir + "/bad.yaml"); }
             catch (const std::exception&) { rejected = true; }

@@ -264,7 +264,7 @@ private:
                    uint32_t f = 0, uint32_t g = 0, uint32_t h = 0) {
         Push p;
         uint32_t v[8] = {a, b, c, d, e, f, g, h};
-        std::memcpy(&p, v, sizeof v);
+        std::memcpy(static_cast<void*>(&p), v, sizeof v);  // trivially copyable
         return p;
     }
     static uint32_t fbits(double x) {

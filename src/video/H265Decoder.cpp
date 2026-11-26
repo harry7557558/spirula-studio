@@ -665,10 +665,10 @@ bool H265Decoder::parsePps(const uint8_t* nal, size_t size, std::string& error) 
         p.flags.uniform_spacing_flag = br.bit();
         if (!p.flags.uniform_spacing_flag) {
             for (int i = 0; i < p.num_tile_columns_minus1 &&
-                            i < STD_VIDEO_H265_CHROMA_QP_OFFSET_TILE_COLS_LIST_SIZE; ++i)
+                            i < int(STD_VIDEO_H265_CHROMA_QP_OFFSET_TILE_COLS_LIST_SIZE); ++i)
                 p.column_width_minus1[i] = (uint16_t)br.ue();
             for (int i = 0; i < p.num_tile_rows_minus1 &&
-                            i < STD_VIDEO_H265_CHROMA_QP_OFFSET_TILE_ROWS_LIST_SIZE; ++i)
+                            i < int(STD_VIDEO_H265_CHROMA_QP_OFFSET_TILE_ROWS_LIST_SIZE); ++i)
                 p.row_height_minus1[i] = (uint16_t)br.ue();
         }
         p.flags.loop_filter_across_tiles_enabled_flag = br.bit();
@@ -704,7 +704,7 @@ bool H265Decoder::parsePps(const uint8_t* nal, size_t size, std::string& error) 
                 p.diff_cu_chroma_qp_offset_depth = (uint8_t)br.ue();
                 p.chroma_qp_offset_list_len_minus1 = (uint8_t)br.ue();
                 for (int i = 0; i <= p.chroma_qp_offset_list_len_minus1 &&
-                                i < STD_VIDEO_H265_CHROMA_QP_OFFSET_LIST_SIZE; ++i) {
+                                i < int(STD_VIDEO_H265_CHROMA_QP_OFFSET_LIST_SIZE); ++i) {
                     p.cb_qp_offset_list[i] = (int8_t)br.se();
                     p.cr_qp_offset_list[i] = (int8_t)br.se();
                 }
@@ -1107,14 +1107,14 @@ bool H265Decoder::decodeFrame(const uint8_t* data, size_t size, int nal_length_s
     std_pic_.flags.short_term_ref_pic_set_sps_flag = short_term_from_sps ? 1 : 0;
     std_pic_.NumBitsForSTRefPicSetInSlice = (uint16_t)st_bits_in_slice;
     std_pic_.NumDeltaPocsOfRefRpsIdx = (uint8_t)num_delta_of_ref;
-    for (int i = 0; i < STD_VIDEO_DECODE_H265_REF_PIC_SET_LIST_SIZE; ++i) {
+    for (int i = 0; i < int(STD_VIDEO_DECODE_H265_REF_PIC_SET_LIST_SIZE); ++i) {
         std_pic_.RefPicSetStCurrBefore[i] = STD_VIDEO_H265_NO_REFERENCE_PICTURE;
         std_pic_.RefPicSetStCurrAfter[i] = STD_VIDEO_H265_NO_REFERENCE_PICTURE;
         std_pic_.RefPicSetLtCurr[i] = STD_VIDEO_H265_NO_REFERENCE_PICTURE;
     }
-    for (int i = 0; i < n_before && i < STD_VIDEO_DECODE_H265_REF_PIC_SET_LIST_SIZE; ++i)
+    for (int i = 0; i < n_before && i < int(STD_VIDEO_DECODE_H265_REF_PIC_SET_LIST_SIZE); ++i)
         std_pic_.RefPicSetStCurrBefore[i] = slot_for_poc(poc_st_before[i]);
-    for (int i = 0; i < n_after && i < STD_VIDEO_DECODE_H265_REF_PIC_SET_LIST_SIZE; ++i)
+    for (int i = 0; i < n_after && i < int(STD_VIDEO_DECODE_H265_REF_PIC_SET_LIST_SIZE); ++i)
         std_pic_.RefPicSetStCurrAfter[i] = slot_for_poc(poc_st_after[i]);
     for (size_t i = 0; i < lt_curr_poc.size() && i < STD_VIDEO_DECODE_H265_REF_PIC_SET_LIST_SIZE;
          ++i)

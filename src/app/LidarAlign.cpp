@@ -24,8 +24,6 @@ constexpr int kNormalNeighbours = 12;
 // poses and SfM rotations agree to ~0.2 deg on the FJD walk.
 constexpr double kAnchorRotTol = 3.0 * kPi / 180.0;
 
-Vec3 col(const Mat3& R, int c) { return {R[c], R[3 + c], R[6 + c]}; }
-
 std::string stem(const std::string& s) {
     const size_t dot = s.find_last_of('.'), slash = s.find_last_of('/');
     if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) return s;
@@ -376,8 +374,8 @@ sfm::Sim3 refine_icp(const ModelGeometry& m, const AlignCloud& cloud,
         for (int64_t i = 0; i < n; i++) {
             const Vec3 X = sfm::mul(R, pts[(size_t)i]) * s + t;
             const float q[3] = {(float)X.x, (float)X.y, (float)X.z};
-            float d2;
-            int32_t j;
+            float d2 = 0.0f;
+            int32_t j = -1;
             nn[(size_t)i] = cloud.tree->query(q, -1, 1, &d2, &j) ? j : -1;
             dist[(size_t)i] = std::sqrt(d2);
             if (nn[(size_t)i] >= 0) {

@@ -47,7 +47,7 @@ const ViewerCamModel kViewerCameraModels[] = {
 
 // fovToIntrinsics port: inverting the actual projection (not the pinhole tan
 // map) makes the slider a true field of view for the fisheye models.
-void fov_to_intrinsics(float fov_deg, int w, int h, const char* model,
+void fov_to_intrinsics(float fov_deg, int w, const char* model,
                        float& fx, float& fy) {
     float fov_rad = fov_deg * 3.14159265358979f / 180.0f;
     if (!std::strcmp(model, "FISHEYE"))
@@ -276,7 +276,7 @@ void ViewportPanel::compute_intrinsics(int W, int H, float& fx, float& fy) const
         fx = (float)W / (2.0f * 3.14159265358979f);
         fy = (float)H / 3.14159265358979f;
     } else {
-        fov_to_intrinsics(_fov_deg[_cam_model], W, H, model, fx, fy);
+        fov_to_intrinsics(_fov_deg[_cam_model], W, model, fx, fy);
     }
     if (_ortho) {
         fx /= std::max(nav_dist(), 1e-6f);
@@ -1486,7 +1486,7 @@ void ViewportPanel::draw_overlays() {
             const int w = 1000, h = (int)(w / (b.aspect > 0 ? b.aspect : 1.0f));
             float sx, sy;
             const int saved_model = b.ortho ? 4 : std::clamp(b.cam_model, 0, 4);
-            fov_to_intrinsics(b.fov_deg, w, h, kViewerCameraModels[saved_model].name, sx, sy);
+            fov_to_intrinsics(b.fov_deg, w, kViewerCameraModels[saved_model].name, sx, sy);
             if (saved_model == 3) { sx = w/(2*3.14159265f); sy = h/3.14159265f; }
             const float dist[8] = {};
             auto shape = camhost::frustum_template(saved_model, 0, w, h, sx, sy, w/2.f, h/2.f, dist);
@@ -1546,9 +1546,6 @@ void ViewportPanel::draw_controls(bool engine) {
     auto check_w = [&](const spirula::i18n::Msg& m) {
         return ImGui::GetFrameHeight() + st.ItemInnerSpacing.x +
                text_w(m.get());
-    };
-    auto button_w = [&](const spirula::i18n::Msg& m) {
-        return text_w(m.get()) + 2.0f * st.FramePadding.x;
     };
     // How much of the current row is used. TRACKED rather than read back from
     // ImGui's last-item rectangle, which would pick up the tooltip's contents

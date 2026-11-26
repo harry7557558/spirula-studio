@@ -5,6 +5,8 @@ endif()
 if(POLICY CMP0179)
     cmake_policy(SET CMP0179 NEW)
 endif()
+# No default /W3 in CMAKE_CXX_FLAGS: cmake/SsWarnings.cmake picks the level.
+cmake_policy(SET CMP0092 NEW)
 project(spirula_studio LANGUAGES C CXX)  # CUDA enabled by the cuda backend module
 
 # The build (see build_develop.bash / build_develop.bat and docs/build.md).
@@ -21,6 +23,7 @@ project(spirula_studio LANGUAGES C CXX)  # CUDA enabled by the cuda backend modu
 #   SsLicense.cmake        ss_license, accepted model licences and their texts (a leaf)
 #   SsApps.cmake           the `spirula` executable (every tool in one)
 #   SsPackage.cmake        the redistributable form of it (macOS .app / .dmg)
+#   SsWarnings.cmake       -Wall -Wextra (or /W4) on the project's own sources
 #   SsChecks.cmake         the source lints every build runs (last: it makes
 #                            every target above depend on them)
 #
@@ -69,6 +72,9 @@ include(SsApps)
 
 # After SsApps: the packaging targets depend on the `spirula` target.
 include(SsPackage)
+
+# After every target: warnings go on the project's own sources only.
+include(SsWarnings)
 
 # Last: every target above gains a dependency on the lints.
 include(SsChecks)

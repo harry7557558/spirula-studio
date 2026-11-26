@@ -37,6 +37,15 @@ public:
     // their indices into idx_out when given; returns the count found.
     int query(const float q[3], int32_t self, int k, float* d2_out,
               int32_t* idx_out = nullptr) const {
+        if (k == 1) {  // KBest's shift loop on a scalar output trips -Warray-bounds
+            Nearest best;
+            search(0, _n, q, self, best);
+            if (best.count) {
+                *d2_out = best.d2;
+                if (idx_out) *idx_out = best.idx;
+            }
+            return best.count;
+        }
         KBest best{d2_out, idx_out, k, 0};
         search(0, _n, q, self, best);
         return best.count;
@@ -106,8 +115,17 @@ private:
         }
     };
 
+    struct Nearest {
+        float d2 = 1e30f;
+        int32_t idx = -1;
+        int count = 0;
+        float worst() const { return d2; }
+        void push(float v, int32_t id) { d2 = v; idx = id; count = 1; }
+    };
+
+    template <class Best>
     void search(int64_t lo, int64_t hi, const float q[3],
-                int32_t self, KBest& best) const {
+                int32_t self, Best& best) const {
         if (hi <= lo) return;
         int64_t mid = lo + (hi - lo) / 2;
         const float* p = pt(mid);

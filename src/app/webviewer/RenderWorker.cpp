@@ -733,7 +733,9 @@ std::vector<std::string> viewer_buffer_keys(const ViewerRenderConfig& cfg,
     // A stochastic depth's finite differences are noise, and its renders carry
     // no median or distortion.
     const bool stochastic = engine_stochastic_enabled();
-    std::vector<std::string> keys = {"rgb"};
+    std::vector<std::string> keys;
+    keys.reserve(16);
+    keys.push_back("rgb");
     if (cfg.color_space_on || cfg.background_draw_on) keys.push_back("rgb_raw");
     keys.push_back("depth");
     keys.push_back("alpha");

@@ -826,10 +826,13 @@ void record_fill(const ResolvedPtr& d, size_t bytes, VkDeviceSize fill,
     // Opening a fresh command buffer waits for the ring entry's previous
     // submission, so it is a GPU wait and not fill cost: charging it to
     // MEMSET made a free 450 MB/step of zeroing read as 12 s of a 56 s run.
-    std::optional<prof::Scope> _pwait;
-    if (prof::enabled() && !st->recording) _pwait.emplace(prof::DEVSYNC);
-    VkCommandBuffer cb = vk::stream_begin(st);
-    _pwait.reset();
+    VkCommandBuffer cb;
+    if (prof::enabled() && !st->recording) {
+        prof::Scope wait(prof::DEVSYNC);
+        cb = vk::stream_begin(st);
+    } else {
+        cb = vk::stream_begin(st);
+    }
     if (cb == VK_NULL_HANDLE) return;
     std::optional<prof::Scope> _pms;
     if (prof::enabled()) _pms.emplace(prof::MEMSET, bytes);

@@ -837,7 +837,7 @@ public:
         return _data_ptr;
     }
 
-    DeviceVector() : _data_ptr(nullptr), _numel(0) {}
+    DeviceVector() : _numel(0), _data_ptr(nullptr) {}
 
     DeviceVector(const TorchTensorView& view) {
         _data_ptr = (T*)std::get<0>(view);
@@ -931,7 +931,7 @@ public:
         return _data_ptr;
     }
 
-    DeviceTensor2D() : _data_ptr(nullptr), _numel_0(0), _numel_1(0) {}
+    DeviceTensor2D() : _numel_0(0), _numel_1(0), _data_ptr(nullptr) {}
 
     DeviceTensor2D(const TorchTensorView& view) {
         _data_ptr = (T*)std::get<0>(view);
@@ -1032,7 +1032,7 @@ public:
         return _data_ptr;
     }
 
-    DeviceTensor3D() : _data_ptr(nullptr), _numel_0(0), _numel_1(0), _numel_2(0) {}
+    DeviceTensor3D() : _numel_0(0), _numel_1(0), _numel_2(0), _data_ptr(nullptr) {}
 
     DeviceTensor3D(const TorchTensorView& view) {
         _data_ptr = (T*)std::get<0>(view);
@@ -1133,8 +1133,8 @@ public:
         return _data_ptr;
     }
 
-    DeviceTensor5D() : _data_ptr(nullptr),
-        _numel_0(0), _numel_1(0), _numel_2(0), _numel_3(0), _numel_4(0) {}
+    DeviceTensor5D() : _numel_0(0), _numel_1(0), _numel_2(0), _numel_3(0), _numel_4(0),
+        _data_ptr(nullptr) {}
 
     DeviceTensor5D(const TorchTensorView& view) {
         _data_ptr = (T*)std::get<0>(view);
@@ -1230,7 +1230,7 @@ public:
         return _data_ptr;
     }
 
-    DeviceTensorND() : _data_ptr(nullptr), ndim(0) {}
+    DeviceTensorND() : ndim(0), _data_ptr(nullptr) {}
 
     DeviceTensorND(const TorchTensorView& view) {
         _data_ptr = (T*)std::get<0>(view);

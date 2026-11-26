@@ -1069,7 +1069,6 @@ std::vector<int> build_uv_atlas(MeshData& mesh, UVAtlasConfig& cfg) {
                    mlog::num(secs_since(t2), 2)});
 
     // ---- 4. seam split + write back ----
-    auto t3 = Clock::now();
     const bool has_n = mesh.N.size() == nv;
     const bool has_c = mesh.C.size() == nv;
     // (vertex, chart) -> new index

@@ -114,9 +114,10 @@ struct Reconstruction::Impl {
 
     Impl(const std::string& dir, const std::vector<View>& v, const DenseConfig& c, const std::atomic<bool>* stop,
          const std::string& live_dir)
-        : work(dir), views(v), config(c), cancel(stop), preview_dir(live_dir),
+        : work(dir), views(v), config(c), cancel(stop),
           width(c.match.high_width ? c.match.high_width : c.match.low_width),
-          height(c.match.high_height ? c.match.high_height : c.match.low_height) {
+          height(c.match.high_height ? c.match.high_height : c.match.low_height),
+          preview_dir(live_dir) {
         config.validate();
         config.image_cache_bytes = c.resolved_image_cache_bytes();
         config.geometry = c.resolved_geometry();

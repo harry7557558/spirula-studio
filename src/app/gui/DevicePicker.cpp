@@ -94,7 +94,7 @@ void GuiApp::load_native_devices() {
     _native_devices_loaded = true;
 }
 
-void GuiApp::draw_engine_device_picker(bool busy) {
+void GuiApp::draw_engine_device_picker([[maybe_unused]] bool busy) {
 #ifdef SS_BACKEND_VULKAN
     draw_device_picker();
 #else

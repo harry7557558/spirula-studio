@@ -53,8 +53,8 @@ void fine_features(Arena& arena, const Weights& weights, const Tensor& rgb,
         ArenaScope level_scope(arena);
         const Tensor& out = output[level];
         NN_CHECK(out.valid() && out.dtype == DType::F32 && out.ndim == 3 &&
-                 out.shape[0] == rgb.shape[0] / (1 << level) &&
-                 out.shape[1] == rgb.shape[1] / (1 << level) && out.shape[2] == channels[level],
+                 out.shape[0] == rgb.shape[0] / (int64_t(1) << level) &&
+                 out.shape[1] == rgb.shape[1] / (int64_t(1) << level) && out.shape[2] == channels[level],
                  "RoMa fine feature output has an incompatible shape");
         Tensor x = normalized;
         if (level) {
