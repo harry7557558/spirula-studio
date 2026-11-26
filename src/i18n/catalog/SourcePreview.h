@@ -383,6 +383,75 @@ SS_MSG(decode_on_gpu_help,
        "çalıştırma başladığındaki gibi, bu seçim uygulama yeniden başlayana dek "
        "sabit kalır."));
 
+SS_MSG(video_gpu_lost,
+    EN("The GPU stopped while decoding this video. Decode it with ffmpeg "
+       "instead, or update the graphics driver."),
+    JA("この動画のデコード中に GPU が停止しました。代わりに ffmpeg でデコードす"
+       "るか、グラフィックスドライバを更新してください。"),
+    ZH_HANS("解码此视频时 GPU 停止了响应。请改用 ffmpeg 解码，或更新显卡驱动。"),
+    ZH_HANT("解碼此影片時 GPU 停止了回應。請改用 ffmpeg 解碼，或更新顯示卡驅動程式。"),
+    KO("이 동영상을 디코딩하는 중에 GPU가 멈췄습니다. 대신 ffmpeg으로 디코딩하"
+       "거나 그래픽 드라이버를 업데이트하세요."),
+    DE("Die GPU ist beim Decodieren dieses Videos stehen geblieben. Stattdessen "
+       "mit ffmpeg decodieren oder den Grafiktreiber aktualisieren."),
+    FR("Le GPU s'est arrêté pendant le décodage de cette vidéo. Décodez-la "
+       "plutôt avec ffmpeg, ou mettez à jour le pilote graphique."),
+    ES("La GPU se detuvo al decodificar este vídeo. Decodifíquelo con ffmpeg en "
+       "su lugar, o actualice el controlador gráfico."),
+    PT("A GPU parou ao decodificar este vídeo. Decodifique-o com o ffmpeg em "
+       "vez disso, ou atualize o driver gráfico."),
+    IT("La GPU si è fermata durante la decodifica di questo video. Decodificalo "
+       "invece con ffmpeg, oppure aggiorna il driver grafico."),
+    NL("De GPU is gestopt tijdens het decoderen van deze video. Decodeer hem in "
+       "plaats daarvan met ffmpeg, of werk het grafische stuurprogramma bij."),
+    RU("GPU остановился при декодировании этого видео. Декодируйте его через "
+       "ffmpeg или обновите графический драйвер."),
+    TR("Bu video çözülürken GPU durdu. Bunun yerine ffmpeg ile çözün veya "
+       "grafik sürücüsünü güncelleyin."));
+
+SS_MSG(use_ffmpeg_instead,
+    EN("Use ffmpeg instead"),
+    JA("代わりに ffmpeg を使う"),
+    ZH_HANS("改用 ffmpeg"),
+    ZH_HANT("改用 ffmpeg"),
+    KO("대신 ffmpeg 사용"),
+    DE("Stattdessen ffmpeg verwenden"),
+    FR("Utiliser ffmpeg à la place"),
+    ES("Usar ffmpeg en su lugar"),
+    PT("Usar o ffmpeg em vez disso"),
+    IT("Usare ffmpeg al suo posto"),
+    NL("In plaats daarvan ffmpeg gebruiken"),
+    RU("Использовать ffmpeg"),
+    TR("Bunun yerine ffmpeg kullan"));
+
+SS_MSG(use_ffmpeg_instead_help,
+    EN("Turns on \"Extract frames with ffmpeg\" under Advanced, for this preview "
+       "and the run. ffmpeg must be installed."),
+    JA("「詳細設定」の「フレームの切り出しに ffmpeg を使う」をオンにします。この"
+       "プレビューと実行の両方に効きます。ffmpeg のインストールが必要です。"),
+    ZH_HANS("打开“高级”中的“用 ffmpeg 抽取帧”，对此预览和运行都生效。需要已安装 "
+            "ffmpeg。"),
+    ZH_HANT("開啟「進階」中的「用 ffmpeg 抽取影格」，對此預覽和執行都生效。需要已"
+            "安裝 ffmpeg。"),
+    KO("‘고급’의 ‘ffmpeg으로 프레임 추출’을 켭니다. 이 미리보기와 실행 모두에 "
+       "적용됩니다. ffmpeg이 설치되어 있어야 합니다."),
+    DE("Schaltet „Bilder mit ffmpeg extrahieren“ unter „Erweitert“ ein, für "
+       "diese Vorschau und den Lauf. ffmpeg muss installiert sein."),
+    FR("Active « Extraire les images avec ffmpeg » dans « Avancé », pour cet "
+       "aperçu et l'exécution. ffmpeg doit être installé."),
+    ES("Activa «Extraer los fotogramas con ffmpeg» en «Avanzado», para esta "
+       "vista previa y la ejecución. ffmpeg debe estar instalado."),
+    PT("Ativa “Extrair os quadros com ffmpeg” em “Avançado”, para esta prévia e "
+       "a execução. O ffmpeg precisa estar instalado."),
+    IT("Attiva «Estrarre i fotogrammi con ffmpeg» in «Avanzate», per questa "
+       "anteprima e l'esecuzione. ffmpeg deve essere installato."),
+    NL("Zet ‘Beelden met ffmpeg uithalen’ onder ‘Geavanceerd’ aan, voor dit "
+       "voorbeeld en de uitvoering. ffmpeg moet geïnstalleerd zijn."),
+    RU("Включает «Извлекать кадры через ffmpeg» в разделе «Дополнительно» — для "
+       "этого предпросмотра и запуска. Нужен установленный ffmpeg."),
+    TR("“Gelişmiş” altındaki “Kareleri ffmpeg ile çıkar” seçeneğini açar; bu "
+       "önizleme ve çalıştırma için geçerlidir. ffmpeg kurulu olmalıdır."));
+
 SS_MSG(view_stitched,
     EN("Stitched 360°"),
     JA("360° つなぎ合わせ"),
@@ -3544,6 +3613,21 @@ SS_MSG(log_clicks_dropped_clip,
        "которых они сделаны, могут больше не извлекаться."),
     TR("{0} üzerindeki maske tıklamaları atıldı: kesiti değişti, bu yüzden "
        "üzerlerinde tıklandıkları kareler artık çıkarılmayabilir."));
+
+SS_MSG(log_gpu_lost,
+    EN("The GPU stopped while decoding the preview: {0}"),
+    JA("プレビューのデコード中に GPU が停止しました: {0}"),
+    ZH_HANS("解码预览时 GPU 停止了响应：{0}"),
+    ZH_HANT("解碼預覽時 GPU 停止了回應：{0}"),
+    KO("미리보기를 디코딩하는 중에 GPU가 멈췄습니다: {0}"),
+    DE("Die GPU ist beim Decodieren der Vorschau stehen geblieben: {0}"),
+    FR("Le GPU s'est arrêté pendant le décodage de l'aperçu : {0}"),
+    ES("La GPU se detuvo al decodificar la vista previa: {0}"),
+    PT("A GPU parou ao decodificar a prévia: {0}"),
+    IT("La GPU si è fermata durante la decodifica dell'anteprima: {0}"),
+    NL("De GPU is gestopt tijdens het decoderen van het voorbeeld: {0}"),
+    RU("GPU остановился при декодировании предпросмотра: {0}"),
+    TR("Önizleme çözülürken GPU durdu: {0}"));
 
 SS_MSG(plan_active_lens,
     EN("Lens extracted"),

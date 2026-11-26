@@ -38,4 +38,8 @@ std::string current_device_selector();
 // once every Session, Tracker and VideoReader is gone.
 void shutdown();
 
+// True once the device has returned VK_ERROR_DEVICE_LOST: every later call on
+// it fails until shutdown(), after which the next use opens a new one.
+bool device_lost();
+
 }  // namespace nn

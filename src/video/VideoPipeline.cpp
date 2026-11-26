@@ -367,13 +367,10 @@ std::string VideoPipeline::availability() {
 VideoPipeline::Impl::~Impl() {
     if (!dev) return;
     const VideoApi& api = video_api();
-    // Submit before destroying, not just wait. A caller that queued a sharpness
-    // metric and then released the frame without fetching it leaves a plane
-    // copy recorded in the compute stream's open command buffer, referencing
-    // these images; vkDeviceWaitIdle does not submit it, and the next flush
-    // would then run over destroyed handles. Same rule as Allocator::free --
-    // see src/nn/vk/README.md, "The rule that cost a day".
-    vk::Stream::get().sync();
+    // Submit, not just wait: a released frame's plane copy may sit unsubmitted
+    // over these images (src/nn/vk/README.md, "The rule that cost a day").
+    // drain(), not sync(): on a lost device sync() throws, and this cannot.
+    vk::Stream::get().drain();
     vkDeviceWaitIdle(dev);
     for (auto& p : pool) {
         if (p.view) vkDestroyImageView(dev, p.view, nullptr);
@@ -1129,6 +1126,7 @@ bool VideoPipeline::Impl::recordDecode(int pool_idx, const PictureInfo& pi,
     si.signalSemaphoreCount = 1;
     si.pSignalSemaphores = &vtimeline;
     const VkResult r = vkQueueSubmit(vqueue, 1, &si, VK_NULL_HANDLE);
+    if (r == VK_ERROR_DEVICE_LOST) vk::Context::markLost();
     if (r != VK_SUCCESS) {
         error = std::string("video decode submit failed: ") + vk::Context::resultName(r);
         return false;

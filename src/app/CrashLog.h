@@ -5,8 +5,8 @@
 // A desktop launch has no terminal, GuiMain releases the console Windows hands
 // it, and a reconstruction is a child process whose parent sees only an exit
 // status -- so a fault otherwise ends the run with nothing to send. This
-// appends a stack trace to <config>/crash.log and, on Windows, says where it
-// went in a message box.
+// appends a stack trace, the GPU and Vulkan setup (core/CrashNotes.h) and any
+// injected DLLs to <config>/crash.log, and on Windows names it in a message box.
 //
 // Frames are printed as `module+0xRVA`, which addr2line or a matching PDB
 // resolves; names and file:line appear too when the build carries symbols.

@@ -12,6 +12,7 @@
 #include <iterator>
 #include <thread>
 #include <vector>
+#include "core/CrashNotes.h"
 #include "core/Env.h"
 #include "core/GpuStall.h"
 #include "core/VulkanDeviceSelection.h"
@@ -469,6 +470,7 @@ void Context::init() {
     }
 
     _physical = devices[chosen.device.index];
+    spirula::set_crash_note_line("gpu (training)", sel::reportLine(here[chosen.device.index]));
     const DeviceProbe probe = probe_device(_physical);
     if (!probe.required_ok) {
         set_error("selected Vulkan device lost required features", VK_SUCCESS);

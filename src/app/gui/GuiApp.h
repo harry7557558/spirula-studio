@@ -1004,6 +1004,7 @@ private:
     std::string _ffmpeg_checked;
     bool _ffmpeg_found = false;
     bool _source_gpu_asked = false;   // a video preview froze the device, or tried to
+    bool _lost_device_pending = false; // the inference device is lost and not yet freed
     void select_source(const std::string& path, bool scan);
     // -1 when nothing is selected, or the selection names no row.
     int selected_source() const;
@@ -1014,6 +1015,9 @@ private:
     // Who may decode video on the inference device now, and the ffmpeg that
     // can stand in for it.
     void update_source_preview_gpu();
+    // Logs why the inference device was lost; update_source_preview_gpu()
+    // frees it once nothing runs on it, so the next GPU task opens a new one.
+    void note_lost_device(const std::string& detail);
     // The run's preview or the input's, in the column or under the form.
     void draw_dataset_right(float height);
     void draw_source_preview(float height);

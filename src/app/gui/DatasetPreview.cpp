@@ -15,6 +15,10 @@
 
 #include "imgui.h"
 
+#ifdef SS_BUILD_SAM
+#include "nn/Device.h"
+#endif
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -189,6 +193,13 @@ PreviewInput GuiApp::source_preview_input() const {
 }
 
 void GuiApp::update_source_preview_gpu() {
+#ifdef SS_BUILD_SAM
+    if (_lost_device_pending && !native_work_busy()) {
+        _lost_device_pending = false;
+        stop_inference_users();
+        nn::shutdown();
+    }
+#endif
     if (_ffmpeg_checked != _ffmpeg_exe) {
         _ffmpeg_checked = _ffmpeg_exe;
         _ffmpeg_found = command_exists(_ffmpeg_exe);
@@ -199,6 +210,11 @@ void GuiApp::update_source_preview_gpu() {
     const bool gpu = _native_device_frozen && !native_work_busy() && !_segment.is_open() &&
                      !_geometry_panel.is_open() && !_mask_editor.is_open();
     _source_view.set_gpu(gpu, _ffmpeg_found);
+}
+
+void GuiApp::note_lost_device(const std::string& detail) {
+    log(i18n::format(svmsg::log_gpu_lost, {detail}));
+    _lost_device_pending = true;
 }
 
 void GuiApp::close_source_preview() {
@@ -271,6 +287,8 @@ void GuiApp::draw_source_preview(float height) {
             _segment.show_frame(*f);
     }
     if (r.want_gpu) freeze_native_device();
+    if (r.gpu_lost) note_lost_device(r.lost_detail);
+    if (r.use_ffmpeg) _sfm_job.prep.force_external_decode = true;
     const auto drop_clicks = [&](const PrepInput& in, const auto& doomed) {
         auto& clicks = _mask.clicks;
         const size_t before = clicks.size();

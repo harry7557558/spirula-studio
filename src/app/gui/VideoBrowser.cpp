@@ -10,6 +10,7 @@
 
 #ifdef SS_HAVE_VIDEO
 #include "app/FrameExtract.h"
+#include "nn/Device.h"
 #include "video/Video.h"
 #endif
 
@@ -187,6 +188,7 @@ void VideoBrowser::set(const std::string& key, const PreviewSource& src,
     _orient = orient;
     _stitched = pano.valid();
     _gpu_failed = false;
+    _gpu_lost = false;
 }
 
 void VideoBrowser::clear() {
@@ -215,6 +217,8 @@ void VideoBrowser::clear() {
     _ready.clear();
     _frame_error.clear();
     _error_index = -1;
+    _lost_detail.clear();
+    _lost_told = false;
     for (PreviewTexture& t : _frame_tex) t.reset();
     _frame_tex.clear();
     _frame_tex_index = -1;
@@ -276,7 +280,8 @@ void VideoBrowser::set_playhead(double seconds) {
 bool VideoBrowser::can_play() const {
 #ifdef SS_HAVE_VIDEO
     return _src.builtin_decode && _gate->allowed.load() && !_gpu_failed.load() &&
-           _ui_facts.done && _ui_facts.error.empty() && _ui_facts.frames > 1;
+           !_gpu_lost.load() && _ui_facts.done && _ui_facts.error.empty() &&
+           _ui_facts.frames > 1;
 #else
     return false;
 #endif
@@ -320,6 +325,48 @@ void VideoBrowser::tick() {
     }
 }
 
+bool VideoBrowser::take_gpu_lost(std::string& detail) {
+    std::lock_guard<std::mutex> lk(_mu);
+    if (_lost_told || _lost_detail.empty()) return false;
+    _lost_told = true;
+    detail = _lost_detail;
+    return true;
+}
+
+VideoBrowser::Decoded VideoBrowser::decode_gpu(const PreviewSource& s, const Want& w,
+                                               bool keyframe, int pictures, Frame& out,
+                                               std::string& error) {
+#ifdef SS_HAVE_VIDEO
+    app::FrameCursor& c = _gpu->cursor;
+    if (!c.is_open() && !c.open(s.input, error, s.device)) {
+        c.close();
+        return Decoded::Unsupported;
+    }
+    _gpu->used_at = now_s();
+    _gpu->held = true;
+    if (!c.go(w.index, !keyframe, &_cancel, error)) {
+        c.close();
+        return _cancel.load() ? Decoded::Aborted : Decoded::Failed;
+    }
+    out.index = c.index();
+    for (int k = 0; k < pictures; k++) {
+        nn::Image img;
+        if (!c.image(s.look, k, img, error)) return Decoded::Failed;
+        preview_to_srgb(s, img.data);
+        Picture pic;
+        pic.rgb = std::move(img.data);
+        pic.w = pic.src_w = img.width;
+        pic.h = pic.src_h = img.height;
+        pic.made_for = w.side;
+        out.pics.push_back(std::move(pic));
+    }
+    return Decoded::Ok;
+#else
+    (void)s, (void)w, (void)keyframe, (void)pictures, (void)out, (void)error;
+    return Decoded::Unsupported;
+#endif
+}
+
 VideoBrowser::Decoded VideoBrowser::decode(const PreviewSource& base, const Want& w,
                                            bool keyframe, Frame& out, std::string& error) {
     std::unique_lock<std::mutex> hold;
@@ -336,39 +383,24 @@ VideoBrowser::Decoded VideoBrowser::decode(const PreviewSource& base, const Want
     out.stitched = stitched;
     out.side = w.side;
 #ifdef SS_HAVE_VIDEO
+    if (s.builtin_decode && _gpu_lost.load()) return Decoded::Lost;
     if (s.builtin_decode && !_gpu_failed.load()) {
-        app::FrameCursor& c = _gpu->cursor;
-        std::string err;
-        if (!c.is_open() && !c.open(s.input, err, s.device)) {
-            // This device cannot read this file: ffmpeg from here on.
-            _gpu_failed = true;
-            c.close();
-        } else {
-            _gpu->used_at = now_s();
-            _gpu->held = true;
-            if (!c.go(w.index, !keyframe, &_cancel, err)) {
-                c.close();
-                if (_cancel.load()) return Decoded::Aborted;
-                error = err;
-                return Decoded::Failed;
-            }
-            out.index = c.index();
-            for (int k = 0; k < n; k++) {
-                nn::Image img;
-                if (!c.image(s.look, k, img, err)) {
-                    error = err;
-                    return Decoded::Failed;
-                }
-                preview_to_srgb(s, img.data);
-                Picture pic;
-                pic.rgb = std::move(img.data);
-                pic.w = pic.src_w = img.width;
-                pic.h = pic.src_h = img.height;
-                pic.made_for = w.side;
-                out.pics.push_back(std::move(pic));
-            }
-            return Decoded::Ok;
+        Decoded how = Decoded::Failed;
+        try {
+            how = decode_gpu(s, w, keyframe, n, out, error);
+        } catch (const std::exception& e) {
+            _gpu->close();
+            error = e.what();
         }
+        if (how != Decoded::Ok && nn::device_lost()) {
+            _gpu->close();
+            _gpu_lost = true;
+            return Decoded::Lost;
+        }
+        if (how != Decoded::Unsupported) return how;
+        // This device cannot read this file: ffmpeg from here on.
+        _gpu_failed = true;
+        error.clear();
     }
 #endif
     if (hold.owns_lock()) hold.unlock();
@@ -518,6 +550,8 @@ void VideoBrowser::work() {
             if (how == Decoded::NeedsGpu) _cv.wait_for(lk, std::chrono::milliseconds(250));
             continue;
         }
+        if (how == Decoded::Lost && _lost_detail.empty())
+            _lost_detail = error.empty() ? "VK_ERROR_DEVICE_LOST" : error;
         const bool ok = how == Decoded::Ok;
         if (thumb) {
             _thumb_state[slot] = ok ? 2 : 3;
@@ -619,6 +653,12 @@ VideoBrowser::Result VideoBrowser::draw(float height, double& clip_start, double
     }
     if (!f.error.empty()) {
         ui::TextColoredWrappedRaw(kErr, f.error);
+        return r;
+    }
+    if (_src.builtin_decode && _gpu_lost.load()) {
+        ui::TextColoredWrapped(kErr, pmsg::video_gpu_lost);
+        if (ui::Button(pmsg::use_ffmpeg_instead)) r.use_ffmpeg = true;
+        ui::help_on_hover(pmsg::use_ffmpeg_instead_help);
         return r;
     }
 

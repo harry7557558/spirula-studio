@@ -4,6 +4,7 @@
 #include "app/gui/GuiApp.h"
 
 #include "app/AppPaths.h"
+#include "app/VulkanLayers.h"
 #include "app/gui/GuiAppShared.h"
 #include "app/gui/Ui.h"
 #include "app/gui/ViewBookmarks.h"
@@ -15,6 +16,7 @@
 #include "i18n/catalog/Dataset.h"
 #include "i18n/catalog/Edit.h"
 #include "i18n/catalog/Gui.h"
+#include "i18n/catalog/Log.h"
 #include "i18n/catalog/Render.h"
 #include "i18n/catalog/Train.h"
 
@@ -44,6 +46,8 @@ namespace gui {
 GuiApp::GuiApp() {
     init_dense();
     load_settings();
+    for (const std::string& product : app::vulkan_layers_turned_off())
+        log(spirula::i18n::format(spirula::i18n::msg::log::vk_layer_turned_off, {product}));
     // Before the first frame, so an entry that is gone is never drawn.
     _recent.start_probe(classify_recent_model);
     _recent_probed_at = 0.0;

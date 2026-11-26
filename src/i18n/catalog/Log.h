@@ -3450,6 +3450,67 @@ SS_MSG(err_no_video_decoder,
     TR("Kareler burada süreç içinde çözülemiyor ({0}) ve ffmpeg bulunamadı ('{1}'). "
        "ffmpeg'i kurun ya da yolunu --ffmpeg ile verin."));
 
+SS_MSG(err_video_gpu_lost,
+    EN("The GPU stopped while extracting frames. Turn on \"Extract frames with "
+       "ffmpeg\" in Advanced (--decoder ffmpeg), or update the graphics driver."),
+    JA("切り出し中に GPU が停止しました。詳細設定の「フレームの切り出しに ffmpeg "
+       "を使う」（--decoder ffmpeg）か、ドライバの更新を試してください。"),
+    ZH_HANS("从视频抽取帧时 GPU 停止了响应。请在高级设置中打开“用 ffmpeg 抽取帧”"
+            "（--decoder ffmpeg），或更新显卡驱动。"),
+    ZH_HANT("從影片抽取影格時 GPU 停止了回應。請在進階設定中開啟「用 ffmpeg 抽取影"
+            "格」（--decoder ffmpeg），或更新顯示卡驅動程式。"),
+    KO("동영상에서 프레임을 추출하는 중에 GPU가 멈췄습니다. 고급에서 ‘ffmpeg으로 "
+       "프레임 추출’을 켜거나(--decoder ffmpeg) 그래픽 드라이버를 업데이트하세요."),
+    DE("Die GPU blieb beim Extrahieren stehen. Unter Erweitert „Bilder mit "
+       "ffmpeg extrahieren“ (--decoder ffmpeg) einschalten oder den Treiber "
+       "aktualisieren."),
+    FR("Le GPU s'est arrêté pendant l'extraction. Activez « Extraire les images "
+       "avec ffmpeg » dans Avancé (--decoder ffmpeg), ou mettez à jour le pilote."),
+    ES("La GPU se detuvo al extraer los fotogramas del vídeo. Activa «Extraer los "
+       "fotogramas con ffmpeg» en Avanzado (--decoder ffmpeg) o actualiza el "
+       "controlador gráfico."),
+    PT("A GPU parou ao extrair os quadros do vídeo. Ative “Extrair os quadros com "
+       "ffmpeg” em Avançado (--decoder ffmpeg) ou atualize o driver gráfico."),
+    IT("La GPU si è fermata durante l'estrazione dei fotogrammi dal video. Attiva "
+       "«Estrarre i fotogrammi con ffmpeg» in Avanzate (--decoder ffmpeg), oppure "
+       "aggiorna il driver grafico."),
+    NL("De GPU is gestopt tijdens het uithalen. Zet ‘Beelden met ffmpeg uithalen’ "
+       "aan bij Geavanceerd (--decoder ffmpeg), of werk het stuurprogramma bij."),
+    RU("GPU остановился при извлечении кадров из видео. Включите «Извлекать кадры "
+       "через ffmpeg» в расширенных настройках (--decoder ffmpeg) или обновите "
+       "графический драйвер."),
+    TR("Videodan kareler çıkarılırken GPU durdu. Gelişmiş’te “Kareleri ffmpeg ile "
+       "çıkar” seçeneğini açın (--decoder ffmpeg) veya grafik sürücüsünü "
+       "güncelleyin."));
+
+SS_MSG(vk_layer_turned_off,
+    EN("Turned off the Vulkan layer of {0}, which is known to crash this app. Set "
+       "SS_VK_KEEP_LAYERS=1 to keep it."),
+    JA("{0} の Vulkan レイヤーを無効にしました。このアプリをクラッシュさせることが"
+       "分かっています。残すには SS_VK_KEEP_LAYERS=1 を設定してください。"),
+    ZH_HANS("已关闭 {0} 的 Vulkan 层，已知它会使本应用崩溃。如需保留，请设置 "
+            "SS_VK_KEEP_LAYERS=1。"),
+    ZH_HANT("已關閉 {0} 的 Vulkan 層，已知它會使本應用程式當機。如需保留，請設定 "
+            "SS_VK_KEEP_LAYERS=1。"),
+    KO("{0}의 Vulkan 레이어를 껐습니다. 이 앱을 충돌시키는 것으로 알려져 있습니다. "
+       "유지하려면 SS_VK_KEEP_LAYERS=1 을 설정하세요."),
+    DE("Die Vulkan-Ebene von {0} wurde abgeschaltet; sie bringt diese App "
+       "bekanntermaßen zum Absturz. Mit SS_VK_KEEP_LAYERS=1 bleibt sie an."),
+    FR("La couche Vulkan de {0} a été désactivée : elle fait planter cette "
+       "application. Définissez SS_VK_KEEP_LAYERS=1 pour la garder."),
+    ES("Se desactivó la capa Vulkan de {0}, que hace fallar esta aplicación. "
+       "Define SS_VK_KEEP_LAYERS=1 para mantenerla."),
+    PT("A camada Vulkan de {0} foi desativada: ela faz este app travar. Defina "
+       "SS_VK_KEEP_LAYERS=1 para mantê-la."),
+    IT("Il layer Vulkan di {0} è stato disattivato: fa andare in crash questa "
+       "app. Imposta SS_VK_KEEP_LAYERS=1 per tenerlo."),
+    NL("De Vulkan-laag van {0} is uitgezet: die laat deze app vastlopen. Zet "
+       "SS_VK_KEEP_LAYERS=1 om hem te houden."),
+    RU("Слой Vulkan программы {0} отключён: известно, что он роняет это "
+       "приложение. Чтобы оставить его, задайте SS_VK_KEEP_LAYERS=1."),
+    TR("{0} uygulamasının Vulkan katmanı kapatıldı: bu uygulamayı çökerttiği "
+       "biliniyor. Açık kalması için SS_VK_KEEP_LAYERS=1 ayarlayın."));
+
 SS_MSG(err_ffmpeg_extract_failed,
     EN("ffmpeg could not extract the frames (see the log)."),
     JA("ffmpeg がフレームを取り出せませんでした（ログを参照）。"),

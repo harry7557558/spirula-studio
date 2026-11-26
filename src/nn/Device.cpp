@@ -61,4 +61,6 @@ void shutdown() {
     }
 }
 
+bool device_lost() { return vk::Context::lost(); }
+
 }  // namespace nn

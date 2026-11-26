@@ -36,6 +36,7 @@ the detail.
 | [notes/sfm-in-process-plan.md](notes/sfm-in-process-plan.md) | running SfM inside the GUI: the library seam, the input manifest, and what manual ties need |
 | [notes/sfm-quality-review.md](notes/sfm-quality-review.md) | initial source review, ranked hypotheses for SfM quality and merge robustness, and the prototype evaluation protocol |
 | [notes/sfm-quality-experiments.md](notes/sfm-quality-experiments.md) | selected SfM defaults, ranked prototype tradeoffs, calibration/rendering results, regressions, and resource costs |
+| [notes/gpu-crashes.md](notes/gpu-crashes.md) | crashes that start outside the program: what crash.log records, the Vulkan layers turned off at startup, and a device lost while decoding video |
 | [notes/](notes/) | design notes for individual subsystems |
 
 Authoritative documents that live next to their code rather than here:

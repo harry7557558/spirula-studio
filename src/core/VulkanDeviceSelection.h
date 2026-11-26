@@ -41,6 +41,7 @@ struct DeviceRecord {
     std::string                unusable_reason;
     VkPhysicalDeviceProperties props{};
     uint8_t                    uuid[VK_UUID_SIZE] = {};
+    std::string                driver;  // name and version as the driver words them; "" before 1.2
 };
 
 inline const char* deviceTypeName(VkPhysicalDeviceType t) {
@@ -107,8 +108,13 @@ inline uint64_t othersAtFirstProbe(VkPhysicalDevice pd, const VkPhysicalDeviceID
 // Fills name/type/props/uuid/others_bytes from one enumerated physical device;
 // the caller adds its own vram figure and usability verdict.
 inline void probeIdentity(VkPhysicalDevice pd, DeviceRecord* r) {
+    VkPhysicalDeviceProperties base{};
+    vkGetPhysicalDeviceProperties(pd, &base);
+    VkPhysicalDeviceDriverProperties drv{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
     VkPhysicalDeviceIDProperties id{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
+    if (base.apiVersion >= VK_API_VERSION_1_2) id.pNext = &drv;
     VkPhysicalDeviceProperties2 p2{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
     p2.pNext = &id;
@@ -118,6 +124,31 @@ inline void probeIdentity(VkPhysicalDevice pd, DeviceRecord* r) {
     r->type = deviceTypeName(p2.properties.deviceType);
     std::copy(id.deviceUUID, id.deviceUUID + VK_UUID_SIZE, r->uuid);
     r->others_bytes = othersAtFirstProbe(pd, id);
+    if (!drv.driverName[0]) return;
+    const std::string info = drv.driverInfo;
+    if (info.find_first_of("0123456789") != std::string::npos) {
+        r->driver = std::string(drv.driverName) + " " + info;
+        return;
+    }
+    // Intel's driverInfo is "Intel driver": the version is only in the packed field.
+    const uint32_t v = base.driverVersion;
+    char packed[48];
+    if (base.vendorID == 0x8086)
+        std::snprintf(packed, sizeof packed, "%u.%u", v >> 14, v & 0x3fffu);
+    else
+        std::snprintf(packed, sizeof packed, "%u.%u.%u", VK_API_VERSION_MAJOR(v),
+                      VK_API_VERSION_MINOR(v), VK_API_VERSION_PATCH(v));
+    r->driver = std::string(drv.driverName) + " " + packed;
+}
+
+// The device as a crash report names it: model, driver, Vulkan version.
+inline std::string reportLine(const DeviceRecord& r) {
+    const uint32_t v = r.props.apiVersion;
+    std::string s = r.name + " (" + r.type + ")";
+    if (!r.driver.empty()) s += ", " + r.driver;
+    return s + ", Vulkan " + std::to_string(VK_API_VERSION_MAJOR(v)) + "." +
+           std::to_string(VK_API_VERSION_MINOR(v)) + "." +
+           std::to_string(VK_API_VERSION_PATCH(v));
 }
 
 // What the caller asked for. `text` is the raw value; `error` explains a

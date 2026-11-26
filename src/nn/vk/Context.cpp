@@ -1,5 +1,6 @@
 #include "nn/vk/Context.h"
 
+#include "core/CrashNotes.h"
 #include "core/VulkanDeviceSelection.h"
 #include "nn/core/Error.h"
 #include "nn/core/Log.h"
@@ -360,9 +361,14 @@ Configured            g_configured;
 Context*              g_ctx = nullptr;
 std::mutex            g_state_mu;  // g_ctx + g_configured
 std::atomic<uint64_t> g_generation{0};
+std::atomic<bool>     g_lost{false};
 }  // namespace
 
 bool Context::initialized() { return g_ctx != nullptr; }
+
+void Context::markLost() { g_lost.store(true, std::memory_order_release); }
+
+bool Context::lost() { return g_lost.load(std::memory_order_acquire); }
 
 uint64_t Context::generation() { return g_generation.load(std::memory_order_acquire); }
 
@@ -500,6 +506,7 @@ void Context::shutdown() {
     std::lock_guard<std::mutex> lock(g_state_mu);
     delete g_ctx;
     g_ctx = nullptr;
+    g_lost = false;
 }
 
 Context::~Context() {
@@ -548,6 +555,7 @@ void Context::pickPhysicalDevice(const ContextOptions& opts) {
     physical_ = devs[chosen];
     info_ = toDeviceInfo(infos[chosen]);
     limits_ = infos[chosen].props.limits;
+    spirula::set_crash_note_line("gpu (inference)", sel::reportLine(infos[chosen]));
     vkGetPhysicalDeviceMemoryProperties(physical_, &mem_props_);
 }
 

@@ -10,10 +10,12 @@
 #include "app/AppPaths.h"
 #include "app/CrashLog.h"
 #include "app/Tools.h"
+#include "app/VulkanLayers.h"
 #include "core/LicenseTexts.h"
 #include "i18n/Locale.h"
 #include "i18n/catalog/Cli.h"
 #include "i18n/catalog/Dense.h"
+#include "i18n/catalog/Log.h"
 #ifdef SS_TOOL_TRAIN
 #include "checkpoint/BackgroundExport.h"
 #include "i18n/catalog/BackgroundExport.h"
@@ -48,6 +50,7 @@
 namespace {
 
 namespace cmsg = spirula::i18n::msg::cli;
+namespace lmsg = spirula::i18n::msg::log;
 
 #ifdef _WIN32
 UINT g_console_cp = 0;
@@ -160,6 +163,13 @@ void print_usage() {
                 spirula::i18n::language_list().c_str());
 }
 
+// A tool says so on stderr; the window puts it in its log (GuiApp).
+void print_layers_turned_off() {
+    for (const std::string& product : app::vulkan_layers_turned_off())
+        std::fprintf(stderr, "%s\n",
+                     spirula::i18n::format(lmsg::vk_layer_turned_off, {product}).c_str());
+}
+
 // The inference device must go before static destructors run: a validation
 // layer's own statics are gone by then, and it aborts on the first call.
 int finish_tool(int rc) {
@@ -220,6 +230,10 @@ int main(int argc, char** argv) {
     spirula::install_eval_lpips();
 #endif
 
+    // Before anything opens Vulkan, and before the crash log so that even its
+    // SS_CRASH_TEST report names the layers.
+    app::prepare_vulkan_layers();
+
     // Every tool, not only the window: the GUI runs reconstruction, masking
     // and meshing as child processes, and a child that dies of a fault leaves
     // its parent an exit status and nothing else.
@@ -228,6 +242,7 @@ int main(int argc, char** argv) {
     // Explicit subcommands take precedence over the argv[0] alias.
     if (argc > 1) {
         if (const Tool* t = find_tool(argv[1])) {
+            print_layers_turned_off();
             // The tool sees "spirula sfm" as its program name, so its own usage
             // text prints a command line that can be pasted back.
             std::string prog = std::string(argv[0] ? argv[0] : "spirula") + " " + t->name;
@@ -243,6 +258,7 @@ int main(int argc, char** argv) {
     // Named as a tool: hand it everything, --help and --version included, so a
     // spirula-sfm symlink behaves exactly as the separate executable did.
     if (const Tool* t = tool_from_argv0(argc > 0 ? argv[0] : nullptr)) {
+        print_layers_turned_off();
         app::set_crash_note(t->name);
         return finish_tool(t->run(argc, argv));
     }

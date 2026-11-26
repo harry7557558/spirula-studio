@@ -85,6 +85,28 @@ bool cancelled(const FrameExtractSinks& sinks, std::string& error) {
     return true;
 }
 
+#ifdef SS_HAVE_VIDEO
+// `run`, an in-process decode. A lost device sets `lost` and gets no ffmpeg
+// in its place: the user picks the remedy. The driver's words go to the log.
+template <class Run>
+bool builtin_decode(const FrameExtractSinks& sinks, std::string& error, bool& lost,
+                    Run&& run) {
+    bool ok = false;
+    try {
+        ok = run();
+    } catch (const std::exception& e) {
+        if (!nn::device_lost()) throw;
+        error = e.what();
+    }
+    lost = !ok && nn::device_lost();
+    if (lost) {
+        log_line(sinks, error);
+        error = lmsg::err_video_gpu_lost.get();
+    }
+    return ok;
+}
+#endif
+
 bool use_ffmpeg(const FrameExtractJob& job, const FrameExtractSinks& sinks,
                 Decoder& d, const std::string& why, std::string& error) {
     // ffmpeg still uses the shared GPU stream for blur scoring and masking.
@@ -166,11 +188,13 @@ bool measure_motion(const FrameExtractJob& job, const FrameExtractSinks& sinks,
     }
 #ifdef SS_HAVE_VIDEO
     if (d.builtin) {
-        bool startup_failed = false;
-        if (measure_motion_vulkan(job, sinks, track, tracks, out, t, error,
-                                  startup_failed))
+        bool startup_failed = false, lost = false;
+        if (builtin_decode(sinks, error, lost, [&] {
+                return measure_motion_vulkan(job, sinks, track, tracks, out, t, error,
+                                             startup_failed);
+            }))
             return true;
-        if (!startup_failed || job.decoder != FrameDecoder::Auto) return false;
+        if (lost || !startup_failed || job.decoder != FrameDecoder::Auto) return false;
         const std::string why = error;
         if (!use_ffmpeg(job, sinks, d, why, error)) return false;
     }
@@ -557,12 +581,14 @@ bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sink
         if (dec.builtin) {
             const bool may_retry = first_decode;
             first_decode = false;
-            bool startup_failed = false;
-            if (decode_lockstep_vulkan(job, sinks, tr, convert, plan, stats, error,
-                                       on_frame, startup_failed))
+            bool startup_failed = false, lost = false;
+            if (builtin_decode(sinks, error, lost, [&] {
+                    return decode_lockstep_vulkan(job, sinks, tr, convert, plan, stats,
+                                                  error, on_frame, startup_failed);
+                }))
                 return true;
             // Earlier tracks may already have written images or changed a masker.
-            if (!may_retry || !startup_failed || job.decoder != FrameDecoder::Auto)
+            if (lost || !may_retry || !startup_failed || job.decoder != FrameDecoder::Auto)
                 return false;
             const std::string why = error;
             if (!use_ffmpeg(job, sinks, dec, why, error)) return false;

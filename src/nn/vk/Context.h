@@ -163,6 +163,11 @@ public:
     // Human-readable VkResult, used by every VK_CHECK site.
     static const char* resultName(VkResult r);
 
+    // Set by any call that returns VK_ERROR_DEVICE_LOST; cleared when the
+    // context goes, since every later call on this device fails too.
+    static void markLost();
+    static bool lost();
+
 private:
     Context() = default;
     ~Context();
@@ -221,6 +226,7 @@ private:
 #define NN_VK_CHECK(expr)                                                    \
     do {                                                                       \
         VkResult _r = (expr);                                                  \
+        if (_r == VK_ERROR_DEVICE_LOST) ::nn::vk::Context::markLost();        \
         if (_r != VK_SUCCESS)                                                  \
             ::nn::fail("%s failed: %s (%d) at %s:%d", #expr,                 \
                          ::nn::vk::Context::resultName(_r), (int)_r,         \

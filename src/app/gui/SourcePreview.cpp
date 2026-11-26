@@ -478,6 +478,7 @@ SourcePreview::Result SourcePreview::draw(float height, double* clip_start, doub
                                            int* active_lens) {
     Result r;
     if (!active()) return r;
+    r.gpu_lost = _video.take_gpu_lost(r.lost_detail);
     {
         std::lock_guard<std::mutex> lk(_mu);
         if (_listing != _shown) {
@@ -537,6 +538,7 @@ SourcePreview::Result SourcePreview::draw(float height, double* clip_start, doub
             r.clip_changed = v.clip_changed && clip_start;
             r.want_gpu = v.want_gpu;
             r.lens_changed = v.lens_changed;
+            r.use_ffmpeg = v.use_ffmpeg;
             break;
         }
         case Tab::Photos:

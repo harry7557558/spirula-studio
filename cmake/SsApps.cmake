@@ -95,7 +95,8 @@ list(APPEND SS_TOOL_SOURCES
      ${SS_SRC}/app/Pano360.cpp
      ${SS_SRC}/app/AppPaths.cpp
      ${SS_SRC}/app/RunLog.cpp
-     ${SS_SRC}/app/CrashLog.cpp)
+     ${SS_SRC}/app/CrashLog.cpp
+     ${SS_SRC}/app/VulkanLayers.cpp)
 if(WIN32)
     list(APPEND SS_TOOL_LIBS dbghelp)   # CrashLog.cpp's stack walk
 endif()
@@ -384,7 +385,8 @@ if(SS_SEPARATE_TOOLS)
         # link the engine library, and Main.cpp's `--lang` handling needs
         # it. It is a leaf (cmake/SsI18n.cmake), so this costs nothing.
         add_executable(${name} ${SS_SRC}/app/Main.cpp ${SS_SRC}/app/AppPaths.cpp
-                       ${SS_SRC}/app/CrashLog.cpp ${sources})
+                       ${SS_SRC}/app/CrashLog.cpp ${SS_SRC}/app/VulkanLayers.cpp
+                       ${sources})
         target_include_directories(${name} PRIVATE ${SS_SRC} ${CMAKE_BINARY_DIR})
         target_link_libraries(${name} PRIVATE ${libs} ss_i18n ss_license ${CMAKE_DL_LIBS})
         target_compile_definitions(${name} PRIVATE

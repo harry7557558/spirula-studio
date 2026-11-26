@@ -72,6 +72,9 @@ public:
         bool clip_changed = false;
         bool want_gpu = false;
         bool lens_changed = false;
+        bool use_ffmpeg = false;
+        bool gpu_lost = false;     // as VideoBrowser::Result
+        std::string lost_detail;
     };
     // `clip_*` point at the selected video's clip, null for anything else.
     Result draw(float height, double* clip_start, double* clip_end, int* active_lens = nullptr);

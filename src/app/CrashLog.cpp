@@ -6,6 +6,7 @@
 
 #include "app/CrashLog.h"
 
+#include "core/CrashNotes.h"
 #include "core/Env.h"
 #include "i18n/catalog/Brand.h"
 #include "i18n/catalog/Gui.h"
@@ -27,6 +28,7 @@
 #endif
 #include <windows.h>
 #include <dbghelp.h>
+#include <psapi.h>
 #else
 #include <dlfcn.h>
 #include <execinfo.h>
@@ -193,6 +195,46 @@ void put_stack_here() {
     put_stack(&ctx);
 }
 
+wchar_t g_windir[MAX_PATH];
+DWORD g_windir_len;
+
+bool under_windir(const wchar_t* path) {
+    if (!g_windir_len) return false;
+    for (DWORD i = 0; i < g_windir_len; i++) {
+        wchar_t a = path[i], b = g_windir[i];
+        if (a >= L'a' && a <= L'z') a = (wchar_t)(a - 32);
+        if (b >= L'a' && b <= L'z') b = (wchar_t)(b - 32);
+        if (a != b) return false;
+    }
+    return path[g_windir_len] == L'\\';
+}
+
+// DLLs from outside Windows' own folder: the overlays, hooks and capture
+// layers that load into every program. File names only; paths name users.
+void put_modules() {
+    static HMODULE mods[1024];
+    DWORD bytes = 0;
+    if (!EnumProcessModules(GetCurrentProcess(), mods, sizeof mods, &bytes)) return;
+    const DWORD n = bytes / sizeof(HMODULE) < 1024 ? bytes / sizeof(HMODULE) : 1024;
+    const HMODULE self = GetModuleHandleW(nullptr);
+    bool any = false;
+    for (DWORD i = 0; i < n; i++) {
+        wchar_t path[1024];
+        const DWORD len = mods[i] == self ? 0 : GetModuleFileNameW(mods[i], path, 1024);
+        if (!len || len >= 1024 || under_windir(path)) continue;
+        const wchar_t* base = path;
+        for (const wchar_t* c = path; *c; c++)
+            if (*c == L'\\' || *c == L'/') base = c + 1;
+        char name[512];
+        if (WideCharToMultiByte(CP_UTF8, 0, base, -1, name, sizeof name, nullptr, nullptr) <= 0)
+            continue;
+        put(any ? ", " : "modules: ");
+        put(name);
+        any = true;
+    }
+    if (any) put_ch('\n');
+}
+
 #else
 
 void put_stack_here() {
@@ -248,9 +290,23 @@ void begin_report() {
         put(g_note);
         put_ch('\n');
     }
+    for (int i = 0; i < spirula::kCrashNotes; i++) {
+        const spirula::CrashNote& n = spirula::crash_notes()[i];
+        if (!n.key[0]) continue;
+        put(n.key);
+        put_ch(':');
+        const size_t col = std::strlen(n.key) + 1;   // aligned with "doing:   "
+        for (size_t c = col; c < 9; c++) put_ch(' ');
+        if (col >= 9) put_ch(' ');
+        put(n.text);
+        put_ch('\n');
+    }
 }
 
 void end_report() {
+#ifdef _WIN32
+    put_modules();
+#endif
     put("Resolve a frame with: addr2line -f -C -e <module> <offset>\n"
         "  (Windows: the offset is an RVA; open it against the matching .pdb)\n");
 
@@ -475,6 +531,8 @@ void install_crash_log(const std::string& dir) {
 #ifdef _WIN32
     SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES | SYMOPT_UNDNAME);
     SymInitialize(GetCurrentProcess(), nullptr, TRUE);
+    g_windir_len = GetWindowsDirectoryW(g_windir, MAX_PATH);
+    if (g_windir_len >= MAX_PATH) g_windir_len = 0;
     SetUnhandledExceptionFilter(on_exception);
     std::signal(SIGABRT, on_abort);
 #else

@@ -78,11 +78,15 @@ public:
     void play(bool on, double clip_start, double clip_end);
     // Moves a playing playhead on: every GUI frame, whichever tab is shown.
     void tick();
+    // Once per loss, what the lost device said. The device is unusable until
+    // its owner shuts it down (nn::shutdown).
+    bool take_gpu_lost(std::string& detail);
 
     struct Result {
         bool clip_changed = false;
         bool want_gpu = false;   // the "decode on the GPU" button was pressed
         bool lens_changed = false;
+        bool use_ffmpeg = false; // the "use ffmpeg instead" button was pressed
     };
     // `clip_*` are the input's, `locked` once the run has read them;
     // `kept_fps` is the rate it extracts at, 0 every frame. `active_lens`
@@ -107,13 +111,16 @@ private:
         std::vector<Picture> pics;
     };
 
-    enum class Decoded { Ok, Failed, NeedsGpu, Aborted };
+    // Unsupported: the device cannot open this file. Lost: the device is gone.
+    enum class Decoded { Ok, Failed, NeedsGpu, Aborted, Unsupported, Lost };
 
     void start();
     void stop();
     void work();
     Decoded decode(const PreviewSource& base, const Want& w, bool keyframe, Frame& out,
                    std::string& error);
+    Decoded decode_gpu(const PreviewSource& s, const Want& w, bool keyframe, int pictures,
+                       Frame& out, std::string& error);
     long long index_at(double seconds) const;
     int streams(bool stitched) const;
     void take_frames();
@@ -130,6 +137,8 @@ private:
     std::shared_ptr<DecodeGate> _gate = std::make_shared<DecodeGate>();
     std::unique_ptr<Gpu> _gpu;
     std::atomic<bool> _gpu_failed{false};   // the device cannot decode this file
+    // The device was lost decoding it: no ffmpeg in its place until asked for.
+    std::atomic<bool> _gpu_lost{false};
     std::atomic<bool> _have_ffmpeg{true};
     std::atomic<bool> _abort{false};
     std::atomic<bool> _cancel{false};       // the decode in flight is no longer wanted
@@ -157,6 +166,8 @@ private:
     std::deque<Frame> _ready;        // decoded, not yet on screen
     std::string _frame_error;
     long long _error_index = -1;
+    std::string _lost_detail;        // what the lost device said, for the log
+    bool _lost_told = false;         // ... handed to the owner once
     bool _decoding = false;
     bool _decoding_thumb = false;
 

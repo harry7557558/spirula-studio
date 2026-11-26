@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include "core/CrashNotes.h"
 #include "core/Env.h"
 #include "core/SourcePath.h"
 #include "core/VulkanDeviceSelection.h"
@@ -384,6 +385,7 @@ public:
         }
         std::copy(record.uuid, record.uuid + VK_UUID_SIZE, deviceUUID_);
         deviceName_ = record.name;
+        spirula::set_crash_note_line("gpu (sfm)", spirula::vkselect::reportLine(record));
         selector_ = spirula::vkselect::uuidSelector(deviceUUID_);
         caps_ = queryCaps(phys_);
         VkPhysicalDeviceProperties props{};
