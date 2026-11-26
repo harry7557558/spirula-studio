@@ -494,7 +494,9 @@ static std::map<std::string, float> _engine_loss(
     float color_shift_reg_weight,
     float color_shift_reg_beta,
     bool segment_and_ignore_mask,
-    TorchTensorView map_out
+    TorchTensorView map_out,
+    int grad_subsample = 1,
+    int grad_subsample_step = 0
 ) {
     const bool map_only = _tv_valid(map_out);
     // Validate that forward was run
@@ -917,6 +919,36 @@ static std::map<std::string, float> _engine_loss(
         );
     }
 
+    // --- Subsample per-pixel raster cotangents (after stencils/color ops) ---
+    if (grad_subsample == 2 || grad_subsample == 4) {
+        int64_t sub_B = 0;
+        if (_tv_valid(pixel_grads.v_render_rgb) &&
+            !std::get<2>(pixel_grads.v_render_rgb).empty()) {
+            sub_B = std::get<2>(pixel_grads.v_render_rgb)[0];
+        }
+        TorchTensorView cam_ids_tv = _tv_null();
+        if (sub_B > 0 &&
+            engine().bilagrid_cur_cam_indices.data_ptr() &&
+            (int64_t)engine().bilagrid_cur_cam_indices.size() >= sub_B) {
+            cam_ids_tv = TorchTensorView(
+                (uint64_t)engine().bilagrid_cur_cam_indices.data_ptr(),
+                4, {sub_B});
+        }
+        subsample_pixel_grads(
+            pixel_grads.v_render_rgb,
+            pixel_grads.v_render_depth,
+            pixel_grads.v_render_Ts,
+            pixel_grads.v_render_normal,
+            has_median ? pixel_grads.v_median_depth : _tv_null(),
+            pixel_grads.v_rgb_dist,
+            pixel_grads.v_depth_dist,
+            pixel_grads.v_normal_dist,
+            cam_ids_tv,
+            grad_subsample,
+            grad_subsample_step
+        );
+    }
+
     // --- Rasterization + projection backward ---
     // Build accum_weight_map from loss_map (pixel-space -> per-splat mapping in raster bwd)
     DeviceTensor3D<float> accum_weight_map;
@@ -999,7 +1031,9 @@ std::map<std::string, float> engine_compute_loss_backward(
     float overexposure_reg_weight,
     float color_shift_reg_weight,
     float color_shift_reg_beta,
-    bool segment_and_ignore_mask
+    bool segment_and_ignore_mask,
+    int grad_subsample,
+    int grad_subsample_step
 ) {
     StepTimingScope timing(StepPart::Loss, StepScale::Pixels);
     return _engine_loss(loss_weights, w_ssim, perceptual_loss, num_loss_scales,
@@ -1011,7 +1045,8 @@ std::map<std::string, float> engine_compute_loss_backward(
                         overexposure_reg_weight,
                         color_shift_reg_weight, color_shift_reg_beta,
                         segment_and_ignore_mask,
-                        _tv_null());
+                        _tv_null(),
+                        grad_subsample, grad_subsample_step);
 }
 
 

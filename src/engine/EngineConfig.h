@@ -99,6 +99,8 @@ struct LossConfig {
     bool  input_depth_is_ray_depth = true;
     // 3-class masks in gt.alpha: 0=ignore, 1=keep, 2=segment.
     bool  segment_and_ignore_mask = false;
+    // Pixel gradient sub-sampling factor before raster backward (1=off, 2=50%, 4=25%).
+    int   grad_subsample = 1;
 };
 
 

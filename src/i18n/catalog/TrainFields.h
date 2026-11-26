@@ -4501,6 +4501,33 @@ SS_MSG(loss_luminance_normalization_help,
     RU("Делит веса L1/L2/SSIM на (2 × средняя яркость фото в sRGB)^степень.\n- 0 не меняет; 1 уравнивает тёмную/светлую съёмку, промежуточные мягче.\n- Для обучения в линейном свете."),
     TR("L1/L2/SSIM ağırlıklarını (2 × fotoğrafın sRGB ortalama parlaklığı)^üs ile böler.\n- 0 değişmez; 1 karanlık/aydınlık çekimi eşitler, ara değerler daha yumuşaktır.\n- Doğrusal ışıkta eğitim içindir."));
 
+SS_MSG(loss_grad_subsample,
+    EN("Backward gradient subsampling"), JA("逆伝播勾配の間引き"),
+    ZH_HANS("反向梯度子采样"), ZH_HANT("反向梯度子取樣"),
+    KO("역전파 기울기 서브샘플링"),
+    DE("Gradienten-Subsampling im Rückwärtspass"),
+    FR("Sous-échantillonnage des gradients"),
+    ES("Submuestreo de gradientes inversos"),
+    PT("Subamostragem de gradientes reversos"),
+    IT("Sottocampionamento dei gradienti"),
+    NL("Subsampling van gradiënten"),
+    RU("Субдискретизация градиентов"),
+    TR("Geri yayılım gradyan alt örneklemesi"));
+SS_MSG(loss_grad_subsample_help,
+    EN("Subsamples per-pixel loss gradients before splat backward.\n- off: keep all pixels (highest precision).\n- 2x / 4x: keep 50% / 25% via rotating blue-noise mask; SSIM keeps full images."),
+    JA("スプラット逆伝播の前に画素単位の損失勾配を間引きます。\n- off：全画素を保持（最高精度）。\n- 2x / 4x：回転する青ノイズマスクで50% / 25%を保持。SSIMは全画像で計算。"),
+    ZH_HANS("在泼溅反向传播前对逐像素损失梯度进行子采样。\n- off：保留全部像素（精度最高）。\n- 2x / 4x：用旋转蓝噪掩码保留 50% / 25%，SSIM 仍计算整图。"),
+    ZH_HANT("在潑濺反向傳播前對逐像素損失梯度進行子取樣。\n- off：保留全部像素（精度最高）。\n- 2x / 4x：用旋轉藍噪遮罩保留 50% / 25%，SSIM 仍計算整圖。"),
+    KO("스플랫 역전파 전에 픽셀별 손실 기울기를 서브샘플링합니다.\n- off: 모든 픽셀 유지(최고 정밀도).\n- 2x / 4x: 회전하는 블루노이즈 마스크로 50% / 25% 유지, SSIM은 전체 유지."),
+    DE("Reduziert Pixelgradienten vor dem Splat-Rückwärtspass.\n- off: alle Pixel behalten (höchste Genauigkeit).\n- 2x / 4x: behält 50% / 25% per rotierender Blue-Noise-Maske; SSIM nutzt Vollbild."),
+    FR("Sous-échantillonne les gradients par pixel avant le retour splat.\n- off : tous les pixels (précision max).\n- 2x / 4x : garde 50% / 25% par masque bleu tournant ; SSIM sur image entière."),
+    ES("Submuestrea gradientes por píxel antes del backward de splats.\n- off: conserva todos los píxeles.\n- 2x / 4x: conserva 50% / 25% con máscara blue-noise rotativa; SSIM completo."),
+    PT("Subamostra gradientes por pixel antes do backward de splats.\n- off: mantém todos os pixels.\n- 2x / 4x: mantém 50% / 25% com máscara blue-noise rotativa; SSIM completo."),
+    IT("Sottocampiona i gradienti per pixel prima del backward splat.\n- off: mantiene tutti i pixel.\n- 2x / 4x: tiene il 50% / 25% con maschera blue-noise rotante; SSIM completo."),
+    NL("Subsamplet pixelgradiënten vóór splat-backward.\n- off: alle pixels behouden.\n- 2x / 4x: behoudt 50% / 25% via roterend blue-noise-masker; SSIM blijft volledig."),
+    RU("Прореживает попиксельные градиенты перед backward.\n- off: все пиксели.\n- 2x / 4x: 50% / 25% по вращающейся маске синего шума; SSIM по всему кадру."),
+    TR("Splat geri yayılımından önce piksel gradyanlarını alt örnekler.\n- off: tüm pikselleri korur.\n- 2x / 4x: dönen mavi gürültü maskesiyle %50 / %25 tutar; SSIM tam çalışır."));
+
 
 // ===========================================================================
 // Geometry & Surfaces
@@ -8821,6 +8848,18 @@ SS_MSG(choice_off,
     PT("desativado"),    IT("disattivato"),  NL("uit"),          RU("выкл."),
     TR("kapalı"));
 
+SS_MSG(choice_subsample_2x,
+    EN("50% pixels"),    JA("50% の画素"),    ZH_HANS("50% 像素"), ZH_HANT("50% 像素"),
+    KO("50% 픽셀"),       DE("50% Pixel"),    FR("50% des pixels"), ES("50% píxeles"),
+    PT("50% pixels"),    IT("50% pixel"),    NL("50% pixels"),   RU("50% пикселей"),
+    TR("%50 piksel"));
+
+SS_MSG(choice_subsample_4x,
+    EN("25% pixels"),    JA("25% の画素"),    ZH_HANS("25% 像素"), ZH_HANT("25% 像素"),
+    KO("25% 픽셀"),       DE("25% Pixel"),    FR("25% des pixels"), ES("25% píxeles"),
+    PT("25% pixels"),    IT("25% pixel"),    NL("25% pixels"),   RU("25% пикселей"),
+    TR("%25 piksel"));
+
 SS_MSG(choice_mild,
     EN("mild"),          JA("弱め"),          ZH_HANS("轻度"),     ZH_HANT("輕度"),
     KO("약하게"),         DE("leicht"),       FR("léger"),        ES("suave"),
@@ -9269,6 +9308,10 @@ inline constexpr ChoiceText kChoiceText[] = {
     {"distraction_robustness", "off",    &choice_off},
     {"distraction_robustness", "mild",   &choice_mild},
     {"distraction_robustness", "strong", &choice_strong},
+
+    {"loss_grad_subsample", "off", &choice_off},
+    {"loss_grad_subsample", "2x",  &choice_subsample_2x},
+    {"loss_grad_subsample", "4x",  &choice_subsample_4x},
 
     {"calib_correction", "off",      &choice_off},
     {"calib_correction", "basic",    &choice_basic},

@@ -725,6 +725,9 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     }
     cfg.loss.input_depth_is_ray_depth = st.input_depth_is_ray_depth;
     cfg.loss.segment_and_ignore_mask = train_mask_is_segment_and_ignore(c);
+    cfg.loss.grad_subsample =
+        c.loss_grad_subsample == "4x" ? 4 :
+        c.loss_grad_subsample == "2x" ? 2 : 1;
 
     // ---- optim ---------------------------------------------------------
     float means_lr = scheduled_lr(step, max_steps_lr, c.means_lr, c.means_lr_final);

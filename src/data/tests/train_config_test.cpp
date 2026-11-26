@@ -193,6 +193,38 @@ static void background_options() {
     check(train_mask_preserves_background(cfg), "preserve_background: explicit true wins");
 }
 
+static void loss_grad_subsample_options() {
+    TrainConfig cfg;
+    check(cfg.loss_grad_subsample == "off", "loss_grad_subsample defaults to off");
+
+    spirula::RunState st;
+    check(spirula::build_step_config(cfg, st, 0).loss.grad_subsample == 1,
+          "off maps to grad_subsample=1");
+
+    const struct { const char* val; int factor; } cases[] = {
+        {"off", 1}, {"2x", 2}, {"4x", 4}
+    };
+    for (const auto& c : cases) {
+        cfg.loss_grad_subsample = c.val;
+        check(spirula::train_config_error(cfg).empty(),
+              "valid loss_grad_subsample accepted");
+        check(spirula::build_step_config(cfg, st, 0).loss.grad_subsample == c.factor,
+              "loss_grad_subsample propagates into LossConfig");
+    }
+
+    cfg.loss_grad_subsample = "8x";
+    const std::string err = spirula::train_config_error(cfg);
+    check(err.find("--loss-grad-subsample") != std::string::npos,
+          "invalid loss_grad_subsample rejected with flag name");
+
+    train_config_from_json(json_parse(R"({"loss_grad_subsample": "4x"})"), cfg);
+    check(cfg.loss_grad_subsample == "4x", "loss_grad_subsample loads from JSON");
+    bool saved = false;
+    for (const auto& [key, value] : train_config_json_pairs(cfg))
+        if (std::string(key) == "loss_grad_subsample") saved = value == "\"4x\"";
+    check(saved, "loss_grad_subsample is serialized");
+}
+
 int main() {
     presets();
     background_options();
@@ -200,6 +232,7 @@ int main() {
     test_suppress_initial_scales();
     background_export_height();
     mask_mode_resolution();
+    loss_grad_subsample_options();
     if (failures) return 1;
     std::puts("train_config_test: OK");
     return 0;
