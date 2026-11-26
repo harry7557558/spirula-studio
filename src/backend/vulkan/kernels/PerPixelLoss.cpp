@@ -112,6 +112,21 @@ struct MsZeroMaskedParams {
 };
 static_assert(sizeof(MsZeroMaskedParams) == 2 * 8 + 8 * 4, "layout");
 
+struct MsSubsampleParams {
+    uint64_t v_render_rgb;
+    uint64_t v_render_depth;
+    uint64_t v_render_Ts;
+    uint64_t v_render_normal;
+    uint64_t v_median_depth;
+    uint64_t v_rgb_dist;
+    uint64_t v_depth_dist;
+    uint64_t v_normal_dist;
+    uint64_t camera_indices;
+    int32_t B, H, W;
+    uint32_t factor, step, flags, _pad0, _pad1;
+};
+static_assert(sizeof(MsSubsampleParams) == 9 * 8 + 8 * 4, "layout");
+
 struct MsPoolBoolParams {
     uint64_t src, dst;
     int32_t B;
@@ -1459,4 +1474,82 @@ LossValues compute_multi_scale_per_pixel_losses(
     out.flip = flip_val;
     losses_readout.issue(total_losses_ptr);
     return out;
+}
+
+void subsample_pixel_grads(
+    TorchTensorView v_render_rgb,
+    TorchTensorView v_render_depth,
+    TorchTensorView v_render_Ts,
+    TorchTensorView v_render_normal,
+    TorchTensorView v_median_depth,
+    TorchTensorView v_rgb_dist,
+    TorchTensorView v_depth_dist,
+    TorchTensorView v_normal_dist,
+    TorchTensorView camera_indices,
+    int factor,
+    int step
+) {
+    if (factor <= 1) return;
+    if (factor != 2 && factor != 4)
+        throw std::runtime_error("subsample_pixel_grads: factor must be 1, 2, or 4");
+
+    const TorchTensorView* views[] = {
+        &v_render_rgb, &v_render_depth, &v_render_Ts, &v_render_normal,
+        &v_median_depth, &v_rgb_dist, &v_depth_dist, &v_normal_dist
+    };
+    long B = 0, H = 0, W = 0;
+    for (const TorchTensorView* tv : views) {
+        if (_has(*tv) && std::get<2>(*tv).size() >= 3) {
+            const auto& s = std::get<2>(*tv);
+            B = s[0]; H = s[1]; W = s[2];
+            break;
+        }
+    }
+    if (B <= 0 || H <= 0 || W <= 0) return;
+
+    MsSubsampleParams p{};
+    p.B = (int32_t)B;
+    p.H = (int32_t)H;
+    p.W = (int32_t)W;
+    p.factor = (uint32_t)factor;
+    p.step = (uint32_t)step;
+
+    auto bind_grad = [&](const TorchTensorView& tv, int want_c, uint32_t bit,
+                         uint64_t& dst) {
+        bool ok = _has(tv);
+        if (ok) {
+            const auto& s = std::get<2>(tv);
+            ok = s.size() >= 3 && s[0] == B && s[1] == H && s[2] == W &&
+                 ((s.size() >= 4 && s[3] == want_c) ||
+                  (s.size() == 3 && want_c == 1));
+        }
+        if (ok) {
+            p.flags |= bit;
+            dst = std::get<0>(tv);
+        } else {
+            dst = vkk::or_fallback(nullptr);
+        }
+    };
+
+    bind_grad(v_render_rgb, 3, 1u << 0, p.v_render_rgb);
+    bind_grad(v_render_depth, 1, 1u << 1, p.v_render_depth);
+    bind_grad(v_render_Ts, 1, 1u << 2, p.v_render_Ts);
+    bind_grad(v_render_normal, 3, 1u << 3, p.v_render_normal);
+    bind_grad(v_median_depth, 1, 1u << 4, p.v_median_depth);
+    bind_grad(v_rgb_dist, 3, 1u << 5, p.v_rgb_dist);
+    bind_grad(v_depth_dist, 1, 1u << 6, p.v_depth_dist);
+    bind_grad(v_normal_dist, 3, 1u << 7, p.v_normal_dist);
+
+    if (_has(camera_indices) && std::get<1>(camera_indices) == 4 &&
+        !std::get<2>(camera_indices).empty() &&
+        std::get<2>(camera_indices)[0] >= B) {
+        p.flags |= 1u << 8;
+        p.camera_indices = std::get<0>(camera_indices);
+    } else {
+        p.camera_indices = vkk::or_fallback(nullptr);
+    }
+
+    if ((p.flags & 0xffu) == 0u) return;
+    dispatch_tiles("multi_scale_loss.ms_subsample_grads", p.W, p.H, p.B, &p,
+                   sizeof(p));
 }

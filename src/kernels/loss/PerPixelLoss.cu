@@ -15,6 +15,7 @@ namespace SlangPerPixelLosses {
 
 #include "core/Common.cuh"
 #include "core/PixelFormat.h"
+#include "shaders/stbn_mask.h"
 #include <core/Tensor.h>
 
 template<typename T>
@@ -1552,4 +1553,112 @@ LossValues compute_multi_scale_per_pixel_losses(
     out.flip = flip_val;
     losses_readout.issue(total_losses_ptr);
     return out;
+}
+
+__device__ __forceinline__ void _subsample_apply_vec(
+    float* __restrict__ ptr, size_t pix, int channels, bool keep, float scale
+) {
+    if (!ptr) return;
+    const size_t base = pix * (size_t)channels;
+    for (int c = 0; c < channels; ++c)
+        ptr[base + c] = keep ? ptr[base + c] * scale : 0.0f;
+}
+
+__global__ void subsample_pixel_grads_kernel(
+    int B, int H, int W,
+    int factor, uint32_t step,
+    const int32_t* __restrict__ camera_indices,
+    float* __restrict__ v_render_rgb,
+    float* __restrict__ v_render_depth,
+    float* __restrict__ v_render_Ts,
+    float* __restrict__ v_render_normal,
+    float* __restrict__ v_median_depth,
+    float* __restrict__ v_rgb_dist,
+    float* __restrict__ v_depth_dist,
+    float* __restrict__ v_normal_dist
+) {
+    const uint32_t xid = blockIdx.x * blockDim.x + threadIdx.x;
+    const uint32_t yid = blockIdx.y * blockDim.y + threadIdx.y;
+    const uint32_t bid = blockIdx.z * blockDim.z + threadIdx.z;
+    if (bid >= (uint32_t)B || yid >= (uint32_t)H || xid >= (uint32_t)W)
+        return;
+
+    const uint32_t cam_id = camera_indices
+        ? (uint32_t)camera_indices[bid] : bid;
+    const bool keep = ss_stbn_keep_pixel(
+        xid, yid, step, cam_id, (uint32_t)factor);
+    const float scale = (float)factor;
+    const size_t pix = ((size_t)bid * H + yid) * W + xid;
+
+    _subsample_apply_vec(v_render_rgb, pix, 3, keep, scale);
+    _subsample_apply_vec(v_render_depth, pix, 1, keep, scale);
+    _subsample_apply_vec(v_render_Ts, pix, 1, keep, scale);
+    _subsample_apply_vec(v_render_normal, pix, 3, keep, scale);
+    _subsample_apply_vec(v_median_depth, pix, 1, keep, scale);
+    _subsample_apply_vec(v_rgb_dist, pix, 3, keep, scale);
+    _subsample_apply_vec(v_depth_dist, pix, 1, keep, scale);
+    _subsample_apply_vec(v_normal_dist, pix, 3, keep, scale);
+}
+
+/*[AutoHeaderGeneratorExport]*/
+void subsample_pixel_grads(
+    TorchTensorView v_render_rgb,
+    TorchTensorView v_render_depth,
+    TorchTensorView v_render_Ts,
+    TorchTensorView v_render_normal,
+    TorchTensorView v_median_depth,
+    TorchTensorView v_rgb_dist,
+    TorchTensorView v_depth_dist,
+    TorchTensorView v_normal_dist,
+    TorchTensorView camera_indices,
+    int factor,
+    int step
+) {
+    if (factor <= 1) return;
+    if (factor != 2 && factor != 4)
+        throw std::runtime_error("subsample_pixel_grads: factor must be 1, 2, or 4");
+
+    const TorchTensorView* views[] = {
+        &v_render_rgb, &v_render_depth, &v_render_Ts, &v_render_normal,
+        &v_median_depth, &v_rgb_dist, &v_depth_dist, &v_normal_dist
+    };
+    long B = 0, H = 0, W = 0;
+    for (const TorchTensorView* tv : views) {
+        if (_has(*tv) && std::get<2>(*tv).size() >= 3) {
+            const auto& s = std::get<2>(*tv);
+            B = s[0]; H = s[1]; W = s[2];
+            break;
+        }
+    }
+    if (B <= 0 || H <= 0 || W <= 0) return;
+
+    auto grad_ptr = [&](const TorchTensorView& tv, int want_c) -> float* {
+        if (!_has(tv)) return nullptr;
+        const auto& s = std::get<2>(tv);
+        if (s.size() < 3 || s[0] != B || s[1] != H || s[2] != W)
+            return nullptr;
+        if (s.size() >= 4 && s[3] != want_c) return nullptr;
+        if (s.size() == 3 && want_c != 1) return nullptr;
+        return _fptr(tv);
+    };
+
+    const int32_t* cam_ptr = nullptr;
+    if (_has(camera_indices) && std::get<1>(camera_indices) == 4 &&
+        !std::get<2>(camera_indices).empty() &&
+        std::get<2>(camera_indices)[0] >= B) {
+        cam_ptr = (const int32_t*)std::get<0>(camera_indices);
+    }
+
+    subsample_pixel_grads_kernel<<<_LAUNCH_ARGS_3D(W, H, B, 16, 16, 1)>>>(
+        (int)B, (int)H, (int)W, factor, (uint32_t)step, cam_ptr,
+        grad_ptr(v_render_rgb, 3),
+        grad_ptr(v_render_depth, 1),
+        grad_ptr(v_render_Ts, 1),
+        grad_ptr(v_render_normal, 3),
+        grad_ptr(v_median_depth, 1),
+        grad_ptr(v_rgb_dist, 3),
+        grad_ptr(v_depth_dist, 1),
+        grad_ptr(v_normal_dist, 3)
+    );
+    CHECK_DEVICE_ERROR(cudaGetLastError());
 }

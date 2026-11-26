@@ -15,7 +15,9 @@
 
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -392,6 +394,101 @@ void run_normalize_clip(Rng& r) {
     std::printf("msloss_parity: cfg %-12s done\n", "norm_clip");
 }
 
+// STBN gradient sub-sampling: CUDA/Vulkan parity plus exact cycle conservation.
+void run_subsample(Rng& r) {
+    const int64_t B = 3, H = 41, W = 57, N = H * W, pix = B * N;
+    const std::vector<float> src_rgb = r.vec(3 * pix, -1.0f, 1.0f);
+    const std::vector<float> src_depth = r.vec(pix, -1.0f, 1.0f);
+    const std::vector<float> src_Ts = r.vec(pix, -1.0f, 1.0f);
+    const std::vector<float> src_norm = r.vec(3 * pix, -1.0f, 1.0f);
+    const std::vector<float> src_med = r.vec(pix, -1.0f, 1.0f);
+    const std::vector<float> src_rdist = r.vec(3 * pix, -1.0f, 1.0f);
+    const std::vector<float> src_ddist = r.vec(pix, -1.0f, 1.0f);
+    const std::vector<float> src_ndist = r.vec(3 * pix, -1.0f, 1.0f);
+
+    std::vector<int32_t> cams = {4, 17, 9};
+    int32_t* d_cams = upload(cams);
+    TorchTensorView cams_tv((uint64_t)d_cams, 4, {B});
+
+    auto check_keep_band = [](const std::vector<float>& got, int factor) {
+        size_t nonzero = 0;
+        for (float v : got)
+            if (v != 0.0f) ++nonzero;
+        double frac = (double)nonzero / (double)got.size();
+        double want = 1.0 / (double)factor;
+        if (std::fabs(frac - want) > 0.05) {
+            std::fprintf(stderr, "subsample keep frac %.4f != %.4f\n", frac, want);
+            std::exit(1);
+        }
+    };
+    auto check_cycle_mean = [](const std::vector<double>& sum,
+                               const std::vector<float>& want, int factor) {
+        for (size_t i = 0; i < want.size(); ++i) {
+            double mean = sum[i] / (double)factor;
+            if (std::fabs(mean - (double)want[i]) > 1e-4) {
+                std::fprintf(stderr, "subsample cycle mean mismatch at %zu: %g vs %g\n",
+                             i, mean, (double)want[i]);
+                std::exit(1);
+            }
+        }
+    };
+
+    for (int factor : {2, 4}) {
+        std::vector<double> sum_rgb(3 * pix, 0.0);
+        std::vector<double> sum_depth(pix, 0.0);
+        for (int step = 0; step < factor; ++step) {
+            float* d_rgb = upload(src_rgb);
+            float* d_depth = upload(src_depth);
+            float* d_Ts = upload(src_Ts);
+            float* d_norm = upload(src_norm);
+            float* d_med = upload(src_med);
+            float* d_rdist = upload(src_rdist);
+            float* d_ddist = upload(src_ddist);
+            float* d_ndist = upload(src_ndist);
+            subsample_pixel_grads(
+                ttv(d_rgb, {B, H, W, 3}), ttv(d_depth, {B, H, W, 1}),
+                ttv(d_Ts, {B, H, W, 1}), ttv(d_norm, {B, H, W, 3}),
+                ttv(d_med, {B, H, W, 1}), ttv(d_rdist, {B, H, W, 3}),
+                ttv(d_ddist, {B, H, W, 1}), ttv(d_ndist, {B, H, W, 3}),
+                cams_tv, factor, step);
+            backend::device_synchronize();
+
+            const size_t base = g_tight.size();
+            readback_f(g_tight, d_rgb, 3 * pix);
+            readback_f(g_tight, d_depth, pix);
+            readback_f(g_tight, d_Ts, pix);
+            readback_f(g_tight, d_norm, 3 * pix);
+            readback_f(g_tight, d_med, pix);
+            readback_f(g_tight, d_rdist, 3 * pix);
+            readback_f(g_tight, d_ddist, pix);
+            readback_f(g_tight, d_ndist, 3 * pix);
+
+            std::vector<float> step_depth(
+                g_tight.begin() + (ptrdiff_t)(base + 3 * pix),
+                g_tight.begin() + (ptrdiff_t)(base + 4 * pix));
+            check_keep_band(step_depth, factor);
+            for (int64_t i = 0; i < 3 * pix; ++i)
+                sum_rgb[(size_t)i] += (double)g_tight[base + (size_t)i];
+            for (int64_t i = 0; i < pix; ++i)
+                sum_depth[(size_t)i] += (double)step_depth[(size_t)i];
+        }
+        check_cycle_mean(sum_rgb, src_rgb, factor);
+        check_cycle_mean(sum_depth, src_depth, factor);
+    }
+
+    // Nullable optional channels + null camera_indices fallback to batch id.
+    float* d_rgb = upload(src_rgb);
+    float* d_Ts = upload(src_Ts);
+    subsample_pixel_grads(
+        ttv(d_rgb, {B, H, W, 3}), ttv_null(), ttv(d_Ts, {B, H, W, 1}),
+        ttv_null(), ttv_null(), ttv_null(), ttv_null(), ttv_null(),
+        ttv_null(), 4, 7);
+    backend::device_synchronize();
+    readback_f(g_tight, d_rgb, 3 * pix);
+    readback_f(g_tight, d_Ts, pix);
+    std::printf("msloss_parity: cfg %-12s done\n", "subsample");
+}
+
 int main(int argc, char** argv) {
     if (argc != 3 ||
         (std::strcmp(argv[1], "dump") && std::strcmp(argv[1], "compare"))) {
@@ -493,6 +590,7 @@ int main(int argc, char** argv) {
     }
     run_quantile(r);
     run_normalize_clip(r);
+    run_subsample(r);
     // Near-identical windows expose cancellation hidden by unrelated noise.
     Rng matched(260729u);
     for (int pattern = 1; pattern <= 3; ++pattern) {

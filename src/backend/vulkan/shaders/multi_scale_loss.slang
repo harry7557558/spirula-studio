@@ -19,6 +19,7 @@
 #include "int8_compat.slang"
 #include "atomic_float.slang"
 #include "rgb_format.slang"
+#include "shaders/stbn_mask.h"
 
 #define CudaDeviceExport ForceInline
 #include "shaders/per_pixel_losses.slang"
@@ -983,3 +984,50 @@ void ms_widen(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (i >= p.n) return;
     p.dst[i] = rgb_load1(p.src, i, p.fmt);
 }
+
+// Mirrors MsSubsampleParams in backend/vulkan/kernels/PerPixelLoss.cpp.
+struct MsSubsampleParams {
+    float* v_render_rgb;
+    float* v_render_depth;
+    float* v_render_Ts;
+    float* v_render_normal;
+    float* v_median_depth;
+    float* v_rgb_dist;
+    float* v_depth_dist;
+    float* v_normal_dist;
+    int* camera_indices;
+    int B, H, W;
+    uint factor, step, flags, _pad0, _pad1;
+};
+
+#define _MS_SUB_APPLY(bit, ptr, C)                                  \
+    if ((p.flags & (bit)) != 0u) {                                  \
+        gindex_t base = pix * (C);                                  \
+        for (int c = 0; c < (C); ++c)                               \
+            ptr[base + c] = keep ? ptr[base + c] * scale : 0.0f;    \
+    }
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void ms_subsample_grads(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                        uniform MsSubsampleParams p) {
+    uint xid = wg.x * 16 + (tid % 16u);
+    uint yid = wg.y * 16 + (tid / 16u);
+    uint bid = wg.z;
+    if (bid >= uint(p.B) || yid >= uint(p.H) || xid >= uint(p.W)) return;
+    uint cam_id = (p.flags & (1u << 8)) != 0u ? uint(p.camera_indices[bid]) : bid;
+    bool keep = ss_stbn_keep_pixel(xid, yid, p.step, cam_id, p.factor);
+    float scale = float(p.factor);
+    gindex_t pix = ((gindex_t)bid * p.H + yid) * (gindex_t)p.W + xid;
+
+    _MS_SUB_APPLY(1u << 0, p.v_render_rgb, 3)
+    _MS_SUB_APPLY(1u << 1, p.v_render_depth, 1)
+    _MS_SUB_APPLY(1u << 2, p.v_render_Ts, 1)
+    _MS_SUB_APPLY(1u << 3, p.v_render_normal, 3)
+    _MS_SUB_APPLY(1u << 4, p.v_median_depth, 1)
+    _MS_SUB_APPLY(1u << 5, p.v_rgb_dist, 3)
+    _MS_SUB_APPLY(1u << 6, p.v_depth_dist, 1)
+    _MS_SUB_APPLY(1u << 7, p.v_normal_dist, 3)
+}
+
+#undef _MS_SUB_APPLY

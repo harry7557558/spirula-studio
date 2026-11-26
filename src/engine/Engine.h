@@ -192,7 +192,9 @@ std::map<std::string, float> engine_compute_loss_backward(
     // Zero (default) disables the kernel launch entirely.
     float color_shift_reg_weight  = 0.0f,
     float color_shift_reg_beta    = 0.0f,
-    bool segment_and_ignore_mask  = false
+    bool segment_and_ignore_mask  = false,
+    int grad_subsample            = 1,
+    int grad_subsample_step       = 0
 );
 
 // The densification error map for the last forward -- the buffer

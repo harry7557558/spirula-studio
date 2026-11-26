@@ -265,6 +265,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(float, alpha_loss_weight_under, 0.0f, "loss", "basic", "")             \
     X(float, loss_saturation_threshold, -1.0f, "loss", "advanced", "")       \
     X(float, loss_luminance_normalization, 0.0f, "loss", "advanced", "")     \
+    X(std::string, loss_grad_subsample, "off", "loss", "advanced", "off|2x|4x") \
     X(std::string, view_sampling, "uniform", "loss", "basic", "uniform|deficit") \
     X(float, view_deficit_power, 0.5f, "loss", "advanced", "")               \
     X(float, view_deficit_max_ratio, 8.0f, "loss", "advanced", "")           \

@@ -126,6 +126,7 @@
   X("multi_scale_loss.ms_downsample_masked_f",       Masks,       Pixels) \
   X("multi_scale_loss.ms_nms_apply",                 Densify,     Pixels) \
   X("multi_scale_loss.ms_nms_mask",                  Densify,     Pixels) \
+  X("multi_scale_loss.ms_subsample_grads",           Loss,        Pixels) \
   X("multi_scale_loss.ms_upsample_f",                Loss,        Pixels) \
   X("multi_scale_loss.ms_widen",                     Loss,        Pixels) \
   X("multi_scale_loss.ms_zero_masked_grad",          Masks,       Pixels) \

@@ -230,3 +230,18 @@ LossValues compute_multi_scale_per_pixel_losses(
     PerPixelGrads& grads_out,
     bool segment_and_ignore_mask
 );
+
+
+void subsample_pixel_grads(
+    TorchTensorView v_render_rgb,
+    TorchTensorView v_render_depth,
+    TorchTensorView v_render_Ts,
+    TorchTensorView v_render_normal,
+    TorchTensorView v_median_depth,
+    TorchTensorView v_rgb_dist,
+    TorchTensorView v_depth_dist,
+    TorchTensorView v_normal_dist,
+    TorchTensorView camera_indices,
+    int factor,
+    int step
+);
