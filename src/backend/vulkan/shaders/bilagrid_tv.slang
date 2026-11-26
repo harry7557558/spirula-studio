@@ -13,17 +13,14 @@
 const int kValueQuant = 0;
 
 // ---------------------------------------------------------------------------
-// tv_loss_forward — 4x4x4 blocks; (ni, li) folded over x/y, z packs (wi, hi).
+// tv_loss_forward — flat grid-stride, then a one-workgroup sum.
 // ---------------------------------------------------------------------------
 
 groupshared float _bt_red64[64];
 
-// Undo the (ni, li)-axis grid fold shared by the four whole-table kernels
-// below: their block count along the fused (ni, li) axis is N*L/4, which for
-// a 40k-image dataset at L=8 is 80000 -- past the 65535 per-dimension
-// dispatch cap. The launcher folds it across grid x/y (`nl_per_row` blocks
-// per row) and packs the two small spatial block counts into z. Mirrors
-// bilagrid_tv_block_ids() in kernels/bilagrid/BilagridConfig.cuh.
+// Undo tv_grid()'s fold: N*L/4 (ni, li) blocks (80000 for 40k images at L=8)
+// exceed the 65535 dispatch cap, so they fold over x/y at `nl_per_row` per
+// row; z packs the spatial blocks. Matches bilagrid_tv_block_ids() in CUDA.
 struct BgTvBlocks { int nl, w, h; };
 
 [ForceInline]
@@ -40,69 +37,93 @@ struct TvParams {
     float* fp32;
     uint* q16;
     float2* vbounds;
-    float* out_buf;    // fwd: scalar tv_loss; bwd: v_bilagrid
+    float* out_buf;    // v_bilagrid
     int N, C, L, H, W;
-    float v_tv_loss;   // bwd only
-    int inplace;       // bwd only
+    float v_tv_loss;
+    int inplace;
     int nl_per_row;    // (ni, li) blocks per grid row -- see bg_tv_blocks
 };
 
-[shader("compute")]
-// Flat 64-thread workgroup (X must be a multiple of the pinned subgroup
-// size); logical 4x4x4 decode below matches the CUDA block geometry.
-[numthreads(64, 1, 1)]
-void bilagrid_tv_loss_fwd(uint3 bid: SV_GroupID, uint ftid: SV_GroupThreadID,
-                          uniform TvParams p) {
-    uint3 t = uint3(ftid % 4u, (ftid / 4u) % 4u, ftid / 16u);
-    BgTvBlocks b = bg_tv_blocks(bid, p.nl_per_row, p.W);
-    int idx = b.nl * 4 + int(t.x);
-    int wi = b.w * 4 + int(t.y);
-    int hi = b.h * 4 + int(t.z);
-    bool inside = (wi < p.W && hi < p.H && idx < p.L * p.N);
-    int li = idx % p.L; idx /= p.L;
-    int ni = idx;
-    BgReader r = {p.fp32, p.q16, p.vbounds};
+struct TvFwdParams {
+    float* fp32;
+    uint* q16;
+    float2* vbounds;
+    float* partials;   // one per workgroup
+    int N, C, L, H, W;
+    uint groups;
+};
 
-    int C = p.C;
-    int sw = C;
-    int sh = p.W * C;
-    int sl = p.H * p.W * C;
-    int sn = p.L * p.H * p.W * C;
+groupshared float _bt_red256[256];
 
-    float tv_sum = 0.0f;
-    if (inside) {
-        int cell_base = ni * sn + li * sl + hi * sh + wi * sw;
-        for (int ci = 0; ci < C; ci++) {
-            int cell_idx = cell_base + ci;
-            float val = bg_read(kValueQuant != 0, r, cell_idx);
-            if (wi > 0) {
-                float val0 = bg_read(kValueQuant != 0, r, cell_idx - sw);
-                tv_sum += (val - val0) * (val - val0) /
-                          float(p.L * p.H * (p.W - 1));
-            }
-            if (hi > 0) {
-                float val0 = bg_read(kValueQuant != 0, r, cell_idx - sh);
-                tv_sum += (val - val0) * (val - val0) /
-                          float(p.L * (p.H - 1) * p.W);
-            }
-            if (li > 0) {
-                float val0 = bg_read(kValueQuant != 0, r, cell_idx - sl);
-                tv_sum += (val - val0) * (val - val0) /
-                          float((p.L - 1) * p.H * p.W);
-            }
-        }
-        tv_sum /= float(C * p.N);
-    }
-
-    uint tid = (t.z * 4 + t.y) * 4 + t.x;
-    _bt_red64[tid] = tv_sum;
+[ForceInline]
+float _bt_reduce256(uint tid, float v) {
+    _bt_red256[tid] = v;
     GroupMemoryBarrierWithGroupSync();
     [ForceUnroll]
-    for (uint s = 32; s > 0; s >>= 1) {
-        if (tid < s) _bt_red64[tid] += _bt_red64[tid + s];
+    for (uint s = 128; s > 0; s >>= 1) {
+        if (tid < s) _bt_red256[tid] += _bt_red256[tid + s];
         GroupMemoryBarrierWithGroupSync();
     }
-    if (tid == 0) atomic_add_f32(&p.out_buf[0], _bt_red64[0]);
+    return _bt_red256[0];
+}
+
+// Grid-stride over the flat grid so that neighbouring lanes read neighbouring
+// floats; a partial per workgroup replaces the float atomic, which serializes
+// on RDNA 4 when thousands target one address.
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void bilagrid_tv_loss_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                          uniform TvFwdParams p) {
+    BgReader r = {p.fp32, p.q16, p.vbounds};
+    uint C = uint(p.C), W = uint(p.W), H = uint(p.H), L = uint(p.L);
+    uint sh = W * C, sl = H * sh, sn = L * sl;
+    uint total = uint(p.N) * sn;
+    float kw = float(p.L * p.H * (p.W - 1));
+    float kh = float(p.L * (p.H - 1) * p.W);
+    float kl = float((p.L - 1) * p.H * p.W);
+
+    // e's offsets within its row, layer and image advance by a fixed step;
+    // updating them avoids five runtime divisions per element.
+    uint e = wg.x * 256u + tid, step = p.groups * 256u;
+    uint oh = e % sh, ol = e % sl, on = e % sn;
+    uint dh = step % sh, dl = step % sl, dn = step % sn;
+    float acc = 0.0f;
+    for (; e < total; e += step) {
+        float val = bg_read(kValueQuant != 0, r, int(e));
+        if (oh >= C) {
+            float d = val - bg_read(kValueQuant != 0, r, int(e - C));
+            acc += d * d / kw;
+        }
+        if (ol >= sh) {
+            float d = val - bg_read(kValueQuant != 0, r, int(e - sh));
+            acc += d * d / kh;
+        }
+        if (on >= sl) {
+            float d = val - bg_read(kValueQuant != 0, r, int(e - sl));
+            acc += d * d / kl;
+        }
+        oh += dh; if (oh >= sh) oh -= sh;
+        ol += dl; if (ol >= sl) ol -= sl;
+        on += dn; if (on >= sn) on -= sn;
+    }
+    float sum = _bt_reduce256(tid, acc / float(p.C * p.N));
+    if (tid == 0) p.partials[wg.x] = sum;
+}
+
+struct TvSumParams {
+    float* partials;
+    float* out;
+    uint n;
+};
+
+// Fixed summation order, so the loss is the same on every run.
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void bilagrid_tv_sum(uint tid: SV_GroupThreadID, uniform TvSumParams p) {
+    float acc = 0.0f;
+    for (uint i = tid; i < p.n; i += 256u) acc += p.partials[i];
+    float sum = _bt_reduce256(tid, acc);
+    if (tid == 0) p.out[0] += sum;
 }
 
 // ---------------------------------------------------------------------------
