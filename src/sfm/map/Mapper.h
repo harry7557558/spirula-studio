@@ -5573,6 +5573,66 @@ private:
 
     static constexpr size_t kSeamMergeMaxTrack = 20;
 
+    enum class Fusion : uint8_t { kAccept, kCap, kClash, kError, kAngle };
+
+    static void countFusion(Fusion v) {
+        if (!MapProf::enabled()) return;
+        if (v == Fusion::kCap) ++g_map_prof.fusion_cap;
+        else if (v == Fusion::kClash) ++g_map_prof.fusion_clash;
+        else if (v == Fusion::kError) ++g_map_prof.fusion_error;
+        else if (v == Fusion::kAngle) ++g_map_prof.fusion_angle;
+    }
+
+    // Reads only the two points and the poses, so a verdict computed on another
+    // thread holds while neither point changes. `x` is the fused position on accept.
+    Fusion fusionVerdict(const ModelIndex& mi, const Point3D& pt, const Point3D& q, double err,
+                         std::vector<uint8_t>& on_track, const std::vector<Vec3>& centers,
+                         Vec3& x) const {
+        // Dense Schur work grows quadratically with track length; PCG does not form it.
+        if (!opt_.tracks.allowsMerge(pt.track.size(), q.track.size())) return Fusion::kCap;
+        // One observation per image, or the union is not a track.
+        bool clash = false;
+        for (const TrackElement& a : pt.track) on_track[a.image_id] = 1;
+        for (const TrackElement& b : q.track)
+            if (on_track[b.image_id]) { clash = true; break; }
+        for (const TrackElement& a : pt.track) on_track[a.image_id] = 0;
+        if (clash) return Fusion::kClash;
+
+        const double wa = (double)pt.track.size(), wb = (double)q.track.size();
+        x = (pt.xyz * wa + q.xyz * wb) * (1.0 / (wa + wb));
+        if (opt_.tracks.refine_fusion) {
+            std::vector<PointObservation> observations;
+            observations.reserve(pt.track.size() + q.track.size());
+            for (const auto* track : {&pt.track, &q.track})
+                for (const auto& el : *track)
+                    observations.push_back({poseToP(mi.img[el.image_id]->pose),
+                        mi.cam[el.image_id]->bearing(kp(el.image_id, el.point2D_idx)),
+                        mi.cam[el.image_id]->errRad(err)});
+            x = refineTriangulatedPoint(x, observations);
+        }
+        for (const std::vector<TrackElement>* tr : {&pt.track, &q.track})
+            for (const TrackElement& el : *tr)
+                if (reprojErrAt(mi, el.image_id, el.point2D_idx, x) >
+                    err * mi.pixel_scale[el.image_id])
+                    return Fusion::kError;
+        // A union with no parallax would be filtered and rebuilt on the next round.
+        if (!wellTriangulated(pt.track, q.track, x, centers)) return Fusion::kAngle;
+        return Fusion::kAccept;
+    }
+
+    size_t fuse(const ModelIndex& mi, uint64_t pid, Point3D& pt,
+                std::map<uint64_t, Point3D>::iterator qit, const Vec3& x) {
+        ProfTimer t(g_map_prof.merge_commit);
+        const size_t absorbed = qit->second.track.size();
+        pt.xyz = x;
+        for (const TrackElement& el : qit->second.track) {
+            mi.img[el.image_id]->point3D_ids[el.point2D_idx] = pid;
+            pt.track.push_back(el);
+        }
+        rec_.points3D.erase(qit);
+        return absorbed;
+    }
+
     size_t mergeOne(const ModelIndex& mi, uint64_t pid, double err,
                     std::unordered_set<uint64_t>& tried, std::vector<uint8_t>& on_track,
                     const std::vector<Vec3>& centers) {
@@ -5588,61 +5648,14 @@ private:
                 if (!tried.insert((lo << 32) ^ hi).second) continue;
                 auto qit = rec_.points3D.find(qid);
                 if (qit == rec_.points3D.end()) continue;
-                Point3D& q = qit->second;
-
-                // Dense Schur work grows quadratically with track length; PCG does not form it.
-                if (!opt_.tracks.allowsMerge(pt.track.size(), q.track.size())) {
-                    if (MapProf::enabled()) ++g_map_prof.fusion_cap;
-                    continue;
+                Vec3 x;
+                Fusion v;
+                {
+                    ProfTimer t(g_map_prof.merge_check);
+                    v = fusionVerdict(mi, pt, qit->second, err, on_track, centers, x);
                 }
-                // One observation per image, or the union is not a track.
-                bool clash = false;
-                for (const TrackElement& a : pt.track) on_track[a.image_id] = 1;
-                for (const TrackElement& b : q.track)
-                    if (on_track[b.image_id]) { clash = true; break; }
-                for (const TrackElement& a : pt.track) on_track[a.image_id] = 0;
-                if (clash) {
-                    if (MapProf::enabled()) ++g_map_prof.fusion_clash;
-                    continue;
-                }
-
-                const double wa = (double)pt.track.size(), wb = (double)q.track.size();
-                Vec3 x = (pt.xyz * wa + q.xyz * wb) * (1.0 / (wa + wb));
-                if (opt_.tracks.refine_fusion) {
-                    std::vector<PointObservation> observations;
-                    observations.reserve(pt.track.size() + q.track.size());
-                    for (const auto* track : {&pt.track, &q.track})
-                        for (const auto& el : *track)
-                            observations.push_back({poseToP(mi.img[el.image_id]->pose),
-                                mi.cam[el.image_id]->bearing(kp(el.image_id, el.point2D_idx)),
-                                mi.cam[el.image_id]->errRad(err)});
-                    x = refineTriangulatedPoint(x, observations);
-                }
-                bool ok = true;
-                for (const std::vector<TrackElement>* tr : {&pt.track, &q.track}) {
-                    for (const TrackElement& el : *tr)
-                        if (reprojErrAt(mi, el.image_id, el.point2D_idx, x) >
-                            err * mi.pixel_scale[el.image_id]) { ok = false; break; }
-                    if (!ok) break;
-                }
-                if (!ok) {
-                    if (MapProf::enabled()) ++g_map_prof.fusion_error;
-                    continue;
-                }
-                // A union with no parallax would be filtered and rebuilt on the next round.
-                if (!wellTriangulated(pt.track, q.track, x, centers)) {
-                    if (MapProf::enabled()) ++g_map_prof.fusion_angle;
-                    continue;
-                }
-
-                const size_t absorbed = q.track.size();
-                pt.xyz = x;
-                for (const TrackElement& el : q.track) {
-                    mi.img[el.image_id]->point3D_ids[el.point2D_idx] = pid;
-                    pt.track.push_back(el);
-                }
-                rec_.points3D.erase(qit);
-                return absorbed;
+                countFusion(v);
+                if (v == Fusion::kAccept) return fuse(mi, pid, pt, qit, x);
             }
         }
         return 0;
