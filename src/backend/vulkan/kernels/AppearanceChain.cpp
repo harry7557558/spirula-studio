@@ -6,6 +6,8 @@
 #include <core/PixelFormat.h>
 #include <core/Tensor.h>
 
+#include <algorithm>
+
 #include "backend/vulkan/kernels/KernelCommon.h"
 
 namespace {
@@ -80,15 +82,19 @@ AppParams make_params(const AppearanceChainParams& c, const TorchTensorView& rgb
     return p;
 }
 
+// The backward's workgroups stride over the image: with one per 256 pixels,
+// thousands of them add to the same few ppisp parameters, and RDNA 4 executes
+// same-address float atomics one at a time (~60 ns each).
+constexpr int64_t kBwdGroupsPerImage = 256;
+
 void dispatch_image(const char* entry, const AppearanceChainParams& c,
                     AppParams& p) {
     const int64_t pixels = (int64_t)p.H * p.W;
     if (pixels <= 0 || p.B <= 0) return;
-    vkk::Fold f = vkk::fold_1d(pixels, 256);
-    p.wgs_per_row = f.per_row;
-    if (p.B > 65535 || f.rows > 65535)
+    if (p.B > 65535)
         throw std::runtime_error("appearance: image grid dimension exceeds 65535");
-    vkk::dispatch_ring(entry, spec_list(c), f.per_row, (uint32_t)p.B, f.rows,
+    p.wgs_per_row = (uint32_t)std::min((pixels + 255) / 256, kBwdGroupsPerImage);
+    vkk::dispatch_ring(entry, spec_list(c), p.wgs_per_row, (uint32_t)p.B, 1,
                        &p, sizeof(p));
 }
 

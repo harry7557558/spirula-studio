@@ -46,6 +46,7 @@
   X("bilagrid_tv.bilagrid_scatter_floats",           Scope,       Images) \
   X("bilagrid_tv.bilagrid_tv_loss_bwd",              Scope,       Images) \
   X("bilagrid_tv.bilagrid_tv_loss_fwd",              Scope,       Images) \
+  X("bilagrid_tv.bilagrid_tv_sum",                   Scope,       Images) \
   X("bilagrid_tv.ppisp_add_into_grad",               Appearance,  Images) \
   X("bilagrid_tv.ppisp_original_default_init",      Appearance,  Images) \
   X("calib_warp.calib_warp_accum",                   Calibration, Pixels) \

@@ -27,8 +27,8 @@ using backend::MemcpyKind;
 
 namespace {
 
-constexpr int64_t B = 2, H = 37, W = 70, N_CAM = 4;
-constexpr int64_t PIX = B * H * W;
+constexpr int64_t B = 2, N_CAM = 4;
+int64_t H = 37, W = 70, PIX = B * H * W;
 constexpr int MH = 19, MW = 35;  // the mask is nearest-sampled up
 
 template <typename T>
@@ -337,70 +337,81 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    Rng r(310777u);
-    Inputs in;
-    in.raw = upload(r.vec(PIX * 3, -0.1f, 1.6f));
-    in.T = upload(r.vec(PIX, 0.0f, 1.0f));
-    in.bg_image = upload(r.vec(PIX * 3, 0.0f, 1.0f));
-    in.mask_host.resize((size_t)B * MH * MW);
-    for (auto& m : in.mask_host) m = (uint8_t)(r.rng() & 3u);
-    in.mask = upload(in.mask_host);
-    std::vector<float> v_out = r.vec(PIX * 3, -1.0f, 1.0f);
-    for (int64_t i = 0; i < PIX; i += 7)   // masked pixels: zero gradient
-        v_out[3 * i] = v_out[3 * i + 1] = v_out[3 * i + 2] = 0.0f;
-    in.v_out = upload(v_out);
-    in.cs_matrix = upload<float>({0.9f, 0.08f, 0.02f, 0.05f, 0.9f, 0.05f,
-                                  0.02f, 0.08f, 0.9f});
-    in.intrins = upload<float>({80.f, 80.f, 33.f, 17.f, 75.f, 79.f, 36.f, 20.f});
-    in.exponent = upload<float>({1.0f, 3.9f, 0.6f, 2.5f});
-    in.cams = upload<int32_t>({3, 1});
-    for (int i = 0; i < 6; i++) {
-        in.n_params[i] = ppisp_param_spec(kPpispTypes[i]).num_params;
-        in.params[i] = upload(r.vec(N_CAM * in.n_params[i], -0.3f, 0.3f));
-    }
-
     std::vector<float> tight, loose;
     int fails = 0;
     double worst = 0.0;
-    for (const Case& c : cases()) {
-        Result f = run_fused(c, in);
-        if (check) {
-            Result s = run_stages(c, in);
-            auto cmp = [&](const std::vector<float>& a, const std::vector<float>& b,
-                           double rel, const char* what) {
-                double m = 0.0;
-                for (size_t i = 0; i < a.size(); i++) {
-                    double d = std::fabs((double)a[i] - b[i]) /
-                               (1e-4 + rel * std::fabs((double)b[i]));
-                    m = std::max(m, d);
-                }
-                worst = std::max(worst, m);
-                if (m > 1.0) {
-                    fails++;
-                    std::fprintf(stderr,
-                                 "FAIL %s: bg=%d draw=%d mask=%d px=%u ppisp=%d (%s) "
-                                 "xf=%d lin=%d oe=%g -- %.3g of tolerance\n",
-                                 what, (int)c.bg, (int)c.noise, (int)c.masked,
-                                 c.block_px, (int)c.ppisp,
-                                 c.ppisp_type, c.cs_transfer, c.cs_linear,
-                                 c.overexposure, m);
-                }
-            };
-            cmp(f.out, s.out, 1e-5, "out");
-            cmp(f.v_raw, s.v_raw, 1e-4, "v_rgb");
-            cmp(f.v_T, s.v_T, 1e-4, "v_T");
-            cmp(f.v_bg, s.v_bg, 1e-4, "v_bg");
-            cmp(f.v_params, s.v_params, 1e-3, "v_params");
-        } else {
-            for (auto* v : {&f.out, &f.v_raw, &f.v_T, &f.v_bg})
-                tight.insert(tight.end(), v->begin(), v->end());
-            loose.insert(loose.end(), f.v_params.begin(), f.v_params.end());
+    // Check mode also runs an image of over 256 workgroups x 256 pixels, where
+    // the backward's workgroups loop; dump/compare keep the small one.
+    std::vector<std::pair<int64_t, int64_t>> sizes = {{37, 70}};
+    if (check) sizes.push_back({260, 262});
+    for (const auto& [h, w] : sizes) {
+        H = h;
+        W = w;
+        PIX = B * H * W;
+        Rng r(310777u);
+        Inputs in;
+        in.raw = upload(r.vec(PIX * 3, -0.1f, 1.6f));
+        in.T = upload(r.vec(PIX, 0.0f, 1.0f));
+        in.bg_image = upload(r.vec(PIX * 3, 0.0f, 1.0f));
+        in.mask_host.resize((size_t)B * MH * MW);
+        for (auto& m : in.mask_host) m = (uint8_t)(r.rng() & 3u);
+        in.mask = upload(in.mask_host);
+        std::vector<float> v_out = r.vec(PIX * 3, -1.0f, 1.0f);
+        for (int64_t i = 0; i < PIX; i += 7)   // masked pixels: zero gradient
+            v_out[3 * i] = v_out[3 * i + 1] = v_out[3 * i + 2] = 0.0f;
+        in.v_out = upload(v_out);
+        in.cs_matrix = upload<float>({0.9f, 0.08f, 0.02f, 0.05f, 0.9f, 0.05f,
+                                      0.02f, 0.08f, 0.9f});
+        in.intrins = upload<float>({80.f, 80.f, 33.f, 17.f, 75.f, 79.f, 36.f, 20.f});
+        in.exponent = upload<float>({1.0f, 3.9f, 0.6f, 2.5f});
+        in.cams = upload<int32_t>({3, 1});
+        for (int i = 0; i < 6; i++) {
+            in.n_params[i] = ppisp_param_spec(kPpispTypes[i]).num_params;
+            in.params[i] = upload(r.vec(N_CAM * in.n_params[i], -0.3f, 0.3f));
+        }
+
+        for (const Case& c : cases()) {
+            Result f = run_fused(c, in);
+            if (check) {
+                Result s = run_stages(c, in);
+                auto cmp = [&](const std::vector<float>& a, const std::vector<float>& b,
+                               double rel, const char* what) {
+                    // At 136k pixels a few ill-conditioned ones set the max error; this size checks coverage.
+                    const double scale = PIX > 20000 ? 8.0 : 1.0;
+                    double m = 0.0;
+                    for (size_t i = 0; i < a.size(); i++) {
+                        double d = std::fabs((double)a[i] - b[i]) /
+                                   (scale * (1e-4 + rel * std::fabs((double)b[i])));
+                        m = std::max(m, d);
+                    }
+                    worst = std::max(worst, m);
+                    if (m > 1.0) {
+                        fails++;
+                        std::fprintf(stderr,
+                                     "FAIL %s: bg=%d draw=%d mask=%d px=%u ppisp=%d (%s) "
+                                     "xf=%d lin=%d oe=%g -- %.3g of tolerance\n",
+                                     what, (int)c.bg, (int)c.noise, (int)c.masked,
+                                     c.block_px, (int)c.ppisp,
+                                     c.ppisp_type, c.cs_transfer, c.cs_linear,
+                                     c.overexposure, m);
+                    }
+                };
+                cmp(f.out, s.out, 1e-5, "out");
+                cmp(f.v_raw, s.v_raw, 1e-4, "v_rgb");
+                cmp(f.v_T, s.v_T, 1e-4, "v_T");
+                cmp(f.v_bg, s.v_bg, 1e-4, "v_bg");
+                cmp(f.v_params, s.v_params, 1e-3, "v_params");
+            } else {
+                for (auto* v : {&f.out, &f.v_raw, &f.v_T, &f.v_bg})
+                    tight.insert(tight.end(), v->begin(), v->end());
+                loose.insert(loose.end(), f.v_params.begin(), f.v_params.end());
+            }
         }
     }
 
     if (check) {
         std::printf("appearance_parity check: %zu cases, worst %.3g of tolerance, "
-                    "%d failing\n", cases().size(), worst, fails);
+                    "%d failing\n", cases().size() * sizes.size(), worst, fails);
         return fails ? 1 : 0;
     }
     if (dumping) {

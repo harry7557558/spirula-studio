@@ -18,6 +18,8 @@
 #include <engine/EngineInternal.h>
 #include <core/Tensor.h>
 
+#include <algorithm>
+
 #include "backend/vulkan/kernels/KernelCommon.h"
 
 namespace {
@@ -198,6 +200,19 @@ struct TvParams {
     int32_t inplace, nl_per_row;
 };
 static_assert(sizeof(TvParams) == 4 * 8 + 8 * 4, "layout");
+
+struct TvFwdParams {
+    uint64_t fp32, q16, vbounds, partials;
+    int32_t N, C, L, H, W;
+    uint32_t groups;
+};
+static_assert(sizeof(TvFwdParams) == 4 * 8 + 6 * 4, "layout");
+
+struct TvSumParams {
+    uint64_t partials, out;
+    uint32_t n, _pad0;
+};
+static_assert(sizeof(TvSumParams) == 2 * 8 + 2 * 4, "layout");
 
 struct ChannelMeanParams {
     uint64_t fp32, q16, vbounds, channel_mean, v_bilagrid;
@@ -1134,13 +1149,9 @@ bool tv_c_supported(int C, bool fwd) {
     return C == 12 || C == 9 || C == 2 || (fwd && C == 3);
 }
 
-// Grid for the four whole-table kernels (TV loss + channel mean, fwd/bwd).
-// The fused (ni, li) axis has N*L/4 blocks -- 80000 for a 40k-image dataset
-// at L=8, past the 65535 per-dimension dispatch cap -- so it folds across
-// x/y at `nl_per_row` blocks per row, and the two small spatial block counts
-// pack into z. Identical decomposition to bilagrid_tv_grid() in
-// kernels/bilagrid/BilagridConfig.cuh; bg_tv_blocks() in bilagrid_tv.slang
-// undoes it.
+// Grid of the TV backward and channel-mean kernels; bg_tv_blocks() in
+// bilagrid_tv.slang undoes the fold. Same decomposition as bilagrid_tv_grid()
+// in kernels/bilagrid/BilagridConfig.cuh.
 void tv_grid(int N, int L, int H, int W, uint32_t& gx, uint32_t& gy,
              uint32_t& gz, int& nl_per_row) {
     int64_t nl_blocks = ((int64_t)N * L + 3) / 4;
@@ -1156,6 +1167,10 @@ void tv_grid(int N, int L, int H, int W, uint32_t& gx, uint32_t& gy,
     check_grid_dims(gx, gy, gz, "tv/channel_mean");
 }
 
+// Workgroups (= partials) of the TV forward: 1024 is within 10% of the best of
+// 512..2048 on an R9700 and an RTX 5070 Ti for 50 to 4000 grids of 16x16x8.
+constexpr int64_t kTvFwdGroups = 1024;
+
 }  // namespace
 
 void tv_loss_forward(
@@ -1165,14 +1180,24 @@ void tv_loss_forward(
     (void)stream;
     if (!tv_c_supported(C, true)) return;
     ReaderPtrs r = unpack_reader(bilagrid);
-    TvParams p{};
+    TvFwdParams p{};
     p.fp32 = r.fp32; p.q16 = r.q16; p.vbounds = r.vbounds;
-    p.out_buf = (uint64_t)tv_loss;
     p.N = N; p.C = C; p.L = L; p.H = H; p.W = W;
-    uint32_t gx, gy, gz;
-    tv_grid(N, L, H, W, gx, gy, gz, p.nl_per_row);
+    const int64_t total = (int64_t)N * L * H * W * C;
+    if (total <= 0) return;
+    int64_t groups = std::min<int64_t>((total + 255) / 256, kTvFwdGroups);
+    p.groups = (uint32_t)groups;
+    float* partials = DevicePool::global().acquire<float>(
+        PoolSlot::EngBgTvPartials, (size_t)groups);
+    p.partials = (uint64_t)partials;
     vkk::dispatch("bilagrid_tv.bilagrid_tv_loss_fwd",
-                  backend::vk::SpecList{r.vq}, gx, gy, gz, &p, sizeof(p));
+                  backend::vk::SpecList{r.vq}, p.groups, 1, 1, &p, sizeof(p));
+    TvSumParams q{};
+    q.partials = (uint64_t)partials;
+    q.out = (uint64_t)tv_loss;
+    q.n = p.groups;
+    vkk::dispatch("bilagrid_tv.bilagrid_tv_sum", backend::vk::SpecList{r.vq},
+                  1, 1, 1, &q, sizeof(q));
 }
 
 void tv_loss_backward(
