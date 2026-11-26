@@ -993,6 +993,7 @@ void ViewportPanel::detach() {
 void ViewportPanel::destroy_gl() {
     _hardware.destroy();
     _preview.destroy_gl();
+    _preview_tex = 0;
     if (_tex) {
         GLuint t = (GLuint)_tex;
         glDeleteTextures(1, &t);
@@ -1946,15 +1947,18 @@ float ViewportPanel::preview_scale(int w, int h) const {
 unsigned ViewportPanel::pump_preview(const ImVec2& avail, int& W, int& H) {
     W = preview_display_size(avail.x);
     H = preview_display_size(avail.y);
-    float scale = 1.0f;
-    if (_preview_limit > 0) {
-        if (_preview_tex && !_dirty && !_moved_last_draw && W == _preview_display_w && H == _preview_display_h)
-            return _preview_tex;
-        _preview_display_w = W;
-        _preview_display_h = H;
-        _dirty = false;
-        scale = preview_scale(W, H);
-    }
+    // A still view keeps its frame: redrawing ~10M points at the GUI frame rate
+    // kept the GPU busy whenever the pointer moved. A tool taking over the grid
+    // does not set _dirty, so the flag is compared.
+    const bool grid = _show_grid && !external_grid();
+    if (_preview_tex && !_dirty && !_moved_last_draw && grid == _preview_grid &&
+        W == _preview_display_w && H == _preview_display_h)
+        return _preview_tex;
+    _preview_display_w = W;
+    _preview_display_h = H;
+    _preview_grid = grid;
+    _dirty = false;
+    const float scale = preview_scale(W, H);
     float view[16];
     view_matrix(view);
     float fx, fy;
@@ -1970,9 +1974,7 @@ unsigned ViewportPanel::pump_preview(const ImVec2& avail, int& W, int& H) {
                                    (PreviewProjection)_cam_model,
                                    fx / (0.5f * W), fy / (0.5f * H),
                                    _home_dist, nav_dist() / _m2s_scale, target,
-                                   _show_cams, _frustum_scale,
-                                   _show_grid && !external_grid(),
-                                   &style);
+                                   _show_cams, _frustum_scale, grid, &style);
     return _preview_tex;
 }
 

@@ -234,7 +234,7 @@ public:
     // training iteration that has just finished (< 0 when unknown), which is
     // what paces the refresh while nobody is steering the camera.
     void draw(bool training, int step = -1);
-    // For a job monitor sharing the GPU: budget framebuffer pixels and reuse idle frames.
+    // For a job monitor sharing the GPU: budget framebuffer pixels.
     void limit_preview_pixels(int pixels);
 
     // Free GL resources. Call while the GL context is still current
@@ -351,6 +351,7 @@ private:
     float _last_avail_w = 0.0f, _last_avail_h = 0.0f;
     unsigned _preview_tex = 0;
     int _preview_limit = 0, _preview_max_side = 0, _preview_display_w = 0, _preview_display_h = 0;
+    bool _preview_grid = false;   // what _preview_tex was drawn with
 
     Mode _mode = Mode::None;
     HardwareSplatRenderer _hardware;
