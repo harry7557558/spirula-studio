@@ -150,6 +150,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
     __shared__ float4 shared_ray_d_pix_bin_final[BLOCK_SIZE];
 #else
     __shared__ int32_t pix_bin_final[BLOCK_SIZE];
+    __shared__ uint8_t pix_coord[BLOCK_SIZE];
 #endif
     // Shared color/distortion state stored in the compile-time-sized form so an
     // RGB_D primitive doesn't reserve the unused normal channel (less shared
@@ -192,95 +193,33 @@ __global__ void rasterize_to_pixels_bwd_kernel(
     constexpr uint SPLAT_BATCH_SIZE_CONST = dist_any(dist_type) ?
         SPLAT_BATCH_SIZE_WITH_DISTORTION : SPLAT_BATCH_SIZE_NO_DISTORTION;
 
+    uint32_t active_pix_count = 0;
     int32_t bin_max = -1;
+    const bool can_skip_zero = !output_accum_weight && (o_max_weight == nullptr);
     #pragma unroll
     for (uint pix_id0 = 0; pix_id0 < BLOCK_SIZE; pix_id0 += SPLAT_BATCH_SIZE_CONST) {
         static_assert(BLOCK_SIZE % SPLAT_BATCH_SIZE_CONST == 0);
-        uint pix_id_local = pix_id0 + thread_id;
-        int pix_x = blockIdx.z * TILE_SIZE_DX + pix_id_local % TILE_SIZE_DX;
-        int pix_y = blockIdx.y * TILE_SIZE_DY + pix_id_local / TILE_SIZE_DX;
+        static_assert(SPLAT_BATCH_SIZE_CONST == WARP_SIZE);
+        uint orig_pix = pix_id0 + thread_id;
+        int pix_x = blockIdx.z * TILE_SIZE_DX + orig_pix % TILE_SIZE_DX;
+        int pix_y = blockIdx.y * TILE_SIZE_DY + orig_pix / TILE_SIZE_DX;
         uint pix_id_global = pix_y * image_width + pix_x;
         bool inside = (pix_x < image_width && pix_y < image_height);
-        
         int32_t bin_final = (inside ? last_ids[pix_id_global] : -1);
-    #if IS_EVAL3D
-        const float px = (float)pix_x + 0.5f;
-        const float py = (float)pix_y + 0.5f;
-        float3 raydir;
-        inside &= SlangDistortion<distortion>::generate_ray(
-            {(px-cx)/fx, (py-cy)/fy},
-            (int)camera_model, dist_coeffs,
-            &raydir
-        );
-        float3 ray_d = SlangProjectionUtils::transform_ray_d(R, raydir);  // mul(raydir, R);
-        shared_ray_d_pix_bin_final[pix_id_local] =
-            {ray_d.x, ray_d.y, ray_d.z, __int_as_float(bin_final)};
-    #else
-        pix_bin_final[pix_id_local] = bin_final;
-    #endif
+        bool keep = inside && (bin_final >= 0);
 
         uint pix_id_image_global = image_id * image_height * image_width + pix_id_global;
-        float render_Ts_local = (inside ? render_Ts[pix_id_global] : 0.0f);
-        float v_render_Ts_local = (inside ? v_render_Ts[pix_id_global] : 0.0f);
-        RenderOutput v_render_output_local = (inside ?
-            v_render_output_buffer.load<SplatPrimitive::pixelType>(pix_id_image_global)
-             : RenderOutput::zero());
-    #if IS_EVAL3D
-        // The stored normal is camera space (see the forward); the splats' are world.
-        if constexpr (RenderOutput::has_normal(SplatPrimitive::pixelType))
-            v_render_output_local.normal =
-                SlangProjectionUtils::transform_ray_d(R, v_render_output_local.normal);
-    #endif
-        if constexpr (RenderOutput::has_depth(SplatPrimitive::pixelType)) {
-            float inv_alpha = 1.0f / fmaxf(1.0f - render_Ts_local, 1e-10f);  // 1/W
-            float exp_depth = (inside && render_output_buffer.depths) ?
-                render_output_buffer.depths[pix_id_image_global] : 0.0f;
-            if constexpr (dist_has_depth(dist_type)) {
-                // Log-depth render: depth = exp(m), m = C_logz/W = ln(depth).
-                // dL/dC_logz = v_d * depth / W;  dL/dT = v_d * depth * m / W.
-                float m = __logf(fmaxf(exp_depth, DEPTH_DIST_EPS));
-                v_render_Ts_local += exp_depth * v_render_output_local.depth * m * inv_alpha;
-                v_render_output_local.depth *= exp_depth * inv_alpha;
-            } else {
-                // Linear render: depth = C_raw/W.  dL/dC_raw = v_d / W.
-                v_render_Ts_local += exp_depth * v_render_output_local.depth * inv_alpha;
-                v_render_output_local.depth *= inv_alpha;
-            }
+        float v_render_Ts_local = keep ? v_render_Ts[pix_id_global] : 0.0f;
+        RenderOutput v_render_output_local = keep
+            ? v_render_output_buffer.load<SplatPrimitive::pixelType>(pix_id_image_global)
+            : RenderOutput::zero();
+        float v_med_local = 0.0f;
+        if constexpr (output_median) {
+            if (keep && v_median != nullptr) v_med_local = v_median[pix_id_image_global];
         }
-        pix_Ts_with_grad[pix_id_local] = {render_Ts_local, v_render_Ts_local};
-        v_pix_colors[pix_id_local] = v_render_output_local;
-
+        RenderOutput v_d = RenderOutput::zero();
         if constexpr (dist_any(dist_type)) {
-            pix_colors[pix_id_local] = (inside ?
-                render_output_buffer.load<SplatPrimitive::pixelType>(pix_id_image_global)
-                : RenderOutput::zero());
-        #if IS_EVAL3D
-            if constexpr (dist_has_normal(dist_type))
-                pix_colors[pix_id_local].normal =
-                    SlangProjectionUtils::transform_ray_d(R, pix_colors[pix_id_local].normal);
-        #endif
-            // Recover the distortion C for the depth channel. Render depth is
-            // exp(C_logz/W) (geometric-mean-style log depth), so the un-normalized
-            // log-depth mean C_logz = ln(depth) * W. rgb/normal C stay raw.
-            if constexpr (dist_has_depth(dist_type)) {
-                float W = fmaxf(1.0f - render_Ts_local, 1e-10f);
-                pix_colors[pix_id_local].depth =
-                    __logf(fmaxf(pix_colors[pix_id_local].depth, DEPTH_DIST_EPS)) * W;
-            }
-            // Reconstruct the second moment S = (D + C^2) / W from the forward
-            // distortion image D = W*S - C^2, the (now un-normalized) accumulated
-            // color C = pix_colors and W = 1 - T_final, instead of storing a
-            // dedicated render2 buffer. Exact wherever W > 0; for empty pixels
-            // (W = 0) D = C = 0 and no splat is processed, so S is irrelevant.
-            float W = inside ? (1.0f - render_Ts_local) : 0.0f;
-            RenderOutput C = pix_colors[pix_id_local];
-            RenderOutput Dval = (inside ?
-                render_distortion_buffer.loadDistortion<dist_type>(pix_id_image_global)
-                : RenderOutput::zero());
-            float invW = W > 1e-10f ? (1.0f / W) : 0.0f;
-            pix2_colors[pix_id_local] = (Dval + C * C) * invW;
-            RenderOutput v_d = RenderOutput::zero();
-            if (inside) {
+            if (keep) {
                 if (dist_has_rgb(dist_type) && v_distortions_output_buffer.rgbs == nullptr) {
                     constexpr DistortionType no_rgb = dist_has_normal(dist_type) ?
                         DistortionType::DN : DistortionType::D;
@@ -290,30 +229,129 @@ __global__ void rasterize_to_pixels_bwd_kernel(
                     v_d = v_distortions_output_buffer.loadDistortion<dist_type>(pix_id_image_global);
                 }
             }
-            v_distortion_out[pix_id_local] = v_d;
-            dist_W[pix_id_local] = W;
+        }
+        if (keep && can_skip_zero) {
+            bool has_grad =
+                v_render_Ts_local != 0.0f ||
+                v_render_output_local.rgb.x != 0.0f ||
+                v_render_output_local.rgb.y != 0.0f ||
+                v_render_output_local.rgb.z != 0.0f;
+            if constexpr (RenderOutput::has_depth(SplatPrimitive::pixelType))
+                has_grad = has_grad || (v_render_output_local.depth != 0.0f);
+            if constexpr (RenderOutput::has_normal(SplatPrimitive::pixelType))
+                has_grad = has_grad ||
+                    v_render_output_local.normal.x != 0.0f ||
+                    v_render_output_local.normal.y != 0.0f ||
+                    v_render_output_local.normal.z != 0.0f;
+            if constexpr (output_median)
+                has_grad = has_grad || (v_med_local != 0.0f);
+            if constexpr (dist_any(dist_type)) {
+                has_grad = has_grad || (v_d.depth != 0.0f);
+                if constexpr (dist_has_rgb(dist_type))
+                    has_grad = has_grad ||
+                        v_d.rgb.x != 0.0f || v_d.rgb.y != 0.0f || v_d.rgb.z != 0.0f;
+                if constexpr (dist_has_normal(dist_type))
+                    has_grad = has_grad ||
+                        v_d.normal.x != 0.0f || v_d.normal.y != 0.0f || v_d.normal.z != 0.0f;
+            }
+            keep = has_grad;
         }
 
     #if IS_EVAL3D
-        if (output_viewmat_grad) {
-            shared_v_ray_d[pix_id_local] = make_float3(0.0f, 0.0f, 0.0f);
+        float3 ray_d = make_float3(0.0f, 0.0f, 0.0f);
+        if (keep) {
+            const float px = (float)pix_x + 0.5f;
+            const float py = (float)pix_y + 0.5f;
+            float3 raydir;
+            if (!SlangDistortion<distortion>::generate_ray(
+                    {(px - cx) / fx, (py - cy) / fy},
+                    (int)camera_model, dist_coeffs, &raydir)) {
+                keep = false;
+            } else {
+                ray_d = SlangProjectionUtils::transform_ray_d(R, raydir);
+            }
         }
     #endif
 
-        if (output_accum_weight) {
-            accum_weight_map[pix_id_local] = (accum_weight_map_buffer != nullptr && inside) ?
-                accum_weight_map_buffer[pix_id_image_global] : 0.0f;
-        }
+        const uint32_t keep_bal = __ballot_sync(~0u, keep);
+        const uint pix_id_local = active_pix_count + __popc(keep_bal & (((uint32_t)1 << thread_id) - 1));
+        active_pix_count += (uint32_t)__popc(keep_bal);
 
-        if constexpr (output_median) {
-            median_v[pix_id_local] = (v_median != nullptr && inside) ?
-                v_median[pix_id_image_global] : 0.0f;
-            median_pending_zgrad[pix_id_local] = 0.0f;
-            median_pending_zfar[pix_id_local] = 0.0f;
-            median_pending_Tfar[pix_id_local] = 0.0f;
+        if (keep) {
+        #if IS_EVAL3D
+            shared_ray_d_pix_bin_final[pix_id_local] =
+                {ray_d.x, ray_d.y, ray_d.z, __int_as_float(bin_final)};
+        #else
+            pix_bin_final[pix_id_local] = bin_final;
+            pix_coord[pix_id_local] = (uint8_t)orig_pix;
+        #endif
+            float render_Ts_local = render_Ts[pix_id_global];
+        #if IS_EVAL3D
+            if constexpr (RenderOutput::has_normal(SplatPrimitive::pixelType))
+                v_render_output_local.normal =
+                    SlangProjectionUtils::transform_ray_d(R, v_render_output_local.normal);
+        #endif
+            if constexpr (RenderOutput::has_depth(SplatPrimitive::pixelType)) {
+                float inv_alpha = 1.0f / fmaxf(1.0f - render_Ts_local, 1e-10f);
+                float exp_depth = render_output_buffer.depths ?
+                    render_output_buffer.depths[pix_id_image_global] : 0.0f;
+                if constexpr (dist_has_depth(dist_type)) {
+                    float m = __logf(fmaxf(exp_depth, DEPTH_DIST_EPS));
+                    v_render_Ts_local += exp_depth * v_render_output_local.depth * m * inv_alpha;
+                    v_render_output_local.depth *= exp_depth * inv_alpha;
+                } else {
+                    v_render_Ts_local += exp_depth * v_render_output_local.depth * inv_alpha;
+                    v_render_output_local.depth *= inv_alpha;
+                }
+            }
+            pix_Ts_with_grad[pix_id_local] = {render_Ts_local, v_render_Ts_local};
+            v_pix_colors[pix_id_local] = v_render_output_local;
+
+            if constexpr (dist_any(dist_type)) {
+                pix_colors[pix_id_local] =
+                    render_output_buffer.load<SplatPrimitive::pixelType>(pix_id_image_global);
+            #if IS_EVAL3D
+                if constexpr (dist_has_normal(dist_type))
+                    pix_colors[pix_id_local].normal =
+                        SlangProjectionUtils::transform_ray_d(R, pix_colors[pix_id_local].normal);
+            #endif
+                if constexpr (dist_has_depth(dist_type)) {
+                    float W = fmaxf(1.0f - render_Ts_local, 1e-10f);
+                    pix_colors[pix_id_local].depth =
+                        __logf(fmaxf(pix_colors[pix_id_local].depth, DEPTH_DIST_EPS)) * W;
+                }
+                float W = 1.0f - render_Ts_local;
+                RenderOutput C = pix_colors[pix_id_local];
+                RenderOutput Dval =
+                    render_distortion_buffer.loadDistortion<dist_type>(pix_id_image_global);
+                float invW = W > 1e-10f ? (1.0f / W) : 0.0f;
+                pix2_colors[pix_id_local] = (Dval + C * C) * invW;
+                v_distortion_out[pix_id_local] = v_d;
+                dist_W[pix_id_local] = W;
+            }
+
+        #if IS_EVAL3D
+            if (output_viewmat_grad) {
+                shared_v_ray_d[pix_id_local] = make_float3(0.0f, 0.0f, 0.0f);
+            }
+        #endif
+
+            if (output_accum_weight) {
+                accum_weight_map[pix_id_local] = accum_weight_map_buffer != nullptr ?
+                    accum_weight_map_buffer[pix_id_image_global] : 0.0f;
+            }
+
+            if constexpr (output_median) {
+                median_v[pix_id_local] = v_med_local;
+                median_pending_zgrad[pix_id_local] = 0.0f;
+                median_pending_zfar[pix_id_local] = 0.0f;
+                median_pending_Tfar[pix_id_local] = 0.0f;
+            }
+            bin_max = max(bin_max, bin_final);
         }
-        bin_max = max(bin_max, bin_final);
     }
+    if (active_pix_count == 0u)
+        return;
     bin_max = cg::reduce(warp, bin_max, cg::greater<int32_t>());
     block.sync();
 
@@ -417,23 +455,24 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         // at t=0, thread 0 (back-most survivor) undoes pixel 0; at t=1 it undoes
         // pixel 1 while thread 1 undoes pixel 0; etc. -> each pixel sees survivors
         // strictly back-to-front, continuous across batches and segments.
-        for (int t = 0; t < splat_batch_size + BLOCK_SIZE - 1; ++t,
+        for (int t = 0; t < splat_batch_size + (int)active_pix_count - 1; ++t,
                 (SPLAT_BATCH_SIZE_CONST <= WARP_SIZE ? __syncwarp() : __syncthreads())
         ) {
-            int pix_id = t - thread_id;
-            if (pix_id < 0 || pix_id >= BLOCK_SIZE || !active)
+            int pix_id = t - (int)thread_id;
+            if (pix_id < 0 || pix_id >= (int)active_pix_count || !active)
                 continue;
         #if IS_EVAL3D
             float4 ray_d_pix_bin_final = shared_ray_d_pix_bin_final[pix_id];
             if (splat_idx > __float_as_int(ray_d_pix_bin_final.w))
                 continue;
         #else
-            int pix_global_x = blockIdx.z * TILE_SIZE_DX + pix_id % TILE_SIZE_DX;
-            int pix_global_y = blockIdx.y * TILE_SIZE_DY + pix_id / TILE_SIZE_DX;
-            const float px = (float)pix_global_x + 0.5f;
-            const float py = (float)pix_global_y + 0.5f;
             if (splat_idx > pix_bin_final[pix_id])
                 continue;
+            const uint orig_pix = (uint)pix_coord[pix_id];
+            int pix_global_x = blockIdx.z * TILE_SIZE_DX + orig_pix % TILE_SIZE_DX;
+            int pix_global_y = blockIdx.y * TILE_SIZE_DY + orig_pix / TILE_SIZE_DX;
+            const float px = (float)pix_global_x + 0.5f;
+            const float py = (float)pix_global_y + 0.5f;
         #endif
 
             // evaluate alpha and early skip
@@ -633,9 +672,8 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         // gradient from ray_o (will fill v_R and v_t)
         SlangProjectionUtils::transform_ray_o_vjp(R, t, total_v_ray_o, &v_R, &v_t);
         // gradient from ray_d
-        #pragma unroll
-        for (uint pix_id0 = 0; pix_id0 < BLOCK_SIZE; pix_id0 += SPLAT_BATCH_SIZE_CONST) {
-            uint pix_id_local = pix_id0 + thread_id;
+        for (uint pix_id_local = thread_id; pix_id_local < active_pix_count;
+             pix_id_local += SPLAT_BATCH_SIZE_CONST) {
             float4 ray_d_pix_bin_final = shared_ray_d_pix_bin_final[pix_id_local];
             float3 raydir = SlangProjectionUtils::undo_transform_ray_d(R,
                 make_float3(
