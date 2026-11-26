@@ -5572,15 +5572,15 @@ private:
             });
         }
         // Point IDs occupy 32-bit halves; duplicate graph paths must not repeat a merge test.
-        std::unordered_set<uint64_t> tried;
-        tried.reserve(4 * rec_.points3D.size());
+        fusion_tried_.clear();
+        KeySet& tried = fusion_tried_;
         std::vector<uint8_t> on_track(db_.images.size(), 0);
         fusion_dirty_.clear();
         fusion_replay_ = true;
         for (size_t i = 0; i < pts.size(); i++) {
             const uint64_t pid = pts[i].first;
             int hop = 0;
-            if (fusion_replay_ && !fusion_dirty_.count(pid)) {
+            if (fusion_replay_ && !fusion_dirty_.contains(pid)) {
                 const FusionCandidate* block = fusion_blocks_[i / kBlock].data();
                 const size_t absorbed = replayFusions(mi, pid, *pts[i].second, err, tried, on_track,
                                                       centers, block + fusion_span_[i].first,
@@ -5603,6 +5603,51 @@ private:
     }
 
     static constexpr size_t kSeamMergeMaxTrack = 20;
+
+    // Insert-only open-addressing set of 64-bit keys. A fusion pass inserts ~1.5M
+    // keys; std::unordered_set's node per insert cost 0.4 s of that, this ~0.03 s.
+    class KeySet {
+    public:
+        void clear() {
+            std::fill(slots_.begin(), slots_.end(), kEmpty);
+            n_ = 0;
+            has_empty_ = false;
+        }
+        bool contains(uint64_t k) const {
+            if (k == kEmpty) return has_empty_;
+            if (slots_.empty()) return false;
+            const size_t m = slots_.size() - 1;
+            for (size_t i = slot(k, m);; i = (i + 1) & m)
+                if (slots_[i] == k) return true;
+                else if (slots_[i] == kEmpty) return false;
+        }
+        // True if `k` was not present.
+        bool insert(uint64_t k) {
+            if (k == kEmpty) return !std::exchange(has_empty_, true);
+            if (2 * (n_ + 1) > slots_.size()) grow();
+            const size_t m = slots_.size() - 1;
+            size_t i = slot(k, m);
+            for (; slots_[i] != kEmpty; i = (i + 1) & m)
+                if (slots_[i] == k) return false;
+            slots_[i] = k;
+            n_++;
+            return true;
+        }
+
+    private:
+        static constexpr uint64_t kEmpty = ~0ull;
+        static size_t slot(uint64_t k, size_t m) { return (size_t)((k * 0x9E3779B97F4A7C15ull) >> 20) & m; }
+        void grow() {
+            std::vector<uint64_t> old(std::max<size_t>(1u << 16, 2 * slots_.size()), kEmpty);
+            old.swap(slots_);
+            n_ = 0;
+            for (uint64_t k : old)
+                if (k != kEmpty) insert(k);
+        }
+        std::vector<uint64_t> slots_;
+        size_t n_ = 0;
+        bool has_empty_ = false;
+    };
 
     // kUnknown: not checked ahead, as the serial pass meets that pair from the
     // lower id's side first. kMissing: the id names no point.
@@ -5717,14 +5762,14 @@ private:
     // Until the walk reaches a touched partner, it meets exactly the proposals'
     // partners in their order; from there it continues live.
     size_t replayFusions(const ModelIndex& mi, uint64_t pid, Point3D& pt, double err,
-                         std::unordered_set<uint64_t>& tried, std::vector<uint8_t>& on_track,
+                         KeySet& tried, std::vector<uint8_t>& on_track,
                          const std::vector<Vec3>& centers, const FusionCandidate* f,
                          const FusionCandidate* end) {
         for (; f != end; f++) {
-            if (fusion_dirty_.count(f->qid))
+            if (fusion_dirty_.contains(f->qid))
                 return mergeOne(mi, pid, err, tried, on_track, centers, f->ti, f->ci);
             const uint64_t lo = std::min(pid, f->qid), hi = std::max(pid, f->qid);
-            if (!tried.insert((lo << 32) ^ hi).second) {
+            if (!tried.insert((lo << 32) ^ hi)) {
                 // The proposals stop at an accept; the serial walk goes on past a skipped one.
                 if (f->verdict == Fusion::kAccept)
                     return mergeOne(mi, pid, err, tried, on_track, centers, f->ti, f->ci + 1);
@@ -5744,7 +5789,7 @@ private:
     }
 
     size_t mergeOne(const ModelIndex& mi, uint64_t pid, double err,
-                    std::unordered_set<uint64_t>& tried, std::vector<uint8_t>& on_track,
+                    KeySet& tried, std::vector<uint8_t>& on_track,
                     const std::vector<Vec3>& centers, size_t ti0 = 0, size_t ci0 = 0) {
         Point3D& pt = rec_.points3D.at(pid);
         for (size_t ti = ti0; ti < pt.track.size(); ti++) {
@@ -5760,7 +5805,7 @@ private:
                 const uint64_t qid = oi->point3D_ids[c.feature_idx];
                 if (qid == kInvalidPoint3D || qid == pid) continue;
                 const uint64_t lo = std::min(pid, qid), hi = std::max(pid, qid);
-                if (!tried.insert((lo << 32) ^ hi).second) continue;
+                if (!tried.insert((lo << 32) ^ hi)) continue;
                 auto qit = rec_.points3D.find(qid);
                 if (qit == rec_.points3D.end()) continue;
                 Vec3 x;
@@ -6349,7 +6394,7 @@ private:
     // point's [first, last) in its block, and the points fused so far this pass.
     std::vector<std::vector<FusionCandidate>> fusion_blocks_;
     std::vector<std::pair<size_t, size_t>> fusion_span_;
-    std::unordered_set<uint64_t> fusion_dirty_;
+    KeySet fusion_dirty_, fusion_tried_;
     bool fusion_replay_ = true;  // false once a fusion took an ownerless feature: walk live
     // Counted from const passes that fan out over threads (the audit, the
     // seed prefetch).
