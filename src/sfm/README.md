@@ -225,8 +225,9 @@ feature/     Sift (GPU), Matcher (GPU), Pairing, PairSelection (GPU),
                Verification (host worker pool), and the two seams the learned
                frontends plug into: Extractor.h and LearnedMatcher.h, neither
                of which includes an aliked/ or loma/ header
-geometry/    Essential, Fundamental, Homography, P3P, AbsolutePose,
-               Triangulation, TwoView, LinAlg
+geometry/    Essential, EssentialFivePoint, Fundamental, Homography, P3P,
+               EPnP, GP3P, KnownRotation, AbsolutePose, Triangulation, TwoView,
+               LinAlg, PolynomialRoots
 optim/       Ransac   LO-RANSAC with MSAC scoring
 ba/          Problem (model registry + problem layout), Solver (LM, dense
                Cholesky / implicit-Schur PCG), SolverCpu (the same two on the
@@ -1247,7 +1248,7 @@ PASS/FAIL and returns 0/1 — the same convention as `src/backend/tests/`.
 | `sfm_rig_test` | rig bundle adjustment, GPU against host; a synthetic two-lens rig through the mapper and the merger | yes |
 | `sfm_ba_cpu_test` | host bundle adjustment against the written-out normal equations, rigs included | no |
 | `sfm_cholesky_test` | dense GPU Cholesky vs a CPU reference | yes |
-| `sfm_geometry_test` | F, H, E, P3P, triangulation, RANSAC, SVD/eigen kernels | no |
+| `sfm_geometry_test` | F, H, E, P3P, EPnP, triangulation, RANSAC, SVD/eigen kernels | no |
 | `sfm_ransac_test` | uniform sampling, confidence bounds, MSAC parity, independent homography fallback, shuffled perspective/fisheye/equirectangular pairs; `--bench` times verification | no |
 | `sfm_essential_test` | five-point solver, polynomial roots, noisy/outlier estimation, planar and panoramic competition | no |
 | `sfm_calibration_test` | track/graph audits, mapping holdouts, third-view prediction, robust point gradients | no |
@@ -1447,7 +1448,8 @@ port. Ordered by what blocks the most.
    1.30%, and taking it cost 568 images and 65 points of AUC. The veto is now
    0.5%, between them but nearer the fold. It fires on one dataset in eighty,
    so a third data point is worth having before trusting the number.
-8. **Nister 5-point** (calibrated init) and **EPnP**.
+8. ~~**Nister 5-point** (calibrated init) and **EPnP**.~~ -- done
+   (`geometry/EssentialFivePoint.h`, `geometry/EPnP.h`).
 9. **Automatic camera-model detection.** A fisheye capture run with the default
    rectilinear model reconstructs badly and nothing detects it. The focal
    bootstrap's peripheral inlier curve is a usable signal.

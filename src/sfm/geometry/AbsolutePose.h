@@ -3,7 +3,7 @@
 // docs/notes/sfm-rig-constraints.md).
 //
 // Both run LO-RANSAC. The minimal solver is P3P for a camera and gp3p for a
-// rig; the local optimization refits by DLT (>= 6 points) or, for a rig,
+// rig; the local optimization refits by EPnP (>= 4 points) or, for a rig,
 // refines the incumbent over its inliers. Correspondences are given as unit
 // bearings, so a fisheye needs no special case and residuals come out in
 // normalized units.
@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "sfm/core/Pose.h"
+#include "sfm/geometry/EPnP.h"
 #include "sfm/geometry/Essential.h"
 #include "sfm/geometry/GP3P.h"
 #include "sfm/geometry/LinAlg.h"
@@ -299,14 +300,14 @@ inline PnPResult ransacPnP(const std::vector<Vec3>& X, const std::vector<Vec3>& 
     int n = (int)X.size();
     if (n < 4) return out;
     // Minimal solver: P3P on the bearings directly (it already consumes unit
-    // rays; robust to coplanar/elongated point sets). LO refit: DLT on the
+    // rays; robust to coplanar/elongated point sets). LO refit: EPnP on the
     // inliers (only accepted if it improves).
     auto fit = [&](const std::vector<int>& s) {
         std::array<Vec3, 3> br, Xs;
         for (int k = 0; k < 3; k++) { br[k] = b[s[k]]; Xs[k] = X[s[k]]; }
         return p3p(br, Xs);
     };
-    auto refit = [&](const std::vector<int>& s) { return estimatePoseDLT(X, b, s); };
+    auto refit = [&](const std::vector<int>& s) { return epnp(X, b, s); };
     auto res = [&](const Pose& p, int i) { return pnpResidualSq(p, X[i], b[i]); };
     RansacOptions ro;
     ro.max_error = max_error_px / focal;  // residual is in normalized units
