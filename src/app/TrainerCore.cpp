@@ -705,8 +705,12 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
         densify_loss_map_mode_int(c.densify_loss_map_mode, c.perceptual_loss);
     // blend >= 1: world-grad score only, loss map has no consumer.
     if (c.densify_score_blend_world_grad >= 1.0f) loss_map_mode = 0;
+    // Error maps and world-grad scores are only consumed while revised densification can run.
+    const bool densify_ongoing = densify_scoring_active(
+        c.use_revised_densification, c.refine_every, c.refine_stop_iter,
+        c.refine_stop_num_iter, step, c.num_iterations);
     cfg.loss.loss_map_mode = loss_map_mode;
-    cfg.loss.compute_loss_map = (loss_map_mode != 0);
+    cfg.loss.compute_loss_map = (loss_map_mode != 0) && densify_ongoing;
     cfg.loss.robust_edge_aware_quantile = c.densify_robust_edge_aware_quantile;
     cfg.loss.nms_falloff = c.densify_nms_falloff;
     cfg.loss.loss_map_normalize = c.densify_loss_map_normalize;
@@ -778,7 +782,7 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.optim.reg_rendered_only             = c.reg_rendered_only;
     cfg.optim.use_fused_proj_bwd_optim      = c.use_fused_proj_bwd_optim;
     cfg.optim.write_densify_world_grad_score =
-        c.densify_score_blend_world_grad > 0.0f && c.use_revised_densification;
+        c.densify_score_blend_world_grad > 0.0f && densify_ongoing;
     cfg.optim.split_batch     = c.split_batch;
     cfg.optim.color_is_linear = st.splat_linear;
     cfg.optim.use_color_trust_region = st.splat_linear;
@@ -812,8 +816,7 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.densify.score_clip_quantile = c.densify_score_clip_quantile;
     cfg.densify.final_score_power = c.densify_final_score_power;
     cfg.densify.learned_score = c.densify_learned_score;
-    cfg.loss.learned_score = c.densify_learned_score && loss_map_mode != 0 &&
-        step < std::max(c.refine_stop_iter, c.num_iterations - c.refine_stop_num_iter);
+    cfg.loss.learned_score = c.densify_learned_score && cfg.loss.compute_loss_map;
     cfg.densify.oversize_split_fraction = c.densify_oversize_split_fraction;
     cfg.densify.oversize_score_blend = c.densify_oversize_score_blend;
     cfg.densify.las_split_opacity_k_init   = c.long_axis_split_opacity_k[0];
