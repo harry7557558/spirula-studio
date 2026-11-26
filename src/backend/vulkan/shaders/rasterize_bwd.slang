@@ -99,6 +99,71 @@ groupshared float _rb_red[RB_THREADS];   // viewmat-grad reduction scratch
 static const uint kRbDepthBound = 1u;
 static const uint kRbDistRgbFromDepth = 2u;
 static const uint kRbNormalBound = 4u;
+// Zero-gradient pixels still feed accum/max weight, so only compact without them.
+static const bool kRbCompact = kAccumWeight == 0 && kMaxWeight == 0;
+static const int RB_COORD_N = kRbCompact ? (int)RB_BLOCK : 1;
+groupshared uint _rb_coord[RB_COORD_N];  // 2d: compacted local pixel coord 0..63
+
+[ForceInline]
+void _rb_wave_compact(uint tid, bool keep, uint n_waves, uint wsize,
+                      out uint pos, out uint total) {
+    uint prefix = WavePrefixCountBits(keep);
+    uint wtotal = WaveActiveCountBits(keep);
+    uint base = 0u;
+    total = wtotal;
+    if (n_waves > 1u) {
+        GroupMemoryBarrierWithGroupSync();
+        if (WaveGetLaneIndex() == 0u) _rb_wtot[tid / wsize] = wtotal;
+        GroupMemoryBarrierWithGroupSync();
+        for (uint i = 0u; i < tid / wsize; i++) base += _rb_wtot[i];
+        total = 0u;
+        for (uint i = 0u; i < n_waves; i++) total += _rb_wtot[i];
+    }
+    pos = base + prefix;
+}
+
+// True when any input gradient consumed by the sweep on this pixel is nonzero.
+[ForceInline]
+bool _rb_pixel_has_grad(
+    uint image_pix, uint gpix,
+    float* v_out_rgb, float* v_out_depth, float* v_render_Ts_img,
+    float* v_median, float* v_dist_rgb, float* v_dist_depth,
+    float* v_out_normal, float* v_dist_normal,
+    uint state_flags) {
+    if (v_out_rgb[3 * image_pix] != 0.0f ||
+        v_out_rgb[3 * image_pix + 1] != 0.0f ||
+        v_out_rgb[3 * image_pix + 2] != 0.0f)
+        return true;
+    if (v_render_Ts_img[gpix] != 0.0f) return true;
+#ifndef SS_RASTER_NODEPTH
+    if ((state_flags & kRbDepthBound) != 0u && v_out_depth[image_pix] != 0.0f)
+        return true;
+    if (kOutputMedian != 0 && v_median[image_pix] != 0.0f) return true;
+    if (kDistType != 0) {
+        if (v_dist_depth[image_pix] != 0.0f) return true;
+        if ((kDistType == 2 || kDistType == 4) &&
+            (state_flags & kRbDistRgbFromDepth) == 0u) {
+            if (v_dist_rgb[3 * image_pix] != 0.0f ||
+                v_dist_rgb[3 * image_pix + 1] != 0.0f ||
+                v_dist_rgb[3 * image_pix + 2] != 0.0f)
+                return true;
+        }
+        if (kDistType >= 3) {
+            if (v_dist_normal[3 * image_pix] != 0.0f ||
+                v_dist_normal[3 * image_pix + 1] != 0.0f ||
+                v_dist_normal[3 * image_pix + 2] != 0.0f)
+                return true;
+        }
+    }
+#endif
+    if (kNormal != 0 && (state_flags & kRbNormalBound) != 0u) {
+        if (v_out_normal[3 * image_pix] != 0.0f ||
+            v_out_normal[3 * image_pix + 1] != 0.0f ||
+            v_out_normal[3 * image_pix + 2] != 0.0f)
+            return true;
+    }
+    return false;
+}
 
 // Load the per-pixel color/distortion/median state shared by both entries.
 // `pix` is the local pixel id, `gpix` the in-image pixel id (valid only when
@@ -381,15 +446,16 @@ void _rb2_alpha_vjp(Frag2d_ s, float2 delta, float sigma, float vis, float dvis,
 // One sweep step for the 2D entry; early-outs are plain returns so the
 // caller's barrier is never skipped.
 [ForceInline]
-void _rb2_step(int pix_id, int splat_idx, bool active,
+void _rb2_step(int pix_id, int active_count, int splat_idx, bool active,
                uint wg_y, uint wg_z, Frag2d_ splat, float kernel_cut,
                inout Frag2d_ v_splat,
                inout float accum_weight, inout float accum_weight_den,
                inout float max_weight, inout bool touched) {
-    if (pix_id < 0 || pix_id >= (int)RB_BLOCK || !active) return;
+    if (pix_id < 0 || pix_id >= active_count || !active) return;
     if (splat_idx > _rb_bin[pix_id]) return;
-    int gx = int(wg_z * TILE_SIZE_DX) + pix_id % (int)TILE_SIZE_DX;
-    int gy = int(wg_y * TILE_SIZE_DY) + pix_id / (int)TILE_SIZE_DX;
+    uint coord = kRbCompact ? _rb_coord[pix_id] : uint(pix_id);
+    int gx = int(wg_z * TILE_SIZE_DX) + int(coord % TILE_SIZE_DX);
+    int gy = int(wg_y * TILE_SIZE_DY) + int(coord / TILE_SIZE_DX);
     float2 delta = float2(splat.xy.x - (float(gx) + 0.5f),
                           splat.xy.y - (float(gy) + 0.5f));
 
@@ -432,27 +498,49 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                                  wg.z * TILE_SIZE_DX / TILE_SIZE_X,
                                  p.tile_width, p.macro_log2);
     uint img_off = image_id * p.height * p.width;
+    uint wsize = WaveGetLaneCount();
+    uint n_waves = RB_THREADS / wsize;
 
-    // ---- load pixel state (2 pixels per thread) ----
+    // ---- load and compact active pixels (2 passes of 32 threads) ----
     if (tid == 0) _rb_binmax = 0u;
     GroupMemoryBarrierWithGroupSync();
     int bin_local = -1;
+    uint active_count = 0u;
     for (uint pix0 = 0; pix0 < RB_BLOCK; pix0 += RB_THREADS) {
-        uint pix = pix0 + tid;
-        int gx = int(wg.z * TILE_SIZE_DX) + int(pix % TILE_SIZE_DX);
-        int gy = int(wg.y * TILE_SIZE_DY) + int(pix / TILE_SIZE_DX);
+        uint orig_pix = pix0 + tid;
+        int gx = int(wg.z * TILE_SIZE_DX) + int(orig_pix % TILE_SIZE_DX);
+        int gy = int(wg.y * TILE_SIZE_DY) + int(orig_pix / TILE_SIZE_DX);
         uint gpix = uint(gy) * p.width + uint(gx);
         bool inside = (gx < int(p.width) && gy < int(p.height));
         int bin = inside ? p.last_ids[img_off + gpix] : -1;
-        _rb_bin[pix] = bin;
-        bin_local = max(bin_local, bin);
-        _rb_load_pixel_state(
-            pix, inside, img_off + gpix, p.render_Ts + img_off,
-            p.v_render_Ts + img_off, gpix, p.out_rgb, p.out_depth,
-            p.dist_rgb, p.dist_depth, p.v_out_rgb, p.v_out_depth,
-            p.v_dist_rgb, p.v_dist_depth, p.awmap, p.v_median,
-            p.state_flags, p.v_dist_rgb_per_depth);
+        bool keep = true;
+        uint slot = orig_pix, batch_active = RB_THREADS;
+        if (kRbCompact) {
+            keep = inside && bin >= 0 &&
+                   _rb_pixel_has_grad(
+                       img_off + gpix, gpix, p.v_out_rgb, p.v_out_depth,
+                       p.v_render_Ts + img_off, p.v_median, p.v_dist_rgb,
+                       p.v_dist_depth, p.v_out_rgb, p.v_dist_rgb,
+                       p.state_flags);
+            uint pos;
+            _rb_wave_compact(tid, keep, n_waves, wsize, pos, batch_active);
+            slot = active_count + pos;
+        }
+        if (keep) {
+            if (kRbCompact) _rb_coord[slot] = orig_pix;
+            _rb_bin[slot] = bin;
+            bin_local = max(bin_local, bin);
+            _rb_load_pixel_state(
+                slot, inside, img_off + gpix, p.render_Ts + img_off,
+                p.v_render_Ts + img_off, gpix, p.out_rgb, p.out_depth,
+                p.dist_rgb, p.dist_depth, p.v_out_rgb, p.v_out_depth,
+                p.v_dist_rgb, p.v_dist_depth, p.awmap, p.v_median,
+                p.state_flags, p.v_dist_rgb_per_depth);
+        }
+        active_count += batch_active;
     }
+    if (active_count == 0u) return;
+    if (!kRbCompact) active_count = RB_BLOCK;  // a constant sweep bound
     { uint prev; InterlockedMax(_rb_binmax, uint(bin_local + 1), prev); }
     GroupMemoryBarrierWithGroupSync();
     int bin_max = int(_rb_binmax) - 1;
@@ -468,8 +556,6 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     float cull_bx0 = float(wg.z * TILE_SIZE_DX);
     float cull_by0 = float(wg.y * TILE_SIZE_DY);
-    uint wsize = WaveGetLaneCount();
-    uint n_waves = RB_THREADS / wsize;
 
     // Nothing past the tile's deepest surviving fragment can contribute.
     int count = 0;
@@ -497,22 +583,12 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                         cull_by0 + TILE_SIZE_DY - c_xy.y);
                 }
             }
-            uint prefix = WavePrefixCountBits(ok);
-            uint wtotal = WaveActiveCountBits(ok);
-            uint base = 0;
-            uint total = wtotal;
-            if (n_waves > 1) {  // one wave covers the group: no roundtrip
-                GroupMemoryBarrierWithGroupSync();
-                if (WaveGetLaneIndex() == 0) _rb_wtot[tid / wsize] = wtotal;
-                GroupMemoryBarrierWithGroupSync();
-                for (uint i = 0; i < tid / wsize; i++) base += _rb_wtot[i];
-                total = 0;
-                for (uint i = 0; i < n_waves; i++) total += _rb_wtot[i];
-            }
+            uint pos, total;
+            _rb_wave_compact(tid, ok, n_waves, wsize, pos, total);
             if (ok) {
-                int pos = count + int(base + prefix);
-                _rb_surv[pos] = gi;
-                _rb_ssid[pos] = c_sid;
+                int dst = count + int(pos);
+                _rb_surv[dst] = gi;
+                _rb_ssid[dst] = c_sid;
             }
             count += int(total);
             s -= int(RB_THREADS);
@@ -554,10 +630,10 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             float max_weight = 0.0f;
             bool touched = false;
 
-            for (int t = 0; t < batch_size + (int)RB_BLOCK - 1; t++) {
-                _rb2_step(t - int(tid), splat_idx, active, wg.y, wg.z, splat,
-                          p.kernel_cut, v_splat, accum_weight, accum_weight_den,
-                          max_weight, touched);
+            for (int t = 0; t < batch_size + int(active_count) - 1; t++) {
+                _rb2_step(t - int(tid), int(active_count), splat_idx, active,
+                          wg.y, wg.z, splat, p.kernel_cut, v_splat,
+                          accum_weight, accum_weight_den, max_weight, touched);
                 GroupMemoryBarrierWithGroupSync();
             }
 
@@ -679,12 +755,12 @@ struct VFrag3dgut_ {
 
 // One sweep step for the 3dgut entry.
 [ForceInline]
-void _rb3_step(Raster3dgutBwdParams p, int pix_id, int splat_idx,
+void _rb3_step(Raster3dgutBwdParams p, int pix_id, int active_count, int splat_idx,
                bool active, float3 ray_o, Frag3dgut_ splat,
                inout VFrag3dgut_ v_splat, inout float accum_weight,
                inout float accum_weight_den, inout float max_weight,
                inout float3 total_v_ray_o) {
-    if (pix_id < 0 || pix_id >= (int)RB_BLOCK || !active) return;
+    if (pix_id < 0 || pix_id >= active_count || !active) return;
     float4 rb = _rb_raybin[pix_id];
     if (splat_idx > asint(rb.w)) return;
     float3 ray_d = rb.xyz;
@@ -822,38 +898,63 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float4 intrin = p.intrins[image_id];
     float3 ray_o = transform_ray_o(R, tvec);
     float3 total_v_ray_o = float3(0.0f);
+    uint wsize = WaveGetLaneCount();
+    uint n_waves = RB_THREADS / wsize;
 
-    // ---- load pixel state (2 pixels per thread) ----
+    // ---- load and compact active pixels (2 passes of 32 threads) ----
     if (tid == 0) _rb_binmax = 0u;
     GroupMemoryBarrierWithGroupSync();
     int bin_local = -1;
+    uint active_count = 0u;
     for (uint pix0 = 0; pix0 < RB_BLOCK; pix0 += RB_THREADS) {
-        uint pix = pix0 + tid;
-        int gx = int(wg.z * TILE_SIZE_DX) + int(pix % TILE_SIZE_DX);
-        int gy = int(wg.y * TILE_SIZE_DY) + int(pix / TILE_SIZE_DX);
+        uint orig_pix = pix0 + tid;
+        int gx = int(wg.z * TILE_SIZE_DX) + int(orig_pix % TILE_SIZE_DX);
+        int gy = int(wg.y * TILE_SIZE_DY) + int(orig_pix / TILE_SIZE_DX);
         uint gpix = uint(gy) * p.width + uint(gx);
         bool inside = (gx < int(p.width) && gy < int(p.height));
         int bin_final = inside ? p.last_ids[img_off + gpix] : -1;
-        bin_local = max(bin_local, bin_final);
-        float px = float(gx) + 0.5f;
-        float py = float(gy) + 0.5f;
-        float3 raydir = float3(0.0f);
-        bool ray_ok = false;
-        SS_DISPATCH_DIST(_rb_ray)
-        inside = inside && ray_ok;
-        float3 ray_d = transform_ray_d(R, raydir);
-        _rb_raybin[pix] = float4(ray_d, asfloat(bin_final));
-        if (kViewmatGrad != 0) _rb_vrayd[pix] = float3(0.0f);
-        _rb_load_pixel_state(
-            pix, inside, img_off + gpix, p.render_Ts + img_off,
-            p.v_render_Ts + img_off, gpix, p.out_rgb, p.out_depth,
-            p.dist_rgb, p.dist_depth, p.v_out_rgb, p.v_out_depth,
-            p.v_dist_rgb, p.v_dist_depth, p.awmap, p.v_median,
-            p.state_flags, p.v_dist_rgb_per_depth);
-        _rb_load_normal_state(pix, inside, img_off + gpix, p.out_normal,
-                              p.dist_normal, p.v_out_normal, p.v_dist_normal,
-                              p.state_flags, R);
+        bool keep = !kRbCompact ||
+                    (inside && bin_final >= 0 &&
+                     _rb_pixel_has_grad(
+                         img_off + gpix, gpix, p.v_out_rgb, p.v_out_depth,
+                         p.v_render_Ts + img_off, p.v_median, p.v_dist_rgb,
+                         p.v_dist_depth, p.v_out_normal, p.v_dist_normal,
+                         p.state_flags));
+        float3 ray_d = float3(0.0f);
+        if (keep) {
+            float px = float(gx) + 0.5f;
+            float py = float(gy) + 0.5f;
+            float3 raydir = float3(0.0f);
+            bool ray_ok = false;
+            SS_DISPATCH_DIST(_rb_ray)
+            if (kRbCompact) keep = ray_ok;
+            else inside = inside && ray_ok;
+            ray_d = transform_ray_d(R, raydir);
+        }
+        uint slot = orig_pix, batch_active = RB_THREADS;
+        if (kRbCompact) {
+            uint pos;
+            _rb_wave_compact(tid, keep, n_waves, wsize, pos, batch_active);
+            slot = active_count + pos;
+        }
+        if (keep) {
+            bin_local = max(bin_local, bin_final);
+            _rb_raybin[slot] = float4(ray_d, asfloat(bin_final));
+            if (kViewmatGrad != 0) _rb_vrayd[slot] = float3(0.0f);
+            _rb_load_pixel_state(
+                slot, inside, img_off + gpix, p.render_Ts + img_off,
+                p.v_render_Ts + img_off, gpix, p.out_rgb, p.out_depth,
+                p.dist_rgb, p.dist_depth, p.v_out_rgb, p.v_out_depth,
+                p.v_dist_rgb, p.v_dist_depth, p.awmap, p.v_median,
+                p.state_flags, p.v_dist_rgb_per_depth);
+            _rb_load_normal_state(slot, inside, img_off + gpix, p.out_normal,
+                                  p.dist_normal, p.v_out_normal,
+                                  p.v_dist_normal, p.state_flags, R);
+        }
+        active_count += batch_active;
     }
+    if (active_count == 0u) return;
+    if (!kRbCompact) active_count = RB_BLOCK;  // a constant sweep bound
     { uint prev; InterlockedMax(_rb_binmax, uint(bin_local + 1), prev); }
     GroupMemoryBarrierWithGroupSync();
     int bin_max = int(_rb_binmax) - 1;
@@ -872,8 +973,6 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     // the box of its pixel centres
     float2 cull_half = 0.5f * float2(float(TILE_SIZE_DX) - 1.0f, float(TILE_SIZE_DY) - 1.0f);
     float2 cull_centre = float2(cull_bx0, cull_by0) + 0.5f + cull_half;
-    uint wsize = WaveGetLaneCount();
-    uint n_waves = RB_THREADS / wsize;
 
     // Nothing past the tile's deepest surviving fragment can contribute.
     int count = 0;
@@ -894,22 +993,12 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                         cull_bx0, cull_by0, float(TILE_SIZE_DX)) &&
                     !slab_misses_box(scrg_scale(c_row), cull_centre, cull_half);
             }
-            uint prefix = WavePrefixCountBits(ok);
-            uint wtotal = WaveActiveCountBits(ok);
-            uint base = 0;
-            uint total = wtotal;
-            if (n_waves > 1) {  // one wave covers the group: no roundtrip
-                GroupMemoryBarrierWithGroupSync();
-                if (WaveGetLaneIndex() == 0) _rb_wtot[tid / wsize] = wtotal;
-                GroupMemoryBarrierWithGroupSync();
-                for (uint i = 0; i < tid / wsize; i++) base += _rb_wtot[i];
-                total = 0;
-                for (uint i = 0; i < n_waves; i++) total += _rb_wtot[i];
-            }
+            uint pos, total;
+            _rb_wave_compact(tid, ok, n_waves, wsize, pos, total);
             if (ok) {
-                int pos = count + int(base + prefix);
-                _rb_surv[pos] = gi;
-                _rb_ssid[pos] = c_sid;
+                int dst = count + int(pos);
+                _rb_surv[dst] = gi;
+                _rb_ssid[dst] = c_sid;
             }
             count += int(total);
             s -= int(RB_THREADS);
@@ -969,10 +1058,10 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             float accum_weight_den = 0.0f;
             float max_weight = 0.0f;
 
-            for (int t = 0; t < batch_size + (int)RB_BLOCK - 1; t++) {
-                _rb3_step(p, t - int(tid), splat_idx, active, ray_o, splat,
-                          v_splat, accum_weight, accum_weight_den, max_weight,
-                          total_v_ray_o);
+            for (int t = 0; t < batch_size + int(active_count) - 1; t++) {
+                _rb3_step(p, t - int(tid), int(active_count), splat_idx,
+                          active, ray_o, splat, v_splat, accum_weight,
+                          accum_weight_den, max_weight, total_v_ray_o);
                 GroupMemoryBarrierWithGroupSync();
             }
 
@@ -1038,8 +1127,7 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         float3x3 v_R;
         float3 v_t;
         transform_ray_o_vjp(R, tvec, total_v_ray_o, v_R, v_t);
-        for (uint pix0 = 0; pix0 < RB_BLOCK; pix0 += RB_THREADS) {
-            uint pix = pix0 + tid;
+        for (uint pix = tid; pix < active_count; pix += RB_THREADS) {
             float4 rb = _rb_raybin[pix];
             float3 raydir = undo_transform_ray_d(R, rb.xyz);
             float3x3 v_R_delta;
