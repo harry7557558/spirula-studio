@@ -786,7 +786,7 @@ the engine level.
     pixel-range partition determines the writeback structure), but run as
     flat 64-wide workgroups with an in-shader 8x8 decode — full subgroups
     need workgroup X to be a multiple of the pinned width (VUID-02757;
-    same reason the TV/channel-mean 4x4x4 blocks and the single-thread
+    same reason the TV-backward/channel-mean 4x4x4 blocks and the single-thread
     reg-loss finals are 64-/32-wide with logical decode / a tid-0 guard).
     `bg_block_add_64` folds across subgroups in shared memory, then finishes
     with subgroup reads in the shared tree's original addition order.
@@ -825,6 +825,13 @@ the engine level.
     shift by a fixed offset (~300 codes = ~0.007 in value space on
     NVIDIA). Same +-1-flip amplification class as fpbo_parity; the code
     violation caps budget for it.
+  - **TV loss forward** does not mirror CUDA's 4x4x4 blocks: a coalesced
+    grid-stride pass writes one partial per workgroup (1024 of them) and a
+    single workgroup sums them in a fixed order, so the loss is the same on
+    every run. CUDA's geometry read lanes 12 KB apart and ended in a float
+    atomic per block, which serializes on RDNA 4: 338 -> 41 us a call on an
+    R9700, 25 -> 24 us on an RTX 5070 Ti (garden, `3dgs`). CUDA keeps its
+    kernel; `bilagrid_parity` against a CUDA dump passes on both GPUs.
   - Parity: `bilagrid_parity` (372K tight + 207K loose floats + 20K
     codes; all 30 sampler launchers incl. q16 readers, grid_indices,
     mult>1 block-reduce path, mi batching, packed int64 indices; TV /

@@ -209,9 +209,8 @@ static void _refine_stats(int64_t n, const DensifyConfig& cfg, float split_opaci
 void engine_max_weight_begin_step(int step, int max_steps, const DensifyConfig& cfg) {
     StepTimingScope timing(StepPart::Densify, StepScale::Splats);
     auto& mw = engine().max_weight;
-    const bool track = cfg.use_revised_densification
-        && cfg.dead_criterion != DeadCriterion::Opacity && cfg.refine_every > 0
-        && step < std::max(cfg.refine_stop_iter, max_steps - cfg.refine_stop_num_iter);
+    const bool track = densify_scoring_active(cfg, step, max_steps)
+        && cfg.dead_criterion != DeadCriterion::Opacity;
     if (!track) {
         if (mw.value.data_ptr() != nullptr)
             DevicePool::global().free(PoolSlot::EngMaxWeight);
@@ -288,9 +287,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     int num_sh_buffer = num_sh;  // buffer stride = engine().num_sh (model max)
 
     bool use_revised = (cfg.use_revised_densification);
-    bool densify_ongoing =
-        (step < std::max(cfg.refine_stop_iter,
-                         max_steps - cfg.refine_stop_num_iter));
+    bool densify_ongoing = densify_scoring_active(cfg, step, max_steps);
     bool do_densify = densify_grows_at(cfg, step, max_steps);
     float progress = ((float)step + 0.5f) / (float)max_steps;
 

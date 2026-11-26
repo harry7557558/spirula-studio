@@ -126,8 +126,9 @@ user sees in the preview is what gets written.
 - **clicked objects** (`MaskOptions::seeds`), described below;
 - **a second mask, for feature extraction only** (`MaskOptions::feature_text`,
   "sky; cloud"): matched from the same backbone pass -- the same Grounding
-  DINO pass, on SAM 2 -- with no margin. The dataset screen writes it into
-  `masks/` as 128, the trainer's segment class, which SfM always drops;
+  DINO pass, on SAM 2 -- with no margin. The dataset screen and `sam track
+  --feature-text` write it into the same mask as 128, the trainer's segment
+  class, which SfM always drops;
 - **two models that are not SAM**: `MaskOptions::detector` pairs a SAM
   checkpoint with Grounding DINO (`src/gdino/`), which finds every phrase's
   boxes in one pass for SAM to cut out -- text on SAM 2, lang-segment-anything
@@ -192,6 +193,12 @@ spirula sam segment --model sam3-q4_0.ggml --image street.jpg --text "school bus
 spirula sam segment --model sam3-q4_0.ggml --image cat.jpg --point 315,250 --out out/
 spirula sam track   --model sam3-q4_0.ggml --frames frames/ --out masks/ --text "person; car"
 spirula sam extract clip.mp4 --skip 30 --model sam3-q4_0.ggml --text "person"
+
+# People out of everything, the sky out of SfM only (128), in one pass -- the
+# dataset screen's loop (app/MaskFrames.h), two workers on one GPU.
+SS_WORKERS_PER_GPU=2 spirula sam track --model sam2.1_hiera_base_plus_f16.ggml \
+    --detector gdino-base --frames frames/ --out masks/ --mask-mode image \
+    --text "person; backpack" --feature-text "sky; cloud"
 
 # Text on SAM 2 through Grounding DINO, and the main subject with no prompt.
 spirula sam track --model sam2.1_hiera_small_f16.ggml --detector gdino-tiny \
@@ -263,7 +270,7 @@ device has it; `SS_NN_COOPMAT=0` gives the first.
 | SAM 2.1 Hiera-T, `--memory-frames 1` | | 138 |
 
 Reading the JPEG and encoding the mask PNG are overlapped with the GPU
-(`app/WriterPool.h` and a one-frame read-ahead), so they cost ~1 ms of the
+(`app/WriterPool.h` and a read-ahead thread), so they cost ~1 ms of the
 above rather than the ~105 ms of CPU they actually are — a third of a Hiera-T
 frame, which the loop used to sit through with the device idle.
 

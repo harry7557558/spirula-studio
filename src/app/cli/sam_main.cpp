@@ -16,7 +16,8 @@
 #include "app/FrameLook.h"
 #include "app/FrameMask.h"
 #include "app/FrameMaskSvg.h"
-#include "app/WriterPool.h"
+#include "app/InferenceWorkerDevices.h"
+#include "app/MaskFrames.h"
 #include "nn/core/Log.h"
 #include "nn/Device.h"
 #include "nn/io/Image.h"
@@ -33,7 +34,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <future>
 #include <map>
 #include <optional>
 #include <string>
@@ -102,6 +102,7 @@ void usage() {
     line("track --model <file> --frames <dir> [options]");
     help_row("--text <phrase>", H::trk_text);
     help_row("--neg-text <phrase>", H::trk_neg_text);
+    help_row("--feature-text <phrase>", H::trk_feature_text);
     help_row("--point x,y", H::trk_point);
     help_row("--neg-point x,y", H::trk_neg_point);
     help_row("--object", H::trk_object);
@@ -121,6 +122,7 @@ void usage() {
     help_row("--remove-prompted", H::trk_remove_prompted);
     help_row("--dilate-ratio <f>", H::mask_dilate);
     help_row("--overlay", H::trk_overlay);
+    help_row("--worker-devices <uuid,...>", H::trk_worker_devices);
     std::fprintf(stderr, "\n");
 
     line("mask <images> [options]");
@@ -161,7 +163,7 @@ void usage() {
     help_row("--image-exposure auto|<stops>", H::common_image_exposure);
     std::fprintf(stderr,
                  "%s SS_NN_LOG=0..3  SS_VK_DEVICE  SS_PROFILE=1\n"
-                 "             SS_VK_VALIDATION=1  SS_NN_DEBUG_SYNC=1\n",
+                 "             SS_VK_VALIDATION=1  SS_NN_DEBUG_SYNC=1  SS_WORKERS_PER_GPU\n",
                  H::label_environment.get());
 }
 
@@ -182,7 +184,8 @@ bool parse_floats(const char* s, float* out, int n) {
 
 struct Options {
     std::string command;
-    std::string model, image, frames, out_dir, text, neg_text, video_path;
+    std::string model, image, frames, out_dir, text, neg_text, feature_text, video_path;
+    std::string worker_devices;        // `track`: canonical UUIDs, comma-separated
     std::string detector;
     float detector_threshold = 0.3f;   // sam::MaskOptions, same default
     std::optional<bool> keep;          // --keep-prompted / --remove-prompted
@@ -208,6 +211,7 @@ struct Options {
     // The frames' colour space; they convert to sRGB before the model sees them.
     std::string image_gamut;
     std::optional<bool> image_is_linear;   // unset: the file's own declaration
+    std::string image_exposure_text;       // as given, for worker recipes
     colorspace::Exposure image_exposure;
 
     // `mask`
@@ -249,11 +253,14 @@ bool parse_args(int argc, char** argv, Options& o) {
         else if (a == "--image-linear") o.image_is_linear = true;
         else if (a == "--no-image-linear") o.image_is_linear = false;
         else if (a == "--image-exposure" &&
-                 colorspace::parse_exposure(next("--image-exposure"), o.image_exposure)) {}
+                 colorspace::parse_exposure(o.image_exposure_text = next("--image-exposure"),
+                                            o.image_exposure)) {}
         else if (a == "--frames") o.frames = next("--frames");
         else if (a == "--out") o.out_dir = next("--out");
         else if (a == "--text") o.text = next("--text");
         else if (a == "--neg-text") o.neg_text = next("--neg-text");
+        else if (a == "--feature-text") o.feature_text = next("--feature-text");
+        else if (a == "--worker-devices") o.worker_devices = next("--worker-devices");
         else if (a == "--mask-mode") o.mask_mode = next("--mask-mode");
         else if (a == "--detect-every") o.detect_every = std::atoi(next("--detect-every"));
         else if (a == "--memory-frames") o.memory_frames = std::atoi(next("--memory-frames"));
@@ -395,10 +402,12 @@ sam::MaskOptions mask_options(const Options& o) {
     mo.detector_threshold = o.detector_threshold;
     mo.text = o.text;
     mo.neg_text = o.neg_text;
+    mo.feature_text = o.feature_text;
     const bool subject = birefnet::find_model_source(o.model) || birefnet::is_checkpoint(o.model);
     // BiRefNet's mask IS the subject, so keeping it is what a bare run means.
     mo.keep_prompted = o.keep.value_or(subject);
-    if (subject && (!o.text.empty() || !o.neg_text.empty() || !o.seeds.empty()))
+    if (subject && (!o.text.empty() || !o.neg_text.empty() || !o.feature_text.empty() ||
+                    !o.seeds.empty()))
         std::fprintf(stderr, "%s\n", format(cmsg::sam_subject_no_prompt, {o.model}).c_str());
     mo.threshold = o.threshold;
     mo.nms = o.nms;
@@ -531,112 +540,91 @@ int cmd_track(const Options& o) {
     if (o.max_frames > 0 && (int)files.size() > o.max_frames)
         files.resize((size_t)o.max_frames);
 
-    // The mask policy -- several concepts, negatives that carve back out, and
-    // which side of the mask is white -- lives in sam/Masking.h, shared with
-    // `extract` and with the GUI so none of the three can disagree.
-    const sam::MaskOptions mo = mask_options(o);
+    // The mask policy lives in sam/Masking.h and the loop in app/MaskFrames.h,
+    // both shared with the dataset screen, so the two cannot disagree.
+    app::MaskFramesJob job;
+    job.mask = mask_options(o);
+    job.gamut = o.image_gamut;
+    job.linear = o.image_is_linear;
+    job.exposure = o.image_exposure_text;
+    job.train = app::mask_has_target(job.mask);
+    job.features = app::mask_has_features(job.mask);
+    const bool write = !o.out_dir.empty();
+    for (size_t f = 0; f < files.size(); ++f) {
+        char name[32];
+        std::snprintf(name, sizeof name, "frame_%05zu.png", f);
+        job.frames.push_back({files[f], write ? fs::path(o.out_dir) / name : fs::path(),
+                              (int64_t)f, write && !o.overlay});
+    }
+    if (write) fs::create_directories(o.out_dir, ec);
 
-    sam::Masker masker;
-    std::string error;
-    if (!masker.init(mo, error)) {
+    // Children only pay off when there are masks to write; the overlay is
+    // drawn in process.
+    if (write && !o.overlay) {
+        try {
+            const unsigned copies = app::workers_per_gpu();
+            std::string csv = o.worker_devices;
+            if (copies > 1 && csv.empty()) {
+                std::string why;
+                if (!sam::freeze_device(o.device, why, o.validate, o.profile)) {
+                    std::fprintf(stderr, "%s\n", format(cmsg::error_line, {why}).c_str());
+                    return 1;
+                }
+                csv = nn::configured_device_selector();
+            }
+            job.workers = app::expand_worker_devices(app::parse_worker_devices(csv), copies);
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "%s\n", format(cmsg::error_line, {e.what()}).c_str());
+            return 2;
+        }
+        job.scratch = fs::path(o.out_dir) / ".spirula-mask-attempts";
+    }
+
+    app::MaskFramesSinks sinks;
+    sinks.log = [](const std::string& line) { std::fprintf(stderr, "%s\n", line.c_str()); };
+    sinks.warn = sinks.log;
+    sinks.done = [&](const app::MaskFrameDone& d) {
+        char pct[16];
+        std::snprintf(pct, sizeof pct, "%.1f", 100.0 * d.kept);
         std::fprintf(stderr, "%s\n",
-                     format(cmsg::error_line, {error}).c_str());
+                     format(cmsg::sam_frame_line,
+                            {(long long)d.index, fs::path(files[d.index]).filename().string(),
+                             pct}).c_str());
+    };
+    if (write && o.overlay)
+        sinks.overlay = [&](size_t k, const nn::Image& image, const sam::Result& r) {
+            sam::save_overlay_png(image, r, job.frames[k].output.string());
+        };
+    sinks.report = [&](sam::Masker& masker) {
+        if (o.show_vram)
+            std::fprintf(stderr, "VRAM:\n%s", masker.session().vramReport().c_str());
+        if (o.profile) masker.session().printProfile();
+    };
+
+    app::MaskFramesStats stats;
+    std::string error;
+    const double t_all = nn::now_ms();
+    const bool ok = app::mask_frames(job, sinks, error, &stats);
+    if (!job.scratch.empty()) fs::remove(job.scratch, ec);   // only once empty
+    if (!ok) {
+        std::fprintf(stderr, "%s\n", format(cmsg::error_line, {error}).c_str());
         return 1;
     }
-
-    // Neither reading the next frame nor writing the last mask needs the GPU,
-    // and together they are about a third of a frame -- see app/WriterPool.h.
-    app::WriterPool writers;
-    // The way up the model was trained on, with the turn kept so the mask goes
-    // back in the frame the file stores -- see app/FrameLook.h.
-    struct Loaded {
-        nn::Image img;
-        sfm::ExifTransform turn;
-    };
-    std::future<Loaded> ahead;
-    auto load_at = [&](size_t i) {
-        return std::async(std::launch::async,
-                          [p = files[i], g = o.image_gamut, l = o.image_is_linear,
-                           e = o.image_exposure] {
-                              Loaded out;
-                              out.img = app::load_upright(p, g, l, e, out.turn);
-                              return out;
-                          });
-    };
-    if (!files.empty()) ahead = load_at(0);
-
-    double t_load = 0, t_track = 0, t_write = 0;
-    const double t_all = nn::now_ms();
-    for (size_t f = 0; f < files.size(); ++f) {
-        double t0 = nn::now_ms();
-        Loaded loaded = ahead.get();
-        nn::Image frame = std::move(loaded.img);
-        if (f + 1 < files.size()) ahead = load_at(f + 1);
-        t_load += nn::now_ms() - t0;
-        if (frame.empty()) continue;
-
-        t0 = nn::now_ms();
-        sam::Mask mask;
-        sam::Result r;
-        if (!masker.run(frame, mask, o.overlay ? &r : nullptr, (int64_t)f)) {
-            std::fprintf(stderr, "%s\n",
-                         format(cmsg::error_line, {masker.lastError()}).c_str());
-            return 1;
-        }
-        t_track += nn::now_ms() - t0;
-        t0 = nn::now_ms();
-
-        size_t white = 0;
-        for (uint8_t v : mask.data) white += (v > 127) ? 1 : 0;
-        {
-            char pct[16];
-            std::snprintf(pct, sizeof pct, "%.1f",
-                          100.0 * (double)white /
-                              (double)std::max<size_t>(mask.data.size(), 1));
-            std::fprintf(stderr, "%s\n",
-                         format(cmsg::sam_frame_line,
-                                {(long long)f,
-                                 fs::path(files[f]).filename().string(),
-                                 pct}).c_str());
-        }
-        if (!o.out_dir.empty()) {
-            std::error_code dec;
-            fs::create_directories(o.out_dir, dec);
-            char path[512];
-            std::snprintf(path, sizeof path, "%s/frame_%05zu.png", o.out_dir.c_str(), f);
-            if (o.overlay) {
-                sam::save_overlay_png(frame, r, path);
-            } else {
-                app::turn_pixels(app::inverse_turn(loaded.turn), 1, mask.data,
-                                 mask.width, mask.height);
-                app::WriteJob wj;
-                wj.mask = std::move(mask);
-                wj.path = path;
-                writers.submit(std::move(wj));
-            }
-        }
-        t_write += nn::now_ms() - t0;
-    }
-    writers.finish();
     const double total = nn::now_ms() - t_all;
     const double n = (double)files.size();
-    {
-        auto ms = [](double v) {
-            char b[32];
-            std::snprintf(b, sizeof b, "%.0f", v);
-            return std::string(b);
-        };
-        char secs[32];
-        std::snprintf(secs, sizeof secs, "%.1f", total / 1000.0);
-        std::fprintf(stderr, "%s\n",
-                     format(cmsg::sam_track_summary,
-                            {(long long)files.size(), secs, ms(total / n),
-                             ms(t_load / n), ms(t_track / n),
-                             ms(t_write / n)}).c_str());
-    }
-    if (o.show_vram)
-        std::fprintf(stderr, "VRAM:\n%s", masker.session().vramReport().c_str());
-    if (o.profile) masker.session().printProfile();
+    auto ms = [&](double v) {
+        if (!job.workers.empty()) return std::string("-");
+        char b[32];
+        std::snprintf(b, sizeof b, "%.0f", v);
+        return std::string(b);
+    };
+    char secs[32], per[32];
+    std::snprintf(secs, sizeof secs, "%.1f", total / 1000.0);
+    std::snprintf(per, sizeof per, "%.0f", total / n);
+    std::fprintf(stderr, "%s\n",
+                 format(cmsg::sam_track_summary,
+                        {(long long)files.size(), secs, per, ms(stats.load_ms / n),
+                         ms(stats.model_ms / n), ms(stats.write_ms / n)}).c_str());
     return 0;
 }
 

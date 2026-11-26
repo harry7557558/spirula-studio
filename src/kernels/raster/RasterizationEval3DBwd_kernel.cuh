@@ -195,6 +195,9 @@ __global__ void rasterize_to_pixels_bwd_kernel(
 
     uint32_t active_pix_count = 0;
     int32_t bin_max = -1;
+    // Zero-gradient pixels still feed accum weight, so the 2D kernel keeps its
+    // dense layout then (3DGUT measured slower without compaction).
+    constexpr bool compact = !output_accum_weight || IS_EVAL3D;
     const bool can_skip_zero = !output_accum_weight && (o_max_weight == nullptr);
     #pragma unroll
     for (uint pix_id0 = 0; pix_id0 < BLOCK_SIZE; pix_id0 += SPLAT_BATCH_SIZE_CONST) {
@@ -273,9 +276,17 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         }
     #endif
 
-        const uint32_t keep_bal = __ballot_sync(~0u, keep);
-        const uint pix_id_local = active_pix_count + __popc(keep_bal & (((uint32_t)1 << thread_id) - 1));
-        active_pix_count += (uint32_t)__popc(keep_bal);
+        uint pix_id_local = orig_pix;
+        if constexpr (compact) {
+            const uint32_t keep_bal = __ballot_sync(~0u, keep);
+            pix_id_local = active_pix_count + __popc(keep_bal & (((uint32_t)1 << thread_id) - 1));
+            active_pix_count += (uint32_t)__popc(keep_bal);
+        } else {
+            active_pix_count += SPLAT_BATCH_SIZE_CONST;
+        #if !IS_EVAL3D
+            if (!keep) pix_bin_final[pix_id_local] = -1;
+        #endif
+        }
 
         if (keep) {
         #if IS_EVAL3D
@@ -352,6 +363,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
     }
     if (active_pix_count == 0u)
         return;
+    const int n_active = compact ? (int)active_pix_count : (int)BLOCK_SIZE;
     bin_max = cg::reduce(warp, bin_max, cg::greater<int32_t>());
     block.sync();
 
@@ -455,11 +467,11 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         // at t=0, thread 0 (back-most survivor) undoes pixel 0; at t=1 it undoes
         // pixel 1 while thread 1 undoes pixel 0; etc. -> each pixel sees survivors
         // strictly back-to-front, continuous across batches and segments.
-        for (int t = 0; t < splat_batch_size + (int)active_pix_count - 1; ++t,
+        for (int t = 0; t < splat_batch_size + n_active - 1; ++t,
                 (SPLAT_BATCH_SIZE_CONST <= WARP_SIZE ? __syncwarp() : __syncthreads())
         ) {
             int pix_id = t - (int)thread_id;
-            if (pix_id < 0 || pix_id >= (int)active_pix_count || !active)
+            if (pix_id < 0 || pix_id >= n_active || !active)
                 continue;
         #if IS_EVAL3D
             float4 ray_d_pix_bin_final = shared_ray_d_pix_bin_final[pix_id];
@@ -468,7 +480,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         #else
             if (splat_idx > pix_bin_final[pix_id])
                 continue;
-            const uint orig_pix = (uint)pix_coord[pix_id];
+            const uint orig_pix = compact ? (uint)pix_coord[pix_id] : (uint)pix_id;
             int pix_global_x = blockIdx.z * TILE_SIZE_DX + orig_pix % TILE_SIZE_DX;
             int pix_global_y = blockIdx.y * TILE_SIZE_DY + orig_pix / TILE_SIZE_DX;
             const float px = (float)pix_global_x + 0.5f;

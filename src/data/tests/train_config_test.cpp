@@ -193,6 +193,43 @@ static void background_options() {
     check(train_mask_preserves_background(cfg), "preserve_background: explicit true wins");
 }
 
+static void step_config_loss_map_gating() {
+    TrainConfig cfg;
+    spirula::RunState st;
+    // Default stop is max(14000, 30000 - 2500) = 27500.
+    const EngineStepConfig early = spirula::build_step_config(cfg, st, 0);
+    const EngineStepConfig last = spirula::build_step_config(cfg, st, 27499);
+    const EngineStepConfig post = spirula::build_step_config(cfg, st, 27500);
+    check(early.loss.loss_map_mode != 0 && early.loss.compute_loss_map,
+          "loss map active at step 0");
+    check(last.loss.compute_loss_map, "loss map active on final densify step");
+    check(post.loss.loss_map_mode != 0 && !post.loss.compute_loss_map,
+          "loss map disabled post-densify while preserving configured mode");
+
+    cfg.densify_learned_score = true;
+    check(spirula::build_step_config(cfg, st, 27499).loss.learned_score,
+          "learned score active before densify stop");
+    check(!spirula::build_step_config(cfg, st, 27500).loss.learned_score,
+          "learned score disabled after densify stop");
+    cfg.densify_learned_score = false;
+
+    cfg.densify_score_blend_world_grad = 0.5f;
+    check(spirula::build_step_config(cfg, st, 27499).optim.write_densify_world_grad_score,
+          "world-grad score active before densify stop");
+    check(!spirula::build_step_config(cfg, st, 27500).optim.write_densify_world_grad_score,
+          "world-grad score disabled after densify stop");
+
+    cfg.use_revised_densification = false;
+    check(!spirula::build_step_config(cfg, st, 0).loss.compute_loss_map &&
+              !spirula::build_step_config(cfg, st, 0).optim.write_densify_world_grad_score,
+          "MCMC skips loss map and world-grad score");
+    cfg.use_revised_densification = true;
+    cfg.refine_every = 0;
+    check(!spirula::build_step_config(cfg, st, 0).loss.compute_loss_map &&
+              !spirula::build_step_config(cfg, st, 0).optim.write_densify_world_grad_score,
+          "disabled refinement skips loss map and world-grad score");
+}
+
 int main() {
     presets();
     background_options();
@@ -200,6 +237,7 @@ int main() {
     test_suppress_initial_scales();
     background_export_height();
     mask_mode_resolution();
+    step_config_loss_map_gating();
     if (failures) return 1;
     std::puts("train_config_test: OK");
     return 0;

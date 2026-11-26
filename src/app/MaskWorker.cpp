@@ -66,7 +66,7 @@ std::string mask_worker_recipe(const sam::MaskOptions& o, const std::string& gam
         .field("dilate_ratio", o.dilate_ratio).field("threshold", o.threshold)
         .field("nms", o.nms).field("detect_every", o.detect_every)
         .field("memory_frames", o.memory_frames).field("max_size", o.max_size)
-        .field("gamut", gamut).field("exposure", exposure)
+        .field("img_size", o.img_size).field("gamut", gamut).field("exposure", exposure)
         .field("linear", linear ? (*linear ? 1 : 0) : -1).key("seeds").array();
     for (const auto& seed : o.seeds) {
         w.object().field("object", seed.object).field("frame", std::to_string(seed.frame));
@@ -117,6 +117,7 @@ int mask_worker_main(const std::string& device) {
                 o.detect_every = (int)required(config, "detect_every").as_int();
                 o.memory_frames = (int)required(config, "memory_frames").as_int();
                 o.max_size = (int)required(config, "max_size").as_int();
+                o.img_size = (int)required(config, "img_size").as_int();
                 for (const auto& value : required(config, "seeds").arr) {
                     sam::SeedPrompt seed;
                     seed.object = (int)required(value, "object").as_int();
