@@ -785,6 +785,9 @@ void CompareView::feed_render() {
                 v.hooks = m.src.make_hooks();
                 v.file = m.src.file();
                 v.sh_max = m.src.sh_degree();
+                v.gamut = m.src.gamut();
+                v.transfer = m.src.transfer();
+                v.linear = m.src.linear_color();
                 si.dataset = run_dataset(v.file);
                 // Splats deleted in the editor stay deleted in the render,
                 // even while an effect rewrites the others.

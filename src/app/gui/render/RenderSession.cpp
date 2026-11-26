@@ -2180,6 +2180,7 @@ FrameSpec RenderSession::frame_spec(double t, int W, int H, bool photo) {
                 }
                 f.mode = 1;
                 f.a.source = A;
+                f.mix = su;
                 if (sh.transition == Transition::Sweep) {
                     // A level; the new model on one side of it, the old on
                     // the other, the band at the cut lit.
