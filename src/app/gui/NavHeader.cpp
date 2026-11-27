@@ -232,33 +232,33 @@ void GuiApp::draw_leave_modal() {
         }
         return {nullptr, nullptr};
     };
-    const Text t = text(_leave.work);
+    const Text t = text(_leave_ask.work);
     if (!t.title) return;
-    if (_leave.open) {
+    if (_leave_ask.open) {
         ui::OpenPopup(*t.title);
-        _leave.open = false;
-        _leave.shown = true;
+        _leave_ask.open = false;
+        _leave_ask.shown = true;
     }
-    if (!_leave.shown) return;
+    if (!_leave_ask.shown) return;
     ImGui::SetNextWindowSize(ImVec2(px(kModalWrapW), 0.0f), ImGuiCond_Appearing);
     if (!ui::BeginPopupModal(*t.title, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        _leave = {};   // dismissed: stay
+        _leave_ask = {};   // dismissed: stay
         forget_open_intents();
         return;
     }
     ui::TextWrapped(*t.body);
     ImGui::Spacing();
     if (ui::Button(msg::leave_stop, ImVec2(px(kModalButtonW), 0.0f))) {
-        stop_work(_leave.work);
+        stop_work(_leave_ask.work);
         _pending = Pending::Leave;
-        _pending_then = std::move(_leave.go);
+        _pending_then = std::move(_leave_ask.go);
         _stop_confirmed = true;
-        _leave = {};
+        _leave_ask = {};
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
     if (ui::Button(msg::leave_stay, ImVec2(px(kModalButtonW), 0.0f))) {
-        _leave = {};
+        _leave_ask = {};
         forget_open_intents();
         ImGui::CloseCurrentPopup();
     }

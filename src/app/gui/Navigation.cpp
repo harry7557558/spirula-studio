@@ -377,9 +377,9 @@ void GuiApp::request_back() {
         if (viewer_mode() == ViewMode::Edit) {
             _compare.confirm_discard_edits([this] { _compare.end_edit(); });
         } else if (_compare.render().exporting()) {
-            _leave.work = Work::Render;
-            _leave.go = [this] { _compare.end_render(); };
-            _leave.open = true;
+            _leave_ask.work = Work::Render;
+            _leave_ask.go = [this] { _compare.end_render(); };
+            _leave_ask.open = true;
         } else {
             _compare.end_render();
         }
@@ -445,9 +445,9 @@ void GuiApp::request_leave(Screen to, std::function<void()> go, Pending reason) 
         // Opening another model on the viewer ends its render as surely as leaving.
         const Work w = leaving || _screen == Screen::Viewer ? screen_work(_screen) : Work::None;
         if (w != Work::None) {
-            _leave.work = w;
-            _leave.go = std::move(go);
-            _leave.open = true;
+            _leave_ask.work = w;
+            _leave_ask.go = std::move(go);
+            _leave_ask.open = true;
             return;
         }
         // A dataset still parsing is stopped without asking: nothing is lost.

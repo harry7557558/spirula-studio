@@ -782,7 +782,7 @@ private:
         Work work = Work::None;
         std::function<void()> go;
         bool open = false, shown = false;
-    } _leave;
+    } _leave_ask;
     bool _quit_ask = false, _quit_shown = false;
     // What one of the train screen's links needs to know about its dataset,
     // probed at most once a second.
