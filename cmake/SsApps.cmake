@@ -61,10 +61,12 @@ target_compile_options(ss_dense PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FL
 set_property(TARGET ss_dense PROPERTY CXX_STANDARD 17)
 set(SS_APP_LIBS ss_dense ${SS_APP_LIBS})
 
+# The one copy of Subprocess.cpp for every target that links this.
 add_library(ss_inference_worker STATIC
     ${SS_SRC}/app/InferenceWorker.cpp
     ${SS_SRC}/app/gui/Subprocess.cpp)
 target_include_directories(ss_inference_worker PRIVATE ${SS_SRC})
+target_compile_options(ss_inference_worker PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
 target_link_libraries(ss_inference_worker PUBLIC Threads::Threads)
 set_property(TARGET ss_inference_worker PROPERTY CXX_STANDARD 17)
 set(SS_APP_LIBS ss_inference_worker ${SS_APP_LIBS})
@@ -178,11 +180,12 @@ if(SS_BUILD_SAM)
          ${SS_SRC}/app/cli/sam_extract.cpp
          ${SS_SRC}/app/FrameExtract.cpp
          ${SS_SRC}/app/FrameDecodeFfmpeg.cpp
-         ${SS_SRC}/app/FfmpegVideo.cpp
-         ${SS_SRC}/app/gui/Subprocess.cpp)
+         ${SS_SRC}/app/FfmpegVideo.cpp)
     list(APPEND SS_TOOL_DEFS SS_TOOL_SAM=1 SS_HAVE_BLUR_GPU=1)
     list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/LicenseCli.cpp)
     list(APPEND SS_TOOL_LIBS ss_mask_worker ss_sam ss_blur)
+    # ss_mask_worker archives DepthPng.cpp, which the e57 tool also needs.
+    list(REMOVE_ITEM SS_TOOL_SOURCES ${SS_SRC}/app/DepthPng.cpp)
     if(SS_ENABLE_PATENTED)
         list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/FrameDecodeVulkan.cpp)
         list(APPEND SS_TOOL_LIBS ss_video)
@@ -197,8 +200,7 @@ if(SS_BUILD_SAM)
     list(APPEND SS_TOOL_SOURCES
          ${SS_SRC}/app/cli/geometry_main.cpp
          ${SS_SRC}/app/GeometryModel.cpp
-         ${SS_SRC}/app/GeometryWarp.cpp
-         ${SS_SRC}/app/DepthPng.cpp)
+         ${SS_SRC}/app/GeometryWarp.cpp)
     list(APPEND SS_TOOL_DEFS SS_TOOL_GEOMETRY=1)
     list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/DenseProcessing.cpp)
     list(APPEND SS_TOOL_DEFS SS_HAVE_ROMA=1)
@@ -299,6 +301,7 @@ if(SS_BUILD_GUI)
     file(GLOB SS_GUI_SOURCES CONFIGURE_DEPENDS
         ${SS_SRC}/app/gui/*.cpp ${SS_SRC}/app/gui/edit/*.cpp
         ${SS_SRC}/app/gui/render/*.cpp ${SS_SRC}/app/gui/mask/*.cpp)
+    list(REMOVE_ITEM SS_GUI_SOURCES ${SS_SRC}/app/gui/Subprocess.cpp)
     list(APPEND SS_TOOL_SOURCES ${SS_GUI_SOURCES} ${SS_SRC}/app/FfmpegVideo.cpp)
     list(APPEND SS_TOOL_DEFS SS_TOOL_GUI=1)
     list(APPEND SS_TOOL_LIBS imgui_glfw OpenGL::GL)
@@ -410,7 +413,7 @@ if(SS_SEPARATE_TOOLS)
                      ${SS_SRC}/app/FrameSharpness.cpp ${SS_SRC}/app/Pano360.cpp
                      ${SS_SRC}/app/cli/sam_extract.cpp ${SS_SRC}/app/FrameExtract.cpp
                      ${SS_SRC}/app/FrameDecodeFfmpeg.cpp ${SS_SRC}/app/FfmpegVideo.cpp
-                     ${SS_SRC}/app/gui/Subprocess.cpp ${SS_SRC}/app/cli/LicenseCli.cpp)
+                     ${SS_SRC}/app/cli/LicenseCli.cpp)
         set(_sam_lib ss_mask_worker ss_sam ss_blur ss_license)
         if(SS_ENABLE_PATENTED)
             list(APPEND _sam_src ${SS_SRC}/app/FrameDecodeVulkan.cpp)
@@ -488,7 +491,6 @@ add_executable(model_download_test
     ${SS_SRC}/app/tests/model_download_test.cpp
     ${SS_SRC}/app/gui/ModelCache.cpp
     ${SS_SRC}/app/gui/ProgressClock.cpp
-    ${SS_SRC}/app/gui/Subprocess.cpp
     ${SS_SRC}/app/AppPaths.cpp)
 ss_configure_app(model_download_test)
 target_link_libraries(model_download_test PRIVATE ss_license)
@@ -579,8 +581,7 @@ ss_configure_app(frame_mask_test)
 
 add_executable(ffmpeg_probe_test
     ${SS_SRC}/app/tests/ffmpeg_probe_test.cpp
-    ${SS_SRC}/app/FfmpegVideo.cpp
-    ${SS_SRC}/app/gui/Subprocess.cpp)
+    ${SS_SRC}/app/FfmpegVideo.cpp)
 ss_configure_app(ffmpeg_probe_test)
 
 # The GUI files with no GUI in them: the plan that decides which steps of a
@@ -588,8 +589,7 @@ ss_configure_app(ffmpeg_probe_test)
 # than globbed -- each such test names its own sources.
 if(SS_BUILD_GUI)
     add_executable(command_argv_test
-        ${SS_SRC}/app/gui/tests/command_argv_test.cpp
-        ${SS_SRC}/app/gui/Subprocess.cpp)
+        ${SS_SRC}/app/gui/tests/command_argv_test.cpp)
     ss_configure_app(command_argv_test)
 
     add_executable(hardware_splat_test
@@ -698,7 +698,6 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/FrameMask.cpp
         ${SS_SRC}/app/FrameMaskSvg.cpp
         ${SS_SRC}/app/FrameLook.cpp
-        ${SS_SRC}/app/gui/Subprocess.cpp
         ${SS_SRC}/app/gui/HeifPhoto.cpp)
     ss_configure_app(match_matrix_editor_test)
     target_link_libraries(match_matrix_editor_test PRIVATE imgui_glfw OpenGL::GL)
@@ -764,7 +763,6 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/gui/PrepProgress.cpp
         ${SS_SRC}/app/gui/ProgressClock.cpp
         ${SS_SRC}/app/gui/DatasetRecord.cpp
-        ${SS_SRC}/app/gui/Subprocess.cpp
         ${SS_SRC}/app/gui/mask/MaskLayer.cpp
         ${SS_SRC}/app/FrameMask.cpp
         ${SS_SRC}/app/FrameMaskSvg.cpp
@@ -785,7 +783,6 @@ if(SS_BUILD_GUI)
             ${SS_SRC}/app/gui/tests/dataset_prep_streaming_test.cpp
             ${SS_DATASET_PREP_TEST_SOURCES}
             ${SS_SRC}/app/AppPaths.cpp
-            ${SS_SRC}/app/DepthPng.cpp
             ${SS_SRC}/app/FrameExtract.cpp
             ${SS_SRC}/app/FrameDecodeFfmpeg.cpp)
         ss_configure_app(dataset_prep_streaming_test)
@@ -816,7 +813,6 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/FfmpegVideo.cpp
         ${SS_SRC}/app/gui/PrepProgress.cpp
         ${SS_SRC}/app/gui/ProgressClock.cpp
-        ${SS_SRC}/app/gui/Subprocess.cpp
         ${SS_SRC}/app/gui/mask/MaskLayer.cpp
         ${SS_SRC}/app/FrameMask.cpp
         ${SS_SRC}/app/FrameMaskSvg.cpp
@@ -858,3 +854,54 @@ if(SS_BUILD_SAM)
     target_compile_options(accept_license_cli_test PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
 endif()
+
+# ---------------------------------------------------------------------------
+# One copy of each source per executable: a file also archived in a static
+# library it links is defined twice once the linker pulls that member, which
+# some toolchains do and others do not (#224).
+# ---------------------------------------------------------------------------
+function(ss_compiled_sources target out)
+    get_target_property(srcs ${target} SOURCES)
+    get_target_property(dir ${target} SOURCE_DIR)
+    set(abs "")
+    foreach(s IN LISTS srcs)
+        if(s MATCHES "\\.(c|cc|cpp|cxx|cu|mm)$" AND NOT s MATCHES "\\$<")
+            get_filename_component(s "${s}" ABSOLUTE BASE_DIR "${dir}")
+            list(APPEND abs "${s}")
+        endif()
+    endforeach()
+    set(${out} "${abs}" PARENT_SCOPE)
+endfunction()
+
+get_property(ss_dup_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(exe IN LISTS ss_dup_targets)
+    get_target_property(type ${exe} TYPE)
+    if(NOT type STREQUAL "EXECUTABLE")
+        continue()
+    endif()
+    ss_compiled_sources(${exe} own)
+    get_target_property(queue ${exe} LINK_LIBRARIES)
+    set(seen "")
+    while(NOT queue STREQUAL "")
+        list(POP_FRONT queue lib)
+        if(NOT TARGET "${lib}" OR lib IN_LIST seen)
+            continue()
+        endif()
+        list(APPEND seen ${lib})
+        get_target_property(lib_type ${lib} TYPE)
+        get_target_property(imported ${lib} IMPORTED)
+        if(imported OR NOT lib_type STREQUAL "STATIC_LIBRARY")
+            continue()
+        endif()
+        if(NOT DEFINED ss_archived_${lib})
+            ss_compiled_sources(${lib} ss_archived_${lib})
+        endif()
+        foreach(s IN LISTS own)
+            if(s IN_LIST ss_archived_${lib})
+                message(SEND_ERROR "${exe} compiles ${s}, which ${lib} archives too")
+            endif()
+        endforeach()
+        get_target_property(deps ${lib} LINK_LIBRARIES)
+        list(APPEND queue ${deps})
+    endwhile()
+endforeach()
