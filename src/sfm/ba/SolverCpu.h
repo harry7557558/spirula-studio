@@ -314,6 +314,8 @@ private:
             imageColumns(P_, i, cols_[i].data());
         }
         exclusive_ = exclusiveGroups(P_);
+        if (poseDim_ > n_)
+            throw std::runtime_error("BA parameter columns overlap");
         tail_ = n_ - poseDim_;
         // schurPair routes whole column spans, so every member's and group's
         // columns must lie in the tail, disjoint from all others. The builders do so.
@@ -325,7 +327,7 @@ private:
         std::sort(spans.begin(), spans.end());
         uint64_t end = poseDim_;
         for (const auto& [c0, n] : spans) {
-            if (poseDim_ > n_ || c0 < end || c0 + n > n_)
+            if (c0 < end || c0 + n > n_)
                 throw std::runtime_error("BA parameter columns overlap");
             end = c0 + n;
         }
