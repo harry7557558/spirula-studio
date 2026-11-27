@@ -41,7 +41,9 @@ Spirula Studio trains 3D Gaussian Splatting models &ndash; from raw photo/video 
 
 - Depth/normal, meshing, skybox, linear color... And more.
 
-## News
+<!-- ## News
+
+# TODO: keep it up to date
 
 - **September 23, 2026: Editing and rendering features** &ndash; Editing features for 3DGS models, sparse reconstructions, meshes, and masks have been added, along with support for exporting image and video renders.
 
@@ -51,7 +53,7 @@ Spirula Studio trains 3D Gaussian Splatting models &ndash; from raw photo/video 
 
 - **August 14, 2026: macOS support** &ndash; Support for training on macOS/Apple Silicon has been validated. The app can now be downloaded from [Releases page](https://github.com/harry7557558/spirula-studio/releases/).
 
-- **August 8, 2026: Multilingual support** &ndash; Multilingual support has been added, available to both GUI and CLI. Supported languages: English, 日本語, 简体中文, 繁體中文, 한국어, Deutsch, Français, Español, Português, Italiano, Nederlands, Русский, Türkçe.
+- **August 8, 2026: Multilingual support** &ndash; Multilingual support has been added, available to both GUI and CLI. Supported languages: English, 日本語, 简体中文, 繁體中文, 한국어, Deutsch, Français, Español, Português, Italiano, Nederlands, Русский, Türkçe. -->
 
 
 ## Download
@@ -70,7 +72,7 @@ To build from source, Spirula Studio provides two backends:
 
 - **CUDA:** Legacy option for CUDA-capable NVIDIA GPUs.
 
-Both provide the same training and meshing functionality. CUDA backend may be faster or slower than Vulkan depending on GPU driver, with difference generally within a few percents. Vulkan backend can be slightly more VRAM efficient in some cases.
+Both provide the same training and meshing functionality. CUDA backend may be faster or slower than Vulkan depending on GPU driver. Vulkan backend can be slightly more VRAM efficient in some cases.
 
 | Backend | GPU/Vendor Support | Platform Support | Dependencies | Additional Features |
 |--------|--------|--------|--------|--------|
