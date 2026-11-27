@@ -337,6 +337,7 @@ private:
         // columns of an intrinsics group that more than one image refines.
         srow_.assign(tail_, -1);
         sharedCol_.clear();
+        exclusiveEnd_ = 0;
         for (const BAProblem::Member& m : P_.members)
             for (uint32_t j = 0; j < m.n_free; j++) {
                 srow_[m.ext_col - poseDim_ + j] = (int)sharedCol_.size();
@@ -344,7 +345,11 @@ private:
             }
         for (size_t g = 0; g < P_.groups.size(); g++) {
             const BAProblem::Group& gr = P_.groups[g];
-            if (guse[g] < 2 || gr.n_intr == 0) continue;
+            if (gr.n_intr == 0) continue;
+            if (guse[g] < 2) {
+                if (guse[g]) exclusiveEnd_ = std::max(exclusiveEnd_, gr.intr_col + gr.n_intr);
+                continue;
+            }
             for (uint32_t j = 0; j < gr.n_intr; j++) {
                 srow_[gr.intr_col - poseDim_ + j] = (int)sharedCol_.size();
                 sharedCol_.push_back(gr.intr_col + j);
@@ -782,9 +787,13 @@ private:
     int sharedSlot(uint32_t col) const {
         return col >= poseDim_ ? srow_[col - poseDim_] : -1;
     }
+
+    // Multiple tasks can touch an exclusive row through a shared column.
+    // Buffer those lower entries in the shared column's unused mirrored slots.
     void addAt(uint32_t r, uint32_t c, double v, double* sb) {
         const int k = sharedSlot(r);
         if (k >= 0) sb[(size_t)c * m_ + k] += v;
+        else if (const int j = sharedSlot(c); j >= 0) sb[(size_t)r * m_ + j] += v;
         else S_.row(r)[c] += v;
     }
 
@@ -842,6 +851,10 @@ private:
                                 schurSpan(sb + (size_t)(R + r) * m_ + br + lo,
                                           Jcj + b + lo, j1 + b + lo, nb - lo, z0[a + r], z1[a + r]);
                         }
+                    } else if (ar >= 0) {
+                        for (uint32_t c = 0; c < nb; c++)
+                            schurSpan(sb + (size_t)(C + c) * m_ + ar, z0 + a, z1 + a, na,
+                                      Jcj[b + c], j1[b + c]);
                     } else {
                         for (uint32_t c = 0; c < nb; c++)
                             schurSpan(S_.row(C + c) + R, z0 + a, z1 + a, same ? c : na,
@@ -861,6 +874,10 @@ private:
                             schurSpan(sb + (size_t)(C + c) * m_ + ar + lo,
                                       z0 + a + lo, z1 + a + lo, na - lo, Jcj[b + c], j1[b + c]);
                     }
+                } else if (const int br = sharedSlot(C); br >= 0) {
+                    for (uint32_t r = 0; r < na; r++)
+                        schurSpan(sb + (size_t)(R + r) * m_ + br, Jcj + b, j1 + b, nb,
+                                  z0[a + r], z1[a + r]);
                 } else {
                     for (uint32_t r = 0; r < na; r++)
                         schurSpan(S_.row(R + r) + C, Jcj + b, j1 + b, same ? r : nb,
@@ -954,15 +971,19 @@ private:
         pool_->run(nt2, nthreads_, [&](int t, int) {
             int64_t lo, hi;
             taskRange(n_, nt2, t, lo, hi);
+            const int64_t exclusiveHi = std::min<int64_t>(hi, exclusiveEnd_);
             for (uint32_t k = 0; k < m_; k++) {
                 const uint32_t R = sharedCol_[k];
                 double* Srow = S_.row(R);
-                for (int64_t c = lo; c < hi && c <= (int64_t)R; c++) {
+                const auto sumSlot = [&](int64_t c) {
                     double s = 0;
                     for (int q = 0; q < nt; q++)
                         s += sbuf_[(size_t)q * m_ * n_ + (size_t)c * m_ + k];
-                    Srow[c] += s;
-                }
+                    return s;
+                };
+                for (int64_t c = lo; c < hi && c <= (int64_t)R; c++) Srow[c] += sumSlot(c);
+                for (int64_t r = std::max(lo, (int64_t)R + 1); r < exclusiveHi; r++)
+                    if (sharedSlot((uint32_t)r) < 0) S_.row((uint32_t)r)[R] += sumSlot(r);
             }
         });
         for (uint32_t k = 0; k < m_; k++) {
@@ -1596,7 +1617,7 @@ private:
 
     std::vector<int32_t> srow_;       // tail column -> shared-row slot, or -1
     std::vector<uint32_t> sharedCol_;
-    uint32_t m_ = 0, nSharedBlk_ = 0;
+    uint32_t m_ = 0, exclusiveEnd_ = 0, nSharedBlk_ = 0;
 
     bool useCG_ = false, haveFallback_ = false, cgConverged_ = false;
     uint32_t cgMaxit_ = 100, cgIters_ = 0;
