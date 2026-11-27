@@ -171,10 +171,8 @@ int spirula_gui_main(int argc, char** argv) {
         return 1;
     }
 
-    // GL 3.2 core: works on Linux/Windows and is the macOS minimum.
+    // GLSL 1.50 for ImGui: the macOS minimum, valid in every core context below.
     const char* glsl_version = "#version 150";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #if !defined(_WIN32) && !defined(__APPLE__)
     glfwWindowHintString(GLFW_WAYLAND_APP_ID, gui::kDesktopAppId);
@@ -199,10 +197,22 @@ int spirula_gui_main(int argc, char** argv) {
     if (spirula::env_on("GUI_OFFSCREEN"))
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 
-    // The title is set from the catalog below, once GuiApp has settled the
-    // language; this is only what the window is born with.
-    GLFWwindow* window = glfwCreateWindow(win_w, win_h, "Spirula Studio " SS_VERSION,
-                                          nullptr, nullptr);
+    // GL 4.3 core where the driver has it (the hardware viewer's GPU sort), else
+    // 3.2 core; NVIDIA gives exactly the version asked for. macOS stops at 4.1.
+    GLFWwindow* window = nullptr;
+#ifndef __APPLE__
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwSetErrorCallback(nullptr);
+    window = glfwCreateWindow(win_w, win_h, "Spirula Studio " SS_VERSION, nullptr, nullptr);
+    glfwSetErrorCallback(glfw_error_callback);
+#endif
+    // The title is set from the catalog below; this is only what the window is born with.
+    if (!window) {
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+        window = glfwCreateWindow(win_w, win_h, "Spirula Studio " SS_VERSION, nullptr, nullptr);
+    }
     if (!window) {
         std::fprintf(stderr, "%s\n",
                      spirula::i18n::msg::log::err_window_create.get());

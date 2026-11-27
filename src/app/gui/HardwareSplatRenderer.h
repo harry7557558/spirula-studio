@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/gui/HardwareSplatGpuSort.h"
 #include <array>
 #include <atomic>
 #include <thread>
@@ -40,6 +41,8 @@ public:
     // Stochastic (SS_VIEWER_STOCHASTIC): a still view still averaging frames in.
     bool refining() const;
     double sort_seconds() const { return _sort_seconds.load(); }
+    // Sorting in GL compute (HardwareSplatGpuSort) rather than on CPU workers.
+    bool gpu_sort() const { return _gpu_sort.allocated(); }
     size_t attribute_bytes() const { return _bytes; }
 private:
     struct Texture {
@@ -51,6 +54,7 @@ private:
                 unsigned format, unsigned type, const void* data);
     bool sort(const float view[16], int camera);
     void sort_work(const float view[16], int camera);
+    HardwareSplatGpuSort _gpu_sort;
     std::thread _sort_thread;
     std::atomic<bool> _sort_ready{false};
     std::atomic<double> _sort_seconds{0};

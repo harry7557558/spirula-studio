@@ -2,6 +2,7 @@
 #include "app/gui/HardwareSplatSort.h"
 #include "app/gui/GlLoader.h"
 #include "checkpoint/SplatPly.h"
+#include "core/Env.h"
 #include "core/HostMemory.h"
 #include "core/SphericalBeta.h"
 #include "engine/Engine.h"
@@ -23,7 +24,7 @@ constexpr unsigned array_texture = 0x8c1a, rgba16f = 0x881a, rgba32f = 0x8814;
 constexpr unsigned rgb16f = 0x881b, rgb8snorm = 0x8f96;
 constexpr unsigned depth24_stencil8 = 0x88f0, depth_stencil_attachment = 0x821a;
 constexpr unsigned constant_alpha = 0x8003, one_minus_constant_alpha = 0x8004;
-constexpr unsigned texture_2d_multisample = 0x9100, rg32f = 0x8230, rg = 0x8227;
+constexpr unsigned texture_2d_multisample = 0x9100, rg32f = 0x8230, rg = 0x8227, dynamic_copy = 0x88ea;
 // One fragment a splat, in storage order: the colour the splat pass reads
 // (SPLAT_COLOR_TEXTURE in shaders.js).
 constexpr const char* kColorFs = R"(#version 150
@@ -501,7 +502,19 @@ void HardwareSplatRenderer::load(const std::string& path, const float center[3],
             std::iota(order.begin(), order.end(), 0u);
             glx::BufferData(GL_ARRAY_BUFFER, size_t(_count)*4, order.data(), GL_STATIC_DRAW);
         } else {
-            glx::BufferData(GL_ARRAY_BUFFER, size_t(_count)*4, nullptr, GL_STREAM_DRAW);
+            // At most half the free memory, the rest left for render targets and other GPU users.
+            const uint64_t free = free_device_bytes();
+            const bool allowed = !spirula::env("VIEWER_GPU_SORT") || spirula::env_on("VIEWER_GPU_SORT");
+            if (allowed && (!free || HardwareSplatGpuSort::device_bytes(_count) <= free/2))
+                _gpu_sort.allocate(_count);
+            glx::BindBuffer(GL_ARRAY_BUFFER, _indices);
+            glx::BufferData(GL_ARRAY_BUFFER, size_t(_count)*4, nullptr, _gpu_sort.allocated() ? dynamic_copy : GL_STREAM_DRAW);
+            if (_gpu_sort.allocated() && glGetError()) {
+                _gpu_sort.destroy();
+                glx::BufferData(GL_ARRAY_BUFFER, size_t(_count)*4, nullptr, GL_STREAM_DRAW);
+            }
+            // The GPU sort reads positions from their texture.
+            if (_gpu_sort.allocated()) std::vector<float>().swap(_positions);
         }
         glx::EnableVertexAttribArray(0); attrib_i(0, 1, GL_UNSIGNED_INT, 4, nullptr); divisor(0, 1);
         glx::BindVertexArray(0); check_gl();
@@ -522,6 +535,11 @@ bool HardwareSplatRenderer::sort(const float view[16], int camera) {
         const int first = planar ? 8 : 0, last = planar ? 12 : 16;
         return std::equal(_last_view.begin()+first, _last_view.begin()+last, view+first);
     };
+    if (_gpu_sort.allocated()) {
+        if (!matches()) _gpu_sort.sort(_textures[0].id, view, camera, _indices);
+        std::copy(view, view+16, _last_view.begin()); _last_camera = camera;
+        return true;
+    }
     auto upload_order = [&] {
         glx::BindBuffer(GL_ARRAY_BUFFER, _indices);
         buffer_sub(GL_ARRAY_BUFFER, 0, size_t(_count)*4, _order.data());
@@ -806,6 +824,7 @@ void HardwareSplatRenderer::destroy() {
     if (context && _frame_copy) glx::DeleteProgram(_frame_copy);
     if (context && _stencil) glx::DeleteRenderbuffers(1, &_stencil);
     if (context && _frame_depth) glx::DeleteRenderbuffers(1, &_frame_depth);
+    _gpu_sort.destroy();
     if (context && _indices) glx::DeleteBuffers(1, &_indices);
     if (context && _vao) glx::DeleteVertexArrays(1, &_vao);
     if (context && _fbo[0]) glx::DeleteFramebuffers(7, _fbo);

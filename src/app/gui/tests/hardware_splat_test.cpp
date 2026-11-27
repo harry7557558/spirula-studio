@@ -1,4 +1,5 @@
 #include "app/gui/HardwareSplatRenderer.h"
+#include "app/gui/HardwareSplatGpuSort.h"
 #include "app/gui/HardwareSplatSort.h"
 #include "app/gui/GlLoader.h"
 #include "app/gui/SceneFrame.h"
@@ -24,6 +25,9 @@
 #define SS_SETENV(k, v) _putenv_s(k, v)
 #else
 #define SS_SETENV(k, v) setenv(k, v, 1)
+#endif
+#ifndef APIENTRY
+#define APIENTRY
 #endif
 
 static TorchTensorView tv(const std::vector<float>& v, std::vector<int64_t> shape) {
@@ -176,6 +180,186 @@ static void benchmark_depth_sort(uint32_t count, int repeats) {
     }
 }
 
+// The GUI's context (GuiMain.cpp): 4.3 core when the driver has it, else 3.2.
+static GLFWwindow* hidden_context() {
+    if (!glfwInit()) throw std::runtime_error("GLFW initialization failed");
+    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4); glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    auto* window = glfwCreateWindow(256, 256, "hardware splat test", nullptr, nullptr);
+    if (!window) {
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+        window = glfwCreateWindow(256, 256, "hardware splat test", nullptr, nullptr);
+    }
+    if (!window) throw std::runtime_error("GL context creation failed");
+    glfwMakeContextCurrent(window);
+    std::printf("GL %s\n", reinterpret_cast<const char*>(glGetString(GL_VERSION)));
+    return window;
+}
+
+// Positions in the renderer's texture layout (HardwareSplatRenderer::allocate).
+static unsigned position_texture(const std::vector<float>& positions) {
+    using TexImage = void (APIENTRY *)(GLenum, GLint, GLint, GLsizei, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*);
+    static const auto image3 = reinterpret_cast<TexImage>(glfwGetProcAddress("glTexImage3D"));
+    const int64_t count = int64_t(positions.size()/3);
+    const int width = 2048, height = int(std::min<int64_t>(2048, std::max<int64_t>(1, (count+2047)/2048)));
+    const int layers = int(std::max<int64_t>(1, (count+int64_t(width)*height-1)/(int64_t(width)*height)));
+    std::vector<float> texels(size_t(width)*height*layers*4);
+    for (int64_t i = 0; i < count; ++i) for (int j = 0; j < 3; ++j) texels[i*4+j] = positions[i*3+j];
+    unsigned id = 0;
+    glGenTextures(1,&id); glBindTexture(0x8c1a,id);
+    glTexParameteri(0x8c1a,GL_TEXTURE_MIN_FILTER,GL_NEAREST); glTexParameteri(0x8c1a,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+    image3(0x8c1a,0,GL_RGBA32F,width,height,layers,0,GL_RGBA,GL_FLOAT,texels.data());
+    if (glGetError()) throw std::runtime_error("Position texture upload failed");
+    return id;
+}
+
+static unsigned order_buffer(uint32_t count) {
+    unsigned id = 0;
+    glx::GenBuffers(1,&id); glx::BindBuffer(GL_ARRAY_BUFFER,id);
+    glx::BufferData(GL_ARRAY_BUFFER,std::max<size_t>(4,size_t(count)*4),nullptr,0x88ea);
+    glx::BindBuffer(GL_ARRAY_BUFFER,0);
+    return id;
+}
+
+static std::vector<uint32_t> read_order(unsigned buffer, uint32_t count) {
+    using GetSub = void (APIENTRY *)(GLenum, std::ptrdiff_t, std::ptrdiff_t, void*);
+    static const auto get_sub = reinterpret_cast<GetSub>(glfwGetProcAddress("glGetBufferSubData"));
+    std::vector<uint32_t> order(count);
+    glx::BindBuffer(GL_ARRAY_BUFFER,buffer);
+    get_sub(GL_ARRAY_BUFFER,0,std::ptrdiff_t(count)*4,order.data());
+    glx::BindBuffer(GL_ARRAY_BUFFER,0);
+    if (glGetError()) throw std::runtime_error("Order readback failed");
+    return order;
+}
+
+// The GPU order against the CPU one on check_depth_sort's positions, plus tile and
+// scan-chunk boundaries (2048 keys a tile, 1024 tiles a scan step).
+static void check_gpu_sort() {
+    if (!gui::HardwareSplatGpuSort::supported(1)) {
+        std::printf("gpu sort: no GL 4.3 compute on this context, skipped\n");
+        return;
+    }
+    const float view[16] = {.8f,0,.6f,.2f, 0,1,0,-.1f, -.6f,0,.8f,-.3f, 0,0,0,1};
+    for (uint32_t count : {1u,255u,2047u,2048u,2049u,65539u,2097153u}) for (int fill = 0; fill < 3; ++fill) {
+        std::vector<float> positions(size_t(count)*3);
+        std::mt19937 rng(731);
+        // Grid values tie keys; uniform floats round every product.
+        for (auto& p : positions)
+            p = fill == 1 ? 1.f : fill == 0 ? (int(rng()%127)-63)*.125f : float(rng() & 0xffffff)/16777216*20-10;
+        if (count > 10 && fill != 1) {
+            positions[0] = std::numeric_limits<float>::quiet_NaN();
+            positions[3] = std::numeric_limits<float>::infinity();
+            positions[6] = std::numeric_limits<float>::max();
+        }
+        std::vector<uint32_t> keys(count),order(count),scratch(count);
+        gui::HardwareSplatGpuSort sorter;
+        if (!sorter.allocate(count)) throw std::runtime_error("GPU sort allocation failed");
+        const unsigned texture = position_texture(positions), buffer = order_buffer(count);
+        for (int camera = 0; camera < 5; ++camera) {
+            gui::sort_splat_depths(positions.data(),count,view,camera,keys.data(),order.data(),scratch.data());
+            sorter.sort(texture,view,camera,buffer);
+            const auto gpu = read_order(buffer,count);
+            const auto at = std::mismatch(gpu.begin(),gpu.end(),order.begin()).first - gpu.begin();
+            if (at != int64_t(count))
+                throw std::runtime_error("GPU splat order differs from CPU at " + std::to_string(at) + " of " +
+                    std::to_string(count) + ", camera " + std::to_string(camera) + ", fill " + std::to_string(fill));
+        }
+        sorter.destroy(); glDeleteTextures(1,&texture); glx::DeleteBuffers(1,&buffer);
+    }
+    std::printf("gpu sort: CPU order for ties, non-finite keys, tile and scan boundaries, all cameras\n");
+}
+
+static void benchmark_gpu_sort(uint32_t count, int repeats) {
+    std::vector<float> positions(size_t(count)*3);
+    uint32_t seed = 731;
+    auto uniform = [&] {
+        seed ^= seed<<13; seed ^= seed>>17; seed ^= seed<<5;
+        return float(seed & 0xffffff)/16777216;
+    };
+    for (uint32_t i = 0; i < count; ++i) {
+        positions[size_t(i)*3] = (uniform()-.5f)*80;
+        positions[size_t(i)*3+1] = (uniform()-.5f)*60;
+        positions[size_t(i)*3+2] = -1-uniform()*100;
+    }
+    const float view[16] = {.9998000067f,0,.0199986667f,0, 0,1,0,0,
+                           -.0199986667f,0,.9998000067f,0, 0,0,0,1};
+    std::vector<uint32_t> order(count);
+    {
+        std::vector<uint32_t> keys(count),scratch(count);
+        gui::sort_splat_depths(positions.data(),count,view,0,keys.data(),order.data(),scratch.data());
+    }
+    const unsigned texture = position_texture(positions), buffer = order_buffer(count);
+    std::vector<float>().swap(positions);
+    gui::HardwareSplatGpuSort sorter;
+    if (!sorter.allocate(count)) throw std::runtime_error("GPU sort allocation failed");
+    std::vector<double> ms;
+    for (int repeat = 0; repeat <= repeats; ++repeat) {
+        glFinish();
+        const auto start = std::chrono::steady_clock::now();
+        sorter.sort(texture,view,0,buffer);
+        glFinish();
+        if (repeat) ms.push_back(1000*std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count());
+    }
+    if (read_order(buffer,count) != order) throw std::runtime_error("GPU benchmark order differs from CPU");
+    std::sort(ms.begin(),ms.end());
+    std::printf("gpu sort count %u device bytes %llu median milliseconds %.3f (min %.3f), CPU order matched\n",
+        count,static_cast<unsigned long long>(gui::HardwareSplatGpuSort::device_bytes(count)),ms[ms.size()/2],ms[0]);
+    sorter.destroy(); glDeleteTextures(1,&texture); glx::DeleteBuffers(1,&buffer);
+}
+
+// The renderer sorting on the GPU draws what it does sorting on the CPU, from the
+// first frame of each camera.
+static void gpu_sorted_frames() {
+    spirula::SplatCloud c; c.num = 300000; c.sh_degree = 0;
+    c.means.resize(c.num*3); c.quats.resize(c.num*4); c.scales.resize(c.num*3);
+    c.opacities.resize(c.num); c.features_dc.resize(c.num*3);
+    std::mt19937 rng(20261126);
+    auto rand = [&] { return float(rng() & 0xffffff)/16777216; };
+    for (int i = 0; i < c.num; ++i) {
+        c.means[3*i] = (rand()-.5f)*4; c.means[3*i+1] = (rand()-.5f)*3; c.means[3*i+2] = (rand()-.5f)*4;
+        for (int j = 0; j < 4; ++j) c.quats[4*i+j] = rand()-.5f;
+        for (int j = 0; j < 3; ++j) { c.scales[3*i+j] = -4.5f+rand()*1.5f; c.features_dc[3*i+j] = (rand()-.5f)*3; }
+        c.opacities[i] = rand()*6-3;
+    }
+    const float center[3]{}, gamut[9] = {1,0,0,0,1,0,0,0,1};
+    gui::HardwareSplatRenderer gpu, cpu;
+    SS_SETENV("SS_VIEWER_GPU_SORT","1"); gpu.load({},center,1,&c);
+    SS_SETENV("SS_VIEWER_GPU_SORT","0"); cpu.load({},center,1,&c);
+    SS_SETENV("SS_VIEWER_GPU_SORT","1");
+    if (cpu.gpu_sort()) throw std::runtime_error("SS_VIEWER_GPU_SORT=0 still sorted on the GPU");
+    if (!gpu.gpu_sort()) {
+        gpu.destroy(); cpu.destroy();
+        std::printf("gpu sorted frames: no GPU sort on this context, skipped\n");
+        return;
+    }
+    auto read = [](unsigned texture, int w, int h) {
+        std::vector<uint8_t> pixels(size_t(w)*h*4);
+        glBindTexture(GL_TEXTURE_2D,texture);
+        glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        if (glGetError()) throw std::runtime_error("GPU-sorted frame readback failed");
+        return pixels;
+    };
+    constexpr int W = 160, H = 120;
+    float view[16] = {1,0,0,0, 0,1,0,0, 0,0,1,-6, 0,0,0,1};
+    int frames = 0;
+    for (int pose = 0; pose < 4; ++pose) {
+        const float a = .4f*pose;
+        view[0] = view[10] = std::cos(a); view[2] = std::sin(a); view[8] = -view[2];
+        view[3] = .1f*pose; view[7] = -.05f*pose;
+        for (int camera = 0; camera < 5; ++camera) {
+            const float f = camera == 1 || camera == 3 ? W/(2*3.14159265f) : camera == 2 ? W*.25f : 100;
+            const auto g = read(gpu.render(W,H,view,camera,f,f,0,0,gamut,0,false),W,H);
+            const auto r = read(cpu.render(W,H,view,camera,f,f,0,0,gamut,0,false),W,H);
+            if (g != r) throw std::runtime_error("GPU-sorted frame differs from CPU-sorted, pose " +
+                std::to_string(pose) + " camera " + std::to_string(camera));
+            ++frames;
+        }
+    }
+    gpu.destroy(); cpu.destroy();
+    std::printf("gpu sorted frames: %d first frames match the CPU order's pixels\n", frames);
+}
+
 static void coherent_frames() {
     constexpr int64_t count = 1000001;
     std::random_device random;
@@ -210,6 +394,8 @@ static void coherent_frames() {
         file.flush();
         if (!file) throw std::runtime_error("Coherent-frame fixture write failed");
     }
+    // The CPU worker's scheduling; the GPU sort never holds a frame.
+    SS_SETENV("SS_VIEWER_GPU_SORT","0");
     gui::HardwareSplatRenderer renderer;
     const float center[3]{}, gamut[9] = {1,0,0,0,1,0,0,0,1};
     float view[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
@@ -271,6 +457,7 @@ static void coherent_frames() {
     if (capture != read(render(128,104,0),128,104))
         throw std::runtime_error("Capture did not drain to the requested camera and resolution");
     renderer.destroy();
+    SS_SETENV("SS_VIEWER_GPU_SORT","1");
     std::filesystem::remove(path);
     std::filesystem::remove(directory);
     std::printf("coherent frames: immediate planar pan, held pending views, polled completion, drained requested capture\n");
@@ -381,6 +568,22 @@ int main(int argc, char** argv) {
         if (argc == 2 && std::string(argv[1]) == "--sort-test") {
             check_depth_sort(); return 0;
         }
+        if (argc == 2 && std::string(argv[1]) == "--gpu-sort-test") {
+            auto* window = hidden_context();
+            check_gpu_sort(); gpu_sorted_frames();
+            glfwDestroyWindow(window); glfwTerminate(); return 0;
+        }
+        if (argc >= 3 && argc <= 4 && std::string(argv[1]) == "--gpu-sort-benchmark") {
+            const auto count = std::stoull(argv[2]);
+            const int repeats = argc == 4 ? std::stoi(argv[3]) : 5;
+            if (!count || count > std::numeric_limits<uint32_t>::max() || repeats < 1 || repeats > 100)
+                throw std::runtime_error("Invalid GPU sort benchmark size or repeat count");
+            auto* window = hidden_context();
+            if (!gui::HardwareSplatGpuSort::supported(uint32_t(count)))
+                throw std::runtime_error("No GL 4.3 compute for this count on this context");
+            benchmark_gpu_sort(uint32_t(count),repeats);
+            glfwDestroyWindow(window); glfwTerminate(); return 0;
+        }
         if (argc == 4 && std::string(argv[1]) == "--generate") {
             const int64_t count = std::stoll(argv[3]);
             spirula::BufferedOutputFile file(argv[2], std::ios::binary);
@@ -406,13 +609,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         check_depth_sort();
-        if (!glfwInit()) throw std::runtime_error("GLFW initialization failed");
-        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        auto* window = glfwCreateWindow(256, 256, "hardware splat test", nullptr, nullptr);
-        if (!window) throw std::runtime_error("GL context creation failed");
-        glfwMakeContextCurrent(window);
+        auto* window = hidden_context();
         gui::HardwareSplatRenderer renderer;
         float center[3]{};
         const float identity[9] = {1,0,0,0,1,0,0,0,1};
@@ -793,6 +990,8 @@ int main(int argc, char** argv) {
         std::filesystem::remove(near_path);
         if (!failed) std::filesystem::remove(path);
         coherent_frames();
+        check_gpu_sort();
+        gpu_sorted_frames();
         glfwDestroyWindow(window); glfwTerminate();
         return failed ? 1 : 0;
     } catch (const std::exception& e) { std::fprintf(stderr,"%s\n",e.what()); return 1; }

@@ -595,6 +595,7 @@ if(SS_BUILD_GUI)
     add_executable(hardware_splat_test
         ${SS_SRC}/app/gui/tests/hardware_splat_test.cpp
         ${SS_SRC}/app/gui/HardwareSplatRenderer.cpp
+        ${SS_SRC}/app/gui/HardwareSplatGpuSort.cpp
         ${SS_SRC}/app/gui/GlLoader.cpp)
     ss_configure_app(hardware_splat_test)
     target_link_libraries(hardware_splat_test PRIVATE glfw OpenGL::GL)

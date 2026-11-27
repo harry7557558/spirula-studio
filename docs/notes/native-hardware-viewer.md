@@ -3,8 +3,9 @@
 The standalone model viewer offers an **OpenGL** checkbox. It uploads PLY
 attributes into array textures and draws sorted instanced quads directly into
 an HDR framebuffer with ordinary blending: no projected-splat or splat/tile
-intersection buffers are allocated, and no extension beyond the GUI's GL 3.2
-context is needed. Training keeps its compute renderer.
+intersection buffers are allocated, and drawing needs nothing beyond GL 3.2
+core. The depth sort uses GL 4.3 compute when the context has it
+([Depth sort](#depth-sort)). Training keeps its compute renderer.
 
 Compute remains the default. An allocation failure while opening or rendering
 a standalone splat model switches that model to OpenGL after releasing its
@@ -73,13 +74,33 @@ storage on some drivers. Spherical-beta lobes add 16 bytes each, stored as the
 web viewer stores them. The draw order adds four device bytes per Gaussian. Device memory measurements,
 rather than this nominal count, decide whether a model fits.
 
-The host retains 12 bytes of position and 12 bytes of sort storage per
-Gaussian. The RAM preflight also budgets driver texture backing: the measured
+The RAM preflight budgets 12 bytes of position and 12 bytes of sort storage
+per Gaussian for the CPU sort, and driver texture backing: the measured
 100M SH3 process reached 12.89 GiB RSS. It keeps at least a quarter of currently
-available host memory in reserve. The HDR accumulator uses float32 RGBA. Stable
-radix sorting uses full float depth keys and up to eight CPU threads, with
-8 KiB total histogram storage and no extra per-splat buffers. For models with at least one million
-splats, sorting runs on a worker. Until the requested camera's order is ready,
+available host memory in reserve. The HDR accumulator uses float32 RGBA.
+
+### Depth sort
+
+Both sorters order the same full-float 32-bit depth keys with a stable LSD
+radix sort, so they produce the same order. The GUI asks for a GL 4.3 core
+context and falls back to 3.2 (macOS stops at 4.1). On 4.3 the sort runs in
+compute shaders (`HardwareSplatGpuSort`): four 8-bit passes, each a per-tile
+digit count, a scan per digit, and a scatter in which a 2048-key tile sorts
+itself stably in shared memory (two 4-bit counting sorts) before writing each
+digit's run contiguously. Keys come from the position texture and the last
+pass writes the draw-order buffer, so no order is uploaded and the host drops
+its positions once the attributes are on the device. It needs 12 device bytes
+a splat beyond the 4-byte order (two key buffers and a value buffer) plus
+1 KiB of digit counts per 2048 splats. It is used when that fits in half the
+free device memory the driver reports after the upload (GL_NVX_gpu_memory_info
+or GL_ATI_meminfo; with neither, when allocation succeeds) and storage blocks
+can hold the keys. Every camera is sorted before its frame is drawn, except
+pans that keep the depth rows (below). `SS_VIEWER_GPU_SORT=0` selects the CPU
+sort.
+
+The CPU sort keeps positions on the host and uses up to eight threads, with
+8 KiB total histogram storage and no per-splat buffers beyond the 12 bytes
+above. For models with at least one million splats, sorting runs on a worker. Until the requested camera's order is ready,
 the viewport holds the previous complete image; it never draws a new camera
 using an older order. Perspective and orthographic pans or rolls that preserve
 all four depth-row values reuse identical sort keys and update immediately.
@@ -117,10 +138,13 @@ splats, small projected footprints, behind-camera points and a Gaussian
 crossing the near plane.
 A separate near-plane fixture checks centers at zero, 2^-8 and 2^-14 depth
 for all twenty camera/primitive combinations.
-A 1,000,001-splat fixture checks immediate planar pans with unchanged depth
-keys, held images across other changing cameras, polling without new input,
-and draining superseded sorts for a resized capture against a fresh
-synchronous render.
+A 1,000,001-splat fixture checks the CPU sort's scheduling: immediate planar
+pans with unchanged depth keys, held images across other changing cameras,
+polling without new input, and draining superseded sorts for a resized capture
+against a fresh synchronous render. `--gpu-sort-test` checks the GPU order
+against the CPU order (ties, non-finite keys, tile and scan-chunk boundaries,
+all cameras) and GPU-sorted frames against CPU-sorted ones pixel for pixel; it
+passes on NVIDIA 595, Mesa radeonsi and llvmpipe, and the full test runs both.
 The production sort helper also has a serial `std::stable_sort` oracle covering
 all camera keys, ties, non-finite coordinates, uneven chunks and the parallel
 threshold. The oracle passes with OpenMP enabled and with it compiled out.
@@ -134,7 +158,13 @@ hardware_splat_test --generate synthetic.ply 100000000
 hardware_splat_test synthetic.ply
 hardware_splat_test --sort-test
 hardware_splat_test --sort-benchmark 100000000 3
+hardware_splat_test --gpu-sort-test
+hardware_splat_test --gpu-sort-benchmark 10000000 10
 ```
+
+On Linux, `__GLX_VENDOR_LIBRARY_NAME=mesa DRI_PRIME=1` runs the GL side on
+an AMD iGPU next to an NVIDIA display, `LIBGL_ALWAYS_SOFTWARE=1` on llvmpipe,
+and `MESA_GL_VERSION_OVERRIDE=3.3` with llvmpipe exercises the 3.2 fallback.
 
 Synthetic capacity results must be reported separately from image-quality and
 rendering-speed results on trained models. The large-model test checks that
@@ -193,6 +223,15 @@ The stencil runs save about 10%: 16 runs against 1, 4 and 64 gave 21.5 / 24.6
 also waits for the CPU sort: 23 ms at 10M on eight threads (40 on four), so a
 rotation settles in 54 ms and a coherent refresh takes 50-54 ms (112 before
 the rewrite). Compute remains the default for its overlays and editing.
+
+The GPU sort (`--gpu-sort-benchmark`, uniform synthetic positions, median of
+10 with `glFinish`, CPU order matched) takes 0.25 / 2.3 / 7.1 / 27.6 ms for
+1M / 10M / 30M / 100M splats on the RTX 5070, and 57 ms for 10M on the
+7800X3D's two-CU radeonsi iGPU. On London 10M a rotation settles in 18 ms
+against 40 ms with the CPU sort (22 ms of it sorting), previews are byte
+identical, and process RSS drops from 1.57 to 1.21 GB. In the GUI a continuous
+orbit redraws every frame at the current camera (32 fps at 1570x700, vsync
+bound), where the CPU sort held the image until the camera paused.
 
 Against the original float London model on the same overview camera, hardware
 output measured 58.76/58.76/58.61 dB PSNR, with mean absolute RGB error near
