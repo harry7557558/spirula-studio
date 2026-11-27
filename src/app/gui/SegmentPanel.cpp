@@ -1954,7 +1954,7 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
 
     ImGui::Spacing();
     ImGui::BeginDisabled(_busy.load());
-    if (ui::Button(dmsg::preview_try_it, ImVec2(-1, 30))) _needs_run = true;
+    if (ui::Button(dmsg::preview_try_it, ImVec2(-1, px(30.0f)))) _needs_run = true;
     ImGui::EndDisabled();
 
     // Rerun once the user stops typing, so every keystroke does not queue a

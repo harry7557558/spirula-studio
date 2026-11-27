@@ -106,7 +106,7 @@ void GuiApp::draw_license_modal() {
     ui::TextDisabled(dmsg::license_full_text);
     // ImGui keeps a child's scroll by id, and every family shares this one.
     if (ImGui::IsWindowAppearing()) ImGui::SetNextWindowScroll(ImVec2(0.0f, 0.0f));
-    ImGui::BeginChild("##license_text", ImVec2(0, 260), ImGuiChildFlags_Borders);
+    ImGui::BeginChild("##license_text", ImVec2(0, px(260.0f)), ImGuiChildFlags_Borders);
     ui::TextWrappedRaw(std::string(li.full_text));
     ImGui::EndChild();
     ImGui::Spacing();

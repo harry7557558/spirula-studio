@@ -803,7 +803,7 @@ void ImageCompare::draw_image_picker() {
         for (int i = 0; i < n; i++)
             if (needle.empty() || lower(base(i)).find(needle) != std::string::npos)
                 hits.push_back(i);
-        ImGui::BeginChild("##imglist", ImVec2(0, 260));
+        ImGui::BeginChild("##imglist", ImVec2(0, px(260.0f)));
         ImGuiListClipper clip;
         clip.Begin((int)hits.size());
         while (clip.Step())

@@ -703,7 +703,7 @@ void GuiApp::draw_train_controls() {
             ImGui::BeginDisabled(!can_start);
             if (ui::Button(ph == TrainRunner::Phase::Done ? msg::train_again
                                                           : msg::start_training,
-                           ImVec2(-8, 36)))
+                           ImVec2(-px(8.0f), px(36.0f))))
                 start_training();
             ImGui::EndDisabled();
             // What a finished run is for: a picture of it, a cleaned copy, or a
@@ -712,7 +712,7 @@ void GuiApp::draw_train_controls() {
             if (ph == TrainRunner::Phase::Done && _runner.saved_on_stop() &&
                 _runner.session() && !_batch_active) {
                 const std::string out = _runner.session()->out_dir.string();
-                const float third = (ImGui::GetContentRegionAvail().x - 8.0f -
+                const float third = (ImGui::GetContentRegionAvail().x - px(8.0f) -
                                      2.0f * ImGui::GetStyle().ItemSpacing.x) / 3.0f;
                 const float h = std::max({px(30.0f), ui::WrappedButtonHeight(rmsg::train_render, third),
                                           ui::WrappedButtonHeight(rmsg::train_edit, third),
@@ -753,7 +753,7 @@ void GuiApp::draw_train_controls() {
             const bool stopping = _runner.session() &&
                                   _runner.session()->stop_requested.load();
             ImGui::BeginDisabled(stopping);
-            if (ui::Button(stopping ? msg::stopping : msg::stop, ImVec2(-8, 32))) {
+            if (ui::Button(stopping ? msg::stopping : msg::stop, ImVec2(-px(8.0f), px(32.0f)))) {
                 _pending = Pending::StopHere;
                 _open_confirm = true;
             }
@@ -767,9 +767,9 @@ void GuiApp::draw_train_controls() {
             // "stop and save" here would end one job and silently start the
             // next, which is not what anybody pressing it means.
             float half = _batch_active
-                             ? -8.0f
-                             : (ImGui::GetContentRegionAvail().x - 12) * 0.5f;
-            if (ui::Button(paused ? msg::resume : msg::pause, ImVec2(half, 32)))
+                             ? -px(8.0f)
+                             : (ImGui::GetContentRegionAvail().x - px(12.0f)) * 0.5f;
+            if (ui::Button(paused ? msg::resume : msg::pause, ImVec2(half, px(32.0f))))
                 _runner.set_paused(!paused);
             if (_batch_active) break;
             ImGui::SameLine();
@@ -779,7 +779,7 @@ void GuiApp::draw_train_controls() {
             // Asks first: whether the run's last minutes reach the disk is
             // the one thing about stopping that cannot be undone afterwards.
             if (ui::Button(stopping ? msg::stopping : msg::stop,
-                           ImVec2(half, 32))) {
+                           ImVec2(half, px(32.0f)))) {
                 _pending = Pending::StopHere;
                 _open_confirm = true;
             }
