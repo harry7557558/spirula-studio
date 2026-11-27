@@ -45,8 +45,7 @@ std::unique_ptr<FrameSink> open_gif_sink(const std::string& path, int width, int
                                          double fps, int frames, int quality);
 
 // Frames into `argv`'s stdin as rgb24. Its output is kept for the error.
-std::unique_ptr<FrameSink> open_pipe_sink(const std::vector<std::string>& argv,
-                                          int width, int height);
+std::unique_ptr<FrameSink> open_pipe_sink(const std::vector<std::string>& argv);
 
 // Which program turns frames into a video file, and for ffmpeg which of
 // its encoders.

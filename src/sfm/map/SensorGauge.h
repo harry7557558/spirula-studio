@@ -708,15 +708,10 @@ private:
             for (size_t i = 0; i < n && pos < r.size(); i++) v.push_back(r[pos++]);
             return v;
         };
-        size_t n_up = 0, n_rot = 0, n_trip = 0, n_gps = 0;
+        size_t n_up = 0, n_gps = 0;
         if (_up_ok)
             for (const SensorFrame& f : _frames)
                 if (_group_ok[(size_t)f.group] && f.up.ok) n_up += 3;
-        for (size_t g = 0; g < _group_name.size(); g++) {
-            if (!_group_ok[g]) continue;
-            n_rot += 3 * _pairs[g].size();
-            if (_use_imu) n_trip += 3 * _triples[g].size();
-        }
         if (_use_gps)
             for (size_t i = 0; i < _frames.size(); i++)
                 if (_gps_ok[i]) n_gps += _opt.gps_full ? 3 : 2;

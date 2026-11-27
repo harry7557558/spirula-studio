@@ -117,7 +117,8 @@ public:
                         require(target->kind == Kind::Dict && state->kind == Kind::Dict, "unsupported pickle BUILD");
                         for (const auto& p : state->pairs)
                             require(p.first->kind == Kind::String && p.first->text == "_metadata" && p.second->kind == Kind::Dict,
-                                    "unsupported checkpoint object attributes"); break; }
+                                    "unsupported checkpoint object attributes");
+                        break; }
             default: fail("%s: unsupported pickle opcode 0x%02x at %llu", path_.c_str(), op,
                           (unsigned long long)(pos_ - 1));
             }

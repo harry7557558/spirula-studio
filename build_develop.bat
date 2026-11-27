@@ -2,6 +2,9 @@
 setlocal
 rem Development build for Windows. Extra arguments are passed to CMake, e.g.
 rem   build_develop.bat -DSS_BACKEND=vulkan -DSS_BUILD_GUI=OFF
+rem Warnings fail the compile. --allow-warnings only prints them, a way past
+rem a warning your compiler raises and ours do not. --warnings-at-end (CI)
+rem builds to the end and then fails, so the log lists every warning.
 rem Builds the standalone spirula.exe into build_cuda\ or build_vulkan\.
 rem Works from a plain cmd prompt: locates VS via vswhere and calls vcvars64,
 rem uses the VS-bundled CMake/Ninja when none are on PATH, and picks the
@@ -17,6 +20,25 @@ rem ---------------------------------------------------------------------------
 set "BACKENDSEL=cuda"
 echo %* | findstr /i /c:"BACKEND=vulkan" >nul && set "BACKENDSEL=vulkan"
 set "BUILDDIR=build_%BACKENDSEL%"
+
+rem The warning flags are cut out of the text: cmd would split -DX=Y at its "=".
+set "SSARGS=%*"
+set "WARNMODE=error"
+echo %* | findstr /i /c:"--warnings-at-end" >nul || goto :no_at_end
+set "WARNMODE=at-end"
+set "SSARGS=%SSARGS:--warnings-at-end=%"
+:no_at_end
+echo %* | findstr /i /c:"--allow-warnings" >nul || goto :no_allow
+set "WARNMODE=allow"
+set "SSARGS=%SSARGS:--allow-warnings=%"
+:no_allow
+set "WERROR=ON"
+if not "%WARNMODE%"=="error" set "WERROR=OFF"
+if not "%WARNMODE%"=="at-end" goto :args_done
+where python >nul 2>&1 && goto :args_done
+echo --warnings-at-end needs python
+exit /b 1
+:args_done
 
 rem ---------------------------------------------------------------------------
 rem Codegen (optional -- the generated files are committed)
@@ -95,7 +117,8 @@ set "CUDAARG="
 rem ---------------------------------------------------------------------------
 rem Configure + build (RAM-aware job count, mirrors build_develop.bash)
 rem ---------------------------------------------------------------------------
-cmake -G Ninja -B "%BUILDDIR%" -DCMAKE_BUILD_TYPE=Release %CUDAARG% %*
+rem After the default, so an explicit -DSS_WARNINGS_AS_ERRORS=OFF wins.
+cmake -G Ninja -B "%BUILDDIR%" -DCMAKE_BUILD_TYPE=Release -DSS_WARNINGS_AS_ERRORS=%WERROR% %CUDAARG% %SSARGS%
 if %ERRORLEVEL% neq 0 exit /b 1
 
 rem ---------------------------------------------------------------------------
@@ -136,8 +159,13 @@ echo.
 
 rem `if errorlevel 1` is a >= test on a SIGNED value, so it reads a negative
 rem exit code as success -- a failed link returning -1 printed "Build complete".
-cmake --build "%BUILDDIR%" -j %JOBS%
-if %ERRORLEVEL% neq 0 exit /b 1
+set "BUILDCMD=cmake --build "%BUILDDIR%" -j %JOBS%"
+if "%WARNMODE%"=="at-end" set "BUILDCMD=python tools\check_build_warnings.py -- %BUILDCMD%"
+%BUILDCMD%
+if %ERRORLEVEL% equ 0 goto :built
+if "%WERROR%"=="ON" echo If a compiler warning stopped it, rerun with --allow-warnings and report the warning.
+exit /b 1
+:built
 
 echo.
 echo Build complete: %BUILDDIR%\spirula.exe

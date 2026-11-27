@@ -2499,7 +2499,7 @@ void RenderSession::start_export(bool no_builtin, bool confirmed) {
         const bool sphere = !_project.keys.empty() &&
                             _project.lens_at(0).projection == Projection::Equirect;
         _job.sink = open_pipe_sink(encoder_argv(e, W, H, o.fps, o.codec, o.quality, sphere,
-                                                o.path), W, H);
+                                                o.path));
     } else if (o.kind == OutputKind::Video) {
         _job.sink = open_gif_sink(o.path, W, H, o.fps, _job.frames, o.quality);
     } else {

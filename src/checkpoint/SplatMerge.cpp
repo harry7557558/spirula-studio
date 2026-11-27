@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <optional>
 #include <stdexcept>
+#include <tuple>
 
 namespace fs = std::filesystem;
 
@@ -99,7 +100,8 @@ void visit_partition_splats(const ScenePartition& p, const std::vector<std::stri
     std::optional<bool> mip;
     for (int k = 0; k < p.num_parts; k++) {
         if (k >= (int)paths.size() || paths[(size_t)k].empty()) continue;
-        auto [ply, run_dir] = find_splat_ply(paths[(size_t)k]);
+        std::string ply, run_dir;  // C++17 lambdas cannot capture structured bindings
+        std::tie(ply, run_dir) = find_splat_ply(paths[(size_t)k]);
         auto& st = stats.parts[(size_t)k];
         st.ply = ply;
         const auto shape = splat_ply_shape(ply);

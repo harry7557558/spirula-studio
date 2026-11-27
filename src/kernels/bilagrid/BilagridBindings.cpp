@@ -33,9 +33,6 @@ static inline const float* _tv_cf(const TorchTensorView& tv) {
 static inline int* _tv_i(const TorchTensorView& tv) {
     return (int*)std::get<0>(tv);
 }
-static inline int64_t* _tv_i64(const TorchTensorView& tv) {
-    return (int64_t*)std::get<0>(tv);
-}
 static inline bool _tv_valid(const TorchTensorView& tv) {
     return std::get<0>(tv) != 0;
 }

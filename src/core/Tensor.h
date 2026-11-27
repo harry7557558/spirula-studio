@@ -853,6 +853,7 @@ public:
     }
 
     // shallow copy
+    DeviceVector(const DeviceVector&) = default;
     DeviceVector& operator=(const DeviceVector&) = default;
 
     // Pool-backed resize: memory owned by DevicePool, this is a non-owning view.
@@ -948,6 +949,7 @@ public:
     }
 
     // shallow copy
+    DeviceTensor2D(const DeviceTensor2D&) = default;
     DeviceTensor2D& operator=(const DeviceTensor2D&) = default;
 
     // Pool-backed resize: memory owned by DevicePool, this is a non-owning view.
@@ -1050,6 +1052,7 @@ public:
     }
 
     // shallow copy
+    DeviceTensor3D(const DeviceTensor3D&) = default;
     DeviceTensor3D& operator=(const DeviceTensor3D&) = default;
 
     // Pool-backed resize: memory owned by DevicePool, this is a non-owning view.
@@ -1154,6 +1157,7 @@ public:
     }
 
     // shallow copy
+    DeviceTensor5D(const DeviceTensor5D&) = default;
     DeviceTensor5D& operator=(const DeviceTensor5D&) = default;
 
     // Pool-backed resize: memory owned by DevicePool, this is a non-owning view.

@@ -89,12 +89,8 @@ int cmdSelftest(int argc, char** argv) {
     bool descOk = a.count() > 0;
     for (uint32_t i = 0; i < a.count() && descOk; i++) {
         int nz = 0;
-        double ss = 0;
-        for (int j = 0; j < 128; j++) {
-            uint8_t q = a.descriptors[(size_t)i * 128 + j];
-            if (q) nz++;
-            ss += (double)q * q;
-        }
+        for (int j = 0; j < 128; j++)
+            if (a.descriptors[(size_t)i * 128 + j]) nz++;
         if (nz == 0) descOk = false;  // all-zero descriptor
     }
     printf("  descriptor sanity: %s\n", descOk ? "ok" : "BAD");

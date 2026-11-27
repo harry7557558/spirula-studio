@@ -72,7 +72,6 @@ const ActRow kActs[] = {
     {Act::Delete,    "Del",    ImGuiKey_Delete,false, false, false},
     {Act::Redo,      "Ctrl+Shift+Z", ImGuiKey_Z, true, true, false},
 };
-constexpr int kNumActs = (int)(sizeof kActs / sizeof kActs[0]);
 
 const ActRow& act_row(Act a) {
     for (const ActRow& r : kActs)

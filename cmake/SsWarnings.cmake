@@ -7,6 +7,8 @@
 # ---------------------------------------------------------------------------
 
 option(SS_WARNINGS "Compile project sources with extra warnings" ON)
+# build_develop --allow-warnings and --warnings-at-end turn it off (docs/build.md).
+option(SS_WARNINGS_AS_ERRORS "Fail the compile of a project source on any warning" ON)
 if(NOT SS_WARNINGS)
     return()
 endif()
@@ -24,6 +26,15 @@ if(MSVC)
 else()
     set(ss_warn_cxx -Wall -Wextra -Wno-missing-field-initializers)
 endif()
+set(ss_warn_cuda "")
+if(SS_WARNINGS_AS_ERRORS)
+    if(MSVC)
+        list(APPEND ss_warn_cxx /WX)
+    else()
+        list(APPEND ss_warn_cxx -Werror)
+    endif()
+    set(ss_warn_cuda -Werror=all-warnings)  # nvcc's own, cudafe's and ptxas's
+endif()
 set(ss_warn_host ${ss_warn_cxx})
 if(MSVC)
     list(APPEND ss_warn_host /wd4211)  # nvcc's generated stub for kernels in unnamed namespaces
@@ -31,7 +42,8 @@ endif()
 string(REPLACE ";" "," ss_warn_host "${ss_warn_host}")
 set(ss_warn_options
     $<$<COMPILE_LANGUAGE:C,CXX,OBJCXX>:${ss_warn_cxx}>
-    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=${ss_warn_host}>)
+    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=${ss_warn_host}>
+    $<$<COMPILE_LANGUAGE:CUDA>:${ss_warn_cuda}>)
 
 get_property(ss_warn_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
 set(ss_warn_sources "")

@@ -64,16 +64,11 @@ static_assert(sizeof(PplParams) == 30 * 8 + (kNW + 15) * 4, "layout");
 
 // in_flags bits (mirror multi_scale_loss.slang)
 constexpr uint32_t kInCam = 1u << 0;
-constexpr uint32_t kInRefDepth = 1u << 4;
-constexpr uint32_t kInRefNormal = 1u << 7;
 constexpr uint32_t kInRefAlpha = 1u << 14;
 constexpr uint32_t kInLossMap = 1u << 15;
 constexpr uint32_t kInRenderRgbFmtShift = 16;
 constexpr uint32_t kInRefRgbFmtShift = 18;
 constexpr uint32_t kInSegIgnMask = 1u << 20;
-// out_flags bits
-constexpr uint32_t kOutVRefDepth = 1u << 3;
-constexpr uint32_t kOutVRefNormal = 1u << 6;
 
 struct PplReduceParams {
     uint64_t raw_losses, io, out;

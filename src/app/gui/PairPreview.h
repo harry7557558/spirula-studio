@@ -109,7 +109,6 @@ private:
 
     std::string _image_dir, _mask_dir, _features_dir, _matches_path;
     std::string _live_matches;
-    bool _paths_dirty = false;
     // The pair asked for, the one the worker is on, and the one that came
     // back. All three are needed because show() is called on every frame the
     // cursor is over a cell: without knowing what is already in flight it

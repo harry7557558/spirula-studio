@@ -216,7 +216,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         RenderOutput v_render_output_local = keep
             ? v_render_output_buffer.load<SplatPrimitive::pixelType>(pix_id_image_global)
             : RenderOutput::zero();
-        float v_med_local = 0.0f;
+        [[maybe_unused]] float v_med_local = 0.0f;
         if constexpr (output_median) {
             if (keep && v_median != nullptr) v_med_local = v_median[pix_id_image_global];
         }

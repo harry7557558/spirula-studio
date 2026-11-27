@@ -26,9 +26,6 @@
 
 namespace fs = std::filesystem;
 
-constexpr double kPi = 3.14159265358979323846;   // MSVC has no M_PI by default
-
-
 namespace dsparse {
 
 ColmapPoints3D read_seed_pointcloud(const std::string& dataset_dir,

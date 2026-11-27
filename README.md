@@ -164,6 +164,8 @@ If it builds successfully, you get `build_cuda/spirula` binary.
 
 </details>
 
+If a compiler warning stops the build, pass `-DSS_WARNINGS_AS_ERRORS=OFF` to the `build_develop` command, and consider reporting the warning.
+
 ## Gallery
 
 You can find some professional-quality splats trained by Spirula Studio from [Megascapes Library](https://library.getmegascapes.com/) and their [SuperSplat page](https://superspl.at/user/megascapes).

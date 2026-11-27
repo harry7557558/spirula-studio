@@ -217,7 +217,7 @@ private:
 
 class PipeSink : public FrameSink {
 public:
-    PipeSink(const std::vector<std::string>& argv, int w, int h) : _w(w), _h(h) {
+    explicit PipeSink(const std::vector<std::string>& argv) {
         _ok = _proc.start(argv, [this](const std::string& line) {
             std::lock_guard<std::mutex> lk(_log_mu);
             _tail.push_back(line);
@@ -262,7 +262,6 @@ public:
     bool full() const override { return _q.full(); }
 
 private:
-    int _w, _h;
     ProcessPipe _proc;
     bool _ok = false;
     Queue _q;
@@ -319,9 +318,8 @@ std::vector<std::string> parse_ffmpeg_encoders(const std::vector<std::string>& l
     return out;
 }
 
-std::unique_ptr<FrameSink> open_pipe_sink(const std::vector<std::string>& argv,
-                                          int width, int height) {
-    return std::make_unique<PipeSink>(argv, width, height);
+std::unique_ptr<FrameSink> open_pipe_sink(const std::vector<std::string>& argv) {
+    return std::make_unique<PipeSink>(argv);
 }
 
 std::vector<std::string> encoder_argv(const Encoder& e, int width, int height,

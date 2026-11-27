@@ -120,10 +120,6 @@ namespace {
     #define LDBL_EPSILON DBL_EPSILON
 #endif
 
-        inline Sign sgn(real x) {
-            return (x > 0) ? POSITIVE : ((x < 0) ? NEGATIVE : ZERO);
-        }
-
         inline real det3(
             real a00, real a01, real a02,
             real a10, real a11, real a12,
@@ -600,19 +596,16 @@ namespace {
 
     class VertexArray {
     public:
-        VertexArray(index_t nb_vertices, const double* base, index_t stride) :
-            base_(base), stride_(stride), nb_vertices_(nb_vertices) {}
+        VertexArray(const double* base, index_t stride) : base_(base), stride_(stride) {}
         const double* point_ptr(index_t i) const { return base_ + size_t(i) * stride_; }
     private:
         const double* base_;
         index_t stride_;
-        index_t nb_vertices_;
     };
 
     class VertexMesh {
     public:
-        VertexMesh(index_t nb_vertices, const double* base, index_t stride) :
-            vertices(nb_vertices, base, stride) {}
+        VertexMesh(const double* base, index_t stride) : vertices(base, stride) {}
         VertexArray vertices;
     };
 
@@ -693,7 +686,7 @@ namespace {
                 sorted_indices, b, m, threshold, ratio, depth, levels
             );
         }
-        VertexMesh M(nb_vertices, vertices, stride);
+        VertexMesh M(vertices, stride);
         (void)dimension;
         HilbertSort3d<Hilbert_vcmp, VertexMesh>(M, m, e);
         if(levels != nullptr) {
@@ -1468,7 +1461,6 @@ namespace {
 
         static constexpr index_t END_OF_LIST = NO_INDEX;
         static constexpr index_t NOT_IN_LIST = index_t(-2);
-        static constexpr index_t VERTEX_OF_DELETED_TET = index_t(-2);
 
         index_t nb_vertices() const { return nb_vertices_; }
         const double* vertex_ptr(index_t i) const {

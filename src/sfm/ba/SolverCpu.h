@@ -369,10 +369,9 @@ private:
     // assembly's quadratic cost in track length shows: 7.4 s dense against 1.5 s
     // CG, same cost, on 1068 images averaging 70 a track (GPU's: Solver.h).
     double denseSeconds() const {
-        double t1 = 0, t2 = 0;
+        double t2 = 0;
         for (uint32_t p = 0; p < nPts_; p++) {
             const double t = P_.obs_ranges[p + 1] - P_.obs_ranges[p];
-            t1 += t;
             t2 += t * t;
         }
         double dof2 = 0;

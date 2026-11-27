@@ -604,7 +604,6 @@ int engine_load_checkpoint(std::string input_dir, bool restore_projective_depth)
 
     // Restore each saved .npy into its pool slot by name.
     std::vector<char> host_stage;
-    int restored = 0;
     if (!restore_projective_depth) engine_clear_projective_depth();
     for (auto& m : members) {
         const std::string& fn = m.name;
@@ -636,7 +635,6 @@ int engine_load_checkpoint(std::string input_dir, bool restore_projective_depth)
                 + std::to_string(info.data_bytes) + " vs slot " + std::to_string(nbytes));
 
         ckpt::read_into_device(in, info.data_offset, ptr, nbytes, host_stage);
-        ++restored;
     }
 
     backend::device_synchronize();

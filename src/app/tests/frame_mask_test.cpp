@@ -197,13 +197,12 @@ void test_path_fill() {
     std::string err;
     check(app::rasterize_frame_mask(m, W, H, out, err), "rasterizes a -path");
     const std::vector<float> px = in_pixels(tri, W, H);
-    size_t compared = 0, mismatched = 0, dropped = 0;
+    size_t mismatched = 0, dropped = 0;
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W; x++) {
             bool tie;
             const bool inside = ray_inside(px, (float)x + 0.5f, (float)y + 0.5f, tie);
             if (tie) continue;
-            compared++;
             dropped += out[(size_t)y * W + x] == 0;
             if ((out[(size_t)y * W + x] == 0) != inside) mismatched++;
         }
