@@ -8,7 +8,6 @@
 #include "checkpoint/SplatPly.h"
 #include "data/Json.h"
 #include "i18n/catalog/Dataset.h"
-#include "i18n/catalog/Edit.h"
 #include "i18n/catalog/Gui.h"
 
 #include "imgui.h"
@@ -18,7 +17,6 @@
 
 namespace fs = std::filesystem;
 namespace msg = spirula::i18n::msg::gui;
-namespace emsg = spirula::i18n::msg::edit;
 namespace dmsg = spirula::i18n::msg::dataset;
 
 namespace gui {
@@ -111,27 +109,32 @@ void GuiApp::open_mesh_preview() {
     }
     _compare.add(out, &msg::mesh_side_mesh);
     _mesh_preview_open = true;
+    _viewer_base_mode = ViewMode::View;
     remember(RecentKind::Model, out);
+    go_to(Screen::Viewer);
 }
 
 void GuiApp::draw_mesh() {
-    // The run finished while this screen was up: show what it made, ONCE.
-    // Keyed on the run id, not "Done && not open", so a closed preview stays
-    // closed; here, not in frame(), so only this screen takes the engine.
-    if (_mesh.state() == MeshRunner::State::Done && !_mesh_preview_open &&
+    // The run finished while this screen was up: show what it made, ONCE, on
+    // the viewer. Keyed on the run id, so Back here stays here; not during a
+    // batch, which moves on to its next task instead.
+    if (_mesh.state() == MeshRunner::State::Done && !_batch_active &&
         _mesh.run_id() != _mesh_shown_run) {
         _mesh_shown_run = _mesh.run_id();
         open_mesh_preview();
-    }
-
-    if (ui::Button(msg::back_home)) {
-        request_go_home();
         if (_screen != Screen::Mesh) return;
     }
-    ImGui::SameLine();
-    ui::Text(msg::mesh_title);
 
     const bool running = _mesh.busy();
+    draw_screen_header(&msg::mesh_title, [&] {
+        // The last result, for coming back to it after Back.
+        if (running || _mesh.state() != MeshRunner::State::Done || _mesh.output_path().empty())
+            return;
+        ImGui::SameLine(0.0f, px(18.0f));
+        if (ui::Button(msg::mesh_view_result)) open_mesh_preview();
+        ui::help_on_hover(msg::mesh_view_result_help);
+    });
+
     _mesh.poll();
     // The run's memory sits in a strip above the log, as on the dataset screen.
     const bool memory_strip = running && _mesh.memory().visible();
@@ -139,98 +142,56 @@ void GuiApp::draw_mesh() {
     const float log_h = log_height(ImGui::GetContentRegionAvail().y - strip_h);
 
     ImGui::BeginChild("##meshbody", ImVec2(0, body_height(log_h) - strip_h));
-
-    if (_mesh_preview_open) {
-        // ---- results ----
-        if (_mesh.num_verts() > 0)
-            ui::Text(msg::mesh_done, {(long long)_mesh.num_verts(),
-                                      (long long)_mesh.num_faces()});
-        ui::TextDisabledRaw(_mesh.output_path());
-        if (ui::Button(msg::mesh_open_in_viewer)) {
-            // Hand both panels back first: the viewer screen reuses _compare,
-            // which is holding this preview's models.
-            const std::string out = _mesh.output_path();
-            close_mesh_preview();
-            request_open_splat(out);
-        }
-        ImGui::SameLine();
-        // The start button and this button share a message ID.
-        ImGui::PushID("again");
-        if (ui::Button(msg::mesh_start)) close_mesh_preview();
-        ImGui::PopID();
-        // Which of them is on screen. One run writes several formats of one
-        // surface, and four panes of the same mesh is not a comparison.
-        ui::TextDisabled(emsg::mesh_shown);
-        if (!training_busy() && !_mesh_job.checkpoint.empty()) {
-            ImGui::SameLine();
-            bool on = _compare.index_of(_mesh_job.checkpoint) >= 0;
-            if (ui::Checkbox(emsg::mesh_side_splats_pane, &on))
-                _compare.set_shown(_mesh_job.checkpoint, on,
-                                   &msg::mesh_side_splats);
-        }
-        for (const std::string& out : _mesh.output_paths()) {
-            ImGui::SameLine();
-            ImGui::PushID(out.c_str());
-            bool on = _compare.index_of(out) >= 0;
-            if (ui::CheckboxRaw(fs::path(out).filename().string().c_str(), &on))
-                _compare.set_shown(out, on, &msg::mesh_side_mesh);
-            ImGui::PopID();
-        }
-        _compare.set_recents(recent_models(_recent));
-        _compare.draw_toolbar();
-        draw_compare_panes();
-    } else {
-        const bool wide = ImGui::GetContentRegionAvail().x >= px(920);
-        const float height = ImGui::GetContentRegionAvail().y;
-        const float max_width = std::max(px(320), ImGui::GetContentRegionAvail().x - px(320));
-        float width = wide ? std::clamp(px(_mesh_panel_w), px(320), max_width) : 0;
-        ImGui::BeginChild("##meshsettings", ImVec2(width, wide ? height : std::max(px(370), height * 0.55f)));
-        // A batch owns the options while it runs; what it IS meshing goes here.
-        if (_batch_active) {
-            draw_batch_progress();
-            ImGui::Spacing();
-        }
-        const float footer = px(kActionButtonH) + ImGui::GetTextLineHeightWithSpacing() * 2;
-        ImGui::BeginChild("##meshfields", ImVec2(0, -footer));
-        draw_mesh_options();
-        ImGui::EndChild();
-
+    const bool wide = ImGui::GetContentRegionAvail().x >= px(920);
+    const float height = ImGui::GetContentRegionAvail().y;
+    const float max_width = std::max(px(320), ImGui::GetContentRegionAvail().x - px(320));
+    float width = wide ? std::clamp(px(_mesh_panel_w), px(320), max_width) : 0;
+    ImGui::BeginChild("##meshsettings", ImVec2(width, wide ? height : std::max(px(370), height * 0.55f)));
+    // A batch owns the options while it runs; what it IS meshing goes here.
+    if (_batch_active) {
+        draw_batch_progress();
         ImGui::Spacing();
-        if (running) {
-            if (ui::Button(msg::mesh_cancel)) {
-                if (_batch_active) _batch_stop_after = _batch_stop_now = true;
-                _mesh.cancel();
-            }
-        } else {
-            ImGui::BeginDisabled(_mesh_job.checkpoint.empty() || _batch_active ||
-                                 mesh_job_writes_nothing(_mesh_job));
-            if (ui::Button(msg::mesh_start, ImVec2(px(kActionButtonW), px(kActionButtonH)))) start_meshing();
-            ImGui::EndDisabled();
-            if (mesh_job_writes_nothing(_mesh_job)) ui::TextColoredWrapped(kErr, msg::mesh_no_output_warn);
-            else if (!wide && _mesh_job.checkpoint.empty()) {
-                ImGui::SameLine();
-                ui::TextColored(kDim, msg::mesh_no_model);
-            }
-            if (_mesh.state() == MeshRunner::State::Failed) {
-                ui::TextColored(ImVec4(1, 0.5f, 0.5f, 1), msg::mesh_failed);
-                ui::TextDisabledRaw(_mesh.error());
-            } else if (_mesh.state() == MeshRunner::State::Cancelled) {
-                ui::TextColored(kDim, dmsg::cancelled);
-            }
-        }
-        ImGui::EndChild();
-        if (wide && splitter_v("##meshpanelsplit", &width, px(320), max_width, height)) {
-            _mesh_panel_w = width / ui_scale();
-            _layout_dirty = true;
-        }
-        ImGui::BeginChild("##meshprogress", ImVec2(0, wide ? height : std::max(px(230), ImGui::GetContentRegionAvail().y)));
-        if (running) {
-            const std::string stage = _mesh.stage();
-            timed_progress_bar(_mesh.clock(), stage.empty() ? msg::mesh_running.get() : stage.c_str());
-        }
-        _mesh_monitor.draw(_mesh_job.checkpoint, running ? _mesh.progress_dir() : "", running ? &_mesh.memory() : nullptr);
-        ImGui::EndChild();
     }
+    const float footer = px(kActionButtonH) + ImGui::GetTextLineHeightWithSpacing() * 2;
+    ImGui::BeginChild("##meshfields", ImVec2(0, -footer));
+    draw_mesh_options();
+    ImGui::EndChild();
+
+    ImGui::Spacing();
+    if (running) {
+        if (ui::Button(msg::mesh_cancel, ImVec2(px(kActionButtonW), px(kActionButtonH)))) {
+            if (_batch_active) _batch_stop_after = _batch_stop_now = true;
+            _mesh.cancel();
+        }
+    } else {
+        ImGui::BeginDisabled(_mesh_job.checkpoint.empty() || _batch_active ||
+                             mesh_job_writes_nothing(_mesh_job));
+        if (ui::Button(msg::mesh_start, ImVec2(px(kActionButtonW), px(kActionButtonH)))) start_meshing();
+        ImGui::EndDisabled();
+        if (mesh_job_writes_nothing(_mesh_job)) ui::TextColoredWrapped(kErr, msg::mesh_no_output_warn);
+        else if (!wide && _mesh_job.checkpoint.empty()) {
+            ImGui::SameLine();
+            ui::TextColored(kDim, msg::mesh_no_model);
+        }
+        if (_mesh.state() == MeshRunner::State::Failed) {
+            ui::TextColored(ImVec4(1, 0.5f, 0.5f, 1), msg::mesh_failed);
+            ui::TextDisabledRaw(_mesh.error());
+        } else if (_mesh.state() == MeshRunner::State::Cancelled) {
+            ui::TextColored(kDim, dmsg::cancelled);
+        }
+    }
+    ImGui::EndChild();
+    if (wide && splitter_v("##meshpanelsplit", &width, px(320), max_width, height)) {
+        _mesh_panel_w = width / ui_scale();
+        _layout_dirty = true;
+    }
+    ImGui::BeginChild("##meshprogress", ImVec2(0, wide ? height : std::max(px(230), ImGui::GetContentRegionAvail().y)));
+    if (running) {
+        const std::string stage = _mesh.stage();
+        timed_progress_bar(_mesh.clock(), stage.empty() ? msg::mesh_running.get() : stage.c_str());
+    }
+    _mesh_monitor.draw(_mesh_job.checkpoint, running ? _mesh.progress_dir() : "", running ? &_mesh.memory() : nullptr);
+    ImGui::EndChild();
     ImGui::EndChild();
     if (memory_strip) {
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + px(3.0f));

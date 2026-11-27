@@ -15,7 +15,6 @@
 #include "dense/Artifact.h"
 #include "external/stb_image.h"
 #include "i18n/catalog/Gui.h"
-#include "i18n/catalog/MaskEdit.h"
 #include "i18n/catalog/Render.h"
 #include "i18n/catalog/TrainFields.h"
 
@@ -31,7 +30,6 @@ namespace msg = spirula::i18n::msg::gui;
 namespace fld = spirula::i18n::msg::field;
 namespace runlog = spirula::runlog;
 namespace rmsg = spirula::i18n::msg::render;
-namespace mmsg = spirula::i18n::msg::maskedit;
 using spirula::i18n::Msg;
 
 namespace gui {
@@ -87,52 +85,42 @@ void GuiApp::start_training() {
 }
 
 void GuiApp::draw_train() {
-    bool preparing = _runner.phase() == TrainRunner::Phase::Preparing;
-    ImGui::BeginDisabled(preparing);   // no clean interruption point
-    if (ui::Button(msg::back_home)) request_go_home();
-    ImGui::EndDisabled();
-    if (training_busy()) ui::help_on_hover(msg::leaving_stops_training);
-    ImGui::SameLine();
-    if (_batch_active) {
-        if (ui::Button(msg::batch_show_list)) _screen = Screen::Batch;
-        ImGui::SameLine();
-        const BatchRow* row = batch_running_row();
-        ui::TextDisabledRaw(row ? row->dataset : std::string());
-    } else {
-        ui::TextDisabledRaw(_cfg.data);
-        // Offered when the dataset's mask folder exists; probed at most once
-        // a second, as workspace_state() does.
-        const std::string key = _cfg.data + "\n" + _cfg.mask_dir;
-        const double now = ImGui::GetTime();
-        if (key != _train_masks_key || now - _train_masks_at > 1.0) {
-            std::error_code ec;
-            fs::path md(_cfg.mask_dir);
-            if (md.is_relative()) md = fs::path(_cfg.data) / md;
-            _train_masks_key = key;
-            _train_masks_at = now;
-            _train_has_masks = !_cfg.data.empty() && fs::is_directory(md, ec) && !fs::is_empty(md, ec);
-        }
-        if (_train_has_masks) {
+    const bool preparing = _runner.phase() == TrainRunner::Phase::Preparing;
+    // The two ways to watch a run, right-aligned: the scene in 3D, or one
+    // training photograph beside the render of the same camera.
+    const float mode_w = px(160.0f);
+    const ImGuiStyle& st = ImGui::GetStyle();
+    const float right_w = mode_w + ImGui::CalcTextSize(msg::screenshot.get()).x +
+                          ImGui::CalcTextSize("...").x + 4.0f * st.FramePadding.x +
+                          3.0f * st.ItemSpacing.x;
+    // Preparing has no clean interruption point, so nothing leaves it.
+    draw_screen_header(nullptr, [&] {
+        if (_batch_active) {
             ImGui::SameLine();
-            ImGui::BeginDisabled(training_busy() || native_work_busy());
-            if (ui::Button(mmsg::correct_masks)) {
-                fs::path id(_cfg.image_dir), md(_cfg.mask_dir);
-                if (id.is_relative()) id = fs::path(_cfg.data) / id;
-                if (md.is_relative()) md = fs::path(_cfg.data) / md;
-                open_mask_editor(_cfg.data, id.string(), md.string(), _cfg.flip_mask);
-            }
-            ImGui::EndDisabled();
-            ui::help_on_hover(mmsg::correct_masks_help);
+            if (ui::Button(msg::batch_show_list)) go_to(Screen::Batch);
+            ImGui::SameLine();
+            const BatchRow* row = batch_running_row();
+            ui::TextDisabledRaw(row ? row->dataset : std::string());
+            return;
         }
-    }
-    // Two ways to watch a run: the scene in 3D, or one training photograph
-    // beside the render of the same camera. Right-aligned on the header row so
-    // it costs the preview below no height.
+        if (_cfg.data.empty()) return;
+        const DatasetProbe& p = train_dataset_probe();
+        unsigned links = kLinkDataset | kLinkRegion;
+        if (p.sparse) links |= kLinkEdit | kLinkPartition;
+        if (p.masks) links |= kLinkMasks;
+        draw_dataset_links({_cfg.data, _cfg.image_dir, _cfg.mask_dir, _cfg.flip_mask}, links,
+                           right_w);
+        ImGui::SameLine(0.0f, px(14.0f));
+        const float room = ImGui::GetContentRegionMax().x - ImGui::GetCursorPosX() - right_w;
+        if (room > px(60.0f)) {
+            ui::TextDisabledRaw(elide_middle(_cfg.data, room));
+            if (ImGui::IsItemHovered()) ui::SetTooltipRaw(_cfg.data);
+        }
+    }, !preparing);
     {
-        const float w = px(160.0f);
-        draw_screenshot_controls(w);
-        ImGui::SameLine(std::max(0.0f, ImGui::GetContentRegionMax().x - w));
-        ImGui::SetNextItemWidth(w);
+        draw_screenshot_controls(mode_w);
+        ImGui::SameLine(std::max(0.0f, ImGui::GetContentRegionMax().x - mode_w));
+        ImGui::SetNextItemWidth(mode_w);
         int mode = _preview_images ? 1 : 0;
         if (ui::ComboRaw("##previewmode", &mode,
                          {&msg::preview_mode_3d, &msg::preview_mode_images}))
@@ -270,7 +258,6 @@ void GuiApp::draw_train_settings() {
                   FileDialog::Mode::Folder);
     }
     ImGui::EndDisabled();
-    if (!_batch_active) draw_roi_row(busy);
 
     draw_engine_device_picker(busy);
 
@@ -297,6 +284,7 @@ void GuiApp::draw_train_settings() {
         if (dense_cloud_present() ||
             (!_cfg.seed_pointcloud.empty() && _cfg.seed_pointcloud != spirula::dense::kSparseSeed))
             draw_seed_cloud(ph);
+        draw_roi_row(px(170.0f));
 
         ImGui::Spacing();
         if (ui::CollapsingHeader(msg::section_all_options))
@@ -718,23 +706,36 @@ void GuiApp::draw_train_controls() {
                            ImVec2(-8, 36)))
                 start_training();
             ImGui::EndDisabled();
-            // What a finished run is for: a picture of it, or a cleaned copy.
+            // What a finished run is for: a picture of it, a cleaned copy, or a
+            // surface. Three to a row, each label wrapping onto more lines
+            // rather than any of them being cut.
             if (ph == TrainRunner::Phase::Done && _runner.saved_on_stop() &&
                 _runner.session() && !_batch_active) {
                 const std::string out = _runner.session()->out_dir.string();
-                const float half = (ImGui::GetContentRegionAvail().x - 8.0f -
-                                    ImGui::GetStyle().ItemSpacing.x) * 0.5f;
-                if (ui::Button(rmsg::train_render, ImVec2(half, 30))) {
+                const float third = (ImGui::GetContentRegionAvail().x - 8.0f -
+                                     2.0f * ImGui::GetStyle().ItemSpacing.x) / 3.0f;
+                const float h = std::max({px(30.0f), ui::WrappedButtonHeight(rmsg::train_render, third),
+                                          ui::WrappedButtonHeight(rmsg::train_edit, third),
+                                          ui::WrappedButtonHeight(msg::train_mesh, third)});
+                if (ui::ButtonWrapped(rmsg::train_render, third, h)) {
                     _render_after_open = true;
                     request_open_splat(out);
                 }
                 ui::help_on_hover(rmsg::train_render_help);
                 ImGui::SameLine();
-                if (ui::Button(rmsg::train_edit, ImVec2(half, 30))) {
+                if (ui::ButtonWrapped(rmsg::train_edit, third, h)) {
                     _edit_after_open = true;
                     request_open_splat(out);
                 }
                 ui::help_on_hover(rmsg::train_edit_help);
+                ImGui::SameLine();
+                if (ui::ButtonWrapped(msg::train_mesh, third, h)) {
+                    request_leave(Screen::Mesh, [this, out] {
+                        set_mesh_source(out);
+                        go_to(Screen::Mesh);
+                    });
+                }
+                ui::help_on_hover(msg::link_mesh_help);
             }
             break;
         }

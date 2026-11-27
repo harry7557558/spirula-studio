@@ -338,6 +338,50 @@ inline void SetTooltipRaw(const std::string& s) { ImGui::SetTooltip("%s", s.c_st
 inline bool Button(const Msg& m, const ImVec2& size = ImVec2(0, 0)) {
     return ImGui::Button(detail::label(m), size);
 }
+// The way on to the next stage -- Done, Open in Trainer -- in green, so it is
+// found before the tools around it.
+inline bool GoButton(const Msg& m, const ImVec2& size = ImVec2(0, 0)) {
+    ImGui::PushStyleColor(ImGuiCol_Button, ::gui::kGoButton);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ::gui::kGoButtonHovered);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ::gui::kGoButtonActive);
+    const bool r = ImGui::Button(detail::label(m), size);
+    ImGui::PopStyleColor(3);
+    return r;
+}
+// How tall a ButtonWrapped of `m` is at `width`; a row of them takes the most.
+inline float WrappedButtonHeight(const Msg& m, float width) {
+    const ImGuiStyle& st = ImGui::GetStyle();
+    const float wrap = std::max(1.0f, width - 2.0f * st.FramePadding.x);
+    return ImGui::CalcTextSize(m.get(), nullptr, false, wrap).y + 2.0f * st.FramePadding.y;
+}
+// A button `width` wide whose label breaks onto more lines, each centred,
+// when one is too short for it.
+inline bool ButtonWrapped(const Msg& m, float width, float height) {
+    const ImGuiStyle& st = ImGui::GetStyle();
+    const float wrap = std::max(1.0f, width - 2.0f * st.FramePadding.x);
+    const bool r = ImGui::Button(detail::label("", m.id), ImVec2(width, height));
+    const ImVec2 lo = ImGui::GetItemRectMin(), hi = ImGui::GetItemRectMax();
+    ImFont* font = ImGui::GetFont();
+    const float size = ImGui::GetFontSize();
+    const char* text = m.get();
+    const char* end = text + std::strlen(text);
+    const float lines_h = ImGui::CalcTextSize(text, nullptr, false, wrap).y;
+    float y = lo.y + 0.5f * (hi.y - lo.y - lines_h);
+    const ImU32 col = ImGui::GetColorU32(ImGuiCol_Text);
+    for (const char* s = text; s < end;) {
+        const char* e = font->CalcWordWrapPosition(size, s, end, wrap);
+        if (e == s) e = s + 1;
+        const char* t = e;
+        while (t > s && (t[-1] == ' ' || t[-1] == '\n')) t--;
+        const float w = ImGui::CalcTextSize(s, t).x;
+        ImGui::GetWindowDrawList()->AddText(font, size, ImVec2(lo.x + 0.5f * (hi.x - lo.x - w), y),
+                                            col, s, t);
+        y += ImGui::GetTextLineHeight();
+        s = e;
+        while (s < end && (*s == ' ' || *s == '\n')) s++;
+    }
+    return r;
+}
 inline bool Button(const Msg& m, std::initializer_list<Arg> a,
                    const ImVec2& size = ImVec2(0, 0)) {
     return ImGui::Button(detail::label(format(m, a), m), size);
@@ -478,6 +522,9 @@ inline bool CollapsingHeader(const Msg& m, ImGuiTreeNodeFlags flags = 0) {
     return ImGui::CollapsingHeader(detail::label(m), flags);
 }
 inline bool TreeNode(const Msg& m) { return ImGui::TreeNode(detail::label(m)); }
+inline bool TreeNodeEx(const Msg& m, ImGuiTreeNodeFlags flags) {
+    return ImGui::TreeNodeEx(detail::label(m), flags);
+}
 inline bool TreeNode(const Msg& m, std::initializer_list<Arg> a) {
     return ImGui::TreeNode(detail::label(format(m, a), m));
 }
@@ -530,6 +577,12 @@ inline bool BeginCombo(const Msg& m, const char* preview, ImGuiComboFlags flags 
 }
 inline bool BeginComboRaw(const char* id, const char* preview, ImGuiComboFlags flags = 0) {
     return ImGui::BeginCombo(id, preview, flags);
+}
+// A combo whose box reads `m` and whose popup holds controls rather than a
+// choice: a menu that stays open while they are used.
+inline bool BeginComboMenu(const Msg& m, ImGuiComboFlags flags = 0) {
+    const char* l = detail::label("", m.id);
+    return detail::named_combo(l, [&] { return ImGui::BeginCombo(l, m.get(), flags); });
 }
 
 struct ComboChoice {

@@ -127,6 +127,30 @@ int CompareView::index_of(const std::string& path) const {
     return -1;
 }
 
+std::vector<std::string> CompareView::paths() const {
+    std::vector<std::string> out;
+    for (const auto& m : _models) out.push_back(m->path);
+    return out;
+}
+
+int CompareView::primary_pane() const {
+    if (_render_index >= 0 && _render_index < count()) return _render_index;
+    if (_edit_index >= 0 && _edit_index < count()) return _edit_index;
+    return count() > 0 ? 0 : -1;
+}
+
+CompareView::PaneSource CompareView::pane_source(int index) {
+    PaneSource p;
+    if (index < 0 || index >= count()) return p;
+    Model& m = *_models[(size_t)index];
+    p.ready = m.src.ready();
+    p.asked = m.path;
+    p.file = m.src.file();
+    p.splats = m.src.kind() == SplatViewer::Kind::Splats;
+    if (m.src.kind() == SplatViewer::Kind::Points) p.dataset = m.src.dataset_dir();
+    return p;
+}
+
 void CompareView::set_shown(const std::string& path, bool on,
                             const spirula::i18n::Msg* title) {
     const int at = index_of(path);
@@ -511,12 +535,9 @@ void CompareView::begin_edit(int index) {
     }
     _edit_index = index;
     _edit_error.clear();
-    if (_render_allowed)
-        _edit.set_to_render([this] {
-            if (_edit_index >= 0) begin_render(_edit_index);
-        });
-    else
-        _edit.set_to_render(nullptr);
+    _edit.set_to_render([this] {
+        if (_edit_index >= 0) begin_render(_edit_index);
+    });
     // A model saved moved takes its camera projects with it.
     _edit.set_on_saved([this](const std::string& source, const std::string& saved,
                               const spirula::Sim3& placement) {
@@ -1002,9 +1023,6 @@ void CompareView::draw_toolbar() {
         if (ui::Checkbox(msg::compare_wipe, &_wipe) && _wipe) _link = true;
         ui::help_on_hover(msg::compare_wipe_help);
     }
-    // Shared controls keep every pane's image the same size.
-    if (_link && !_models.empty() && _models[0]->attached)
-        _models[0]->panel.draw_nav_controls();
 }
 
 void CompareView::draw_placement_popup(int index) {
@@ -1109,23 +1127,21 @@ void CompareView::draw_pane(int index, const ImVec2& size, const std::function<v
         }
         if (on) ImGui::PopStyleColor(2);
         ui::help_on_hover(emsg::enter_edit_help);
-        if (_render_allowed) {
-            ImGui::SameLine();
-            const bool rendering = _render_index == index;
-            if (rendering) {
-                const ImVec4 c = ImGui::GetStyle().Colors[ImGuiCol_ButtonActive];
-                ImGui::PushStyleColor(ImGuiCol_Button, c);
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, c);
-            }
-            ImGui::BeginDisabled(rendering && _render.exporting());
-            if (ui::Button(rendering ? rmsg::leave_render : rmsg::enter_render)) {
-                if (rendering) end_render();
-                else begin_render(index);
-            }
-            ImGui::EndDisabled();
-            if (rendering) ImGui::PopStyleColor(2);
-            ui::help_on_hover(rmsg::enter_render_help);
+        ImGui::SameLine();
+        const bool rendering = _render_index == index;
+        if (rendering) {
+            const ImVec4 c = ImGui::GetStyle().Colors[ImGuiCol_ButtonActive];
+            ImGui::PushStyleColor(ImGuiCol_Button, c);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, c);
         }
+        ImGui::BeginDisabled(rendering && _render.exporting());
+        if (ui::Button(rendering ? rmsg::leave_render : rmsg::enter_render)) {
+            if (rendering) end_render();
+            else begin_render(index);
+        }
+        ImGui::EndDisabled();
+        if (rendering) ImGui::PopStyleColor(2);
+        ui::help_on_hover(rmsg::enter_render_help);
     }
     if (m.src.ready()) {
         ImGui::SameLine();
@@ -1149,9 +1165,8 @@ void CompareView::draw_pane(int index, const ImVec2& size, const std::function<v
 
     if (!m.action_error.empty()) ui::TextDisabledRaw(m.action_error);
 
-    // Navigation is the view's, not a pane's: linked, it lives on the toolbar.
-    m.panel.show_nav_controls(!_link);
-    m.panel.set_controls_pad(std::max(0.0f, _controls_h - m.panel.controls_height()));
+    // The pane's title row already counts its points or triangles.
+    m.panel.show_counts(false);
     switch (m.src.state()) {
         case SplatViewer::State::Loading:
             ui::TextDisabled(msg::viewer_loading);
@@ -1238,7 +1253,6 @@ void CompareView::draw(float height) {
             _models[(size_t)_render_index]->panel.set_image_width(0.0f);
             draw_pane(_render_index, avail);
         }
-        _controls_h = 0.0f;
         return;
     }
     if (wipe) {
@@ -1279,20 +1293,21 @@ void CompareView::draw(float height) {
         }
     }
 
-    // What the tallest pane's controls took, for the next frame's padding.
-    // A frame late, which nobody sees: it only changes when the window is
-    // resized or a model is added.
-    _controls_h = 0.0f;
-    for (auto& m : _models)
-        _controls_h = std::max(_controls_h, m->panel.controls_height());
-
-    // The link, applied after every pane has handled its input.
+    // The link, applied after every pane has handled its input. A pose moves
+    // the others when it moves; the navigation mode and speed when edited.
     if (_link && n > 1) {
         ViewportPanel* master = wipe ? &_models[0]->panel : link_master();
         if (master)
             for (auto& m : _models)
                 if (&m->panel != master) m->panel.sync_view_from(*master);
+        for (auto& src : _models) {
+            if (src->panel.nav_edits() == src->nav_edits_seen) continue;
+            for (auto& m : _models)
+                if (m != src) m->panel.copy_nav_settings(src->panel);
+            break;
+        }
     }
+    for (auto& m : _models) m->nav_edits_seen = m->panel.nav_edits();
 }
 
 }  // namespace gui

@@ -306,7 +306,7 @@ void GuiApp::advance_dataset_training() {
     remember(RecentKind::Dataset, cfg.data);
     reset_dataset_preview();
     close_source_preview();
-    _screen = Screen::Train;
+    go_to(Screen::Train);
     launch_training(_cfg, _preset);
 }
 

@@ -1,8 +1,8 @@
 #pragma once
 
 // CompareView -- up to four finished models under one camera, laid out in one
-// pane, two, three or a 2x2 grid. The viewer screen and the meshing preview
-// are both this. Design: docs/notes/compare-view.md.
+// pane, two, three or a 2x2 grid: the viewer screen, a finished mesh beside its
+// splats included. Design: docs/notes/compare-view.md.
 //
 // It owns the engine while it is open (engine_reset at both ends), so opening
 // it is a session-destroying action for GuiApp and nothing else may render
@@ -51,6 +51,18 @@ public:
     // Which pane holds `path`, or -1. What a screen that offers a list of
     // models to show needs, since the panes are the list.
     int index_of(const std::string& path) const;
+    // What each pane was opened from, in pane order.
+    std::vector<std::string> paths() const;
+    // The pane the screen is about: the edited or rendered one, else the
+    // first; -1 when none is open.
+    int primary_pane() const;
+    // Pane `index`'s model: the path asked for, the file read, and the dataset
+    // folder when it is a dataset's reconstruction. Not ready when out of range.
+    struct PaneSource {
+        std::string asked, file, dataset;
+        bool ready = false, splats = false;
+    };
+    PaneSource pane_source(int index);
     // Show or hide one, leaving the others alone. The removal is deferred to
     // the next poll(), like every other one.
     void set_shown(const std::string& path, bool on,
@@ -82,6 +94,7 @@ public:
     int editing() const { return _edit_index; }
     bool edit_busy() const { return _edit_loading.load(); }
     EditSession& edit() { return _edit; }
+    const EditSession& edit() const { return _edit; }
     // True while an edit has changes that have not been written out.
     bool edit_dirty() const;
     // Ask before those changes are thrown away; `then` runs on a yes. With
@@ -89,8 +102,6 @@ public:
     void confirm_discard_edits(std::function<void()> then);
 
     // ---- rendering a photo or a video (docs/notes/render-video.md) ----
-    // Offered on the viewer screen, not on the meshing preview.
-    void set_render_allowed(bool on) { _render_allowed = on; }
     // Render with this pane's model as the primary one; every other open
     // model is on offer as a source. The editor, when it is open on the same
     // pane, stays open behind it -- what it did shows in the render.
@@ -104,6 +115,7 @@ public:
     void end_render(bool switching = false);
     int rendering() const { return _render_index; }
     render::RenderSession& render() { return _render; }
+    const render::RenderSession& render() const { return _render; }
     // Which panel is beside the panes: the editor's, the render's, or none.
     enum class Sidebar { None, Edit, Render };
     Sidebar sidebar() const;
@@ -118,7 +130,8 @@ public:
     // Attach panels whose loaders have finished and refresh the placements.
     // Once a frame, before draw().
     void poll();
-    // The row above the panes: what is open, the add button, the link.
+    // The add button and, with two or more open, the link and the wipe; on
+    // the caller's row.
     void draw_toolbar();
     // Panes showing splats through the engine, for screenshots
     // (defined in Screenshot.cpp).
@@ -146,6 +159,7 @@ private:
         uint64_t uid = 0;           // the pane's own, for as long as it is open
         bool attached = false;
         int after_compute_load = 0;
+        int nav_edits_seen = 0;      // ViewportPanel::nav_edits() at the last link
         std::string action_error;
         // Placement in the shared frame. `align` puts the model in the FIRST
         // model's frame rather than in its own; the rest is the hand
@@ -206,9 +220,6 @@ private:
     spirula::Sim3 file_to_norm_of(Model& m);
     int _pending_move = 0;
     int _pending_move_index = -1;
-    // Tallest control block across the panes on the last draw; the shorter
-    // ones are padded to it so every image comes out the same size.
-    float _controls_h = 0.0f;
 
     // Reading a model a second time is what editing costs: the viewer keeps
     // nothing host-side, and a hundred-megabyte PLY must not block a frame.
@@ -235,7 +246,6 @@ private:
     int _edit_index = -1;
     render::RenderSession _render;
     int _render_index = -1;
-    bool _render_allowed = false;
     bool _render_when_ready = false;
     std::string _render_project;
     // The render panel is the one showing, when both are open on a pane.

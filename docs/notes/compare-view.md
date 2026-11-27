@@ -2,8 +2,8 @@
 
 `src/app/gui/CompareView.{h,cpp}` is the GUI's model viewer: up to four
 finished models — splats, meshes, point clouds, in any mix — laid out in one
-pane, two, three, or a 2×2 grid, on one camera. It is what both the viewer
-screen and the meshing preview draw.
+pane, two, three, or a 2×2 grid, on one camera. It is what the viewer screen
+draws, a finished mesh beside the splats it came from included.
 
 Looking at one model answers "is this good?". Looking at two answers "is this
 better?", which is the question anyone tuning a reconstruction is actually

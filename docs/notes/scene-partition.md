@@ -1,7 +1,7 @@
 # Scene partitioning: train a reconstruction in parts and merge the models
 
-`spirula partition` and the GUI's Partition panel (dataset screen, beside
-"Open in Trainer" and "Edit Reconstruction") split one reconstruction into
+`spirula partition` and the GUI's Partition panel (a link in the header of the
+dataset and training screens, and of the viewer over a reconstruction) split one reconstruction into
 parts that each fit a single training run, and merge the trained parts back
 into one model. The code is portable host code in `data/ScenePartition.h`,
 `data/LabelField.h`, `data/Region.h`, `data/RegionProgram.h`,

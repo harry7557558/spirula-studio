@@ -30,11 +30,7 @@ void GuiApp::draw_menu_bar() {
             open_pick(PickAction::ResumeRun, msg::resume_training.get(),
                       FileDialog::Mode::FileOrFolder, {".tar", ".ply"});
         ui::help_on_hover_disabled(msg::resume_training_help);
-        if (ui::MenuItem(msg::menu_new_dataset) && !native_work_busy()) {
-            close_mesh_preview();
-            close_splat();
-            _screen = Screen::NewDataset;
-        }
+        if (ui::MenuItem(msg::menu_new_dataset)) request_screen(Screen::NewDataset);
         if (ui::MenuItem(msg::menu_open_splat)) {
             open_pick(PickAction::SplatFile, msg::viewer_pick_file.get(),
                       FileDialog::Mode::File, {".ply"});
@@ -61,10 +57,7 @@ void GuiApp::draw_menu_bar() {
             if (picked) open_recent(go);
         }
         ImGui::Separator();
-        if (ui::MenuItem(msg::menu_batch) && !native_work_busy()) {
-            close_mesh_preview();
-            _screen = Screen::Batch;
-        }
+        if (ui::MenuItem(msg::menu_batch)) request_screen(Screen::Batch);
         ImGui::Separator();
         if (ui::MenuItem(msg::menu_quit)) request_close();
         ImGui::EndMenu();

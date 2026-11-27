@@ -117,7 +117,7 @@ sharing an id.
 
 | | |
 |---|---|
-| `/ui/state` | frame counter, item count, queue depth, display and framebuffer size, plus what `GuiApp::state_json()` reports: screen, training phase and step, whether a dialog is open, how many models are loaded. `app_ready` is false until that half exists; `launch` waits for it |
+| `/ui/state` | frame counter, item count, queue depth, display and framebuffer size, plus what `GuiApp::state_json()` reports: screen, where Back goes (`back_to`, `history`, `viewer_mode`), training phase and step, whether a dialog is open, how many models are loaded. `app_ready` is false until that half exists; `launch` waits for it |
 | `/ui/tree` | the widgets of the last finished frame: `q=` substring, `window=`, `named=0` to include unnamed items |
 | `/ui/click` | `button=` 0/1/2, `double=1`, `settle=` |
 | `/ui/move` | hover, for tooltips and hover-only state |

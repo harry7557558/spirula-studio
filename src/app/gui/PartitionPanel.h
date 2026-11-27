@@ -3,7 +3,8 @@
 // PartitionPanel -- split a finished reconstruction into parts that train
 // separately (data/ScenePartition.h), see the split before committing to it,
 // queue the parts in Batch, and merge their models back into one. Opened from
-// the dataset screen beside "Open in Trainer"; docs/notes/scene-partition.md.
+// the header links of the dataset, training and viewer screens;
+// docs/notes/scene-partition.md.
 
 #include "app/gui/ViewportPanel.h"
 #include "data/DatasetParser.h"
@@ -37,7 +38,7 @@ public:
     void open(const std::string& dataset_dir, Hooks hooks);
     bool is_open() const { return _open; }
     void close();
-    // Once per frame from the dataset screen.
+    // Once per frame, over whichever screen opened it.
     void draw();
     void destroy_gl();
 

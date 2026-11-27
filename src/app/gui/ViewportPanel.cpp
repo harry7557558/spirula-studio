@@ -624,10 +624,9 @@ void ViewportPanel::build_request(ViewRequest& q, int W, int H) const {
     q.cam_size_scale = _frustum_scale;
 }
 
-// One line under the image's top-left corner. `line` is which row it is, so
-// the point count and the grid legend stack without measuring the font twice.
-void ViewportPanel::draw_grid_overlay(float x, float y, int line) const {
-    if (!_show_grid) return;
+// The grid's cell size, as the control row shows it; "" with the grid off.
+std::string ViewportPanel::grid_legend() const {
+    if (!_show_grid) return {};
     const float c = external_grid() ? world_grid_cell() : grid_cell();
     char buf[32];
     if (_gauge_metric) {
@@ -640,13 +639,10 @@ void ViewportPanel::draw_grid_overlay(float x, float y, int line) const {
     } else {
         snprintf(buf, sizeof buf, "%g", (double)c);
     }
-    const std::string t = spirula::i18n::format(
+    return spirula::i18n::format(
         _gauge_metric ? spirula::i18n::msg::gui::overlay_grid_metric
                       : spirula::i18n::msg::gui::overlay_grid_relative,
         {std::string(buf)});
-    ImGui::GetWindowDrawList()->AddText(
-        ImVec2(x, y + line * ImGui::GetTextLineHeight()),
-        IM_COL32(200, 200, 200, 180), t.c_str());
 }
 
 // Row-major world-to-view for the GL preview (inverse of the camera c2w).
@@ -1533,54 +1529,95 @@ void ViewportPanel::draw_overlays() {
 // Draw
 // ---------------------------------------------------------------------------
 
-void ViewportPanel::draw_controls(bool engine) {
-    // The controls pack greedily onto as many rows as they need: an item goes
-    // on the current row when what is left of it can hold the item, and starts
-    // a new row otherwise. A fixed width threshold cannot do this -- WHICH
-    // controls are present depends on what is being shown (a viewer has render
-    // options a training session has not; a mesh has display switches a splat
-    // has not) and the panel is half-width when two are side by side, so a
-    // threshold calibrated for one combination overflows another.
+namespace {
+
+// Unscaled widths: the buffer combo on the row, the fields of the options
+// panel, which is wide enough for two of them side by side, and the corner the
+// gizmo keeps at the image's top right.
+constexpr float kBufferW = 130.0f, kOptionW = 170.0f, kOptionsW = 360.0f, kGizmoW = 90.0f;
+
+// The row and the panel float over the picture, so their widgets are made
+// opaque enough to read over a bright render.
+void push_overlay_colors() {
     const ImGuiStyle& st = ImGui::GetStyle();
-    const float row_w = ImGui::GetContentRegionAvail().x;
-    auto text_w = [](const char* s) { return ImGui::CalcTextSize(s).x; };
-    auto check_w = [&](const spirula::i18n::Msg& m) {
-        return ImGui::GetFrameHeight() + st.ItemInnerSpacing.x +
-               text_w(m.get());
+    auto solid = [&](ImGuiCol c) {
+        ImVec4 v = st.Colors[c];
+        v.w = std::max(v.w, 0.85f);
+        ImGui::PushStyleColor(c, v);
     };
+    for (ImGuiCol c : {ImGuiCol_Button, ImGuiCol_FrameBg, ImGuiCol_FrameBgHovered})
+        solid(c);
+}
+constexpr int kOverlayColors = 3;
+
+// A child's background, drawn in its own draw list: imgui puts a child's
+// decorations in its parent's, under the image submitted after it.
+void overlay_backdrop(ImU32 fill, bool border) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 p = ImGui::GetWindowPos();
+    const ImVec2 q(p.x + ImGui::GetWindowWidth(), p.y + ImGui::GetWindowHeight());
+    const float r = ImGui::GetStyle().ChildRounding;
+    dl->AddRectFilled(p, q, fill, r);
+    if (border) dl->AddRect(p, q, ImGui::GetColorU32(ImGuiCol_Border), r);
+}
+
+}  // namespace
+
+// One short row over the image's top-left corner, so the picture keeps the
+// pane's whole height. Child windows drawn before the image still render above
+// it and take the pointer from it; the row wraps in a narrow pane.
+void ViewportPanel::draw_controls(bool engine, const ImVec2& avail) {
+    const ImGuiStyle& st = ImGui::GetStyle();
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const float margin = px(6.0f);
+    const float row_w = std::max(px(120.0f), avail.x - 2.0f * margin - px(kGizmoW));
+    const float panel_w = std::min(px(kOptionsW), avail.x - 2.0f * margin);
+    // Beside a wide image the panel stays until its button closes it; over a
+    // narrow one it covers too much to stay, and closes like a menu.
+    const bool pinned = panel_w <= avail.x * 0.4f;
+    const bool clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
+                         ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
+                         ImGui::IsMouseClicked(ImGuiMouseButton_Middle);
+    if (_options_open && !pinned && clicked && !_options_hovered && !_options_button_hovered &&
+        !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
+        _options_open = false;
+
+    auto text_w = [](const char* s) { return ImGui::CalcTextSize(s).x; };
     // How much of the current row is used. TRACKED rather than read back from
-    // ImGui's last-item rectangle, which would pick up the tooltip's contents
-    // whenever one of these controls is hovered -- the row would then reflow
-    // under the cursor.
+    // ImGui's last-item rectangle, which picks up a hovered tooltip's contents.
     float used = 0.0f;
     auto place = [&](float w) {
         if (used > 0.0f && used + st.ItemSpacing.x + w <= row_w) {
             ImGui::SameLine();
             used += st.ItemSpacing.x + w;
         } else {
-            used = w;    // first item, or a new row: no SameLine
+            used = w;
         }
     };
-    // Keep a group of related controls together: if the whole of it will not
-    // fit on what is left of this row, start it on a fresh one.
-    auto place_group = [&](float w) {
-        if (used > 0.0f && used + st.ItemSpacing.x + w > row_w) used = 0.0f;
+    auto note = [&](const std::string& s) {
+        place(text_w(s.c_str()));
+        ImGui::AlignTextToFramePadding();
+        ui::TextDisabledRaw(s);
     };
 
-    // place() plus the width of the control that follows, unscaled.
-    auto place_item = [&](float w) {
-        place(px(w));
-        ImGui::SetNextItemWidth(px(w));
-    };
-    // Control widths. The SH slider is short enough for a row of controls,
-    // wide enough for "SH 3" plus the grab.
-    constexpr float kBufferW = 130.0f, kSizeW = 110.0f, kCenterW = 170.0f;
-    constexpr float kScaleW = 66.0f, kPrimitiveW = 80.0f, kShW = 86.0f;
-    constexpr float kColorW = kCompactFieldW;   // gamut and transfer
+    push_overlay_colors();
+    ImGui::SetCursorScreenPos(ImVec2(origin.x + margin, origin.y + margin));
+    const ImGuiWindowFlags overlay = ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoBackground;
+    ImGui::BeginChild("##vpcontrols", ImVec2(0.0f, 0.0f),
+                      ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY, overlay);
+    place(text_w(msg::viewport_options.get()) + 2.0f * st.FramePadding.x);
+    const bool was_open = _options_open;
+    if (was_open) ImGui::PushStyleColor(ImGuiCol_Button, st.Colors[ImGuiCol_ButtonActive]);
+    if (ui::Button(msg::viewport_options)) _options_open = !_options_open;
+    if (was_open) ImGui::PopStyleColor();
+    _options_button_hovered = ImGui::IsItemHovered();
+    if (!was_open) ui::help_on_hover(msg::viewport_options_help);
 
-    // ---- display group ----
     if (engine && !_buffer_keys.empty()) {
-        place_item(kBufferW);
+        place(px(kBufferW));
+        ImGui::SetNextItemWidth(px(kBufferW));
         // Buffer names ("color", "depth") come from the engine.
         if (ui::BeginComboRaw("##buffer", _buffer_keys[_buffer_idx].c_str())) {
             for (int i = 0; i < (int)_buffer_keys.size(); i++)
@@ -1592,272 +1629,264 @@ void ViewportPanel::draw_controls(bool engine) {
         }
         ui::help_on_hover(msg::viewport_buffer_help);
     }
-    // The "dataset preview" note explains why the image is points and not a
-    // render; over a mesh it would be simply wrong.
+    place(text_w(msg::viewport_reset_view.get()) + 2.0f * st.FramePadding.x);
+    if (ui::Button(msg::viewport_reset_view)) reset_view();
+    // Why the image is points and not a render; over a mesh it would be wrong.
     if (!engine && !_preview.has_mesh() && !_preview_limit) {
-        place(text_w(msg::viewport_dataset_preview.get()));
-        ui::TextDisabled(msg::viewport_dataset_preview);
+        note(msg::viewport_dataset_preview.get());
         ui::help_on_hover(msg::viewport_dataset_preview_help);
     }
+    if (!engine && _show_counts)
+        note(_preview.has_mesh()
+                 ? spirula::i18n::format(msg::overlay_triangles, {(long long)_preview.num_triangles()})
+                 : spirula::i18n::format(msg::overlay_points, {(long long)_preview.num_points()}));
+    const std::string legend = grid_legend();
+    if (!legend.empty()) note(legend);
+    ImGui::EndChild();
+
+    if (_options_open) {
+        // As tall as its sections; in a short pane the folded ones make room.
+        const float top = ImGui::GetItemRectMax().y + px(4.0f);
+        ImGui::SetCursorScreenPos(ImVec2(origin.x + margin, top));
+        ImGui::BeginChild("##vpoptions", ImVec2(panel_w, 0.0f),
+                          ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_AutoResizeY,
+                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground);
+        overlay_backdrop(ImGui::GetColorU32(ImGuiCol_PopupBg), true);
+        draw_options(engine);
+        _options_hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows |
+                                                  ImGuiHoveredFlags_AllowWhenBlockedByPopup);
+        ImGui::EndChild();
+    } else {
+        _options_hovered = false;
+    }
+    ImGui::PopStyleColor(kOverlayColors);
+    // The image is laid out where the overlay was not: from the top.
+    ImGui::SetCursorScreenPos(origin);
+}
+
+void ViewportPanel::draw_options(bool engine) {
+    const float w = px(kOptionW);
+    auto field = [&] { ImGui::SetNextItemWidth(w); };
+
+    // ---- navigation: how the mouse and keys move the view, and about what ----
+    // The four modes behave exactly as the web viewer's do; the tooltip names
+    // them by substitution so it uses the words the combo just showed.
+    if (ui::TreeNodeEx(msg::viewport_sec_navigation, ImGuiTreeNodeFlags_DefaultOpen)) {
+        static const spirula::i18n::Msg* kNavModes[] = {
+            &msg::nav_turntable, &msg::nav_trackball,
+            &msg::nav_first_person, &msg::nav_free_fly};
+        int nav = (int)_cam.mode;
+        field();
+        if (ui::ComboRaw("##navmode", &nav,
+                         {kNavModes[0], kNavModes[1], kNavModes[2], kNavModes[3]})) {
+            _cam.mode = (NavCamera::Mode)nav;
+            _auto_nav_mode = false;
+            _nav_edits++;
+        }
+        ui::help_on_hover(msg::viewport_nav_help,
+                          {kNavModes[0]->get(), kNavModes[1]->get(),
+                           kNavModes[2]->get(), kNavModes[3]->get()});
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ui::SliderFloatRaw("##speed", &_cam.speed_exp, -2.0f, 2.0f, "spd 10^%.1f"))
+            _nav_edits++;
+        ui::help_on_hover(msg::viewport_speed_help);
+        if (_centers_known) {
+            namespace fld = spirula::i18n::msg::field;
+            auto center_label = [](int mode) -> const char* {
+                const spirula::i18n::Msg* m =
+                    fld::choice_label("scene_center", dsparse::kCenterModeNames[mode]);
+                return m ? m->get() : dsparse::kCenterModeNames[mode];
+            };
+            auto is_camera_mode = [](int mode) {
+                using M = dsparse::CenterMode;
+                return mode == (int)M::CameraMedian || mode == (int)M::CameraMean ||
+                       mode == (int)M::CameraFocus;
+            };
+            field();
+            if (ui::BeginComboRaw(ui::detail::label(msg::viewport_center),
+                                  center_label(effective_center_mode()))) {
+                for (int i = 0; i < dsparse::kNumCenterModes; i++) {
+                    if (!_center_has_cameras && is_camera_mode(i)) continue;
+                    if (ui::SelectableRaw(center_label(i), i == _center_mode) &&
+                        i != _center_mode) {
+                        _center_mode = i;
+                        _auto_center = false;
+                        // What is live now, not what the file held.
+                        if (_center_provider) {
+                            dsparse::CenterTable live;
+                            if (_center_provider(live)) _centers = live;
+                        }
+                        // The model stays where it is; the pivot moves to the
+                        // new centre, and so does the pose Reset view returns to.
+                        pivot_on_center();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ui::help_on_hover(msg::viewport_center_help);
+        }
+        // Only where there is a guess to switch off. Turntable and first-person
+        // orbit about the navigated frame's +Z, so this is what they turn about.
+        if (!_align_identity) {
+            if (ui::Checkbox(msg::viewport_level_cameras, &_level_cameras)) {
+                rebuild_m2s();
+                _dirty = true;
+            }
+            ui::help_on_hover(msg::viewport_level_cameras_help);
+        }
+        if (_views) draw_view_buttons();
+        ImGui::TreePop();
+    }
+
+    // ---- lens ----
+    if (ui::TreeNodeEx(msg::viewport_sec_lens, ImGuiTreeNodeFlags_DefaultOpen)) {
+        field();
+        if (ui::BeginComboRaw("##cammodel", kViewerCameraModels[_cam_model].label->get())) {
+            for (int i : {4, 0, 1, 2, 3})
+                if (ui::Selectable(*kViewerCameraModels[i].label, i == _cam_model))
+                    set_view_lens(i, _fov_deg[i]);
+            ImGui::EndCombo();
+        }
+        ui::help_on_hover(msg::viewport_projection_help);
+        ImGui::SameLine();
+        if (fov_max() > 0) {
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+            if (ui::SliderFloatRaw("##fov", &_fov_deg[_cam_model],
+                                   fov_min(), fov_max(), "fov %.0f\xc2\xb0"))
+                _dirty = true;
+        } else {
+            // Equirectangular has no field of view to set: the image IS the
+            // whole sphere.
+            ImGui::AlignTextToFramePadding();
+            ui::TextDisabledRaw("360\xc2\xb0 x 180\xc2\xb0");
+        }
+        ui::help_on_hover(msg::viewport_fov_help);
+        ImGui::TreePop();
+    }
+
+    // ---- what is drawn over the model ----
     // No dataset behind a splat file, so nothing to draw a frustum for.
-    if ((_has_cameras || _views) && _mode != Mode::Hardware) {
-        place(check_w(msg::viewport_cameras));
-        if (ui::Checkbox(msg::viewport_cameras, &_show_cams)) _dirty = true;
-        ui::help_on_hover(msg::viewport_cameras_help);
-        if (_show_cams) {
-            place_item(kSizeW);
+    const bool cams = (_has_cameras || _views) && _mode != Mode::Hardware;
+    const bool points = !engine && !_preview.has_mesh() && _preview.num_points() > 0;
+    const bool roi = _mode == Mode::Engine ? _roi_engine != nullptr
+                                           : (_roi_preview || _roi_points_inside);
+    const bool mesh = !engine && _preview.has_mesh();
+    if ((cams || points || roi || mesh || _mode != Mode::Hardware) &&
+        ui::TreeNodeEx(msg::viewport_sec_overlays, ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (cams) {
+            if (ui::Checkbox(msg::viewport_cameras, &_show_cams)) _dirty = true;
+            ui::help_on_hover(msg::viewport_cameras_help);
+            ImGui::SameLine();
+            field();
+            ImGui::BeginDisabled(!_show_cams);
             if (ui::SliderFloatRaw("##fsize", &_frustum_scale, 0.1f, 10.0f,
                                    "size x%.2f", ImGuiSliderFlags_Logarithmic))
                 _dirty = true;
+            ImGui::EndDisabled();
             ui::help_on_hover(msg::viewport_frustum_size_help);
         }
-    }
-    if (!engine && !_preview.has_mesh() && _preview.num_points() > 0) {
-        place_item(kSizeW);
-        const std::string fmt = spirula::i18n::format(msg::viewport_point_size, {"%.1f"});
-        if (ui::SliderFloatRaw("##psize", &_point_px, 1.0f, 5.0f, fmt.c_str(),
-                               ImGuiSliderFlags_AlwaysClamp))
-            _dirty = true;
-        ui::help_on_hover(msg::viewport_point_size_help);
-    }
-    if (_mode != Mode::Hardware) {
-        place(check_w(msg::viewport_grid));
-        if (ui::Checkbox(msg::viewport_grid, &_show_grid)) _dirty = true;
-        ui::help_on_hover(msg::viewport_grid_help);
-    }
-    if (_mode == Mode::Engine ? _roi_engine != nullptr : (_roi_preview || _roi_points_inside)) {
-        place(check_w(msg::viewport_region));
-        if (ui::Checkbox(msg::viewport_region, &_show_roi)) _dirty = true;
-        ui::help_on_hover(msg::viewport_region_help);
-    }
-    // Only where there is a guess to switch off. Turntable and first-person
-    // orbit about the navigated frame's +Z, so this is what they turn about.
-    if (!_align_identity) {
-        place(check_w(msg::viewport_level_cameras));
-        if (ui::Checkbox(msg::viewport_level_cameras, &_level_cameras)) {
-            rebuild_m2s();
-            _dirty = true;
+        if (points) {
+            field();
+            const std::string fmt = spirula::i18n::format(msg::viewport_point_size, {"%.1f"});
+            if (ui::SliderFloatRaw("##psize", &_point_px, 1.0f, 5.0f, fmt.c_str(),
+                                   ImGuiSliderFlags_AlwaysClamp))
+                _dirty = true;
+            ui::help_on_hover(msg::viewport_point_size_help);
         }
-        ui::help_on_hover(msg::viewport_level_cameras_help);
-    }
-    if (_centers_known) {
-        namespace fld = spirula::i18n::msg::field;
-        auto center_label = [](int mode) -> const char* {
-            const spirula::i18n::Msg* m =
-                fld::choice_label("scene_center", dsparse::kCenterModeNames[mode]);
-            return m ? m->get() : dsparse::kCenterModeNames[mode];
-        };
-        auto is_camera_mode = [](int mode) {
-            using M = dsparse::CenterMode;
-            return mode == (int)M::CameraMedian || mode == (int)M::CameraMean ||
-                   mode == (int)M::CameraFocus;
-        };
-        place(px(kCenterW) + st.ItemInnerSpacing.x + text_w(msg::viewport_center.get()));
-        ImGui::SetNextItemWidth(px(kCenterW));
-        if (ui::BeginComboRaw(ui::detail::label(msg::viewport_center),
-                              center_label(effective_center_mode()))) {
-            for (int i = 0; i < dsparse::kNumCenterModes; i++) {
-                if (!_center_has_cameras && is_camera_mode(i)) continue;
-                if (ui::SelectableRaw(center_label(i), i == _center_mode) &&
-                    i != _center_mode) {
-                    _center_mode = i;
-                    _auto_center = false;
-                    // What is live now, not what the file held.
-                    if (_center_provider) {
-                        dsparse::CenterTable live;
-                        if (_center_provider(live)) _centers = live;
-                    }
-                    // The model stays where it is; the pivot moves to the new
-                    // centre, and so does the pose Reset view returns to.
-                    pivot_on_center();
-                }
+        if (_mode != Mode::Hardware) {
+            if (ui::Checkbox(msg::viewport_grid, &_show_grid)) _dirty = true;
+            ui::help_on_hover(msg::viewport_grid_help);
+        }
+        if (roi) {
+            if (_mode != Mode::Hardware) ImGui::SameLine();
+            if (ui::Checkbox(msg::viewport_region, &_show_roi)) _dirty = true;
+            ui::help_on_hover(msg::viewport_region_help);
+        }
+        if (mesh) {
+            if (ui::Checkbox(msg::viewport_shading, &_mesh_shade)) _dirty = true;
+            if (_mesh_shade) {
+                ImGui::SameLine();
+                if (ui::Checkbox(msg::viewport_flat_shading, &_mesh_flat)) _dirty = true;
+                ui::help_on_hover(msg::viewport_flat_shading_help);
             }
-            ImGui::EndCombo();
+            // Nothing to switch off when the mesh has no color of its own.
+            if (_preview.mesh_color_kind() != 0) {
+                ImGui::SameLine();
+                if (ui::Checkbox(msg::viewport_mesh_color, &_mesh_color_on)) _dirty = true;
+                ui::help_on_hover(msg::viewport_mesh_color_help);
+            }
         }
-        ui::help_on_hover(msg::viewport_center_help);
+        ImGui::TreePop();
     }
-    if (engine && _mode != Mode::Hardware) {
-        place(px(kScaleW) + st.ItemInnerSpacing.x +
-              text_w(msg::viewport_scale.get()));
-        ImGui::SetNextItemWidth(px(kScaleW));
+
+    // ---- how the model is rendered ----
+    if (!engine || (_mode == Mode::Hardware && !_scene_options)) return;
+    if (!ui::TreeNodeEx(msg::viewport_sec_rendering, ImGuiTreeNodeFlags_DefaultOpen)) return;
+    if (_mode != Mode::Hardware) {
+        field();
         // Only the first entry is a word; the rest are numbers, and a
         // percentage is a percentage in every language.
-        const char* scales[] = {msg::viewport_scale_auto.get(),
-                                "50%", "75%", "100%"};
-        if (ui::ComboRaw(ui::detail::label(msg::viewport_scale), &_scale_idx,
-                         scales, 4))
+        const char* scales[] = {msg::viewport_scale_auto.get(), "50%", "75%", "100%"};
+        if (ui::ComboRaw(ui::detail::label(msg::viewport_scale), &_scale_idx, scales, 4))
             _dirty = true;
         ui::help_on_hover(msg::viewport_scale_help);
         // "Live" is about keeping up with training; a file does not move.
         if (_has_cameras) {
-            place(check_w(msg::viewport_live));
+            ImGui::SameLine();
             ui::Checkbox(msg::viewport_live, &_auto_refresh);
             ui::help_on_hover(msg::viewport_live_help);
         }
     }
-    // ---- mesh display switches (preview over a mesh) ----
-    if (!engine && _preview.has_mesh()) {
-        place(check_w(msg::viewport_shading));
-        if (ui::Checkbox(msg::viewport_shading, &_mesh_shade)) _dirty = true;
-        if (_mesh_shade) {
-            place(check_w(msg::viewport_flat_shading));
-            if (ui::Checkbox(msg::viewport_flat_shading, &_mesh_flat))
-                _dirty = true;
-            ui::help_on_hover(msg::viewport_flat_shading_help);
-        }
-        // Nothing to switch off when the mesh has no color of its own.
-        if (_preview.mesh_color_kind() != 0) {
-            place(check_w(msg::viewport_mesh_color));
-            if (ui::Checkbox(msg::viewport_mesh_color, &_mesh_color_on))
-                _dirty = true;
-            ui::help_on_hover(msg::viewport_mesh_color_help);
-        }
-        _preview.set_mesh_display(_mesh_shade, _mesh_flat, _mesh_color_on);
-    }
-
-    // ---- how the model is rendered (viewer only) ----
     // A training session renders what it is training; only a file being
     // LOOKED at can be drawn a different way than it was made.
-    if (engine && _scene_options) {
-        float w_group = px(kPrimitiveW) + 2.0f * px(kColorW) +
-                        check_w(msg::viewport_linear_color) +
-                        3.0f * st.ItemSpacing.x;
-        if (_sh_degree_max > 0) w_group += px(kShW) + st.ItemSpacing.x;
-        place_group(w_group);
-        place_item(kPrimitiveW);
-        // Primitive names are identifiers (they are what --primitive takes).
-        if (ui::ComboRaw("##primitive", &_primitive_idx, kViewerPrimitives,
-                         kNumViewerPrimitives)) {
-            if (_on_primitive_changed) _on_primitive_changed();
-            if (_mode == Mode::Engine || _mode == Mode::Hardware) refresh_buffer_keys();
-            _dirty = true;
-        }
-        ui::help_on_hover(msg::viewport_primitive_help);
-
-        if (_sh_degree_max > 0) {
-            place_item(kShW);
-            // Capped at what the file actually carries -- bands it has not got
-            // cannot be drawn, so there is nothing above the top end to offer.
-            // Degrees are numbers in every language.
-            if (ui::SliderIntRaw("##shdeg", &_sh_degree, 0, _sh_degree_max,
-                                 "SH %d"))
-                _dirty = true;
-            ui::help_on_hover(msg::viewport_sh_degree_help);
-        }
-
-        place_item(kColorW);
-        // Gamut names are standards ("DCI-P3"); only the "none" row is a word.
-        const char* gamuts[kNumViewerGamuts];
-        gamuts[0] = msg::viewport_gamut_none.get();
-        for (int i = 1; i < kNumViewerGamuts; i++) gamuts[i] = kViewerGamuts[i];
-        auto apply = [&] {
-            if (_apply_color_space)
-                _apply_color_space(kViewerGamuts[_gamut_idx], _transfer_idx,
-                                   _linear_color);
-            _dirty = true;
-        };
-        if (ui::ComboRaw("##gamut", &_gamut_idx, gamuts, kNumViewerGamuts))
-            apply();
-        ui::help_on_hover(msg::viewport_gamut_help);
-        place(check_w(msg::viewport_linear_color));
-        if (ui::Checkbox(msg::viewport_linear_color, &_linear_color)) apply();
-        ui::help_on_hover(msg::viewport_linear_help);
-        place_item(kColorW);
-        // Transfer names are the identifiers --splat-color-transfer takes.
-        if (ui::ComboRaw("##transfer", &_transfer_idx, colorspace::kTransfers,
-                         kNumViewerTransfers))
-            apply();
-        ui::help_on_hover(msg::viewport_transfer_help);
-    }
-
-    if (_nav_controls) draw_nav_controls();
+    if (_scene_options) draw_scene_options();
+    ImGui::TreePop();
 }
 
-// The four modes behave exactly as the web viewer's do; only the words are
-// localized. The tooltip names them by substitution so it always uses the same
-// words the combo just showed.
-void ViewportPanel::draw_nav_controls() {
-    const ImGuiStyle& st = ImGui::GetStyle();
-    const float row_w = ImGui::GetContentRegionAvail().x;
-    auto text_w = [](const char* s) { return ImGui::CalcTextSize(s).x; };
-    auto button_w = [&](const spirula::i18n::Msg& m) {
-        return text_w(m.get()) + 2.0f * st.FramePadding.x;
-    };
-    float used = 0.0f;
-    auto place = [&](float w) {
-        if (used > 0.0f && used + st.ItemSpacing.x + w <= row_w) {
-            ImGui::SameLine();
-            used += st.ItemSpacing.x + w;
-        } else {
-            used = w;
-        }
-    };
-    auto place_group = [&](float w) {
-        if (used > 0.0f && used + st.ItemSpacing.x + w > row_w) used = 0.0f;
-    };
-
-    place(button_w(msg::viewport_reset_view));
-    if (ui::Button(msg::viewport_reset_view)) reset_view();
-
-    static const spirula::i18n::Msg* kNavModes[] = {
-        &msg::nav_turntable, &msg::nav_trackball,
-        &msg::nav_first_person, &msg::nav_free_fly};
-    auto place_item = [&](float w) {
-        place(px(w));
-        ImGui::SetNextItemWidth(px(w));
-    };
-    constexpr float kNavW = 150.0f, kSpeedW = 100.0f, kLensW = 160.0f;
-    constexpr float kFovW = kCompactFieldW;
-    const float w_fov = fov_max() > 0 ? px(kFovW)
-                                      : text_w("360\xc2\xb0 x 180\xc2\xb0");
-    place_group(px(kNavW) + px(kSpeedW) + px(kLensW) + w_fov +
-                3.0f * st.ItemSpacing.x);
-    int nav = (int)_cam.mode;
-    place_item(kNavW);
-    if (ui::ComboRaw("##navmode", &nav,
-                     {kNavModes[0], kNavModes[1], kNavModes[2], kNavModes[3]})) {
-        _cam.mode = (NavCamera::Mode)nav;
-        _auto_nav_mode = false;
+void ViewportPanel::draw_scene_options() {
+    auto field = [] { ImGui::SetNextItemWidth(px(kOptionW)); };
+    field();
+    // Primitive names are identifiers (they are what --primitive takes).
+    if (ui::ComboRaw(ui::detail::label(msg::opt_primitive), &_primitive_idx, kViewerPrimitives,
+                     kNumViewerPrimitives)) {
+        if (_on_primitive_changed) _on_primitive_changed();
+        if (_mode == Mode::Engine || _mode == Mode::Hardware) refresh_buffer_keys();
+        _dirty = true;
     }
-    ui::help_on_hover(msg::viewport_nav_help,
-                      {kNavModes[0]->get(), kNavModes[1]->get(),
-                       kNavModes[2]->get(), kNavModes[3]->get()});
-    place_item(kSpeedW);
-    ui::SliderFloatRaw("##speed", &_cam.speed_exp, -2.0f, 2.0f, "spd 10^%.1f");
-    ui::help_on_hover(msg::viewport_speed_help);
-    place_item(kLensW);
-    if (ui::BeginComboRaw("##cammodel", kViewerCameraModels[_cam_model].label->get())) {
-        for (int i : {4, 0, 1, 2, 3})
-            if (ui::Selectable(*kViewerCameraModels[i].label, i == _cam_model))
-                set_view_lens(i, _fov_deg[i]);
-        ImGui::EndCombo();
+    ui::help_on_hover(msg::viewport_primitive_help);
+    if (_sh_degree_max > 0) {
+        field();
+        // Capped at what the file actually carries -- bands it has not got
+        // cannot be drawn. Degrees are numbers in every language.
+        if (ui::SliderInt(msg::viewport_sh_degree, &_sh_degree, 0, _sh_degree_max)) _dirty = true;
+        ui::help_on_hover(msg::viewport_sh_degree_help);
     }
-    ui::help_on_hover(msg::viewport_projection_help);
-    place(w_fov);
-    if (fov_max() > 0) {
-        ImGui::SetNextItemWidth(px(kFovW));
-        if (ui::SliderFloatRaw("##fov", &_fov_deg[_cam_model],
-                               fov_min(), fov_max(), "fov %.0f\xc2\xb0"))
-            _dirty = true;
-        ui::help_on_hover(msg::viewport_fov_help);
-    } else {
-        // Equirectangular has no field of view to set: the image IS the whole
-        // sphere.
-        ui::TextDisabledRaw("360\xc2\xb0 x 180\xc2\xb0");
-        ui::help_on_hover(msg::viewport_fov_help);
-    }
-    if (_views) {
-        place(views_width());
-        draw_view_buttons();
-    }
+    // Gamut names are standards ("DCI-P3"); only the "none" row is a word.
+    const char* gamuts[kNumViewerGamuts];
+    gamuts[0] = msg::viewport_gamut_none.get();
+    for (int i = 1; i < kNumViewerGamuts; i++) gamuts[i] = kViewerGamuts[i];
+    auto apply = [&] {
+        if (_apply_color_space)
+            _apply_color_space(kViewerGamuts[_gamut_idx], _transfer_idx, _linear_color);
+        _dirty = true;
+    };
+    field();
+    if (ui::ComboRaw(ui::detail::label(msg::viewport_gamut), &_gamut_idx, gamuts,
+                     kNumViewerGamuts))
+        apply();
+    ui::help_on_hover(msg::viewport_gamut_help);
+    if (ui::Checkbox(msg::viewport_linear_color, &_linear_color)) apply();
+    ui::help_on_hover(msg::viewport_linear_help);
+    field();
+    // Transfer names are the identifiers --splat-color-transfer takes.
+    if (ui::ComboRaw(ui::detail::label(msg::viewport_transfer), &_transfer_idx,
+                     colorspace::kTransfers, kNumViewerTransfers))
+        apply();
+    ui::help_on_hover(msg::viewport_transfer_help);
 }
 
 void ViewportPanel::draw(bool training, int step) {
-    const float y0 = ImGui::GetCursorPosY();
-    draw_controls(_mode == Mode::Engine || _mode == Mode::Hardware);
-    _controls_h = ImGui::GetCursorPosY() - y0;
-    if (_controls_pad > 0.0f) ImGui::Dummy(ImVec2(1.0f, _controls_pad));
-
     const double now = ImGui::GetTime();
     note_motion(now);
     // Seconds per training step, from the steps the caller reports. Measured
@@ -1889,6 +1918,7 @@ void ViewportPanel::draw(bool training, int step) {
         ui::TextDisabledRaw(line);
         return;
     }
+    draw_controls(_mode == Mode::Engine || _mode == Mode::Hardware, avail);
 
     if (_mode == Mode::Hardware) {
         try {
@@ -1966,6 +1996,9 @@ unsigned ViewportPanel::pump_preview(const ImVec2& avail, int& W, int& H) {
     if (_ortho) { fx *= _m2s_scale; fy *= _m2s_scale; }
     float target[3];
     model_point(_cam.target, target);
+    // Every switch the Options panel sets is read here, at the render that
+    // clears _dirty: one handed over earlier would be a click behind.
+    _preview.set_mesh_display(_mesh_shade, _mesh_flat, _mesh_color_on);
     _preview.set_overlay(_roi_preview, _show_roi);
     _preview.dim_points_outside(_roi_points_inside, _show_roi);
     PreviewStyle style;
@@ -2042,18 +2075,6 @@ void ViewportPanel::draw_preview(const ImVec2& avail) {
     }
 
     draw_overlays();
-
-    const std::string info =
-        _preview.has_mesh()
-            ? spirula::i18n::format(spirula::i18n::msg::gui::overlay_triangles,
-                                    {(long long)_preview.num_triangles()})
-            : spirula::i18n::format(spirula::i18n::msg::gui::overlay_points,
-                                    {(long long)_preview.num_points()});
-    ImVec2 p = ImGui::GetItemRectMin();
-    ImGui::GetWindowDrawList()->AddText(ImVec2(p.x + 8, p.y + 6),
-                                        IM_COL32(200, 200, 200, 180),
-                                        info.c_str());
-    draw_grid_overlay(p.x + 8, p.y + 6, 1);
 }
 
 // Adaptive render scale (`Auto`, the default).
@@ -2377,7 +2398,6 @@ void ViewportPanel::draw_engine(bool training, const ImVec2& avail, int step) {
                                    ImGui::GetCursorPosY() + pad.y));
         ImGui::Image((ImTextureID)(intptr_t)_tex, size);
         const ImVec2 tl = ImGui::GetItemRectMin();
-        draw_grid_overlay(tl.x + 8, tl.y + 6, 0);
         handle_input(size.y);
         if (_wipe_splits) draw_wipe(tl, size);
         draw_overlays();

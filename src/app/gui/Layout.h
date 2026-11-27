@@ -45,6 +45,10 @@ inline constexpr ImVec4 kOk(0.35f, 0.85f, 0.45f, 1.0f);
 inline constexpr ImVec4 kWarn(0.95f, 0.75f, 0.30f, 1.0f);
 inline constexpr ImVec4 kErr(1.0f, 0.42f, 0.42f, 1.0f);
 inline constexpr ImVec4 kDim(0.6f, 0.6f, 0.6f, 1.0f);
+// The button that leads on to the next stage, at rest, hovered and pressed.
+inline constexpr ImVec4 kGoButton(0.16f, 0.52f, 0.28f, 1.0f);
+inline constexpr ImVec4 kGoButtonHovered(0.20f, 0.62f, 0.34f, 1.0f);
+inline constexpr ImVec4 kGoButtonActive(0.13f, 0.44f, 0.24f, 1.0f);
 
 // The DPI scale and the user's size preference, resolved into one number once
 // per frame.

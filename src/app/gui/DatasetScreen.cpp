@@ -236,38 +236,53 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     } else if (st.cancelled) {
         ui::TextColored(kDim, dmsg::cancelled);
     }
-    // A dataset loaded from disk offers the same buttons as one just built.
-    if (st.done) {
-        DatasetFolders f{st.dir, st.image_dir, st.mask_dir, st.mask_flipped};
-        const fs::path masks = fs::path(st.dir) / st.mask_dir;
-        std::error_code ec;
-        if (st.mask_dir.empty() || !fs::is_directory(masks, ec) || fs::is_empty(masks, ec))
-            f.mask_dir.clear();
-        draw_dataset_open_buttons(f, /*model=*/true);
-    } else if (ready) {
-        const WorkspaceState& prior = workspace_state();
-        draw_dataset_open_buttons(workspace_folders(prior), prior.model);
-    }
     _ds_action_h = ImGui::GetCursorPosY() - action_y0;
+}
+
+// What the header links to: the dataset the run just made, or the one already
+// in the output folder -- the same either way.
+unsigned GuiApp::dataset_screen_links(DatasetFolders& f) {
+    if (dataset_busy()) return 0;
+    const bool builtin = effective_engine() == Engine::BuiltIn;
+    const bool done = builtin ? _sfm.state() == SfmRunner::State::Done
+                              : _colmap.state() == ColmapRunner::State::Done;
+    bool model = true;
+    std::error_code ec;
+    if (done) {
+        f = builtin ? DatasetFolders{_sfm.dataset_dir(), _sfm.image_dir(), _sfm.mask_dir(),
+                                     _sfm.mask_flipped()}
+                    : DatasetFolders{_colmap.dataset_dir(), _colmap.image_dir(),
+                                     _colmap.mask_dir(), _colmap.mask_flipped()};
+        const fs::path masks = fs::path(f.dir) / f.mask_dir;
+        if (f.mask_dir.empty() || !fs::is_directory(masks, ec) || fs::is_empty(masks, ec))
+            f.mask_dir.clear();
+    } else {
+        bool missing = (_sources.empty() && _lidar.empty()) || _workspace.empty();
+        for (const PrepInput& s : _sources) missing = missing || s.path.empty();
+        if (missing || !_source_probes_ready) return 0;
+        const WorkspaceState& prior = workspace_state();
+        f = workspace_folders(prior);
+        model = prior.model;
+    }
+    unsigned links = f.mask_dir.empty() ? 0u : (unsigned)kLinkMasks;
+    if (model) {
+        links |= kLinkTrain | kLinkEdit | kLinkRegion | kLinkPartition;
+        // Cleaning the seed cloud belongs here rather than after training: a
+        // floater removed now is one the run never fits to.
+        refresh_dense_versions(f.dir);
+        if (!_dense_versions.empty()) links |= kLinkDense;
+    }
+    return links;
 }
 
 void GuiApp::draw_new_dataset() {
     const bool running = dataset_busy();
 
-    ImGui::BeginDisabled(native_work_busy());
-    if (ui::Button(msg::back_home)) {
-        _screen = Screen::Home;
-        // The preview holds GL buffers and a decoding thread for a screen that
-        // is no longer up.
-        if (!native_work_busy()) reset_dataset_preview();
-        close_source_preview();
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::SetWindowFontScale(1.2f);
     const bool from_video = !_sources.empty() && _sources[0].is_video;
-    ui::Text(from_video ? dmsg::title_from_video : dmsg::title_from_photos);
-    ImGui::SetWindowFontScale(1.0f);
+    DatasetFolders links_to;
+    const unsigned links = dataset_screen_links(links_to);
+    draw_screen_header(from_video ? &dmsg::title_from_video : &dmsg::title_from_photos,
+                       [&] { draw_dataset_links(links_to, links); });
     ImGui::Spacing();
 
     // What the run says about itself, read before the layout is decided:
@@ -387,8 +402,6 @@ void GuiApp::draw_new_dataset() {
         }
     }
     if (_geometry_panel.is_open()) _geometry_panel.draw(_geometry);
-    if (_partition_panel.is_open()) _partition_panel.draw();
-    draw_partition_queue_modal();
     draw_clear_project_modal();
     draw_drop_intermediate_modal();
     draw_rebuild_confirm_modal();

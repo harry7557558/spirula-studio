@@ -1,4 +1,4 @@
-// A finished dataset's outputs: splat budget, open buttons, partition and ROI.
+// A finished dataset's outputs: splat budget, partition, region and masks.
 
 #include "app/gui/GuiApp.h"
 
@@ -10,12 +10,7 @@
 #include "data/RoiDocument.h"
 #include "data/SeedPointCount.h"
 #include "dense/Artifact.h"
-#include "i18n/catalog/Dataset.h"
-#include "i18n/catalog/Dense.h"
-#include "i18n/catalog/Edit.h"
 #include "i18n/catalog/Gui.h"
-#include "i18n/catalog/MaskEdit.h"
-#include "i18n/catalog/Partition.h"
 #include "i18n/catalog/Roi.h"
 #include "i18n/catalog/TrainFields.h"
 
@@ -27,10 +22,7 @@
 namespace fs = std::filesystem;
 namespace i18n = spirula::i18n;
 namespace msg = spirula::i18n::msg::gui;
-namespace emsg = spirula::i18n::msg::edit;
 namespace fld = spirula::i18n::msg::field;
-namespace dmsg = spirula::i18n::msg::dataset;
-namespace mmsg = spirula::i18n::msg::maskedit;
 
 namespace gui {
 
@@ -165,58 +157,6 @@ void GuiApp::draw_splat_budget(float w) {
     }
 }
 
-void GuiApp::draw_dataset_open_buttons(const DatasetFolders& f, bool model) {
-    if (model) {
-        if (ui::Button(dmsg::open_in_trainer)) {
-            if (training_busy()) {
-                _pending = Pending::OpenDataset;
-                _pending_path = f.dir;
-                _open_confirm = true;
-            } else {
-                open_dataset(f.dir, f.image_dir, f.mask_dir, f.mask_flipped,
-                             /*keep_log=*/true);
-            }
-        }
-        // Cleaning the seed cloud belongs here rather than after training: a
-        // floater removed now is one the run never fits to.
-        ImGui::SameLine();
-        if (ui::Button(emsg::sparse_edit)) {
-            _edit_after_open = true;
-            _sparse_edit_src = f;
-            request_open_splat(f.dir);
-        }
-        ui::help_on_hover(emsg::sparse_edit_help);
-        refresh_dense_versions(f.dir);
-        if (!_dense_versions.empty()) {
-            ImGui::SameLine();
-            if (ui::Button(spirula::i18n::msg::dense::edit_cloud)) edit_dense_cloud(f);
-            ui::help_on_hover(spirula::i18n::msg::dense::edit_cloud_help);
-        }
-        ImGui::SameLine();
-        if (ui::Button(spirula::i18n::msg::partition::open_button)) open_partition_panel(f);
-        ui::help_on_hover(spirula::i18n::msg::partition::open_button_help);
-        ImGui::SameLine();
-        if (ui::Button(spirula::i18n::msg::roi::editor_button)) open_roi_editor(f.dir);
-        ui::help_on_hover(spirula::i18n::msg::roi::editor_button_help);
-    }
-    if (!f.mask_dir.empty()) {
-        if (model) ImGui::SameLine();
-        ImGui::BeginDisabled(dataset_busy() || native_work_busy());
-        if (ui::Button(mmsg::correct_masks)) {
-            // A run reports its folders as the config spells them: relative to
-            // the dataset, and empty for the parser's default.
-            TrainConfig stock;
-            auto under = [&](const std::string& d, const std::string& fallback) {
-                return (fs::path(f.dir) / (d.empty() ? fallback : d)).lexically_normal().string();
-            };
-            open_mask_editor(f.dir, under(f.image_dir, stock.image_dir),
-                             under(f.mask_dir, stock.mask_dir), f.mask_flipped);
-        }
-        ImGui::EndDisabled();
-        ui::help_on_hover(mmsg::correct_masks_help);
-    }
-}
-
 void GuiApp::open_partition_panel(const DatasetFolders& f) {
     if (dataset_busy() || native_work_busy()) return;
     PartitionPanel::Hooks hooks;
@@ -227,7 +167,7 @@ void GuiApp::open_partition_panel(const DatasetFolders& f) {
         return 0;
     };
     hooks.open_batch = [this] {
-        if (!native_work_busy()) _screen = Screen::Batch;
+        if (!native_work_busy()) go_to(Screen::Batch);
     };
     _partition_panel.open(f.dir, std::move(hooks));
 }
@@ -251,9 +191,9 @@ void GuiApp::open_roi_editor(const std::string& dataset, const std::string& file
 }
 
 // Which saved region the run trains in: the first by default, any other, or
-// none. What it writes is --roi-region's own spelling, so a batch row and the
-// command line read it the same way. Hidden until there is a region to choose.
-void GuiApp::draw_roi_row(bool busy) {
+// none, written in --roi-region's own spelling. Hidden until there is one to
+// choose; the header's Region of Interest makes the first.
+void GuiApp::draw_roi_row(float width) {
     namespace roimsg = spirula::i18n::msg::roi;
     if (_cfg.data.empty()) return;
     if (_roi_files_for != _cfg.data) {
@@ -265,15 +205,10 @@ void GuiApp::draw_roi_row(bool busy) {
     if (_roi_files.empty() && now.path.empty()) return;
     auto stem = [](const std::string& p) { return fs::path(p).stem().string(); };
     const std::string shown = now.off ? std::string(roimsg::train_none.get()) : stem(now.path);
-    ui::Text(roimsg::train_label);
-    ui::help_on_hover(roimsg::train_help);
-    ImGui::BeginDisabled(busy);
-    const float edit_w = ImGui::CalcTextSize(roimsg::train_edit_region.get()).x +
-                         2 * ImGui::GetStyle().FramePadding.x + ImGui::GetStyle().ItemSpacing.x;
-    ImGui::SetNextItemWidth(std::max(px(120.0f), ImGui::GetContentRegionAvail().x - edit_w - px(8.0f)));
     std::string pick;
-    bool picked = false;
-    if (ui::BeginComboRaw("##roirow", shown.c_str())) {
+    bool picked = false, edit = false;
+    ImGui::SetNextItemWidth(width);
+    if (ui::BeginCombo(roimsg::train_label, shown.c_str())) {
         _roi_files = spirula::list_roi_files(_cfg.data);
         for (size_t i = 0; i < _roi_files.size(); i++) {
             ImGui::PushID((int)i);
@@ -289,17 +224,17 @@ void GuiApp::draw_roi_row(bool busy) {
             pick = "off";
             picked = true;
         }
+        ImGui::Separator();
+        edit = ui::Selectable(roimsg::train_edit_region);
         ImGui::EndCombo();
     }
+    ui::help_on_hover_disabled(roimsg::train_help);
     if (picked && pick != _cfg.roi_region) {
         _cfg.roi_region = pick;
         _cfg_ui.touched.insert("roi_region");
         _parse_dirty = true;
     }
-    ImGui::SameLine();
-    if (ui::Button(roimsg::train_edit_region))
-        open_roi_editor(_cfg.data, !now.off && !now.path.empty() ? now.path : std::string());
-    ImGui::EndDisabled();
+    if (edit) open_roi_editor(_cfg.data, !now.off && !now.path.empty() ? now.path : std::string());
 }
 
 int GuiApp::add_batch_partition_rows(const DatasetFolders& f, const std::string& partition,

@@ -365,12 +365,6 @@ void ViewportPanel::handle_view_keys() {
     }
 }
 
-float ViewportPanel::views_width() const {
-    const ImGuiStyle& st = ImGui::GetStyle();
-    return ImGui::CalcTextSize(msg::viewport_views.get()).x +
-           kNumViews * (ImGui::GetFrameHeight() + st.ItemSpacing.x);
-}
-
 void ViewportPanel::draw_view_buttons() {
     ImGui::PushID("##views");
     ImGui::AlignTextToFramePadding();

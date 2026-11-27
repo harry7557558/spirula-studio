@@ -148,7 +148,7 @@ void GuiApp::request_start_batch(bool skip_invalid) {
     }
     if (training_busy()) {
         _pending = Pending::StartBatch;
-        _pending_batch_skip = skip_invalid;
+        _pending_then = [this, skip_invalid] { begin_batch(skip_invalid); };
         _open_confirm = true;
         return;
     }
@@ -675,10 +675,10 @@ void GuiApp::cancel_batch() {
 void GuiApp::follow_batch_screen(BatchStage stage) {
     if (_screen == Screen::Batch || _screen == Screen::Viewer) return;
     switch (stage) {
-        case BatchStage::Dataset: _screen = Screen::NewDataset; break;
-        case BatchStage::Train:   _screen = Screen::Train; break;
-        case BatchStage::Mesh:    _screen = Screen::Mesh; break;
-        case BatchStage::Merge:   _screen = Screen::Batch; break;
+        case BatchStage::Dataset: follow_to(Screen::NewDataset); break;
+        case BatchStage::Train:   follow_to(Screen::Train); break;
+        case BatchStage::Mesh:    follow_to(Screen::Mesh); break;
+        case BatchStage::Merge:   follow_to(Screen::Batch); break;
     }
 }
 

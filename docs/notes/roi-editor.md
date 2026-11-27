@@ -133,11 +133,13 @@ Merging a partition still assigns each splat by its centre
 distance instead was rejected: a label field has none, and the CSG of
 ellipsoids and outlines only an approximate one.
 
-The training screen's dataset section has a row for it once the dataset has a
-saved region (or the setting names one by path): each saved region, the first
-shown as chosen while the setting is unset, or None, and "Edit Region". Until
-then the editor opens from the dataset screen. Saving in the editor re-reads
-the preview when the training screen holds a parsed dataset and no run.
+The training screen's basic options have a dropdown for it, beside masks,
+depths, normals and starting points, once the dataset has a saved region (or
+the setting names one by path): each saved region, the first shown as chosen
+while the setting is unset, None, and "Edit Region". The editor itself is the
+Region of Interest link in the header of the dataset and training screens, and
+of the viewer over a reconstruction. Saving in the editor re-reads the preview
+when the training screen holds a parsed dataset and no run.
 
 ## The editor
 

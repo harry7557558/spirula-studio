@@ -232,7 +232,7 @@ void GuiApp::draw_home() {
         if (ui::Button(training_busy() ? msg::home_back_to_training
                                        : msg::home_back_to_trainer,
                        ImVec2(-1, bh)))
-            _screen = Screen::Train;
+            go_to(Screen::Train);
         ImGui::Dummy(ImVec2(0, px(10.0f)));
     }
 
@@ -256,10 +256,8 @@ void GuiApp::draw_home() {
     // right answer. The list is added to there, or dropped onto the window.
     ImGui::BeginDisabled(native_work_busy());
     if (ui::Button(msg::home_new_dataset, ImVec2(-1, bh)) &&
-        !native_work_busy()) {
-        close_splat();
-        _screen = Screen::NewDataset;
-    }
+        !native_work_busy())
+        go_to(Screen::NewDataset);
     ImGui::EndDisabled();
     ui::help_on_hover(msg::home_new_dataset_help);
 
@@ -269,10 +267,10 @@ void GuiApp::draw_home() {
     }
     ui::help_on_hover(msg::home_open_splat_help);
 
-    if (ui::Button(msg::home_make_mesh, ImVec2(-1, bh))) _screen = Screen::Mesh;
+    if (ui::Button(msg::home_make_mesh, ImVec2(-1, bh))) go_to(Screen::Mesh);
     ui::help_on_hover(msg::home_make_mesh_help);
 
-    if (ui::Button(msg::home_batch, ImVec2(-1, bh))) _screen = Screen::Batch;
+    if (ui::Button(msg::home_batch, ImVec2(-1, bh))) go_to(Screen::Batch);
     ui::help_on_hover(msg::home_batch_help);
 
     ImGui::Spacing();
@@ -421,7 +419,7 @@ void GuiApp::draw_recent_menu(const RecentItem& it, int tab_kind) {
     if (model && splats &&
         ui::MenuItem(msg::home_make_mesh, nullptr, false, !_mesh.busy())) {
         set_mesh_source(it.path);
-        _screen = Screen::Mesh;
+        go_to(Screen::Mesh);
     }
     ImGui::Separator();
     if (ui::MenuItem(msg::home_recent_show)) {
@@ -459,7 +457,7 @@ void GuiApp::open_recent(RecentItem it) {
 void GuiApp::open_reconstruction(const std::string& workspace) {
     if (recent_blocked({RecentKind::Reconstruction, workspace})) return;
     if (dataset_busy()) {
-        _screen = Screen::NewDataset;
+        go_to(Screen::NewDataset);
         return;
     }
     std::error_code ec;
@@ -483,7 +481,7 @@ void GuiApp::open_reconstruction(const std::string& workspace) {
         _workspace = workspace;
     }
     remember(RecentKind::Reconstruction, workspace);
-    _screen = Screen::NewDataset;
+    go_to(Screen::NewDataset);
 }
 
 void GuiApp::probe_recent() {

@@ -133,7 +133,7 @@ void GuiApp::handle_drop(const std::vector<std::string>& paths) {
         if (_screen != Screen::NewDataset) {
             clear_sources();
             clear_lidar_sources();
-            _screen = Screen::NewDataset;
+            go_to(Screen::NewDataset);
         }
         const std::vector<std::string> sources = raw_inputs(rest);
         if (!sources.empty()) add_sources(sources, /*replace=*/false);
@@ -182,18 +182,18 @@ void GuiApp::handle_drop(const std::vector<std::string>& paths) {
         const std::optional<PresetKind> kind = probe_preset_kind(paths[0]);
         if (kind == PresetKind::Dataset) {
             load_dataset_preset_file(paths[0]);
-            if (!_ds_presets.msg_err) _screen = Screen::NewDataset;
+            if (!_ds_presets.msg_err) request_screen(Screen::NewDataset);
             return;
         }
         if (kind == PresetKind::Mesh) {
             load_mesh_preset_file(paths[0]);
-            if (!_mesh_presets.msg_err) _screen = Screen::Mesh;
+            if (!_mesh_presets.msg_err) request_screen(Screen::Mesh);
             return;
         }
         if (kind == PresetKind::Train && is_preset_file(paths[0])) {
             load_preset_file(paths[0]);
             if (!_train_presets.msg_err && !_cfg.data.empty())
-                _screen = Screen::Train;
+                request_screen(Screen::Train);
             return;
         }
     }
@@ -269,7 +269,7 @@ void GuiApp::handle_drop(const std::vector<std::string>& paths) {
     if (paths.size() == 1 && fs::is_directory(paths[0], ec) && !native_work_busy() &&
         add_xgrids_export(paths[0])) {
         close_splat();
-        _screen = Screen::NewDataset;
+        go_to(Screen::NewDataset);
         return;
     }
     // A reconstruction that is not a trainable dataset -- a bare `sparse/`,
@@ -339,7 +339,7 @@ void GuiApp::handle_drop(const std::vector<std::string>& paths) {
     // Dropping onto the dataset screen adds to what is already listed there;
     // dropping from anywhere else starts a new dataset.
     if (add_sources(sources, /*replace=*/_screen != Screen::NewDataset))
-        _screen = Screen::NewDataset;
+        go_to(Screen::NewDataset);
 }
 
 const char* GuiApp::dir_key(PickAction a, FileDialog::Mode m) {
@@ -426,11 +426,11 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
         case PickAction::SourceImages:
         case PickAction::SourceVideo:
             if (add_sources(paths, /*replace=*/_screen != Screen::NewDataset))
-                _screen = Screen::NewDataset;
+                go_to(Screen::NewDataset);
             break;
         case PickAction::SourceDataset:
             add_existing_dataset(path);
-            _screen = Screen::NewDataset;
+            go_to(Screen::NewDataset);
             break;
         case PickAction::SourceReplace:
             if (!path.empty() && _pick_source >= 0 &&

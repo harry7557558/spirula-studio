@@ -249,11 +249,7 @@ void MaskSession::draw_toolbar() {
     draw_revert_all_modal();
     ImGui::SameLine(0.0f, px(24.0f));
     // The way out of the window, so it looks like one rather than one more tool.
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.52f, 0.28f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.62f, 0.34f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.13f, 0.44f, 0.24f, 1.0f));
-    if (ui::Button(msg::done, ImVec2(px(120.0f), 0.0f))) _close_requested = true;
-    ImGui::PopStyleColor(3);
+    if (ui::GoButton(msg::done, ImVec2(px(120.0f), 0.0f))) _close_requested = true;
     ui::help_on_hover(msg::done_help);
     _toolbar_w = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x +
                  ImGui::GetStyle().WindowPadding.x;

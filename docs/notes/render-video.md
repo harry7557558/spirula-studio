@@ -21,8 +21,7 @@ RenderPanel.cpp, RenderTimeline.cpp    its panel and its timeline
 
 The viewer screen has a **Render photo or video** button on its toolbar and a
 **Render** button on every pane; the pane's model becomes the primary one, and
-every other open model is a source a shot can show. The meshing preview is a
-comparison, not a stage, and does not offer it. A finished training run offers
+every other open model is a source a shot can show. A finished training run offers
 **Render photo or video** and **Edit the model** under *Train again*: both open
 the run's model on the viewer screen and go straight into the mode.
 

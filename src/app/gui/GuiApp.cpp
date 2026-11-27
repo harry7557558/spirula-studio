@@ -28,6 +28,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <utility>
 
 namespace fs = std::filesystem;
 namespace i18n = spirula::i18n;
@@ -389,11 +390,17 @@ std::string GuiApp::state_json() {
     // Index order is the declaration order of Screen and TrainRunner::Phase.
     static const char* kScreens[] = {"home", "new_dataset", "train", "viewer",
                                      "batch", "mesh"};
+    static const char* kViewModes[] = {"view", "edit", "render"};
     static const char* kPhases[] = {"idle", "loading", "ready", "load_error",
                                     "preparing", "training", "evaluating", "done",
                                     "train_error"};
     std::string out = "\"screen\":\"";
     out += kScreens[(int)_screen];
+    out += "\",\"back_to\":\"";
+    out += kScreens[(int)back_target()];
+    out += "\",\"history\":" + std::to_string(_nav_back.size());
+    out += ",\"viewer_mode\":\"";
+    out += kViewModes[(int)viewer_mode()];
     out += "\",\"train_phase\":\"";
     out += kPhases[(int)_runner.phase()];
     out += "\",\"step\":" + std::to_string(_runner.latest_progress().step);
@@ -591,7 +598,10 @@ void GuiApp::frame() {
         // splats, so it waits for engine setup exactly as the viewport does.
         if (!_images.attached() && _runner.session())
             _images.attach(*_runner.session());
-    } else if (_runner.phase() == TrainRunner::Phase::Ready) {
+    } else if (_runner.phase() == TrainRunner::Phase::Ready ||
+               _runner.phase() == TrainRunner::Phase::Done) {
+        // Done without the engine: a model opened since took it, and coming
+        // back shows the dataset rather than an empty view.
         if (!_viewport.preview_active() && _runner.session()) {
             _viewport.attach_preview(*_runner.session());
             bind_session_views(_viewport, *_runner.session());
@@ -611,6 +621,7 @@ void GuiApp::frame() {
     ImGui::PopStyleVar();
 
     draw_menu_bar();
+    handle_back_input();
     switch (_screen) {
         case Screen::Home:   draw_home();   break;
         case Screen::NewDataset: draw_new_dataset(); break;
@@ -619,7 +630,10 @@ void GuiApp::frame() {
         case Screen::Batch:  draw_batch();  break;
         case Screen::Mesh:   draw_mesh();   break;
     }
+    // The tool windows a dataset link opens, over whichever screen opened them.
     if (_roi_editor.is_open()) _roi_editor.draw();
+    if (_partition_panel.is_open()) _partition_panel.draw();
+    draw_partition_queue_modal();
 
     // A job cancelled by the editor's close finishes its stage off this thread.
     _mask_editor.sam_poll_retiring();
@@ -650,7 +664,8 @@ void GuiApp::frame() {
     // unless it was cancelled and the move is still unsaved.
     if (_quit_after_render_save && !_dialog.is_open()) {
         _quit_after_render_save = false;
-        if (!_compare.render().dirty()) request_close();
+        std::function<void()> then = std::exchange(_render_exit_then, nullptr);
+        if (!_compare.render().dirty() && then) then();
     }
     draw_dense_versions();
     draw_preset_save_modal();
@@ -658,6 +673,8 @@ void GuiApp::frame() {
     draw_edit_exit_modal();
     draw_render_exit_modal();
     draw_confirm_modal();
+    draw_leave_modal();
+    draw_quit_modal();
     draw_resume_error();
     draw_data_error_modal();
 
@@ -742,8 +759,8 @@ void GuiApp::draw_edit_exit_modal() {
     ImGui::EndPopup();
 }
 
-// An unsaved camera move at quit: saved over its project, saved somewhere
-// new, or let go.
+// An unsaved camera move on the way out of the viewer or the app: saved over
+// its project, saved somewhere new, or let go. _render_exit_then continues.
 void GuiApp::draw_render_exit_modal() {
     if (_render_exit_confirm) {
         ui::OpenPopup(rmsg::quit_title);
@@ -752,13 +769,16 @@ void GuiApp::draw_render_exit_modal() {
     ImGui::SetNextWindowSize(ImVec2(px(440.0f), 0.0f), ImGuiCond_Appearing);
     if (!ui::BeginPopupModal(rmsg::quit_title)) return;
     gui::render::RenderSession& r = _compare.render();
+    auto go_on = [this] {
+        if (std::function<void()> then = std::exchange(_render_exit_then, nullptr)) then();
+    };
     const std::string& file = r.project_file();
     if (file.empty()) ui::TextWrapped(rmsg::quit_body_new);
     else ui::TextWrapped(rmsg::quit_body, {fs::u8path(file).filename().string()});
     ImGui::BeginDisabled(file.empty());
     if (ui::Button(rmsg::project_save)) {
         ImGui::CloseCurrentPopup();
-        if (r.save_in_place()) request_close();
+        if (r.save_in_place()) go_on();
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
@@ -771,10 +791,14 @@ void GuiApp::draw_render_exit_modal() {
     if (ui::Button(rmsg::quit_discard)) {
         ImGui::CloseCurrentPopup();
         _render_discarded = true;
-        request_close();
+        go_on();
     }
     ImGui::SameLine();
-    if (ui::Button(rmsg::render_cancel)) ImGui::CloseCurrentPopup();
+    if (ui::Button(rmsg::render_cancel)) {
+        _render_exit_then = nullptr;
+        forget_open_intents();
+        ImGui::CloseCurrentPopup();
+    }
     ImGui::EndPopup();
 }
 
@@ -838,12 +862,13 @@ void GuiApp::draw_confirm_modal() {
         // Whole questions rather than one with a swappable tail: the clause
         // order differs by language, and Japanese, Korean and Turkish put the
         // verb last, so "... and {0}?" cannot be translated at all.
-        ui::Text(_pending == Pending::Quit       ? msg::confirm_quit
-               : _pending == Pending::GoHome     ? msg::confirm_home
-               : _pending == Pending::OpenSplat  ? msg::confirm_open_splat
-               : _pending == Pending::StartBatch ? msg::confirm_batch
-               : _pending == Pending::StopHere   ? msg::confirm_stop
-                                                 : msg::confirm_open);
+        ui::Text(_pending == Pending::Quit        ? msg::confirm_quit
+               : _pending == Pending::GoHome      ? msg::confirm_home
+               : _pending == Pending::OpenSplat   ? msg::confirm_open_splat
+               : _pending == Pending::StartBatch  ? msg::confirm_batch
+               : _pending == Pending::StopHere    ? msg::confirm_stop
+               : _pending == Pending::OpenDataset ? msg::confirm_open
+                                                  : msg::confirm_leave);
         ImGui::Spacing();
         auto stop = [&](bool save) {
             // A batch is a training session too, and this is the user saying
@@ -867,8 +892,8 @@ void GuiApp::draw_confirm_modal() {
         ImGui::SameLine();
         if (ui::Button(msg::keep_training, ImVec2(bw, 0))) {
             _pending = Pending::None;
-            _pending_path.clear();
-            _edit_after_open = false;
+            _pending_then = nullptr;
+            forget_open_intents();
             _confirm_shown = false;
             resume();
             ImGui::CloseCurrentPopup();
@@ -878,8 +903,8 @@ void GuiApp::draw_confirm_modal() {
     } else if (_confirm_shown) {
         // Dismissed (Esc / click-away): treat as "keep training".
         _pending = Pending::None;
-        _pending_path.clear();
-        _edit_after_open = false;
+        _pending_then = nullptr;
+        forget_open_intents();
         _confirm_shown = false;
         resume();
     }

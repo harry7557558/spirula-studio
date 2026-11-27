@@ -115,9 +115,7 @@ void GuiApp::draw_batch() {
     refresh_mesh_presets();
     check_batch_if_stale();
 
-    if (ui::Button(msg::back_home)) request_go_home();
-    ImGui::SameLine();
-    ui::Text(msg::batch_title);
+    draw_screen_header(&msg::batch_title);
 
     ImGui::PushTextWrapPos();
     ui::TextDisabled(msg::batch_intro);
@@ -1137,19 +1135,21 @@ void GuiApp::draw_batch_stop_buttons() {
         _batch_stop_after = true;
     ui::help_on_hover(msg::batch_stop_after_help);
     ImGui::EndDisabled();
-    if (ui::Button(msg::batch_stop_now, ImVec2(-8, 0))) {
-        _batch_stop_after = true;
-        _batch_stop_now = true;
-        if (_batch_current >= 0 && _batch_current < (int)_batch_tasks.size()) {
-            switch (_batch_tasks[(size_t)_batch_current].stage) {
-                case BatchStage::Dataset: cancel_dataset_job(); break;
-                case BatchStage::Mesh:    _mesh.cancel(); break;
-                case BatchStage::Merge:   break;
-                default:                  _runner.request_stop(); break;
-            }
+    if (ui::Button(msg::batch_stop_now, ImVec2(-8, 0))) stop_batch_now();
+    ui::help_on_hover(msg::batch_stop_now_help);
+}
+
+void GuiApp::stop_batch_now() {
+    _batch_stop_after = true;
+    _batch_stop_now = true;
+    if (_batch_current >= 0 && _batch_current < (int)_batch_tasks.size()) {
+        switch (_batch_tasks[(size_t)_batch_current].stage) {
+            case BatchStage::Dataset: cancel_dataset_job(); break;
+            case BatchStage::Mesh:    _mesh.cancel(); break;
+            case BatchStage::Merge:   break;
+            default:                  _runner.request_stop(); break;
         }
     }
-    ui::help_on_hover(msg::batch_stop_now_help);
 }
 
 // What is running, on the batch screen and on the work screen that owns the
@@ -1199,14 +1199,14 @@ void GuiApp::draw_batch_progress() {
                     ? _batch_tasks[(size_t)_batch_current].stage
                     : BatchStage::Train;
             switch (st) {
-                case BatchStage::Dataset: _screen = Screen::NewDataset; break;
-                case BatchStage::Mesh:    _screen = Screen::Mesh; break;
+                case BatchStage::Dataset: go_to(Screen::NewDataset); break;
+                case BatchStage::Mesh:    go_to(Screen::Mesh); break;
                 case BatchStage::Merge:   break;
-                default:                  _screen = Screen::Train; break;
+                default:                  go_to(Screen::Train); break;
             }
         }
     } else if (ui::Button(msg::batch_show_list, ImVec2(-8, 0))) {
-        _screen = Screen::Batch;
+        go_to(Screen::Batch);
     }
     draw_batch_stop_buttons();
 }

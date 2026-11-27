@@ -98,19 +98,19 @@ public:
     bool attached() const { return _mode == Mode::Engine; }
     bool hardware_active() const { return _mode == Mode::Hardware; }
 
-    // Hide the controls the view link makes shared -- navigation, camera
-    // model, field of view, reset -- so a row of linked panels shows them
-    // once, drawn by draw_nav_controls() wherever the owner wants them.
-    void show_nav_controls(bool on) { _nav_controls = on; }
-    void draw_nav_controls();
+    // The navigation mode and speed, which a row of linked panels shares:
+    // nav_edits() counts the changes made from this panel's own controls.
+    int nav_edits() const { return _nav_edits; }
+    void copy_nav_settings(const ViewportPanel& src) {
+        _cam.mode = src._cam.mode;
+        _cam.speed_exp = src._cam.speed_exp;
+        _auto_nav_mode = false;
+    }
 
-    // How tall the last draw()'s control rows were, and extra height to leave
-    // under them. A row of panels whose controls wrap differently would
-    // otherwise render at different sizes, which is not a comparison.
-    float controls_height() const { return _controls_h; }
-    void set_controls_pad(float px) { _controls_pad = px; }
-    // The image this wide, left-aligned under controls that keep the whole
-    // width; the owner draws beside it. 0 = all of it.
+    // The point or triangle count on the control row; off where the owner
+    // already shows it.
+    void show_counts(bool on) { _show_counts = on; }
+    // The image this wide, left-aligned; the owner draws beside it. 0 = all of it.
     void set_image_width(float w) { _image_w = w; }
 
     // An editing tool over this viewport. While one is installed it owns the
@@ -266,7 +266,6 @@ private:
     std::function<void(ViewResult&&)> _shot_done;
     int _shot_w = 0, _shot_h = 0;
     bool _shot_inflight = false;
-    float views_width() const;
     void draw_view_buttons();
     void handle_view_keys();
     void animate_glide(double now);
@@ -334,7 +333,11 @@ private:
     void build_request(ViewRequest& q, int W, int H) const;
     void view_matrix(float out[16]) const;   // row-major world-to-view
     void upload(const ViewResult& res);
-    void draw_controls(bool engine);
+    void draw_controls(bool engine, const ImVec2& avail);
+    // The Options panel's sections: navigation, lens, overlays, rendering --
+    // and in the last, a viewer's primitive, SH and colour.
+    void draw_options(bool engine);
+    void draw_scene_options();
     void handle_input(float item_h);         // mouse/keys/gamepad on last item
     void draw_engine(bool training, const ImVec2& avail, int step);
     void pump_engine(bool training, const ImVec2& avail, int step);
@@ -422,7 +425,7 @@ private:
     float _scene_scale = 1.0f;
     // The grid's cell in model units, from the same rule both backends use.
     float grid_cell() const;
-    void draw_grid_overlay(float x, float y, int line) const;
+    std::string grid_legend() const;
     // The navigation gizmo in the image's corner: drag to orbit, click an
     // axis to look along it. True while it has the pointer.
     bool gizmo_input(bool hovered_image);
@@ -457,9 +460,11 @@ private:
     // The image rectangle of the last draw, which is the frame a tool's
     // pointer coordinates and its overlay are both in.
     float _img_x = 0, _img_y = 0, _img_w = 0, _img_h = 0;
-    bool _nav_controls = true;
-    float _controls_h = 0.0f;
-    float _controls_pad = 0.0f;
+    int _nav_edits = 0;
+    bool _show_counts = true;
+    // The Options panel, and whether the pointer was on it or its button on
+    // the last frame: a click anywhere else closes a panel that is not pinned.
+    bool _options_open = false, _options_hovered = false, _options_button_hovered = false;
     float _image_w = 0.0f;
 
     // ---- render options a VIEWER may change (a training session may not:

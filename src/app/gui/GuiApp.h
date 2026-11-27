@@ -140,13 +140,25 @@ private:
     };
     // Which reconstruction back end the New Dataset screen runs.
     enum class Engine { BuiltIn, Colmap };
-    // Session-destroying actions deferred behind the "stop training?"
-    // confirmation (and executed once the stop has completed).
-    // StopHere is the Stop button itself: nothing follows the stop, but it
-    // goes through the same confirmation so that "without saving" is offered
-    // on every route out of a run.
+    // Which question the "stop training?" confirmation asks; _pending_then is
+    // what runs once the stop lands. StopHere is the Stop button, so "without
+    // saving" is offered on every route out of a run.
     enum class Pending {
-        None, GoHome, OpenDataset, OpenSplat, Quit, StartBatch, StopHere
+        None, GoHome, OpenDataset, OpenSplat, Quit, StartBatch, StopHere, Leave
+    };
+    // Work a screen runs that leaving it would stop; training has its own modal.
+    enum class Work { None, Dataset, Meshing, Render, Batch };
+    // The viewer's depth: a render can sit over an edit, an edit over viewing.
+    enum class ViewMode { View, Edit, Render };
+    // A dataset and the folders a run read it with, which a link hands on.
+    struct DatasetFolders {
+        std::string dir, image_dir, mask_dir;
+        bool mask_flipped = false;
+    };
+    // The links a screen's header offers for one dataset (draw_dataset_links).
+    enum DatasetLink : unsigned {
+        kLinkDataset = 1, kLinkTrain = 2, kLinkEdit = 4, kLinkDense = 8,
+        kLinkMasks = 16, kLinkRegion = 32, kLinkPartition = 64, kLinkMesh = 128,
     };
 
     // ---- persistence (recents + tool paths) ----
@@ -181,9 +193,12 @@ private:
                       bool keep_log = false, std::string seed = "");
     // Route for user-initiated opens: confirms first when training.
     void request_open_dataset(std::string dir);
+    void request_open_dataset(const DatasetFolders& f, bool keep_log = false);
+    // The Create Dataset screen on a dataset that already exists, inputs and
+    // settings from its record when it has one.
+    void open_dataset_screen(const std::string& dir);
 
-    // The comparison panes, with the editing panel beside them when a pane is
-    // being edited. The viewer screen and the meshing preview share it.
+    // The comparison panes, with the editing or render panel beside them.
     void draw_compare_panes();
     void open_render_output_pick(const std::string& start, const std::string& suggested);
 
@@ -210,7 +225,51 @@ public:
     void handle_drop(const std::vector<std::string>& paths);
 
 private:
+    // ---- moving between screens (Navigation.cpp) ----
+    // The screen change itself: what the old screen held is released, and a
+    // screen already in the history is returned to, so Back never cycles.
+    void go_to(Screen s);
+    // A change made for the user rather than by them (a batch moving on to
+    // its next step): the way back stays as it was, unless the list is left.
+    void follow_to(Screen s);
+    // Every user route off the current screen: unsaved viewer edits and the
+    // screen's running work are asked about first, then `go` runs.
+    void request_leave(Screen to, std::function<void()> go,
+                       Pending reason = Pending::Leave);
+    void request_screen(Screen s);
     void request_go_home();
+    // The previous screen, or one step out of the viewer's edit or render.
+    void request_back();
+    Screen back_target() const;
+    // Where request_back() goes, as the button names it.
+    const spirula::i18n::Msg& back_name() const;
+    static const spirula::i18n::Msg& screen_name(Screen s);
+    ViewMode viewer_mode() const;
+    // What the viewer shows, noted as it is left, and opened again by Back.
+    void remember_viewer();
+    void reopen_viewer();
+    // The edit or render a model was being opened for, dropped with the open.
+    void forget_open_intents();
+    Work screen_work(Screen s) const;
+    // Switching between a running batch's list and the screen of its task.
+    bool batch_view_switch(Screen to) const;
+    void stop_work(Work w);
+    // What quitting would stop, besides training.
+    std::vector<const spirula::i18n::Msg*> running_work() const;
+    // ---- the header row and the modals behind it (NavHeader.cpp) ----
+    // Back, home, the screen's name, then `links` to where its work goes
+    // next. The caller continues the row with its own controls.
+    void draw_screen_header(const spirula::i18n::Msg* title,
+                            const std::function<void()>& links = {},
+                            bool enabled = true);
+    // `reserve`: the width the caller keeps at the row's right end. kLinkMesh
+    // meshes `model`; the others need a dataset in `f`.
+    void draw_dataset_links(const DatasetFolders& f, unsigned links, float reserve = 0.0f,
+                            const std::string& model = {});
+    void draw_viewer_links(float reserve);
+    void draw_leave_modal();
+    void draw_quit_modal();
+    void handle_back_input();
     void apply_preset(const std::string& preset);
     // A preset the user saved (or a run's config.json). Replaces the whole
     // config the way a built-in preset does, but keeps the GUI-owned context
@@ -585,6 +644,9 @@ private:
     // preview panels. No-op (mesh side only) while training holds the engine.
     void open_mesh_preview();
     void close_mesh_preview();
+    // On the viewer over a finished mesh: what the run made, and which of its
+    // files are shown.
+    void draw_mesh_result();
     void draw_batch();
     void draw_batch_rows();
     void draw_batch_row(BatchRow& row, int index, int& remove, int& move);
@@ -614,6 +676,8 @@ private:
     // running task belongs to, so neither has to be guessed from the other.
     void draw_batch_progress();
     void draw_batch_stop_buttons();
+    // Stop the queue and cancel the task it is running.
+    void stop_batch_now();
     // The runner's progress and ETA. Negative values indicate unknowns.
     float batch_task_fraction(double& remaining);
     double batch_task_elapsed() const;
@@ -704,16 +768,43 @@ private:
     void clear_log();
 
     Screen _screen = Screen::Home;
+    // The way back: the screens that led here, the most recent last.
+    std::vector<Screen> _nav_back;
+    // What the viewer was opened into; Back steps out of anything deeper.
+    ViewMode _viewer_base_mode = ViewMode::View;
+    // What the viewer showed when a link or Back left it.
+    struct ViewerReopen {
+        std::vector<std::string> paths;
+        bool mesh = false;
+    } _viewer_reopen;
+    // The leave confirmation for work other than training, and the one at quit.
+    struct LeaveAsk {
+        Work work = Work::None;
+        std::function<void()> go;
+        bool open = false, shown = false;
+    } _leave;
+    bool _quit_ask = false, _quit_shown = false;
+    // What one of the train screen's links needs to know about its dataset,
+    // probed at most once a second.
+    struct DatasetProbe {
+        std::string key;
+        double at = -1.0;
+        bool sparse = false, masks = false;
+    } _train_probe;
+    const DatasetProbe& train_dataset_probe();
+    // The dataset behind the viewer's main pane, cached by the path it opened.
+    struct ViewerDataset {
+        std::string asked;
+        DatasetFolders f;
+        bool sparse = false;
+    } _viewer_ds;
+    const ViewerDataset& viewer_dataset();
     // Which save target the editor's file picker was armed for, and whether
     // the next model opened is being opened in order to edit it.
     int _edit_save_target = 0;
     bool _edit_after_open = false;
     // The dataset screen's run behind a sparse edit it opened: its photos and
     // masks may live outside the dataset, and training the edit needs them.
-    struct DatasetFolders {
-        std::string dir, image_dir, mask_dir;
-        bool mask_flipped = false;
-    };
     DatasetFolders _sparse_edit_src;
     // Progressive splat budget: the mode and one box per resolution stage.
     void draw_splat_budget(float w);
@@ -723,8 +814,9 @@ private:
     std::filesystem::file_time_type _seed_count_time{};
     // A dataset already in the output folder, read the way a run would read it.
     DatasetFolders workspace_folders(const WorkspaceState& prior) const;
-    // Open in trainer / edit reconstruction / correct masks, for one dataset.
-    void draw_dataset_open_buttons(const DatasetFolders& f, bool model);
+    // The dataset the screen's run made or found, and which links it offers;
+    // 0 when there is none yet.
+    unsigned dataset_screen_links(DatasetFolders& f);
     // A saved edit on its way to the trainer: the dataset to open, the one it
     // was edited from, and the cloud to start from. Taken up at the top of the
     // next frame, outside the edit session that asked for it.
@@ -738,21 +830,23 @@ private:
     // one, because the answer decides whether anything is written at all.
     bool _edit_exit_confirm = false;
     void draw_edit_exit_modal();
-    // The same for the render's camera move; "discard" lets it go for good.
+    // The same for the render's camera move, at quit or on leaving the viewer:
+    // `_render_exit_then` is what continues once it is settled. "Discard" lets
+    // the move go until the viewer closes.
     bool _render_exit_confirm = false, _render_discarded = false;
+    std::function<void()> _render_exit_then;
     bool _quit_after_render_save = false;
     void draw_render_exit_modal();
     bool _quit = false;
     bool _open_confirm = false;      // arm the stop-training modal
     bool _confirm_shown = false;     // modal currently expected open
-    bool _stop_confirmed = false;    // user chose one of the two stops
+    bool _stop_confirmed = false;    // user chose one of the stops
     bool _data_error_shown = false;  // unreadable-file modal currently open
     // Training is paused for as long as the modal is up -- deciding should not
     // cost GPU time. This is what it goes back to if the user keeps training.
     bool _confirm_was_paused = false;
     Pending _pending = Pending::None;
-    std::string _pending_path;       // dataset dir for Pending::OpenDataset
-    bool _pending_batch_skip = false;  // Pending::StartBatch's argument
+    std::function<void()> _pending_then;   // runs once the stop has landed
     bool _parse_dirty = false;       // dataparser option edited -> reload
 
     // ---- the one frozen native GPU choice ----
@@ -829,20 +923,20 @@ private:
     // released together with the viewport (detach_session_views).
     ImageCompare _images;
     bool _preview_images = false;    // which of the two the trainer screen shows
-    // Finished models opened for looking at, up to four side by side. The one
-    // object, shared by the viewer screen and the meshing preview: it owns the
-    // engine while it is open, and the engine is a singleton.
+    // Finished models opened for looking at, up to four side by side: the
+    // viewer screen. It owns the engine while it is open, and the engine is a
+    // singleton.
     CompareView _compare;
 
     // ---- meshing ----
-    // The extraction runs as a child process (MeshRunner); the preview after
-    // it is _compare holding the splats it came from and the surface.
+    // The extraction runs as a child process (MeshRunner); the viewer shows
+    // the result, _compare holding the surface and the splats it came from.
     MeshRunner _mesh;
     MeshJob _mesh_job;
     MeshMonitor _mesh_monitor;
     std::string _mesh_search;
     int _mesh_tier = 0;
-    bool _mesh_preview_open = false; // _compare is showing this screen's result
+    bool _mesh_preview_open = false; // _compare is showing the mesh run's result
     // The MeshRunner::run_id() whose result has already been opened. The
     // runner stays Done for the rest of the session, so without this the
     // screen would reopen the preview the frame after it is closed -- which
@@ -1100,10 +1194,6 @@ private:
     // The mask correction editor (app/gui/mask/). Opened from the dataset
     // screen and the train screen; drawn from frame() so both can reach it.
     mask::MaskSession _mask_editor;
-    // draw_train()'s mask-folder probe: what it last checked, and when.
-    std::string _train_masks_key;
-    double _train_masks_at = -1.0;
-    bool _train_has_masks = false;
     // Which input "Try the mask" runs on: which input a new clicked object
     // prompts (MaskClick::source) and which one's stencil the panel edits.
     int _mask_preview_input = 0;
@@ -1161,7 +1251,8 @@ private:
     // row that picks which saved region a run uses.
     RoiEditor _roi_editor;
     void open_roi_editor(const std::string& dataset, const std::string& file = "");
-    void draw_roi_row(bool busy);
+    // Which saved region the run trains in, among the basic options.
+    void draw_roi_row(float width);
     std::vector<std::string> _roi_files;
     std::string _roi_files_for;
     // Queueing a partition's parts: the modal with the run's settings, the
