@@ -18,8 +18,8 @@ only changes which ground truth the loss reads.
 | `--eval-align` | `auto` | also score held-out views aligned; `auto` follows `--use-calib-warp` |
 
 `calib_correction` is a macro (`train_resolve_macros`), the dropdown under the
-bilateral grid and PPISP in the GUI's basic options; the `synthetic` and
-`academic-baseline` presets set it to `off`. The GUI's compare view shows the
+bilateral grid and PPISP in the GUI's basic options; the `synthetic` preset
+sets it to `off`. The GUI's compare view shows the
 ground truth through the warp, as the loss reads it, while its "Calibration
 warp" box is ticked and "Original file" is not.
 

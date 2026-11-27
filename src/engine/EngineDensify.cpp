@@ -1,4 +1,4 @@
-// Engine densification step (MCMC + revised relocate/add splits).
+// Engine densification step (long-axis-split relocate/add, exploration noise).
 
 #include "engine/Engine.h"
 #include "engine/EngineCommon.h"
@@ -242,7 +242,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     bool quantize_sh = engine().optim.sh_quantize_enabled();
     const int sh_optim_bits = engine().optim.sh_optim_bits;
     // The 4-bit (joint-nibble) path is wired through both _zero_quant_sh_for_splat
-    // and the relocate/MCMC kernels via uchar3 stride; 32 / 8 / 4 are all
+    // and the relocate kernels via uchar3 stride; 32 / 8 / 4 are all
     // valid here. Anything else (e.g. 16) would silently mis-stride.
     if (quantize_sh && sh_optim_bits != 8 && sh_optim_bits != 4) {
         throw std::runtime_error(
@@ -286,7 +286,6 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     int num_sh = engine().num_sh;
     int num_sh_buffer = num_sh;  // buffer stride = engine().num_sh (model max)
 
-    bool use_revised = (cfg.use_revised_densification);
     bool densify_ongoing = densify_scoring_active(cfg, step, max_steps);
     bool do_densify = densify_grows_at(cfg, step, max_steps);
     float progress = ((float)step + 0.5f) / (float)max_steps;
@@ -394,7 +393,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     // The oversize split channel only feeds draws, so the accumulator is
     // allocated for exactly as long as densification runs.
     const bool use_oversize_channel =
-        densify_ongoing && use_revised && cfg.oversize_split_fraction > 0.0f
+        densify_ongoing && cfg.oversize_split_fraction > 0.0f
         && std::isfinite(cfg.max_screen_size);
     auto& dv_oversize = engine().optim.densify_oversize;
     if (use_oversize_channel) {
@@ -427,7 +426,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     // weight = accum_weight^(1-w) * world_grad_score^w, where w == 0 leaves
     // the world-grad buffer unallocated and w == 1 passes that score alone
     // (TrainerCore then also skips producing the loss map).
-    if (densify_ongoing && use_revised && dv_accum_buf.data_ptr() != nullptr) {
+    if (densify_ongoing && dv_accum_buf.data_ptr() != nullptr) {
         const float blend_w = cfg.score_blend_world_grad;
         DeviceVector<float> wg_score = engine().fwd.world_grad_score;
 
@@ -503,7 +502,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
         }
     }
 
-    if (densify_ongoing && use_revised && cfg.split_weight_by_renders &&
+    if (densify_ongoing && cfg.split_weight_by_renders &&
         dv_accum_buf.data_ptr() != nullptr && dv_visit.data_ptr() != nullptr) {
         auto& score = engine().optim.densify_sample_score;
         if (score.data_ptr() == nullptr) {
@@ -524,14 +523,12 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                              region.inside, region.outside, region.weight);
         // Before the relocation below, so what fades past dead moves inside.
         region_decay_opacity_tensor(cur_num_splats, region.weight, dv_opacs, region.opacity_decay);
-        if (use_revised) {
-            auto& score = engine().optim.densify_sample_score;
-            if (score.data_ptr() == nullptr) {
-                score.resize(PoolSlot::EngDensifySampleScore, max_num_splats);
-                densify_clip_score_tensor(cur_num_splats, dv_accum_buf, 1.0f, 1.0f, score);
-            }
-            densify_scale_score_tensor(cur_num_splats, region.weight, score);
+        auto& score = engine().optim.densify_sample_score;
+        if (score.data_ptr() == nullptr) {
+            score.resize(PoolSlot::EngDensifySampleScore, max_num_splats);
+            densify_clip_score_tensor(cur_num_splats, dv_accum_buf, 1.0f, 1.0f, score);
         }
+        densify_scale_score_tensor(cur_num_splats, region.weight, score);
     } else if (!region.active()) {
         region.weight = DeviceVector<float>();
     }
@@ -546,7 +543,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     // kernels write the new halves' in the same units.
     DeviceVector<float> dv_max_weight;
     auto& mw = engine().max_weight;
-    if (do_densify && use_revised && mw.value.data_ptr() != nullptr) {
+    if (do_densify && mw.value.data_ptr() != nullptr) {
         if (step != mw.base_step)
             densify_max_weight_scale_tensor(
                 cur_num_splats, std::exp2(-(float)(step - mw.base_step) / mw.half_life),
@@ -570,16 +567,15 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
             + t * (cfg.las_split_opacity_k_final - cfg.las_split_opacity_k_init);
     }
 
-    if (do_densify && use_revised)
+    if (do_densify)
         _log_score_by_size(step, cur_num_splats);
 
     RefineStats stats;
-    if (do_densify && use_revised && _stats_log_on())
+    if (do_densify && _stats_log_on())
         _refine_stats(cur_num_splats, cfg, split_opacity_k, dead_by_opacity, dv_max_weight,
                       min_weight, stats);
 
-    if (do_densify && use_revised) {
-        // Revised relocation (long axis split)
+    if (do_densify) {
         num_relocated = relocate_splats_with_long_axis_split_tensor(
             cur_num_splats, cfg.min_opacity, split_opacity_k, cfg.min_split_opacity,
             dv_means, dv_quats, dv_scales, dv_opacs, dv_features_dc, dv_features_sh,
@@ -656,40 +652,6 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                                                    num_added - n_oversize, dv_score,
                                                    DeviceVector<float>(), 2 * step + 1);
         }
-    } else if (do_densify) {
-        // MCMC relocation
-        relocate_splats_mcmc_tensor(
-            cur_num_splats, cfg.min_opacity,
-            dv_means, dv_quats, dv_scales, dv_opacs, dv_features_dc, dv_features_sh,
-            dv_g1_means, dv_g1_quats, dv_g1_scales, dv_g1_opacs, dv_g1_features_dc, dv_g1_features_sh,
-            dv_g2_means, dv_g2_quats, dv_g2_scales, dv_g2_opacs, dv_g2_features_dc, dv_g2_features_sh,
-            dv_bias_steps,
-            sh_optim_bits, num_sh,
-            dv_sh_quant_bounds, sh_bounds_per_splat,
-            dv_sh_value_packed, dv_sh_value_bounds,
-            sh_value_bits, sh_value_bounds_per_splat, num_sh_buffer,
-            non_sh, engine().projective_state, engine().projective_information,
-            2 * step + 0
-        , engine().region.weight);
-
-        // MCMC sample add
-        int64_t n_target = densify_target(cfg, cur_num_splats, densify_cap_at(cfg, step, max_num_splats));
-        num_added = (int)std::max((int64_t)0, n_target - cur_num_splats);
-        if (num_added > 0) {
-            add_splats_mcmc_tensor(
-                cur_num_splats, num_added, cfg.min_opacity,
-                dv_means, dv_quats, dv_scales, dv_opacs, dv_features_dc, dv_features_sh,
-                dv_g1_means, dv_g1_quats, dv_g1_scales, dv_g1_opacs, dv_g1_features_dc, dv_g1_features_sh,
-                dv_g2_means, dv_g2_quats, dv_g2_scales, dv_g2_opacs, dv_g2_features_dc, dv_g2_features_sh,
-                dv_bias_steps,
-                sh_optim_bits, num_sh,
-                dv_sh_quant_bounds, sh_bounds_per_splat,
-                dv_sh_value_packed, dv_sh_value_bounds,
-                sh_value_bits, sh_value_bounds_per_splat, num_sh_buffer,
-                non_sh, engine().projective_state, engine().projective_information,
-                2 * step + 1
-            , engine().region.weight);
-        }
     }
 
     // Reset accum buffer after densification step; a learned score carries on.
@@ -701,24 +663,17 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                              dv_oversize.size() * sizeof(float));
     }
 
-    // Add MCMC noise
+    // Exploration noise, gated on min(opacity, peak alpha * T): an opaque splat that
+    // stays hidden behind others explores like a faint one.
     if (cfg.noise_lr > 0.0f && cfg.noise_lr_final > 0.0f) {
         float noise_scalar = cfg.noise_lr * powf(cfg.noise_lr_final / cfg.noise_lr, progress);
-        if (use_revised) {
-            // Gated on min(opacity, peak alpha * T): an opaque splat that stays hidden behind
-            // others explores like a faint one.
-            const auto& mwn = engine().max_weight;
-            const bool gate = cfg.noise_gate_peak_weight && mwn.value.data_ptr() != nullptr;
-            revised_add_noise_tensor(
-                cur_num_splats + num_added, noise_scalar,
-                dv_radii, dv_means, dv_scales, dv_quats, dv_opacs,
-                gate ? mwn.value : DeviceVector<float>(),
-                gate ? std::exp2(-(float)(step - mwn.base_step) / mwn.half_life) : 1.0f, step);
-        } else {
-            mcmc_add_noise_tensor(
-                cur_num_splats + num_added, noise_scalar,
-                dv_means, dv_scales, dv_quats, dv_opacs, step);
-        }
+        const auto& mwn = engine().max_weight;
+        const bool gate = cfg.noise_gate_peak_weight && mwn.value.data_ptr() != nullptr;
+        revised_add_noise_tensor(
+            cur_num_splats + num_added, noise_scalar,
+            dv_radii, dv_means, dv_scales, dv_quats, dv_opacs,
+            gate ? mwn.value : DeviceVector<float>(),
+            gate ? std::exp2(-(float)(step - mwn.base_step) / mwn.half_life) : 1.0f, step);
     }
 
     if (stats.valid)

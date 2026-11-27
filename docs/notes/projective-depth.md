@@ -331,7 +331,7 @@ Implementation:
   restoration. Full checkpoints preserve enabled state; older checkpoints
   without those slots begin with empty state.
 - `engine_densify_step` in [EngineDensify.cpp](../../src/engine/EngineDensify.cpp)
-  passes the state to both long-axis and MCMC parent-copy operations.
+  passes the state to the long-axis-split parent-copy operations.
 
 ## Quantization opportunities
 
@@ -430,8 +430,7 @@ resolution divisor is applied. Builds and timed runs are sequential.
 
 The compared preset is `3dgs`. Its depth ablation sets
 `--projective-depth-lr 0`; an original-default control also precedes the
-independent exploration-key correction. The separate `academic-baseline`
-preset disables the coordinate along with its other reference settings.
+independent exploration-key correction.
 
 LPIPS-A uses saved eight-bit RGB values. Ignored-pixel masks additionally produce
 valid-pixel L1/PSNR, mask-normalized SSIM, and reference-filled LPIPS. For the
@@ -468,16 +467,14 @@ samples. Identical splats receive independent samples. Positions, scales,
 rotations, and opacities determine covariance and amplitude, not the key.
 Each displacement has zero mean conditional on that state.
 
-Implementation: `densify_normal`, `mcmc_add_noise_3dgs`, and
-`revised_add_noise_3dgs` in
+Implementation: `densify_normal` and `revised_add_noise_3dgs` in
 [densify.slang](../../src/shaders/densify.slang).
 [noise_moments.cpp](../../src/backend/tests/noise_moments.cpp) checks identical
 splats, covariance, reproducibility, invisible splats, cross-step independence,
 and backend agreement.
 
-The keys are constructed by `mcmc_add_noise_3dgs_kernel` and
-`revised_add_noise_3dgs_kernel` in
-[McmcRelocation.cu](../../src/kernels/densify/McmcRelocation.cu), and
-`densify_mcmc_add_noise`/`densify_revised_add_noise` in
+The keys are constructed by `revised_add_noise_3dgs_kernel` in
+[DensifyNoise.cu](../../src/kernels/densify/DensifyNoise.cu) and
+`densify_revised_add_noise` in
 [densify.slang](../../src/backend/vulkan/shaders/densify.slang).
 `engine_densify_step` supplies the training-step seed.

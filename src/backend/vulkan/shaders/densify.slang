@@ -1,25 +1,14 @@
-// Densification kernels (Vulkan backend), mirroring the csrc densify family (DensifySampling/Scoring/Relocation/Mcmc/SplitFilter):
-// densify_update_weight (per-step score accumulator), densify_clip_scale,
-// the long-axis-split relocate/add family, the MCMC relocate/add family,
-// and the MCMC/revised noise kernels. The split/noise math is the canonical
-// shaders/densify.slang device code; the mcmc_relocation opacity/scale math
-// is CPU-side C++ in the csrc densify family and is mirrored here.
+// Densification kernels (Vulkan backend), mirroring kernels/densify/*.cu;
+// split and noise math come from the canonical shaders/densify.slang.
 //
-// Score modes match DensifyScoreMode in kernels/densify/Densify.cuh:
-//   0 = Mean, 1 = Max, 2 = Median, 3 = Geom.
-// The Median mode's multiplicative random walk uses hash14 (shadertoy
-// 4djSRW); its float arithmetic is contraction-sensitive, so CUDA and
-// Vulkan can draw different hashes for the same input — parity tests
-// compare only the deterministic count channel for Median. The same caveat
-// applies to the randn3-based noise kernels and to the float sampling keys
-// (efraimidis / MCMC cumsum draws): integer hashes match bit-exactly, but
-// the float post-processing can flip rare boundary cases cross-backend, so
-// the parity tests use small violation-fraction caps there.
+// Score modes match DensifyScoreMode in kernels/densify/Densify.cuh
+// (0 Mean, 1 Max, 2 Median, 3 Geom). Median's hash14 walk, the randn3 noise
+// and the efraimidis keys do contraction-sensitive float math, so backends
+// can split rare boundary cases: parity checks only Median's count channel
+// and caps violations elsewhere. Integer hashes match bit-exactly.
 //
-// Sub-word quantized-state writes (SH optim-state zeroing, SH value-codec
-// copies) go through the And+Or masked stores in optim_quant.slang: a
-// relocated splat's cell run need not be word-aligned, and two dst splats
-// can share a boundary word.
+// Quantized-state writes use optim_quant.slang's And+Or masked stores: a cell
+// run need not be word-aligned, and two dst splats can share a boundary word.
 
 #define CudaDeviceExport ForceInline
 #include "shaders/densify.slang"
@@ -174,7 +163,7 @@ void densify_clip_scale(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 }
 
 // ---------------------------------------------------------------------------
-// MCMC / revised noise (canonical device code from ../densify.slang)
+// Exploration noise (canonical device code from ../densify.slang)
 // ---------------------------------------------------------------------------
 
 // Integer hash matching hash_uint3 in core/Common.cuh bit-exactly.
@@ -201,7 +190,7 @@ struct DensifyNoiseParams {  // 72 bytes: pushed directly
     float* log_scales;  // [N, 3]
     float* quats;       // [N, 4]
     float* logit_opacs; // [N]
-    float* radii;       // [N] (revised only; fallback-backed for mcmc)
+    float* radii;       // [N]
     float* peak_weight; // [N] stored peak alpha * T (has_peak_weight)
     float scaler;
     uint num_splats;
@@ -210,26 +199,6 @@ struct DensifyNoiseParams {  // 72 bytes: pushed directly
     uint has_peak_weight;
     uint seed;
 };
-
-[shader("compute")]
-[numthreads(256, 1, 1)]
-void densify_mcmc_add_noise(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-                            uniform DensifyNoiseParams p) {
-    uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
-    if (idx >= p.num_splats) return;
-    float3 mean = float3(p.means[3 * idx], p.means[3 * idx + 1],
-                         p.means[3 * idx + 2]);
-    float3 log_scale = float3(p.log_scales[3 * idx], p.log_scales[3 * idx + 1],
-                              p.log_scales[3 * idx + 2]);
-    float4 quat = float4(p.quats[4 * idx], p.quats[4 * idx + 1],
-                         p.quats[4 * idx + 2], p.quats[4 * idx + 3]);
-    mcmc_add_noise_3dgs(p.scaler, mean, log_scale, quat,
-                        p.logit_opacs[idx], uint4(_dn_hash_u3(p.seed ^ 0x9e3779b9u, idx, 0), _dn_hash_u3(p.seed ^ 0x9e3779b9u, idx, 1),
-                              _dn_hash_u3(p.seed ^ 0x9e3779b9u, idx, 2), _dn_hash_u3(p.seed ^ 0x9e3779b9u, idx, 3)));
-    p.means[3 * idx] = mean.x;
-    p.means[3 * idx + 1] = mean.y;
-    p.means[3 * idx + 2] = mean.z;
-}
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
@@ -256,10 +225,10 @@ void densify_revised_add_noise(uint3 wg: SV_GroupID,
 }
 
 // ---------------------------------------------------------------------------
-// Shared helpers for the relocation / MCMC kernels
+// Shared helpers for the relocation kernels
 // ---------------------------------------------------------------------------
 
-// Spec axes shared by the relocate/MCMC kernels.
+// Spec axes shared by the relocate kernels.
 //   kShOptimBits:  0 = fp32 SH Adam state, 8 / 4 = QuantizedAdamState bits
 //   kShValueBits:  8 / 16 (the SH value-codec copy kernels only)
 [SpecializationConstant]
@@ -335,55 +304,6 @@ void _dn_zero_nq_splat<let PRIMS : int>(uint* packed, float4* bounds,
     [ForceUnroll]
     for (int i = 0; i < PRIMS; i++)
         packed[uint(PRIMS) * splat + uint(i)] = w;
-}
-
-// mcmc_relocation opacity/scale math, mirroring McmcRelocation.cu (which mirrors
-// the MCMC paper's relocation formula; log_factorial is the least-squares
-// fit valid to n = 50).
-[ForceInline]
-float _dn_log_factorial(float x) {
-    const float kA = 0.996763591291f;
-    const float kH = 2.73507778369f;
-    const float kB = 0.978531458767f;
-    const float kC2 = -0.0400131099548f;
-    const float kC1 = -0.596969060666f;
-    const float kD3 = 0.00251628691783f;
-    const float kD2 = 0.0959712063178f;
-    const float kD1 = 0.803207449544f;
-    return (kA * log(x + kH) - kB +
-            (kC2 * x + kC1) / (((kD3 * x + kD2) * x + kD1) * x + 1.0f)) * x;
-}
-
-[ForceInline]
-float _dn_binom(float n, float k) {
-    return exp(_dn_log_factorial(n) - _dn_log_factorial(k) -
-               _dn_log_factorial(n - k));
-}
-
-[ForceInline]
-void _dn_mcmc_relocation(inout float opacity, inout float3 scale, int n_idx) {
-    n_idx = min(n_idx, 50);  // log_factorial only fits to 50
-
-    opacity = _dn_sigmoid(opacity);
-
-    float new_opacity = 1.0f - pow(1.0f - opacity, 1.0f / float(n_idx));
-
-    float denom_sum = 0.0f;
-    for (int i = 1; i <= n_idx; ++i) {
-        for (int k = 0; k <= (i - 1); ++k) {
-            denom_sum += _dn_binom(float(i - 1), float(k)) *
-                         (cos(3.14159265358979323846f * float(k)) /
-                          sqrt(float(k + 1))) *  // (-1)^k / sqrt(k+1)
-                         pow(new_opacity, float(k + 1));
-        }
-    }
-    // log(coeff * exp(s)) == log(coeff) + s, kept in log space: the round trip
-    // out and back flushes a splat near FLT_MIN to -inf, which per_splat_losses
-    // then turns into a NaN (shaders/per_splat_losses.slang).
-    float log_coeff = log(opacity / denom_sum);
-
-    opacity = log(new_opacity / (1.0f - new_opacity));  // logit
-    scale = scale + log_coeff;
 }
 
 // ---------------------------------------------------------------------------
@@ -791,32 +711,6 @@ void densify_copy_qsh_pairs(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                        p.grow != 0);
 }
 
-struct CopyQshMapParams {  // 56 bytes: pushed directly
-    int* index_map;  // [num_splats]; copy only when index_map[dst] != dst
-    uint* packed;
-    float2* bounds;
-    uint* ext;
-    uint num_splats;
-    uint num_sh;
-    uint num_sh_buffer;
-    uint bounds_per_splat;
-    uint wgs_per_row;
-    uint grow;
-};
-
-[shader("compute")]
-[numthreads(256, 1, 1)]
-void densify_copy_qsh_map(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-                          uniform CopyQshMapParams p) {
-    uint dst = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
-    if (dst >= p.num_splats) return;
-    uint src = uint(p.index_map[dst]);
-    if (src == dst) return;
-    _dn_copy_qsh_value(p.packed, p.bounds, p.ext, src, dst, p.num_sh,
-                       p.num_sh_buffer, p.bounds_per_splat != 0,
-                       p.grow != 0);
-}
-
 struct WidenQshValueParams {  // 40 bytes: pushed directly
     uint* packed;
     float2* bounds;
@@ -864,436 +758,6 @@ void densify_widen_qsh_value(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     }
     GroupMemoryBarrierWithGroupSync();
     if (tid == 0u) p.bounds[slot] = nw;
-}
-
-// ---------------------------------------------------------------------------
-// MCMC relocation / add
-// ---------------------------------------------------------------------------
-
-struct McmcProbsParams {  // 56 bytes: pushed directly
-    float* opacs; float* scales; float* probs;
-    float* weight;   // [N] (use_weight gates): scales a live splat's draw
-    float min_opacity; uint num_splats; uint wgs_per_row; uint use_weight;
-    uint _pad0, _pad1;
-};
-
-[shader("compute")]
-[numthreads(256, 1, 1)]
-void densify_mcmc_probs(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-                        uniform McmcProbsParams p) {
-    uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
-    if (idx >= p.num_splats) return;
-    float opac = _dn_sigmoid(p.opacs[idx]);
-    float3 scale = float3(p.scales[3 * idx], p.scales[3 * idx + 1],
-                          p.scales[3 * idx + 2]);
-    if (opac <= p.min_opacity || !_dn_finitef(opac) ||
-        splat_scale_is_dead(scale))
-        opac = 0.0f;
-    else if (p.use_weight != 0)
-        opac *= max(p.weight[idx], 1e-30f);
-    p.probs[idx] = opac;
-}
-
-struct McmcRelocIndexMapParams {  // 48 bytes: pushed directly
-    float* sample_probs;         // [N]
-    float* sample_probs_cumsum;  // [N]
-    int* index_map;              // [N] out
-    int* n_idx_buffer;           // [N] atomically incremented
-    uint numel;
-    uint seed;
-    uint wgs_per_row;
-    uint _pad0;
-};
-
-[shader("compute")]
-[numthreads(256, 1, 1)]
-void densify_mcmc_reloc_index_map(uint3 wg: SV_GroupID,
-                                  uint tid: SV_GroupThreadID,
-                                  uniform McmcRelocIndexMapParams p) {
-    uint block_lin = wg.y * p.wgs_per_row + wg.x;
-    uint idx = block_lin * 256 + tid;
-    if (idx >= p.numel) return;
-
-    float prob = p.sample_probs[idx];
-
-    // not relocated, put same ID
-    if (prob != 0.0f) {
-        p.index_map[idx] = int(idx);
-        return;
-    }
-
-    // binary search: min i such that cumsum[i] >= rand
-    float rand_max = p.sample_probs_cumsum[p.numel - 1];
-    float rand = rand_max * float(_dn_hash_u3(p.seed, block_lin, tid)) *
-                 exp2(-32.0f);
-    uint lo = 0;
-    uint hi = p.numel - 1;
-    while (lo < hi) {
-        uint mid = lo + ((hi - lo) >> 1);
-        if (p.sample_probs_cumsum[mid] < rand)
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-    p.index_map[idx] = int(lo);
-
-    InterlockedAdd(p.n_idx_buffer[lo], 1);
-}
-
-struct McmcAddIndexMapParams {  // 48 bytes: pushed directly
-    float* sample_probs_cumsum;  // [N]
-    int* index_map;              // [num_add] out
-    int* n_idx_buffer;           // [N] atomically incremented
-    uint num_splats;
-    uint num_add;
-    uint seed;
-    uint wgs_per_row;
-};
-
-[shader("compute")]
-[numthreads(256, 1, 1)]
-void densify_mcmc_add_index_map(uint3 wg: SV_GroupID,
-                                uint tid: SV_GroupThreadID,
-                                uniform McmcAddIndexMapParams p) {
-    uint block_lin = wg.y * p.wgs_per_row + wg.x;
-    uint idx = block_lin * 256 + tid;
-    if (idx >= p.num_add) return;
-
-    // binary search (note <=, matching the CUDA add variant)
-    float rand_max = p.sample_probs_cumsum[p.num_splats - 1];
-    float rand = rand_max * float(_dn_hash_u3(p.seed, block_lin, tid)) *
-                 exp2(-32.0f);
-    uint lo = 0;
-    uint hi = p.num_splats - 1;
-    while (lo < hi) {
-        uint mid = lo + ((hi - lo) >> 1);
-        if (p.sample_probs_cumsum[mid] <= rand)
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-    p.index_map[idx] = int(lo);
-
-    InterlockedAdd(p.n_idx_buffer[lo], 1);
-}
-
-// Relocation math + optim-state zeroing for splats being relocated TO
-// (n_idx > 1). Mirrors mcmc_compute_relocation_kernel.
-struct McmcRelocParams {
-    int* n_idx_buffer;  // [N]
-    float* scales;      // [N, 3]
-    float* opacs;       // [N]
-    // fp32 non-SH Adam state (has_g1)
-    float* g1_means;
-    float* g2_means;
-    float* g1_quats;
-    float* g2_quats;
-    float* g1_scales;
-    float* g2_scales;
-    float* g1_opacs;
-    float* g2_opacs;
-    float* g1_dc;
-    float* g2_dc;
-    // SH Adam state (kShOptimBits)
-    float* g1_sh;
-    float* g2_sh;
-    uint* sh_packed;
-    float4* sh_quant_bounds;
-    // non-SH quantized Adam state (non_sh)
-    uint* nq_means_packed;
-    uint* nq_quats_packed;
-    uint* nq_scales_packed;
-    uint* nq_opacities_packed;
-    uint* nq_dc_packed;
-    float4* nq_means_bounds;
-    float4* nq_quats_bounds;
-    float4* nq_scales_bounds;
-    float4* nq_opacities_bounds;
-    float4* nq_dc_bounds;
-    int* bias_steps;  // [N] (has_bias_steps)
-    uint num_splats;
-    uint num_sh;
-    uint has_g1;
-    uint has_bias_steps;
-    uint non_sh;
-    uint sh_bounds_per_splat;
-    uint wgs_per_row;
-    uint _pad0;
-};
-
-[shader("compute")]
-[numthreads(256, 1, 1)]
-void densify_mcmc_relocation(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-                             uniform McmcRelocParams* pp) {
-    McmcRelocParams p = *pp;
-    uint cur_idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
-    if (cur_idx >= p.num_splats) return;
-
-    // only compute on indices being relocated to
-    uint n_idx = uint(p.n_idx_buffer[cur_idx]) + 1u;
-    if (n_idx == 1u) return;
-
-    // compute relocation
-    float3 scale = float3(p.scales[3 * cur_idx], p.scales[3 * cur_idx + 1],
-                          p.scales[3 * cur_idx + 2]);
-    float opac = p.opacs[cur_idx];
-    _dn_mcmc_relocation(opac, scale, int(n_idx));
-    p.scales[3 * cur_idx] = scale.x;
-    p.scales[3 * cur_idx + 1] = scale.y;
-    p.scales[3 * cur_idx + 2] = scale.z;
-    p.opacs[cur_idx] = opac;
-
-    // set grad to zero
-    if (p.has_g1 != 0) {
-        [ForceUnroll]
-        for (int i = 0; i < 3; i++) {
-            p.g1_means[3 * cur_idx + i] = 0.0f;
-            p.g2_means[3 * cur_idx + i] = 0.0f;
-            p.g1_scales[3 * cur_idx + i] = 0.0f;
-            p.g2_scales[3 * cur_idx + i] = 0.0f;
-            p.g1_dc[3 * cur_idx + i] = 0.0f;
-            p.g2_dc[3 * cur_idx + i] = 0.0f;
-        }
-        [ForceUnroll]
-        for (int i = 0; i < 4; i++) {
-            p.g1_quats[4 * cur_idx + i] = 0.0f;
-            p.g2_quats[4 * cur_idx + i] = 0.0f;
-        }
-        p.g1_opacs[cur_idx] = 0.0f;
-        p.g2_opacs[cur_idx] = 0.0f;
-    }
-    if (kShOptimBits == 0) {
-        gindex_t off = (gindex_t)(3u * p.num_sh) * (gindex_t)cur_idx;
-        float* g1 = elem_at(p.g1_sh, off);
-        float* g2 = elem_at(p.g2_sh, off);
-        for (uint i = 0; i < 3 * p.num_sh; i++) {
-            g1[i] = 0.0f;
-            g2[i] = 0.0f;
-        }
-    } else {
-        _dn_zero_qsh_splat(p.sh_packed, cur_idx, p.num_sh, p.sh_quant_bounds,
-                           p.sh_bounds_per_splat != 0);
-    }
-    if (p.non_sh != 0) {
-        _dn_zero_nq_splat<3>(p.nq_means_packed, p.nq_means_bounds, cur_idx);
-        _dn_zero_nq_splat<4>(p.nq_quats_packed, p.nq_quats_bounds, cur_idx);
-        _dn_zero_nq_splat<3>(p.nq_scales_packed, p.nq_scales_bounds, cur_idx);
-        _dn_zero_nq_splat<1>(p.nq_opacities_packed, p.nq_opacities_bounds,
-                             cur_idx);
-        _dn_zero_nq_splat<3>(p.nq_dc_packed, p.nq_dc_bounds, cur_idx);
-    }
-    if (p.has_bias_steps != 0) p.bias_steps[cur_idx] = 0;
-}
-
-struct McmcUpdateRelocParams {  // 96 bytes: pushed directly
-    int* index_map;      // [N]
-    float* means;
-    float* quats;
-    float* scales;
-    float* opacs;
-    float* features_dc;
-    float* features_sh;  // (has_fp32_sh)
-    float4* projective_state;
-    float* projective_information;
-    uint has_projective, projective_pad;
-    uint num_splats;
-    uint num_sh;
-    uint has_fp32_sh;
-    uint wgs_per_row;
-};
-
-[shader("compute")]
-[numthreads(256, 1, 1)]
-void densify_mcmc_update_reloc(uint3 wg: SV_GroupID,
-                               uint tid: SV_GroupThreadID,
-                               uniform McmcUpdateRelocParams p) {
-    uint id_dst = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
-    if (id_dst >= p.num_splats) return;
-
-    // only update on those relocated from
-    uint id_src = uint(p.index_map[id_dst]);
-    if (id_src == id_dst) return;
-
-    if (p.has_projective != 0) {
-        p.projective_state[id_dst] = p.projective_state[id_src];
-        p.projective_information[id_dst] = p.projective_information[id_src];
-    }
-
-    [ForceUnroll]
-    for (int i = 0; i < 3; i++) {
-        p.means[3 * id_dst + i] = p.means[3 * id_src + i];
-        p.scales[3 * id_dst + i] = p.scales[3 * id_src + i];
-        p.features_dc[3 * id_dst + i] = p.features_dc[3 * id_src + i];
-    }
-    [ForceUnroll]
-    for (int i = 0; i < 4; i++)
-        p.quats[4 * id_dst + i] = p.quats[4 * id_src + i];
-    p.opacs[id_dst] = p.opacs[id_src];
-    if (p.has_fp32_sh != 0) {
-        gindex_t R = (gindex_t)(3u * p.num_sh);
-        float* sh_dst = elem_at(p.features_sh, R * (gindex_t)id_dst);
-        float* sh_src = elem_at(p.features_sh, R * (gindex_t)id_src);
-        for (uint i = 0; i < 3 * p.num_sh; i++)
-            sh_dst[i] = sh_src[i];
-    }
-}
-
-struct McmcComputeAddParams {  // 32 bytes: pushed directly
-    int* n_idx_buffer;  // [N]
-    float* scales;      // [N, 3]
-    float* opacs;       // [N]
-    uint num_splats;
-    uint wgs_per_row;
-};
-
-[shader("compute")]
-[numthreads(256, 1, 1)]
-void densify_mcmc_compute_add(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-                              uniform McmcComputeAddParams p) {
-    uint cur_idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
-    if (cur_idx >= p.num_splats) return;
-
-    uint n_idx = uint(p.n_idx_buffer[cur_idx]) + 1u;
-    if (n_idx == 1u) return;
-
-    float3 scale = float3(p.scales[3 * cur_idx], p.scales[3 * cur_idx + 1],
-                          p.scales[3 * cur_idx + 2]);
-    float opac = p.opacs[cur_idx];
-    _dn_mcmc_relocation(opac, scale, int(n_idx));
-    p.scales[3 * cur_idx] = scale.x;
-    p.scales[3 * cur_idx + 1] = scale.y;
-    p.scales[3 * cur_idx + 2] = scale.z;
-    p.opacs[cur_idx] = opac;
-
-    // don't change grad
-}
-
-// Copy + optim-state zeroing for the appended splats (mcmc_update_add_kernel).
-struct McmcUpdateAddParams {
-    int* index_map;  // [num_add]
-    float* means;
-    float* quats;
-    float* scales;
-    float* opacs;
-    float* features_dc;
-    float* features_sh;  // (has_fp32_sh)
-    // fp32 non-SH Adam state (has_g1)
-    float* g1_means;
-    float* g2_means;
-    float* g1_quats;
-    float* g2_quats;
-    float* g1_scales;
-    float* g2_scales;
-    float* g1_opacs;
-    float* g2_opacs;
-    float* g1_dc;
-    float* g2_dc;
-    // SH Adam state (kShOptimBits)
-    float* g1_sh;
-    float* g2_sh;
-    uint* sh_packed;
-    float4* sh_quant_bounds;
-    // non-SH quantized Adam state (non_sh)
-    uint* nq_means_packed;
-    uint* nq_quats_packed;
-    uint* nq_scales_packed;
-    uint* nq_opacities_packed;
-    uint* nq_dc_packed;
-    float4* nq_means_bounds;
-    float4* nq_quats_bounds;
-    float4* nq_scales_bounds;
-    float4* nq_opacities_bounds;
-    float4* nq_dc_bounds;
-    int* bias_steps;  // (has_bias_steps)
-    float4* projective_state;
-    float* projective_information;
-    uint has_projective, projective_pad;
-    uint num_splats;
-    uint num_add;
-    uint num_sh;
-    uint has_g1;
-    uint has_fp32_sh;
-    uint has_bias_steps;
-    uint non_sh;
-    uint sh_bounds_per_splat;
-    uint wgs_per_row;
-    uint _pad0;
-};
-
-[shader("compute")]
-[numthreads(256, 1, 1)]
-void densify_mcmc_update_add(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-                             uniform McmcUpdateAddParams* pp) {
-    McmcUpdateAddParams p = *pp;
-    uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
-    if (idx >= p.num_add) return;
-
-    uint id_dst = idx + p.num_splats;
-    uint id_src = uint(p.index_map[idx]);
-
-    if (p.has_projective != 0) {
-        p.projective_state[id_dst] = p.projective_state[id_src];
-        p.projective_information[id_dst] = p.projective_information[id_src];
-    }
-    // copy components
-    [ForceUnroll]
-    for (int i = 0; i < 3; i++) {
-        p.means[3 * id_dst + i] = p.means[3 * id_src + i];
-        p.scales[3 * id_dst + i] = p.scales[3 * id_src + i];
-        p.features_dc[3 * id_dst + i] = p.features_dc[3 * id_src + i];
-    }
-    [ForceUnroll]
-    for (int i = 0; i < 4; i++)
-        p.quats[4 * id_dst + i] = p.quats[4 * id_src + i];
-    p.opacs[id_dst] = p.opacs[id_src];
-    if (p.has_fp32_sh != 0) {
-        gindex_t R = (gindex_t)(3u * p.num_sh);
-        float* sh_dst = elem_at(p.features_sh, R * (gindex_t)id_dst);
-        float* sh_src = elem_at(p.features_sh, R * (gindex_t)id_src);
-        for (uint i = 0; i < 3 * p.num_sh; i++)
-            sh_dst[i] = sh_src[i];
-    }
-
-    // set grad to zero
-    if (p.has_g1 != 0) {
-        [ForceUnroll]
-        for (int i = 0; i < 3; i++) {
-            p.g1_means[3 * id_dst + i] = 0.0f;
-            p.g2_means[3 * id_dst + i] = 0.0f;
-            p.g1_scales[3 * id_dst + i] = 0.0f;
-            p.g2_scales[3 * id_dst + i] = 0.0f;
-            p.g1_dc[3 * id_dst + i] = 0.0f;
-            p.g2_dc[3 * id_dst + i] = 0.0f;
-        }
-        [ForceUnroll]
-        for (int i = 0; i < 4; i++) {
-            p.g1_quats[4 * id_dst + i] = 0.0f;
-            p.g2_quats[4 * id_dst + i] = 0.0f;
-        }
-        p.g1_opacs[id_dst] = 0.0f;
-        p.g2_opacs[id_dst] = 0.0f;
-    }
-    if (kShOptimBits == 0) {
-        gindex_t off = (gindex_t)(3u * p.num_sh) * (gindex_t)id_dst;
-        float* g1 = elem_at(p.g1_sh, off);
-        float* g2 = elem_at(p.g2_sh, off);
-        for (uint i = 0; i < 3 * p.num_sh; i++) {
-            g1[i] = 0.0f;
-            g2[i] = 0.0f;
-        }
-    } else {
-        _dn_zero_qsh_splat(p.sh_packed, id_dst, p.num_sh, p.sh_quant_bounds,
-                           p.sh_bounds_per_splat != 0);
-    }
-    if (p.non_sh != 0) {
-        _dn_zero_nq_splat<3>(p.nq_means_packed, p.nq_means_bounds, id_dst);
-        _dn_zero_nq_splat<4>(p.nq_quats_packed, p.nq_quats_bounds, id_dst);
-        _dn_zero_nq_splat<3>(p.nq_scales_packed, p.nq_scales_bounds, id_dst);
-        _dn_zero_nq_splat<1>(p.nq_opacities_packed, p.nq_opacities_bounds,
-                             id_dst);
-        _dn_zero_nq_splat<3>(p.nq_dc_packed, p.nq_dc_bounds, id_dst);
-    }
-    if (p.has_bias_steps != 0) p.bias_steps[id_dst] = 0;
 }
 
 // ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 //     spirula train [<preset>] --data <dir> [--flag value ...]
 //
 // where <preset> is one of 3dgs (the default), 360-camera, in-the-wild,
-// centered-object, hdr, synthetic, meshing, 2dgs, academic-baseline. Flags are
+// centered-object, hdr, synthetic, meshing. Flags are
 // the FLATTENED config fields (--sh-degree, not --model.sh-degree); '-' and '_'
 // are interchangeable; booleans take a value (--warp-to-pinhole 1). Struct,
 // flag table and preset appliers all come from config/TrainConfig.h.

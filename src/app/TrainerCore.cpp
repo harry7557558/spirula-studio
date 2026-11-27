@@ -705,10 +705,9 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
         densify_loss_map_mode_int(c.densify_loss_map_mode, c.perceptual_loss);
     // blend >= 1: world-grad score only, loss map has no consumer.
     if (c.densify_score_blend_world_grad >= 1.0f) loss_map_mode = 0;
-    // Error maps and world-grad scores are only consumed while revised densification can run.
+    // Error maps and world-grad scores are only consumed while densification can run.
     const bool densify_ongoing = densify_scoring_active(
-        c.use_revised_densification, c.refine_every, c.refine_stop_iter,
-        c.refine_stop_num_iter, step, c.num_iterations);
+        c.refine_every, c.refine_stop_iter, c.refine_stop_num_iter, step, c.num_iterations);
     cfg.loss.loss_map_mode = loss_map_mode;
     cfg.loss.compute_loss_map = (loss_map_mode != 0) && densify_ongoing;
     cfg.loss.robust_edge_aware_quantile = c.densify_robust_edge_aware_quantile;
@@ -789,7 +788,6 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.optim.eps_tr = 1e-6f * std::pow(0.01f, (float)step / std::max(max_steps_lr, 1));
 
     // ---- densify -------------------------------------------------------
-    float noise_lr_scalar = c.use_revised_densification ? 1.0f : alpha;
     cfg.densify.refine_start_iter             = c.refine_start_iter;
     cfg.densify.refine_stop_num_iter          = c.refine_stop_num_iter;
     cfg.densify.refine_stop_iter              = c.refine_stop_iter;
@@ -804,10 +802,9 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.densify.max_screen_size_clip_hardness = c.max_screen_size_clip_hardness;
     cfg.densify.clip_screen_size_at_refine    = c.max_screen_size_penalty > 0.0f;
     cfg.densify.max_world_size                = c.max_world_size * alpha;
-    cfg.densify.noise_lr                      = c.noise_lr * noise_lr_scalar;
-    cfg.densify.noise_lr_final                = c.noise_lr_final * noise_lr_scalar;
+    cfg.densify.noise_lr                      = c.noise_lr;
+    cfg.densify.noise_lr_final                = c.noise_lr_final;
     cfg.densify.noise_gate_peak_weight        = c.noise_gate_peak_weight;
-    cfg.densify.use_revised_densification     = c.use_revised_densification;
     cfg.densify.score_mode = c.densify_score_mode == "mean" ? 0
         : c.densify_score_mode == "max" ? 1
         : c.densify_score_mode == "median" ? 2 : 3;
@@ -1055,10 +1052,8 @@ std::string train_config_error(const TrainConfig& c) {
         return lmsg::bad_quantization_level.get();
     if (c.sb_lobes < 0 || c.sb_lobes > ColorBasis::kMaxSbLobes)
         return lfmt(lmsg::bad_sb_lobes, {ColorBasis::kMaxSbLobes});
-    if (c.dead_criterion != "opacity" && !c.use_revised_densification)
-        return lfmt(lmsg::dead_criterion_needs_revised, {c.dead_criterion});
     if (c.densify_learned_score &&
-        (!c.use_revised_densification || c.densify_loss_map_mode == "none" ||
+        (c.densify_loss_map_mode == "none" ||
          c.densify_score_blend_world_grad != 0.0f || !(c.densify_score_power > 0.0f) ||
          !(c.densify_loss_map_power > 0.0f)))
         return lmsg::learned_score_needs.get();

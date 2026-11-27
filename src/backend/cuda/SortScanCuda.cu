@@ -79,7 +79,6 @@ template void inclusive_sum<int32_t>(const int32_t*, int32_t*, int64_t,
                                      Stream);
 template void inclusive_sum<int64_t>(const int64_t*, int64_t*, int64_t,
                                      Stream);
-template void inclusive_sum<float>(const float*, float*, int64_t, Stream);
 template void exclusive_sum<int32_t>(const int32_t*, int32_t*, int64_t,
                                      Stream);
 template void exclusive_sum<int64_t>(const int64_t*, int64_t*, int64_t,

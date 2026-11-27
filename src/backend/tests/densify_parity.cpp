@@ -1,7 +1,7 @@
 // Densification parity: dump a CUDA reference, compare it on Vulkan.
 // Ref format: tight floats, loose floats, integer codes.
-// Integer noise keys match exactly; transcendental functions and cumulative
-// sampling sums allow small numerical differences in the loose channel.
+// Integer noise keys match exactly; transcendental functions allow small
+// numerical differences in the loose channel.
 // Relocation uses one destination per fixture because atomic compaction makes
 // source/destination pairing schedule-dependent. Addition tests concurrent
 // destinations, including masked stores to shared quantization words.
@@ -160,7 +160,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ---- mcmc / revised noise (loose: randn3 float hashing) ----
+    // ---- exploration noise (loose: randn3 float hashing) ----
     {
         std::vector<float> means(3 * N), scales(3 * N), quats(4 * N),
             opacs(N), radii(N);
@@ -171,16 +171,9 @@ int main(int argc, char** argv) {
         for (int64_t i = 0; i < N; i++)
             radii[i] = (i % 7 == 0) ? 0.f : uf(0.5f, 40.f);
 
-        float* d_means = upload(means);
         float* d_scales = upload(scales);
         float* d_quats = upload(quats);
         float* d_opacs = upload(opacs);
-        mcmc_add_noise_tensor(N, 2e-2f, dv<float3>(d_means, N),
-                              dv<float3>(d_scales, N), dv<float4>(d_quats, N),
-                              dv<float>(d_opacs, N), 27);
-        backend::device_synchronize();
-        readback_f(lacc, d_means, 3 * N);
-
         float* d_means2 = upload(means);
         float* d_radii = upload(radii);
         revised_add_noise_tensor(N, 5e-2f, dv<float>(d_radii, N),
@@ -207,7 +200,7 @@ int main(int argc, char** argv) {
         readback_f(lacc, d_means3, 3 * N);
     }
 
-    // ---- long-axis-split relocate/add + MCMC relocate/add ----
+    // ---- long-axis-split relocate/add ----
     // Shared per-config splat-model construction. sh_optim_bits in
     // {32, 8, 4}; sh_value_bits in {32, 8, 16}.
     struct Model {
@@ -428,7 +421,7 @@ int main(int argc, char** argv) {
         }
     };
 
-    // Argument pack shared by the four API calls.
+    // Argument pack shared by the two API calls.
     auto check_projective_state = [&](const Model& m) {
         std::vector<float> colors(3*CAP), state(4*CAP), information(CAP);
         backend::memcpy_sync(colors.data(),m.dc,colors.size()*4,MemcpyKind::DeviceToHost);
@@ -528,76 +521,6 @@ int main(int argc, char** argv) {
         return added;
     };
 
-    auto call_relocate_mcmc = [&](Model& m, float min_opacity,
-                                  uint32_t seed) {
-        relocate_splats_mcmc_tensor(
-            N, min_opacity,
-            dv<float3>(m.means, CAP), dv<float4>(m.quats, CAP),
-            dv<float3>(m.scales, CAP), dv<float>(m.opacs, CAP),
-            dv<float3>(m.dc, CAP),
-            dv<float3>(m.sh, m.sh ? m.num_sh * CAP : 0),
-            dv<float3>(m.g1[0], m.g1[0] ? CAP : 0),
-            dv<float4>(m.g1[1], m.g1[1] ? CAP : 0),
-            dv<float3>(m.g1[2], m.g1[2] ? CAP : 0),
-            dv<float>(m.g1[3], m.g1[3] ? CAP : 0),
-            dv<float3>(m.g1[4], m.g1[4] ? CAP : 0),
-            dv<float3>(m.sh_optim_bits == 32 ? (void*)m.g1_sh
-                                             : (void*)m.sh_state_packed,
-                       0),
-            dv<float3>(m.g2[0], m.g2[0] ? CAP : 0),
-            dv<float4>(m.g2[1], m.g2[1] ? CAP : 0),
-            dv<float3>(m.g2[2], m.g2[2] ? CAP : 0),
-            dv<float>(m.g2[3], m.g2[3] ? CAP : 0),
-            dv<float3>(m.g2[4], m.g2[4] ? CAP : 0),
-            dv<float3>(m.sh_optim_bits == 32 ? (void*)m.g2_sh
-                                             : (void*)m.sh_state_packed,
-                       0),
-            dv<int32_t>(m.bias_steps, CAP), m.sh_optim_bits, (int)m.num_sh,
-            dv<float4>(m.sh_state_bounds, m.sh_state_bound_f / 4),
-            m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
-                                            m.sh_value_bytes),
-            dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
-            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq, dv<float4>(m.projective_state, CAP), dv<float>(m.projective_information, CAP),
-            seed, DeviceVector<float>());
-        backend::device_synchronize();
-        check_projective_state(m);
-    };
-
-    auto call_add_mcmc = [&](Model& m, int64_t num_add, float min_opacity,
-                             uint32_t seed) {
-        add_splats_mcmc_tensor(
-            N, num_add, min_opacity,
-            dv<float3>(m.means, CAP), dv<float4>(m.quats, CAP),
-            dv<float3>(m.scales, CAP), dv<float>(m.opacs, CAP),
-            dv<float3>(m.dc, CAP),
-            dv<float3>(m.sh, m.sh ? m.num_sh * CAP : 0),
-            dv<float3>(m.g1[0], m.g1[0] ? CAP : 0),
-            dv<float4>(m.g1[1], m.g1[1] ? CAP : 0),
-            dv<float3>(m.g1[2], m.g1[2] ? CAP : 0),
-            dv<float>(m.g1[3], m.g1[3] ? CAP : 0),
-            dv<float3>(m.g1[4], m.g1[4] ? CAP : 0),
-            dv<float3>(m.sh_optim_bits == 32 ? (void*)m.g1_sh
-                                             : (void*)m.sh_state_packed,
-                       0),
-            dv<float3>(m.g2[0], m.g2[0] ? CAP : 0),
-            dv<float4>(m.g2[1], m.g2[1] ? CAP : 0),
-            dv<float3>(m.g2[2], m.g2[2] ? CAP : 0),
-            dv<float>(m.g2[3], m.g2[3] ? CAP : 0),
-            dv<float3>(m.g2[4], m.g2[4] ? CAP : 0),
-            dv<float3>(m.sh_optim_bits == 32 ? (void*)m.g2_sh
-                                             : (void*)m.sh_state_packed,
-                       0),
-            dv<int32_t>(m.bias_steps, CAP), m.sh_optim_bits, (int)m.num_sh,
-            dv<float4>(m.sh_state_bounds, m.sh_state_bound_f / 4),
-            m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
-                                            m.sh_value_bytes),
-            dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
-            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq, dv<float4>(m.projective_state, CAP), dv<float>(m.projective_information, CAP),
-            seed, DeviceVector<float>());
-        backend::device_synchronize();
-        check_projective_state(m);
-    };
-
     // A recycled splat must come back alive. Parity cannot see this on its
     // own: both backends leaving the dead splat where it is compares equal.
     bool revived_ok = true;
@@ -613,14 +536,14 @@ int main(int argc, char** argv) {
         }
     };
 
-    // A splat MCMC copies sits on its source's mean, so splats sharing a mean
-    // must decode the same value-codec row. Parity cannot see a clipped copy
-    // on its own: both backends clipping alike compares equal.
+    // A split keeps its source's DC, so splats sharing a DC must decode the
+    // same value-codec row. Parity cannot see a clipped copy on its own: both
+    // backends clipping alike compares equal.
     bool inherit_ok = true;
     auto check_inherited = [&](const Model& m, int64_t n, const char* what) {
-        std::vector<float> means(3 * n), bd(m.sh_value_bound_f);
+        std::vector<float> dc(3 * n), bd(m.sh_value_bound_f);
         std::vector<uint8_t> pk(m.sh_value_bytes);
-        backend::memcpy_sync(means.data(), m.means, means.size() * 4,
+        backend::memcpy_sync(dc.data(), m.dc, dc.size() * 4,
                              MemcpyKind::DeviceToHost);
         backend::memcpy_sync(bd.data(), m.sh_value_bounds, bd.size() * 4,
                              MemcpyKind::DeviceToHost);
@@ -645,8 +568,7 @@ int main(int argc, char** argv) {
         int64_t pairs = 0, bad = 0;
         double worst = 0;
         for (int64_t g = 0; g < n; g++) {
-            std::array<float, 3> key{means[3 * g], means[3 * g + 1],
-                                     means[3 * g + 2]};
+            std::array<float, 3> key{dc[3 * g], dc[3 * g + 1], dc[3 * g + 2]};
             auto [it, fresh] = first.emplace(key, g);
             if (fresh) continue;
             pairs++;
@@ -767,11 +689,13 @@ int main(int argc, char** argv) {
     {
         Model m = build_model(8, 16, true, true, 15, 15, -1, -1, -1);
         call_add_las(m, 600, 55u);
+        check_inherited(m, N + 600, "add_las q16");
         readback_model(m);
     }
     {
         Model m = build_model(4, 8, false, false, 8, 15, -1, -1, -1);
         call_add_las(m, 333, 66u);
+        check_inherited(m, N + 333, "add_las q8");
         readback_model(m);
     }
     // The oversize channel: the draw's weight is (accum + floor) * score^blend,
@@ -813,58 +737,6 @@ int main(int argc, char** argv) {
         Model m = build_model(32, 32, false, false, 15, 15, /*lowopac=*/517,
                               -1, -1);
         call_relocate_las(m, 0.005f, 181u, nullptr, true, nullptr, 0.9f);
-        readback_model(m);
-    }
-
-    // MCMC relocate: ~10% of splats below the opacity threshold
-    auto lower_some_opacs = [&](Model& m) {
-        std::vector<float> opacs(CAP);
-        backend::memcpy_sync(opacs.data(), m.opacs, CAP * 4,
-                             MemcpyKind::DeviceToHost);
-        for (int64_t i = 0; i < N; i++)
-            if (i % 11 == 0) opacs[i] = uf(-9.f, -7.f);
-        backend::memcpy_sync(m.opacs, opacs.data(), CAP * 4,
-                             MemcpyKind::HostToDevice);
-    };
-    {
-        Model m = build_model(32, 32, false, false, 15, 15, -1, -1, -1);
-        lower_some_opacs(m);
-        call_relocate_mcmc(m, 0.005f, 77u);
-        readback_model(m);
-    }
-    {
-        Model m = build_model(8, 16, true, true, 15, 15, -1, -1, -1);
-        lower_some_opacs(m);
-        call_relocate_mcmc(m, 0.005f, 88u);
-        check_inherited(m, N, "relocate_mcmc q16");
-        readback_model(m);
-    }
-
-    {
-        // dead-scale trigger on the MCMC path
-        Model m = build_model(32, 32, false, false, 15, 15, -1, -1,
-                              /*dead_scale=*/1729);
-        call_relocate_mcmc(m, 0.005f, 131u);
-        check_revived(m, 1729, "relocate_mcmc");
-        readback_model(m);
-    }
-
-    // MCMC add
-    {
-        Model m = build_model(32, 32, false, false, 15, 15, -1, -1, -1);
-        call_add_mcmc(m, 444, 0.005f, 99u);
-        readback_model(m);
-    }
-    {
-        Model m = build_model(4, 8, false, false, 8, 15, -1, -1, -1);
-        call_add_mcmc(m, 512, 0.005f, 111u);
-        check_inherited(m, N + 512, "add_mcmc q8");
-        readback_model(m);
-    }
-    {
-        Model m = build_model(8, 16, true, true, 15, 15, -1, -1, -1);
-        call_add_mcmc(m, 600, 0.005f, 112u);
-        check_inherited(m, N + 600, "add_mcmc q16");
         readback_model(m);
     }
 

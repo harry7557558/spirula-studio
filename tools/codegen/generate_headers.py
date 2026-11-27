@@ -133,7 +133,7 @@ HEADER_SOURCES = dict([
          "DensifySampling.cu",     # quantile/median, indexing, scatter, sampling
          "DensifyScoring.cu",      # covariance scale init, param update
          "Relocation.cu",
-         "McmcRelocation.cu",      # MCMC relocation + noise
+         "DensifyNoise.cu",        # exploration noise
          "DensifySplitFilter.cu",  # long-axis split, image edge filters
          "RegionWeight.cu"),       # the region test that gates the draw
 ])

@@ -14,8 +14,7 @@ build without native LPIPS; that needs torch + torchmetrics, and without it
 this script needs nothing beyond the standard library.
 
     python3 reference/python/benchmark.py 360_v2 --data /path/to/360_v2
-    python3 reference/python/benchmark.py zipnerf --data /path/to/zipnerf \\
-        --preset academic-baseline --lpips
+    python3 reference/python/benchmark.py zipnerf --data /path/to/zipnerf --lpips
 
 Extra arguments after `--` are appended to every `spirula train` command:
 
@@ -153,8 +152,8 @@ def main() -> None:
                     help="folder holding the benchmark's scenes")
     ap.add_argument("--trainer", type=Path, help="trainer executable")
     ap.add_argument("--scenes", nargs="+", help="run only these scene names")
-    ap.add_argument("--preset", default="academic-baseline",
-                    help="spirula train preset (default: academic-baseline)")
+    ap.add_argument("--preset", default="3dgs",
+                    help="spirula train preset (default: 3dgs)")
     ap.add_argument("--output-dir-prefix", type=Path, default=Path("outputs"))
     ap.add_argument("--lpips", action="store_true",
                     help="also run eval_lpips.py per scene (needs torchmetrics)")

@@ -29,6 +29,7 @@ static void saved_config() {
         "deblur_training_images": false,
         "optimizer_offload": "",
         "train_frame": "points",
+        "use_revised_densification": false,
         "cache_images": "cpu",
         "num_iterations": 1234
     })"), cfg);
@@ -39,7 +40,8 @@ static void saved_config() {
         const std::string name = key;
         check(name != "use_bvh" && name != "use_camera_optimizer" &&
               name != "deblur_training_images" && name != "optimizer_offload" &&
-              name != "train_frame", "retired fields are absent from saved configs");
+              name != "train_frame" && name != "use_revised_densification",
+              "retired fields are absent from saved configs");
     }
 
     train_config_from_json(json_parse(R"({"cache_images": "gpu"})"), cfg);
@@ -219,11 +221,6 @@ static void step_config_loss_map_gating() {
     check(!spirula::build_step_config(cfg, st, 27500).optim.write_densify_world_grad_score,
           "world-grad score disabled after densify stop");
 
-    cfg.use_revised_densification = false;
-    check(!spirula::build_step_config(cfg, st, 0).loss.compute_loss_map &&
-              !spirula::build_step_config(cfg, st, 0).optim.write_densify_world_grad_score,
-          "MCMC skips loss map and world-grad score");
-    cfg.use_revised_densification = true;
     cfg.refine_every = 0;
     check(!spirula::build_step_config(cfg, st, 0).loss.compute_loss_map &&
               !spirula::build_step_config(cfg, st, 0).optim.write_densify_world_grad_score,

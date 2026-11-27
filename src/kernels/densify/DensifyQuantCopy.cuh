@@ -1,7 +1,7 @@
 #pragma once
 
 // Quantized optimizer-state helpers shared by the relocation paths
-// (Relocation.cu, McmcRelocation.cu, DensifySplitFilter.cu): copy a source
+// (Relocation.cu, DensifySplitFilter.cu): copy a source
 // splat's quantized SH/non-SH optim state into a destination slot, or reset
 // it to a value that decodes as (g1 = 0, g2 = 0).
 
@@ -126,26 +126,6 @@ __global__ void densify_copy_quant_sh_value_kernel(
         packed, bounds, ext, src, dst, num_sh, num_sh_buffer);
 }
 
-// Variant: src given by index_map[dst]; copy only when index_map[dst] != dst.
-// Used by the MCMC relocate path (mcmc_update_relocation_kernel mirror).
-template<int BITS, bool BOUNDS_PER_SPLAT, bool GROW>
-__global__ void densify_copy_quant_sh_value_index_map_kernel(
-    int64_t num_splats,
-    const int32_t* __restrict__ index_map,   // [num_splats]
-    uint8_t* __restrict__ packed,
-    float2*  __restrict__ bounds,
-    uint2*   __restrict__ ext,
-    int num_sh,
-    int num_sh_buffer
-) {
-    int64_t dst = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
-    if (dst >= num_splats) return;
-    int32_t src = index_map[dst];
-    if ((int64_t)src == dst) return;
-    _copy_quant_sh_value_for_splat<BITS, BOUNDS_PER_SPLAT, GROW>(
-        packed, bounds, ext, src, dst, num_sh, num_sh_buffer);
-}
-
 // One block per bound slot: a slot whose `ext` reaches past its bound has
 // every cell re-encoded to the widened bound, which it then adopts.
 template<int BITS>
@@ -194,44 +174,6 @@ static inline void _launch_widen_quant_sh_value(int64_t num_slots,
     else
         densify_widen_quant_sh_value_kernel<16><<<(unsigned)num_slots, 256>>>(
             slot_cells, packed, bounds, ext);
-    CHECK_DEVICE_ERROR(cudaGetLastError());
-}
-
-static inline void _launch_densify_copy_quant_sh_value_index_map(
-    int64_t num_splats,
-    const int32_t* index_map,
-    uint8_t* packed,
-    float2*  bounds,
-    int      num_sh,
-    int      num_sh_buffer,
-    int      bits,
-    bool     bounds_per_splat
-) {
-    if (bits == 32 || num_splats == 0 || packed == nullptr || bounds == nullptr)
-        return;
-    int64_t slot_cells = 0;
-    const int64_t num_slots = _quant_sh_value_slots(
-        num_splats, num_sh_buffer, bounds_per_splat, &slot_cells);
-    DeviceVector<uint2> ext;
-    ext.resize(PoolSlot::DensifyQshValueExt, num_slots);
-    CHECK_DEVICE_ERROR(cudaMemsetAsync(ext.data_ptr(), 0xff, sizeof(uint2) * num_slots));
-    constexpr int BLOCK = 256;
-    int grid = (int)((num_splats + BLOCK - 1) / BLOCK);
-    #define _LAUNCH(BB, BPS, GROW) \
-        densify_copy_quant_sh_value_index_map_kernel<BB, BPS, GROW><<<grid, BLOCK>>>( \
-            num_splats, index_map, packed, bounds, ext.data_ptr(), num_sh, num_sh_buffer)
-    #define _LAUNCH_BITS(GROW) \
-        if      (bits == 8  &&  bounds_per_splat) { _LAUNCH(8,  true,  GROW); } \
-        else if (bits == 8  && !bounds_per_splat) { _LAUNCH(8,  false, GROW); } \
-        else if (bits == 16 &&  bounds_per_splat) { _LAUNCH(16, true,  GROW); } \
-        else if (bits == 16 && !bounds_per_splat) { _LAUNCH(16, false, GROW); }
-    _LAUNCH_BITS(true)
-    CHECK_DEVICE_ERROR(cudaGetLastError());
-    _launch_widen_quant_sh_value(num_slots, slot_cells, packed, bounds,
-                                 ext.data_ptr(), bits);
-    _LAUNCH_BITS(false)
-    #undef _LAUNCH_BITS
-    #undef _LAUNCH
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 

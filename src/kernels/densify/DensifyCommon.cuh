@@ -1,20 +1,17 @@
 #pragma once
 
-// Shared preamble for the densification kernels.
-//
-// Densify.cu was one file (~2.5k lines). It is split by function; the parts
-// all declare into the single Densify.cuh via HEADER_SOURCES['Densify'] in
-// generate_headers.py. See docs/codegen.md.
+// Shared preamble for the densification kernels. The parts below all declare
+// into Densify.cuh via HEADER_SOURCES['Densify'] in generate_headers.py
+// (docs/codegen.md).
 //
 //   DensifySampling.cu    quantile / median normalization, indexing,
 //                         scatter-reduce, weighted sampling w/o replacement
 //   DensifyScoring.cu     covariance-based scale init, densify param update
 //   Relocation.cu         relocation with long-axis split
-//   McmcRelocation.cu     MCMC relocation and MCMC noise
+//   DensifyNoise.cu       exploration noise on splat means
 //   DensifySplitFilter.cu long-axis split, image (edge) filters
 //
-// The quantized optim-state copy/zero helpers shared by the two relocation
-// paths live in DensifyQuantCopy.cuh.
+// DensifyQuantCopy.cuh holds the quantized optim-state copy/zero helpers.
 
 #include "kernels/densify/Densify.cuh"
 

@@ -50,8 +50,8 @@ MODULES = {
     ),
     "Densify.h": (
         ["kernels/densify/Densify.cuh"],
-        "Densification: MCMC and long-axis-split add/relocate, edge filters,"
-        " scatter utilities.",
+        "Densification: long-axis-split add/relocate, exploration noise,"
+        " edge filters, scatter utilities.",
     ),
     "Loss.h": (
         ["kernels/loss/FusedSSIM.cuh", "kernels/loss/PerPixelLoss.cuh", "kernels/loss/PerSplatLoss.cuh",

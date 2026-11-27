@@ -217,27 +217,15 @@ const char* scan_blocks_entry() {
     return sizeof(T) == 8 ? "sort_scan.scan_blocks_i64"
                           : "sort_scan.scan_blocks_i32";
 }
-template <>
-const char* scan_blocks_entry<float>() {
-    return "sort_scan.scan_blocks_f32";
-}
 template <typename T>
 const char* scan_spine_entry() {
     return sizeof(T) == 8 ? "sort_scan.scan_spine_i64"
                           : "sort_scan.scan_spine_i32";
 }
-template <>
-const char* scan_spine_entry<float>() {
-    return "sort_scan.scan_spine_f32";
-}
 template <typename T>
 const char* scan_add_entry() {
     return sizeof(T) == 8 ? "sort_scan.scan_add_i64"
                           : "sort_scan.scan_add_i32";
-}
-template <>
-const char* scan_add_entry<float>() {
-    return "sort_scan.scan_add_f32";
 }
 
 // --- select ------------------------------------------------------------------
@@ -330,7 +318,6 @@ template void inclusive_sum<int32_t>(const int32_t*, int32_t*, int64_t,
                                      Stream);
 template void inclusive_sum<int64_t>(const int64_t*, int64_t*, int64_t,
                                      Stream);
-template void inclusive_sum<float>(const float*, float*, int64_t, Stream);
 template void exclusive_sum<int32_t>(const int32_t*, int32_t*, int64_t,
                                      Stream);
 template void exclusive_sum<int64_t>(const int64_t*, int64_t*, int64_t,

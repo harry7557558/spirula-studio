@@ -2,7 +2,7 @@
 // Backend API module — GENERATED forwarder by
 // tools/codegen/generate_backend_api.py. DO NOT EDIT.
 //
-// Densification: MCMC and long-axis-split add/relocate, edge filters, scatter utilities.
+// Densification: long-axis-split add/relocate, exploration noise, edge filters, scatter utilities.
 //
 // Authoritative declarations live in the per-kernel headers included below
 // (declaration sections generated from /*[AutoHeaderGeneratorExport]*/

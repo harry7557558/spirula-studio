@@ -374,10 +374,8 @@ the 64-bit requirement is DECIDED — tile keys are `(tile_id << 32) |
 ordered_float_depth` and 32-bit packing overflows on large real-world
 scenes). Values int32. Host side ping-pongs the caller's `DoubleBuffer`
 exactly like CUB. `inclusive_sum`/`exclusive_sum` = two-level
-workgroup-scan (int32/int64, plus a float inclusive_sum for the densify
-MCMC sampling cumsum — deterministic per device, but its summation
-association differs from CUB's so cross-backend float cumsums agree only
-to rounding); `select_flagged` = scan + scatter + count readback.
+workgroup-scan (int32/int64); `select_flagged` = scan + scatter + count
+readback.
 Parity-tested against CPU references on every available device. Float
 keys are sorted by emitting the order-preserving uint32 flip transform
 from the producing kernel and sorting raw-unsigned via the int32 overload
@@ -684,13 +682,12 @@ the engine level.
     `count` and beyond) — NVIDIA segfaulted inside pipeline creation,
     llvmpipe silently ran with garbage spec values. kMax is now 16 with an
     assert; if a kernel ever needs more axes, raise kMax explicitly.
-- **Densify/MCMC + remaining optimizer variants (phase 5, fifth slice)**:
+- **Densify + remaining optimizer variants (phase 5, fifth slice)**:
   `kernels/Densify.cpp` implements the full densification API
-  (densify_clip_scale, MCMC/revised noise, long-axis-split relocate/add,
-  MCMC relocate/add) over `backend/vulkan/shaders/densify.slang`, which includes the
+  (densify_clip_scale, exploration noise, long-axis-split relocate/add)
+  over `backend/vulkan/shaders/densify.slang`, which includes the
   canonical `shaders/densify.slang` device code (long_axis_split_3dgs, the
-  Gaussian noise kernels) and mirrors the McmcRelocation.cu-only mcmc_relocation
-  math; `kernels/Optimizer.cpp` gains the adamtr trust-region color
+  Gaussian noise kernel); `kernels/Optimizer.cpp` gains the adamtr trust-region color
   variants (`backend/vulkan/shaders/optim_color.slang`) and the fused 3DGS geometry
   step (`backend/vulkan/shaders/optim_geometry.slang`, sharing the FPBO helpers
   refactored into optim_quant.slang: oq_state_read/oq_accum_us/
@@ -702,13 +699,6 @@ the engine level.
     identical key bits. The `u` draw hashes (seed, blockIdx, threadIdx)
     with an integer hash (bit-exact both backends); the kernels keep
     CUDA's 256-thread linearized geometry so hashes match.
-  - **Float cumsum**: `backend::inclusive_sum<float>` (new
-    scan_blocks/spine/add_f32 entries in sort_scan.slang) feeds the MCMC
-    binary-search draws. Its summation association differs from CUB's, so
-    cross-backend cumsums agree only to rounding — rare boundary flips in
-    the sampled indices are expected and the parity tool budgets for them
-    (loose channel / code violation caps; each flip rewrites one splat's
-    row).
   - **Relocation compaction** keeps CUDA's atomic-counter form, so the
     src→dst PAIRING is scheduling-dependent (true on CUDA alone);
     densify_parity's relocate configs are built with exactly one

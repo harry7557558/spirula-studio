@@ -308,8 +308,6 @@ uint2 acc_sub(uint2 a, uint2 b) {
 #endif
 int acc_add(int a, int b) { return a + b; }
 int acc_sub(int a, int b) { return a - b; }
-float acc_add(float a, float b) { return a + b; }
-float acc_sub(float a, float b) { return a - b; }
 
 struct ScanParams {
     uint32_t* input;       // typed per entry (cast)
@@ -321,7 +319,6 @@ struct ScanParams {
 
 groupshared i64acc_t _scan_tmp_i64[SCAN_WG];
 groupshared int _scan_tmp_i32[SCAN_WG];
-groupshared float _scan_tmp_f32[SCAN_WG];
 
 // uint8 flag arrays go through int8_compat.slang: packed-word extraction on
 // the baseline (allocations are 16-byte rounded, so the word covering byte
@@ -388,15 +385,10 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
 
 #define LOAD_I32(idx) (elem_at((int*)p.input, idx)[0])
 #define LOAD_I64(idx) (elem_at((i64acc_t*)p.input, idx)[0])
-#define LOAD_F32(idx) (elem_at((float*)p.input, idx)[0])
 #define LOAD_FLAG(idx) (load_flag_byte((uint32_t*)p.input, idx) != 0 ? 1 : 0)
 
 DEF_SCAN_BLOCKS(scan_blocks_i32, int, _scan_tmp_i32, LOAD_I32)
 DEF_SCAN_BLOCKS(scan_blocks_i64, i64acc_t, _scan_tmp_i64, LOAD_I64)
-// float sums (densify MCMC sampling cumsum). The blocked layout makes the
-// summation order deterministic per n, but it is NOT the same association
-// as CUB's device scan — cross-backend float cumsums agree only to rounding.
-DEF_SCAN_BLOCKS(scan_blocks_f32, float, _scan_tmp_f32, LOAD_F32)
 // bool/uint8 flags scanned into an int32 output (select_flagged).
 DEF_SCAN_BLOCKS(scan_blocks_flags, int, _scan_tmp_i32, LOAD_FLAG)
 
@@ -433,7 +425,6 @@ void NAME(uint tid: SV_GroupThreadID, uniform ScanSpineParams p) {         \
 
 DEF_SCAN_SPINE(scan_spine_i32, int, _scan_tmp_i32)
 DEF_SCAN_SPINE(scan_spine_i64, i64acc_t, _scan_tmp_i64)
-DEF_SCAN_SPINE(scan_spine_f32, float, _scan_tmp_f32)
 
 struct ScanAddParams {
     uint32_t* output;
@@ -462,7 +453,6 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
 
 DEF_SCAN_ADD(scan_add_i32, int)
 DEF_SCAN_ADD(scan_add_i64, i64acc_t)
-DEF_SCAN_ADD(scan_add_f32, float)
 
 // ---------------------------------------------------------------------------
 // stream compaction (select_flagged)

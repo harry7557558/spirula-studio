@@ -301,7 +301,7 @@ matches the full model.
    points spread over the splat's Gaussian (`--roi-splat-samples`) -- normal
    oriented by the nearest training camera -- and a splat with none inside
    draws for relocation and growth with `--roi-outside-weight` (1e-4)
-   instead of 1, in both the revised and the MCMC path.
+   instead of 1.
    `--roi-outside-opacity-decay` would also scale their opacity at every
    refine step; it is off (1), because the pixels those
    splats explained still had to be explained, and the parts grew splats in

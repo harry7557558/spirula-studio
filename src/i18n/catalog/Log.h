@@ -2498,46 +2498,19 @@ SS_MSG(ppisp_before_color_space_order,
     TR("{0}, {1} gerektirir: fotoğraf başına renk düzeltmesi her zaman sRGB'de "
        "uygulanır"));
 SS_MSG(learned_score_needs,
-    EN("--densify-learned-score requires: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
-    JA("--densify-learned-score には次が必要: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
-    ZH_HANS("--densify-learned-score 需要: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
-    ZH_HANT("--densify-learned-score 需要: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
-    KO("--densify-learned-score 에 필요: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
-    DE("--densify-learned-score benötigt: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
-    FR("--densify-learned-score requiert: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
-    ES("--densify-learned-score requiere: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
-    PT("--densify-learned-score exige: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
-    IT("--densify-learned-score richiede: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
-    NL("--densify-learned-score vereist: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
-    RU("--densify-learned-score требует: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
-    TR("--densify-learned-score gerektirir: --use-revised-densification.\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."));
-SS_MSG(dead_criterion_needs_revised,
-    EN("--dead-criterion {0} needs --use-revised-densification: the MCMC "
-       "relocation tests opacity only"),
-    JA("--dead-criterion {0} には --use-revised-densification が必要です。MCMC "
-       "の再配置は不透明度しか見ません"),
-    ZH_HANS("--dead-criterion {0} 需要开启 --use-revised-densification：MCMC "
-            "重定位只检查不透明度"),
-    ZH_HANT("--dead-criterion {0} 需要開啟 --use-revised-densification：MCMC "
-            "重定位只檢查不透明度"),
-    KO("--dead-criterion {0}에는 --use-revised-densification이 필요합니다. "
-       "MCMC 재배치는 불투명도만 봅니다"),
-    DE("--dead-criterion {0} setzt --use-revised-densification voraus: Die "
-       "MCMC-Umverteilung prüft nur die Deckkraft"),
-    FR("--dead-criterion {0} requiert --use-revised-densification : la "
-       "relocalisation MCMC ne teste que l'opacité"),
-    ES("--dead-criterion {0} requiere --use-revised-densification: la "
-       "reubicación MCMC solo comprueba la opacidad"),
-    PT("--dead-criterion {0} exige --use-revised-densification: a realocação "
-       "MCMC só testa a opacidade"),
-    IT("--dead-criterion {0} richiede --use-revised-densification: il "
-       "riposizionamento MCMC controlla solo l'opacità"),
-    NL("--dead-criterion {0} vereist --use-revised-densification: de "
-       "MCMC-herplaatsing test alleen de dekking"),
-    RU("--dead-criterion {0} требует --use-revised-densification: перемещение "
-       "MCMC проверяет только непрозрачность"),
-    TR("--dead-criterion {0}, --use-revised-densification gerektirir: MCMC "
-       "yeniden yerleştirmesi yalnızca saydamsızlığı sınar"));
+    EN("--densify-learned-score requires:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
+    JA("--densify-learned-score には次が必要:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
+    ZH_HANS("--densify-learned-score 需要:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
+    ZH_HANT("--densify-learned-score 需要:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
+    KO("--densify-learned-score 에 필요:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
+    DE("--densify-learned-score benötigt:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
+    FR("--densify-learned-score requiert:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
+    ES("--densify-learned-score requiere:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
+    PT("--densify-learned-score exige:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
+    IT("--densify-learned-score richiede:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
+    NL("--densify-learned-score vereist:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
+    RU("--densify-learned-score требует:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."),
+    TR("--densify-learned-score gerektirir:\n- --densify-loss-map-mode != none; --densify-score-blend-world-grad 0.\n- --densify-score-power > 0; --densify-loss-map-power > 0."));
 SS_MSG(bad_quantization_level,
     EN("quantization_level must be 0 or 1"),
     JA("quantization_level は 0 か 1 にしてください"),

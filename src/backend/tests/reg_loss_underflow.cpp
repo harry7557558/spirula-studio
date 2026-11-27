@@ -5,8 +5,8 @@
 // exp(scales); the backward divides by a denominator that flushes to zero
 // under exp(-22.4), and 0/0 lands in the scales the optimizer writes. That is
 // reachable in any run: mcmc_scale_reg penalizes the LOG scale, so an unused
-// splat drops ~lr a step until the kMinLogScale floor stops it. -inf, which
-// mcmc_relocation used to manufacture, is covered too.
+// splat drops ~lr a step until the kMinLogScale floor stops it. -inf is
+// covered too.
 //
 // Drives the shared backward through fused_optim_3dgs_geometry. In the 2DGS
 // cases the unused third scale stays put unless the disc sinks below it.
@@ -181,7 +181,7 @@ int main() {
         {"scale_regularization on",                   0.f, 0.f, 0.1f, 0.f, false, false},
         {"both on, anisotropic",                      0.1f, 0.05f, 0.1f, 25.f, false, false},
         {"defaults, extreme anisotropy",              0.f, 0.f, 0.f, 90.f, false, false},
-        {"-inf log scale (mcmc_relocation underflow)", 0.1f, 0.05f, 0.1f, 0.f, true, false},
+        {"-inf log scale", 0.1f, 0.05f, 0.1f, 0.f, true, false},
         {"2dgs, shipping defaults",                   0.f, 0.f, 0.f, 0.f, false, true, true},
         {"2dgs, both on, anisotropic",                0.1f, 0.05f, 0.1f, 25.f, false, false, true},
         {"2dgs, -inf log scale",                      0.1f, 0.05f, 0.1f, 0.f, true, false, true},

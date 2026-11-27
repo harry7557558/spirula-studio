@@ -2,7 +2,8 @@
 
 `--primitive 2dgs` trains flat Gaussian discs in the style of 2D Gaussian
 Splatting (Huang et al., SIGGRAPH 2024) with the same engine, on both
-backends. `spirula train 2dgs` is the preset with the geometry losses on.
+backends. There is no `2dgs` preset: it had stopped being a faithful 2DGS
+baseline. Runs here that name it used the [weights below](#preset-weights).
 
 ## How it fits
 
@@ -79,10 +80,16 @@ between runs of one setting.
 | 0.1 | 0.04 | 23.75 | 0.899 | 0.694 | 0.829 | 0.597 |
 | 1.0 | 0.04 | 23.67 | 0.898 | 0.667 | 0.843 | 0.552 |
 
-The preset takes the best mesh, 0.1 / 0.04. Read the table for its
-differences: later runs of the preset on the same capture score 23.3 dB /
-0.881 at the same mesh F, a 0.4 dB offset from this batch that no setting
-or seed cloud explained. Distortion 0.1 adds 8% GPU time a step.
+The former preset took the best mesh, 0.1 / 0.04: `--primitive 2dgs
+--sh-degree 0 --dc-reg 10 --overexposure-reg 10
+--background-transparency-suppression noise --depth-distortion-reg 0.1
+--normal-distortion-reg 0.01 --normal-reg-weight 0.04` and 0.01 for
+`--mean-median-depth-weight`, `--median-depth-normal-reg-weight`,
+`--median-normal-supervision-weight`, `--median-render-normal-reg-weight` and
+`--erank-reg`. Read the table for its differences: later runs of the preset
+on the same capture score 23.3 dB / 0.881 at the same mesh F, a 0.4 dB offset
+from this batch that no setting or seed cloud explained. Distortion 0.1 adds
+8% GPU time a step.
 
 Plain `--primitive 2dgs` keeps the shared `normal_reg_weight` of 0.04: it is
 most of the mesh gain above (F 0.539 to 0.674) for 0.6 dB, and a default that

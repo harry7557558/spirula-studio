@@ -293,63 +293,6 @@ SS_MSG(preset_meshing_help,
     TR("Ağ çıkarmak üzere splat eğitmek için hazır ayar. Splat'ların kendi "
        "görünüşünden çok, üretilecek ağ geometrisinin niteliğini gözetir."));
 
-SS_MSG(preset_2dgs_help,
-    EN("Preset for training splats for meshing. Produces better geometry on "
-       "flat areas, at the cost of fine detail."),
-    JA("メッシュ化のためにスプラットを学習するプリセットです。平らな部分の形状は"
-       "よくなりますが、細部は失われます。"),
-    ZH_HANS("为生成网格而训练泼溅的预设。平坦区域的几何更好，但会损失细节。"),
-    ZH_HANT("為產生網格而訓練潑濺的預設。平坦區域的幾何更好，但會損失細節。"),
-    KO("메시로 만들기 위해 스플랫을 학습하는 프리셋입니다. 평평한 부분의 "
-       "형상은 좋아지지만 세부 묘사는 줄어듭니다."),
-    DE("Voreinstellung für das Training von Splats zur Netzerzeugung. Bessere "
-       "Geometrie auf flachen Flächen, auf Kosten feiner Details."),
-    FR("Préréglage pour entraîner des splats en vue du maillage. Meilleure "
-       "géométrie sur les zones planes, au détriment des détails fins."),
-    ES("Preajuste para entrenar splats con vistas al mallado. Mejor geometría "
-       "en las zonas planas, a costa de los detalles finos."),
-    PT("Predefinição para treinar splats visando a malha. Melhor geometria nas "
-       "áreas planas, à custa dos detalhes finos."),
-    IT("Preimpostazione per addestrare splat in vista della mesh. Geometria "
-       "migliore sulle zone piatte, a scapito dei dettagli fini."),
-    NL("Voorinstelling om splats te trainen met het oog op mesh-generatie. "
-       "Betere geometrie op vlakke delen, ten koste van fijne details."),
-    RU("Пресет для обучения сплатов под построение меша. Лучше геометрия "
-       "плоских участков, но теряются мелкие детали."),
-    TR("Ağ çıkarmak üzere splat eğitmek için hazır ayar. Düz alanlarda daha iyi "
-       "geometri verir, ince ayrıntılar kaybolur."));
-
-SS_MSG(preset_academic_baseline,
-    EN("Academic baseline"),
-    JA("論文どおりのベースライン"),
-    ZH_HANS("论文基准"),
-    ZH_HANT("論文基準"),
-    KO("논문 기준선"),
-    DE("Akademische Referenz"),
-    FR("Référence académique"),
-    ES("Línea base académica"),
-    PT("Linha de base acadêmica"),
-    IT("Riferimento accademico"),
-    NL("Academische referentie"),
-    RU("Академический эталон"),
-    TR("Akademik referans"));
-
-SS_MSG(preset_academic_baseline_help,
-    EN("Preset that replicates 3DGS MCMC as faithful as possible."),
-    JA("3DGS MCMC をできるかぎり忠実に再現するプリセットです。"),
-    ZH_HANS("尽可能忠实复现 3DGS MCMC 的预设。"),
-    ZH_HANT("盡可能忠實重現 3DGS MCMC 的預設。"),
-    KO("3DGS MCMC를 가능한 한 충실하게 재현하는 프리셋입니다."),
-    DE("Voreinstellung, die 3DGS MCMC so getreu wie möglich nachbildet."),
-    FR("Préréglage qui reproduit 3DGS MCMC aussi fidèlement que possible."),
-    ES("Preajuste que reproduce 3DGS MCMC con la mayor fidelidad posible."),
-    PT("Predefinição que reproduz 3DGS MCMC com a maior fidelidade possível."),
-    IT("Preimpostazione che riproduce 3DGS MCMC nel modo più fedele "
-       "possibile."),
-    NL("Voorinstelling die 3DGS MCMC zo getrouw mogelijk nabootst."),
-    RU("Пресет, максимально точно воспроизводящий 3DGS MCMC."),
-    TR("3DGS MCMC'yi olabildiğince sadık biçimde yeniden üreten hazır ayar."));
-
 // ---------------------------------------------------------------------------
 // name -> text. The names are config/TrainConfig.h's kTrainPresets, and each
 // consumer static_asserts that the two lists are the same length.
@@ -369,9 +312,6 @@ inline constexpr PresetText kPresetText[] = {
     {"hdr",               &preset_hdr,               &preset_hdr_help},
     {"synthetic",         &preset_synthetic,         &preset_synthetic_help},
     {"meshing",           &preset_meshing,           &preset_meshing_help},
-    {"2dgs",              &preset_meshing,           &preset_2dgs_help},
-    // hidden by default, uncomment to enable
-   //  {"academic-baseline", &preset_academic_baseline, &preset_academic_baseline_help},
 };
 inline constexpr size_t kNumPresetText =
     sizeof(kPresetText) / sizeof(kPresetText[0]);

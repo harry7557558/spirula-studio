@@ -61,21 +61,12 @@
   X("densify.densify_accum_finalize",                Densify,     Splats) \
   X("densify.densify_clip_scale",                    Densify,     Splats) \
   X("densify.densify_clip_score",                    Densify,     Splats) \
-  X("densify.densify_copy_qsh_map",                  Densify,     Splats) \
   X("densify.densify_copy_qsh_pairs",                Densify,     Splats) \
   X("densify.densify_efraimidis_keys",               Densify,     Splats) \
   X("densify.densify_gather_score",                  Densify,     Splats) \
   X("densify.densify_learned_score",                 Densify,     Splats) \
   X("densify.densify_max_weight_init",               Densify,     Splats) \
   X("densify.densify_max_weight_scale",              Densify,     Splats) \
-  X("densify.densify_mcmc_add_index_map",            Densify,     Splats) \
-  X("densify.densify_mcmc_add_noise",                Densify,     Splats) \
-  X("densify.densify_mcmc_compute_add",              Densify,     Splats) \
-  X("densify.densify_mcmc_probs",                    Densify,     Splats) \
-  X("densify.densify_mcmc_relocation",               Densify,     Splats) \
-  X("densify.densify_mcmc_reloc_index_map",          Densify,     Splats) \
-  X("densify.densify_mcmc_update_add",               Densify,     Splats) \
-  X("densify.densify_mcmc_update_reloc",             Densify,     Splats) \
   X("densify.densify_relocate_las",                  Densify,     Splats) \
   X("densify.densify_reloc_mask",                    Densify,     Splats) \
   X("densify.densify_revised_add_noise",             Densify,     Splats) \
@@ -203,14 +194,11 @@
   X("region.decay_opacity",                          Densify,     Splats) \
   X("region.densify_scale_score",                    Densify,     Splats) \
   X("region.region_weight",                          Densify,     Splats) \
-  X("sort_scan.scan_add_f32",                        Scope,       Scope) \
   X("sort_scan.scan_add_i32",                        Scope,       Scope) \
   X("sort_scan.scan_add_i64",                        Scope,       Scope) \
-  X("sort_scan.scan_blocks_f32",                     Scope,       Scope) \
   X("sort_scan.scan_blocks_flags",                   Scope,       Scope) \
   X("sort_scan.scan_blocks_i32",                     Scope,       Scope) \
   X("sort_scan.scan_blocks_i64",                     Scope,       Scope) \
-  X("sort_scan.scan_spine_f32",                      Scope,       Scope) \
   X("sort_scan.scan_spine_i32",                      Scope,       Scope) \
   X("sort_scan.scan_spine_i64",                      Scope,       Scope) \
   X("sort_scan.scatter_flagged_u32",                 Scope,       Scope) \

@@ -274,64 +274,6 @@ int64_t add_splats_with_long_axis_split_tensor(
 );
 
 
-void relocate_splats_mcmc_tensor(
-    int64_t cur_num_splats,
-    float min_opacity,
-    DeviceVector<float3> means, DeviceVector<float4> quats, DeviceVector<float3> scales, DeviceVector<float> opacs, DeviceVector<float3> features_dc, DeviceVector<float3> features_sh,
-    DeviceVector<float3> g1_means, DeviceVector<float4> g1_quats, DeviceVector<float3> g1_scales, DeviceVector<float> g1_opacs, DeviceVector<float3> g1_features_dc, DeviceVector<float3> g1_features_sh,
-    DeviceVector<float3> g2_means, DeviceVector<float4> g2_quats, DeviceVector<float3> g2_scales, DeviceVector<float> g2_opacs, DeviceVector<float3> g2_features_dc, DeviceVector<float3> g2_features_sh,
-    DeviceVector<int32_t> bias_correction_steps,
-    int sh_optim_bits,
-    int num_sh,
-    DeviceVector<float4> sh_quant_bounds,
-    bool sh_bounds_per_splat,
-    DeviceVector<uint8_t> sh_value_packed,
-    DeviceVector<float2>  sh_value_bounds,
-    int  sh_value_bits,
-    bool sh_value_bounds_per_splat,
-    int  num_sh_buffer,
-    NonShQuantState non_sh,
-    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
-    uint32_t seed,
-    DeviceVector<float> draw_weight   // [N] or empty: scales each live splat's draw
-);
-
-
-void add_splats_mcmc_tensor(
-    int64_t cur_num_splats,
-    int64_t num_add,
-    float min_opacity,
-    DeviceVector<float3> means, DeviceVector<float4> quats, DeviceVector<float3> scales, DeviceVector<float> opacs, DeviceVector<float3> features_dc, DeviceVector<float3> features_sh,
-    DeviceVector<float3> g1_means, DeviceVector<float4> g1_quats, DeviceVector<float3> g1_scales, DeviceVector<float> g1_opacs, DeviceVector<float3> g1_features_dc, DeviceVector<float3> g1_features_sh,
-    DeviceVector<float3> g2_means, DeviceVector<float4> g2_quats, DeviceVector<float3> g2_scales, DeviceVector<float> g2_opacs, DeviceVector<float3> g2_features_dc, DeviceVector<float3> g2_features_sh,
-    DeviceVector<int32_t> bias_correction_steps,
-    int sh_optim_bits,
-    int num_sh,
-    DeviceVector<float4> sh_quant_bounds,
-    bool sh_bounds_per_splat,
-    DeviceVector<uint8_t> sh_value_packed,
-    DeviceVector<float2>  sh_value_bounds,
-    int  sh_value_bits,
-    bool sh_value_bounds_per_splat,
-    int  num_sh_buffer,
-    NonShQuantState non_sh,
-    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
-    uint32_t seed,
-    DeviceVector<float> draw_weight   // [N] or empty: scales each live splat's draw
-);
-
-
-void mcmc_add_noise_tensor(
-    int64_t num_splats,
-    float scaler,
-    DeviceVector<float3> means,
-    DeviceVector<float3> log_scales,
-    DeviceVector<float4> quats,
-    DeviceVector<float> opacs,
-    uint32_t seed
-);
-
-
 void revised_add_noise_tensor(
     int64_t num_splats,
     float scaler,

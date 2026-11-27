@@ -24,8 +24,8 @@ that lives across a step (the sub-batch score sum, the raster backward's
 world gradients, the PCA regularizer's caches) is Splat too:
 `POOL_LIVE_SPLAT_TABLE` in `core/PoolSlots.h` makes the pool allocate it for
 `cap_max` on first use, scaling the request by cap / live. Measured on bonsai
-at 1/4 resolution, 228k -> 666k splats: splat stays at 1042.6 MiB (revised) /
-1019.7 MiB (MCMC); without the table it climbs 11 MiB over the same run and
+at 1/4 resolution, 228k -> 666k splats: splat stays at 1042.6 MiB; without
+the table it climbs 11 MiB over the same run and
 `other` another 15 MiB. A new buffer whose length follows the live count goes
 in that table, or the forecast under-reads the peak -- unless it dies inside
 one call, in which case it belongs in the arena (the densify scratch below).
@@ -279,7 +279,7 @@ hands a later scale back the first slice -- scale 0's, the largest.
 
 `Densify` holds what a densify launcher allocates and drops before it returns:
 the relocation mask and destination list, the draw's sort keys and index
-buffers, the MCMC probabilities. Each launcher opens its own instance (they
+buffers. Each launcher opens its own instance (they
 run one after another, and each re-acquires the same draw buffers). 28 bytes
 a splat on Vulkan, of `cap_max` from the first densify step on.
 

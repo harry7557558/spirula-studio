@@ -83,7 +83,7 @@ they are: 16-bit values with one bound per 256 splats, and the 8-bit joint
 to be -- with one exception that was a bug for SH as well.
 
 Densification copies a row into its destination's block, and that copy used
-to clip to the block's current bound. A block MCMC is still filling has the
+to clip to the block's current bound. A block an add is still filling has the
 bound `(0, 0)`, so an added splat came out with every cell 0. For SH that
 only drops the source's view dependence. For a lobe, zero is a lit lobe
 (`softplus(0) = 0.1`, exponent 4) facing +z, every lobe of the splat the
@@ -126,7 +126,7 @@ file written by hand.
 
 ## Results
 
-mip-NeRF 360 at 30k steps, the default MCMC preset (1M splats), quantization
+mip-NeRF 360 at 30k steps, the default `3dgs` preset (1M splats), quantization
 level 1, FPBO; `images_2` (`images_4` for garden), every 8th view held out.
 `cc_psnr` is after a per-image colour correction. One run each, RTX 5070.
 

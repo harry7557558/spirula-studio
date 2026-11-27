@@ -359,14 +359,6 @@ enum class SaveClass : uint8_t {
   X(DensifyRelocMask               , "densify_reloc_mask",                Splat    , Never) \
   X(DensifyRelocCount              , "densify_reloc_count",               Other    , Never) \
   X(DensifyRelocDstIndices         , "densify_reloc_dst_indices",         Splat    , Never) \
-  X(DensifyMcmcSampleProbs         , "densify_mcmc_sample_probs",         Splat    , Never) \
-  X(DensifyMcmcSampleProbsCumsum   , "densify_mcmc_sample_probs_cumsum",  Splat    , Never) \
-  X(DensifyMcmcIndexMap            , "densify_mcmc_index_map",            Splat    , Never) \
-  X(DensifyMcmcNIdxBuffer          , "densify_mcmc_n_idx_buffer",         Splat    , Never) \
-  X(DensifyMcmcAddSampleProbs      , "densify_mcmc_add_sample_probs",     Splat    , Never) \
-  X(DensifyMcmcAddSampleProbsCumsum, "densify_mcmc_add_sample_probs_cumsum",Splat    , Never) \
-  X(DensifyMcmcAddIndexMap         , "densify_mcmc_add_index_map",        Splat    , Never) \
-  X(DensifyMcmcAddNIdxBuffer       , "densify_mcmc_add_n_idx_buffer",     Splat    , Never) \
   X(DensifyRobustResid             , "densify_robust_resid",              Other    , Never) \
   X(DensifyTukeyC                  , "densify_tukey_c",                   Other    , Never) \
   X(DensifyQshValueExt             , "densify_qsh_value_ext",             Other    , Never) \
@@ -550,15 +542,7 @@ enum class PoolPhase : uint8_t {
   X(DensifyWswrIndicesOut          , Densify) \
   X(DensifyWswrOutIdx              , Densify) \
   X(DensifyRelocMask               , Densify) \
-  X(DensifyRelocDstIndices         , Densify) \
-  X(DensifyMcmcSampleProbs         , Densify) \
-  X(DensifyMcmcSampleProbsCumsum   , Densify) \
-  X(DensifyMcmcIndexMap            , Densify) \
-  X(DensifyMcmcNIdxBuffer          , Densify) \
-  X(DensifyMcmcAddSampleProbs      , Densify) \
-  X(DensifyMcmcAddSampleProbsCumsum, Densify) \
-  X(DensifyMcmcAddIndexMap         , Densify) \
-  X(DensifyMcmcAddNIdxBuffer       , Densify)
+  X(DensifyRelocDstIndices         , Densify)
 
 struct AliasRow { PoolSlot slot; PoolPhase phase; };
 inline constexpr AliasRow kAliasRows[] = {

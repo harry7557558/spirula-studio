@@ -52,7 +52,7 @@ bearing information, and packed observation indexing; it also supports the
 dump/compare workflow below. `fpbo_parity` and `fpbo_split_parity` exercise
 projective updates with compressed and full-precision optimizer state.
 `noise_moments` checks zero mean, covariance, and temporal independence for
-identical Gaussians in both exploration kernels.
+identical Gaussians in the exploration kernel.
 `projective_camera_batches` checks host/device camera maps, coincident virtual
 views, geometry-supervision fallback, and reset.
 `projective_memory` checks lazy camera/state allocation, zero disabled GPU

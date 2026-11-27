@@ -1,13 +1,12 @@
 // Vulkan implementation of the densification launch APIs (kernels/densify/Densify.cuh):
 // densify_update_weight, densify_clip_scale, the long-axis-split
-// relocate/add family, the MCMC relocate/add family, and the MCMC/revised
-// noise kernels. Device work: shaders/densify.slang.
+// relocate/add family, and the exploration noise kernel. Device work:
+// shaders/densify.slang.
 //
 // Structure mirrors the CUDA launchers: weighted sampling without
 // replacement sorts efraimidis-spirakis keys (emitted as order-preserving
 // uint32 bits so the raw-unsigned radix sort reproduces CUB's float-key
-// order), the MCMC paths run a float cumsum + hash-driven binary-search
-// draws, and the relocation mask compacts through an atomic counter (the
+// order), and the relocation mask compacts through an atomic counter (the
 // src->dst pairing is scheduling-dependent, exactly like CUDA — parity
 // tests compare relocated rows as a multiset).
 
@@ -184,106 +183,12 @@ struct CopyQshPairsParams {
 static_assert(sizeof(CopyQshPairsParams) == 5 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
-// Mirrors CopyQshMapParams.
-struct CopyQshMapParams {
-    uint64_t index_map, packed, bounds, ext;
-    uint32_t num_splats, num_sh, num_sh_buffer, bounds_per_splat, wgs_per_row,
-        grow;
-};
-static_assert(sizeof(CopyQshMapParams) == 4 * 8 + 6 * 4,
-              "params layout must match the slang struct");
-
 // Mirrors WidenQshValueParams.
 struct WidenQshValueParams {
     uint64_t packed, bounds, ext;
     uint32_t slot_cells, num_slots, wgs_per_row, _pad0;
 };
 static_assert(sizeof(WidenQshValueParams) == 3 * 8 + 4 * 4,
-              "params layout must match the slang struct");
-
-// Mirrors McmcProbsParams.
-struct McmcProbsParams {
-    uint64_t opacs, scales, probs, weight;
-    float min_opacity;
-    uint32_t num_splats, wgs_per_row, use_weight;
-    uint32_t _pad0, _pad1;
-};
-static_assert(sizeof(McmcProbsParams) == 4 * 8 + 6 * 4,
-              "params layout must match the slang struct");
-
-// Mirrors McmcRelocIndexMapParams.
-struct McmcRelocIndexMapParams {
-    uint64_t sample_probs, sample_probs_cumsum, index_map, n_idx_buffer;
-    uint32_t numel, seed, wgs_per_row;
-    uint32_t _pad0;
-};
-static_assert(sizeof(McmcRelocIndexMapParams) == 4 * 8 + 4 * 4,
-              "params layout must match the slang struct");
-
-// Mirrors McmcAddIndexMapParams.
-struct McmcAddIndexMapParams {
-    uint64_t sample_probs_cumsum, index_map, n_idx_buffer;
-    uint32_t num_splats, num_add, seed, wgs_per_row;
-};
-static_assert(sizeof(McmcAddIndexMapParams) == 3 * 8 + 4 * 4,
-              "params layout must match the slang struct");
-
-// Mirrors McmcRelocParams.
-struct McmcRelocParams {
-    uint64_t n_idx_buffer, scales, opacs;
-    uint64_t g1_means, g2_means, g1_quats, g2_quats, g1_scales, g2_scales,
-        g1_opacs, g2_opacs, g1_dc, g2_dc;
-    uint64_t g1_sh, g2_sh, sh_packed, sh_quant_bounds;
-    uint64_t nq_means_packed, nq_quats_packed, nq_scales_packed,
-        nq_opacities_packed, nq_dc_packed;
-    uint64_t nq_means_bounds, nq_quats_bounds, nq_scales_bounds,
-        nq_opacities_bounds, nq_dc_bounds;
-    uint64_t bias_steps;
-    uint32_t num_splats, num_sh, has_g1, has_bias_steps, non_sh,
-        sh_bounds_per_splat, wgs_per_row;
-    uint32_t _pad0;
-};
-static_assert(sizeof(McmcRelocParams) == 28 * 8 + 8 * 4,
-              "params layout must match the slang struct");
-
-// Mirrors McmcUpdateRelocParams.
-struct McmcUpdateRelocParams {
-    uint64_t index_map, means, quats, scales, opacs, features_dc, features_sh;
-    uint64_t projective_state, projective_information;
-    uint32_t has_projective, projective_pad;
-    uint32_t num_splats, num_sh, has_fp32_sh, wgs_per_row;
-};
-static_assert(sizeof(McmcUpdateRelocParams) == 9 * 8 + 6 * 4,
-              "params layout must match the slang struct");
-
-// Mirrors McmcComputeAddParams.
-struct McmcComputeAddParams {
-    uint64_t n_idx_buffer, scales, opacs;
-    uint32_t num_splats, wgs_per_row;
-};
-static_assert(sizeof(McmcComputeAddParams) == 3 * 8 + 2 * 4,
-              "params layout must match the slang struct");
-
-// Mirrors McmcUpdateAddParams.
-struct McmcUpdateAddParams {
-    uint64_t index_map;
-    uint64_t means, quats, scales, opacs, features_dc, features_sh;
-    uint64_t g1_means, g2_means, g1_quats, g2_quats, g1_scales, g2_scales,
-        g1_opacs, g2_opacs, g1_dc, g2_dc;
-    uint64_t g1_sh, g2_sh, sh_packed, sh_quant_bounds;
-    uint64_t nq_means_packed, nq_quats_packed, nq_scales_packed,
-        nq_opacities_packed, nq_dc_packed;
-    uint64_t nq_means_bounds, nq_quats_bounds, nq_scales_bounds,
-        nq_opacities_bounds, nq_dc_bounds;
-    uint64_t bias_steps;
-    uint64_t projective_state, projective_information;
-    uint32_t has_projective, projective_pad;
-    uint32_t num_splats, num_add, num_sh;
-    uint32_t has_g1, has_fp32_sh, has_bias_steps, non_sh, sh_bounds_per_splat,
-        wgs_per_row;
-    uint32_t _pad0;
-};
-static_assert(sizeof(McmcUpdateAddParams) == 34 * 8 + 12 * 4,
               "params layout must match the slang struct");
 
 // kShOptimBits spec value: 0 = fp32 SH state, 8 / 4 = QuantizedAdamState.
@@ -294,7 +199,7 @@ uint32_t sh_optim_spec(int sh_optim_bits) {
     throw std::runtime_error("densify: sh_optim_bits must be 32, 8 or 4");
 }
 
-// Fills the shared SH-state fields of the relocate/MCMC param structs and
+// Fills the shared SH-state fields of the relocate param structs and
 // returns the kShOptimBits spec value. In quant mode g1_features_sh aliases
 // the packed byte buffer (as in the CUDA launchers).
 template <typename P>
@@ -510,57 +415,6 @@ void launch_copy_qsh_pairs(int64_t cur_num_splats, int64_t num_pairs,
     }
 }
 
-// SH value-codec copy dispatch (index-map form).
-void launch_copy_qsh_map(int64_t num_splats, const int32_t* index_map,
-                         uint8_t* packed, float2* bounds, int num_sh,
-                         int num_sh_buffer, int bits, bool bounds_per_splat) {
-    if (bits == 32 || num_splats == 0 || packed == nullptr ||
-        bounds == nullptr)
-        return;
-    if (bits != 8 && bits != 16)
-        throw std::runtime_error("densify: sh_value_bits must be 32, 8 or 16");
-    QshWiden w = qsh_widen_begin(num_splats, num_sh_buffer, bounds_per_splat);
-    CopyQshMapParams p{};
-    p.index_map = (uint64_t)index_map;
-    p.packed = (uint64_t)packed;
-    p.bounds = (uint64_t)bounds;
-    p.ext = (uint64_t)w.ext.data_ptr();
-    p.num_splats = (uint32_t)num_splats;
-    p.num_sh = (uint32_t)num_sh;
-    p.num_sh_buffer = (uint32_t)num_sh_buffer;
-    p.bounds_per_splat = bounds_per_splat ? 1u : 0u;
-    for (uint32_t grow : {1u, 0u}) {
-        p.grow = grow;
-        vkk::dispatch_flat("densify.densify_copy_qsh_map",
-                           backend::vk::SpecList{0u, (uint32_t)bits},
-                           num_splats, 256, &p, sizeof(p), &p.wgs_per_row);
-        if (grow) qsh_widen_apply(w, packed, bounds, bits);
-    }
-}
-
-// MCMC sampling-probability + cumsum stage shared by relocate/add.
-void mcmc_probs_cumsum(int64_t cur_num_splats, float min_opacity,
-                       const DeviceVector<float>& opacs,
-                       const DeviceVector<float3>& scales,
-                       const DeviceVector<float>& draw_weight, PoolSlot probs_slot,
-                       PoolSlot cumsum_slot, DeviceVector<float>& probs,
-                       DeviceVector<float>& cumsum) {
-    probs.resize(probs_slot, cur_num_splats);
-    cumsum.resize(cumsum_slot, cur_num_splats);
-    McmcProbsParams p{};
-    p.opacs = (uint64_t)opacs.data_ptr();
-    p.scales = (uint64_t)scales.data_ptr();
-    p.probs = (uint64_t)probs.data_ptr();
-    p.weight = vkk::or_fallback(draw_weight.data_ptr());
-    p.use_weight = draw_weight.data_ptr() ? 1u : 0u;
-    p.min_opacity = min_opacity;
-    p.num_splats = (uint32_t)cur_num_splats;
-    vkk::dispatch_flat("densify.densify_mcmc_probs", {}, cur_num_splats, 256,
-                       &p, sizeof(p), &p.wgs_per_row);
-    backend::inclusive_sum<float>(probs.data_ptr(), cumsum.data_ptr(),
-                                  cur_num_splats);
-}
-
 }  // namespace
 
 /* API definitions matching kernels/densify/Densify.cuh (engine-referenced subset) */
@@ -658,29 +512,6 @@ void densify_clip_scale_tensor(
     p.num_splats = (uint32_t)num_splats;
     vkk::dispatch_flat("densify.densify_clip_scale", {}, num_splats, 256, &p,
                        sizeof(p), &p.wgs_per_row);
-}
-
-void mcmc_add_noise_tensor(
-    int64_t num_splats,
-    float scaler,
-    DeviceVector<float3> means,
-    DeviceVector<float3> log_scales,
-    DeviceVector<float4> quats,
-    DeviceVector<float> opacs,
-    uint32_t seed
-) {
-    if (num_splats <= 0) return;
-    DensifyNoiseParams p{};
-    p.means = (uint64_t)means.data_ptr();
-    p.log_scales = (uint64_t)log_scales.data_ptr();
-    p.quats = (uint64_t)quats.data_ptr();
-    p.logit_opacs = (uint64_t)opacs.data_ptr();
-    p.radii = vkk::null_fallback();
-    p.scaler = scaler;
-    p.seed = seed;
-    p.num_splats = (uint32_t)num_splats;
-    vkk::dispatch_flat("densify.densify_mcmc_add_noise", {}, num_splats, 256,
-                       &p, sizeof(p), &p.wgs_per_row);
 }
 
 void revised_add_noise_tensor(
@@ -942,194 +773,6 @@ int64_t add_splats_with_long_axis_split_tensor(
                           sh_value_bounds.data_ptr(), num_sh, num_sh_buffer,
                           sh_value_bits, sh_value_bounds_per_splat);
     return num_new_splats;
-}
-
-void relocate_splats_mcmc_tensor(
-    int64_t cur_num_splats,
-    float min_opacity,
-    DeviceVector<float3> means, DeviceVector<float4> quats, DeviceVector<float3> scales, DeviceVector<float> opacs, DeviceVector<float3> features_dc, DeviceVector<float3> features_sh,
-    DeviceVector<float3> g1_means, DeviceVector<float4> g1_quats, DeviceVector<float3> g1_scales, DeviceVector<float> g1_opacs, DeviceVector<float3> g1_features_dc, DeviceVector<float3> g1_features_sh,
-    DeviceVector<float3> g2_means, DeviceVector<float4> g2_quats, DeviceVector<float3> g2_scales, DeviceVector<float> g2_opacs, DeviceVector<float3> g2_features_dc, DeviceVector<float3> g2_features_sh,
-    DeviceVector<int32_t> bias_correction_steps,
-    int sh_optim_bits,
-    int num_sh,
-    DeviceVector<float4> sh_quant_bounds,
-    bool sh_bounds_per_splat,
-    DeviceVector<uint8_t> sh_value_packed,
-    DeviceVector<float2>  sh_value_bounds,
-    int  sh_value_bits,
-    bool sh_value_bounds_per_splat,
-    int  num_sh_buffer,
-    NonShQuantState non_sh,
-    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
-    uint32_t seed,
-    DeviceVector<float> draw_weight
-) {
-    if (cur_num_splats <= 0) return;
-    const size_t n4 = 4 * (size_t)cur_num_splats;
-    pool_begin_phase(PoolPhase::Densify, DevicePool::arena_span({n4, n4, n4, n4}));
-
-    DeviceVector<float> probs, cumsum;
-    mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales, draw_weight,
-                      PoolSlot::DensifyMcmcSampleProbs,
-                      PoolSlot::DensifyMcmcSampleProbsCumsum, probs, cumsum);
-
-    DeviceVector<int32_t> index_map, n_idx_buffer;
-    index_map.resize(PoolSlot::DensifyMcmcIndexMap, cur_num_splats);
-    n_idx_buffer.resize(PoolSlot::DensifyMcmcNIdxBuffer, cur_num_splats);
-    backend::memset_sync(n_idx_buffer.data_ptr(), 0,
-                         cur_num_splats * sizeof(int32_t));
-
-    McmcRelocIndexMapParams imp{};
-    imp.sample_probs = (uint64_t)probs.data_ptr();
-    imp.sample_probs_cumsum = (uint64_t)cumsum.data_ptr();
-    imp.index_map = (uint64_t)index_map.data_ptr();
-    imp.n_idx_buffer = (uint64_t)n_idx_buffer.data_ptr();
-    imp.numel = (uint32_t)cur_num_splats;
-    imp.seed = seed;
-    vkk::dispatch_flat("densify.densify_mcmc_reloc_index_map", {},
-                       cur_num_splats, 256, &imp, sizeof(imp),
-                       &imp.wgs_per_row);
-
-    McmcRelocParams rp{};
-    rp.n_idx_buffer = (uint64_t)n_idx_buffer.data_ptr();
-    rp.scales = (uint64_t)scales.data_ptr();
-    rp.opacs = (uint64_t)opacs.data_ptr();
-    rp.has_g1 = fill_g1g2(rp, g1_means, g2_means, g1_quats, g2_quats,
-                          g1_scales, g2_scales, g1_opacs, g2_opacs,
-                          g1_features_dc, g2_features_dc);
-    uint32_t spec = fill_sh_state(rp, g1_features_sh, g2_features_sh,
-                                  sh_quant_bounds, sh_bounds_per_splat,
-                                  sh_optim_bits);
-    rp.non_sh = fill_non_sh(rp, non_sh);
-    rp.bias_steps = vkk::or_fallback(bias_correction_steps.data_ptr());
-    rp.num_splats = (uint32_t)cur_num_splats;
-    rp.num_sh = (uint32_t)num_sh;
-    rp.has_bias_steps = bias_correction_steps.data_ptr() ? 1u : 0u;
-    {
-        vkk::Fold f = vkk::fold_1d(cur_num_splats, 256);
-        rp.wgs_per_row = f.per_row;
-        vkk::dispatch_ring("densify.densify_mcmc_relocation",
-                           backend::vk::SpecList{spec}, f.per_row, f.rows, 1,
-                           &rp, sizeof(rp));
-    }
-
-    McmcUpdateRelocParams up{};
-    up.projective_state = vkk::or_fallback(projective_state.data_ptr());
-    up.projective_information = vkk::or_fallback(projective_information.data_ptr());
-    up.has_projective = projective_state.data_ptr() ? 1u : 0u;
-    up.index_map = (uint64_t)index_map.data_ptr();
-    up.means = (uint64_t)means.data_ptr();
-    up.quats = (uint64_t)quats.data_ptr();
-    up.scales = (uint64_t)scales.data_ptr();
-    up.opacs = (uint64_t)opacs.data_ptr();
-    up.features_dc = (uint64_t)features_dc.data_ptr();
-    up.features_sh = vkk::or_fallback(features_sh.data_ptr());
-    up.num_splats = (uint32_t)cur_num_splats;
-    up.num_sh = (uint32_t)num_sh;
-    up.has_fp32_sh = features_sh.data_ptr() ? 1u : 0u;
-    vkk::dispatch_flat("densify.densify_mcmc_update_reloc", {},
-                       cur_num_splats, 256, &up, sizeof(up), &up.wgs_per_row);
-
-    launch_copy_qsh_map(cur_num_splats, index_map.data_ptr(),
-                        sh_value_packed.data_ptr(), sh_value_bounds.data_ptr(),
-                        num_sh, num_sh_buffer, sh_value_bits,
-                        sh_value_bounds_per_splat);
-}
-
-void add_splats_mcmc_tensor(
-    int64_t cur_num_splats,
-    int64_t num_add,
-    float min_opacity,
-    DeviceVector<float3> means, DeviceVector<float4> quats, DeviceVector<float3> scales, DeviceVector<float> opacs, DeviceVector<float3> features_dc, DeviceVector<float3> features_sh,
-    DeviceVector<float3> g1_means, DeviceVector<float4> g1_quats, DeviceVector<float3> g1_scales, DeviceVector<float> g1_opacs, DeviceVector<float3> g1_features_dc, DeviceVector<float3> g1_features_sh,
-    DeviceVector<float3> g2_means, DeviceVector<float4> g2_quats, DeviceVector<float3> g2_scales, DeviceVector<float> g2_opacs, DeviceVector<float3> g2_features_dc, DeviceVector<float3> g2_features_sh,
-    DeviceVector<int32_t> bias_correction_steps,
-    int sh_optim_bits,
-    int num_sh,
-    DeviceVector<float4> sh_quant_bounds,
-    bool sh_bounds_per_splat,
-    DeviceVector<uint8_t> sh_value_packed,
-    DeviceVector<float2>  sh_value_bounds,
-    int  sh_value_bits,
-    bool sh_value_bounds_per_splat,
-    int  num_sh_buffer,
-    NonShQuantState non_sh,
-    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
-    uint32_t seed,
-    DeviceVector<float> draw_weight
-) {
-    if (num_add == 0 || cur_num_splats <= 0) return;
-    const size_t n4 = 4 * (size_t)cur_num_splats;
-    pool_begin_phase(PoolPhase::Densify,
-                     DevicePool::arena_span({n4, n4, 4 * (size_t)num_add, n4}));
-
-    DeviceVector<float> probs, cumsum;
-    mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales, draw_weight,
-                      PoolSlot::DensifyMcmcAddSampleProbs,
-                      PoolSlot::DensifyMcmcAddSampleProbsCumsum, probs,
-                      cumsum);
-
-    DeviceVector<int32_t> index_map, n_idx_buffer;
-    index_map.resize(PoolSlot::DensifyMcmcAddIndexMap, num_add);
-    n_idx_buffer.resize(PoolSlot::DensifyMcmcAddNIdxBuffer, cur_num_splats);
-    backend::memset_sync(n_idx_buffer.data_ptr(), 0,
-                         cur_num_splats * sizeof(int32_t));
-
-    McmcAddIndexMapParams imp{};
-    imp.sample_probs_cumsum = (uint64_t)cumsum.data_ptr();
-    imp.index_map = (uint64_t)index_map.data_ptr();
-    imp.n_idx_buffer = (uint64_t)n_idx_buffer.data_ptr();
-    imp.num_splats = (uint32_t)cur_num_splats;
-    imp.num_add = (uint32_t)num_add;
-    imp.seed = seed;
-    vkk::dispatch_flat("densify.densify_mcmc_add_index_map", {}, num_add, 256,
-                       &imp, sizeof(imp), &imp.wgs_per_row);
-
-    McmcComputeAddParams cp{};
-    cp.n_idx_buffer = (uint64_t)n_idx_buffer.data_ptr();
-    cp.scales = (uint64_t)scales.data_ptr();
-    cp.opacs = (uint64_t)opacs.data_ptr();
-    cp.num_splats = (uint32_t)cur_num_splats;
-    vkk::dispatch_flat("densify.densify_mcmc_compute_add", {}, cur_num_splats,
-                       256, &cp, sizeof(cp), &cp.wgs_per_row);
-
-    McmcUpdateAddParams ap{};
-    ap.projective_state = vkk::or_fallback(projective_state.data_ptr());
-    ap.projective_information = vkk::or_fallback(projective_information.data_ptr());
-    ap.has_projective = projective_state.data_ptr() ? 1u : 0u;
-    ap.index_map = (uint64_t)index_map.data_ptr();
-    ap.means = (uint64_t)means.data_ptr();
-    ap.quats = (uint64_t)quats.data_ptr();
-    ap.scales = (uint64_t)scales.data_ptr();
-    ap.opacs = (uint64_t)opacs.data_ptr();
-    ap.features_dc = (uint64_t)features_dc.data_ptr();
-    ap.features_sh = vkk::or_fallback(features_sh.data_ptr());
-    ap.has_g1 = fill_g1g2(ap, g1_means, g2_means, g1_quats, g2_quats,
-                          g1_scales, g2_scales, g1_opacs, g2_opacs,
-                          g1_features_dc, g2_features_dc);
-    uint32_t spec = fill_sh_state(ap, g1_features_sh, g2_features_sh,
-                                  sh_quant_bounds, sh_bounds_per_splat,
-                                  sh_optim_bits);
-    ap.non_sh = fill_non_sh(ap, non_sh);
-    ap.bias_steps = vkk::or_fallback(bias_correction_steps.data_ptr());
-    ap.num_splats = (uint32_t)cur_num_splats;
-    ap.num_add = (uint32_t)num_add;
-    ap.num_sh = (uint32_t)num_sh;
-    ap.has_fp32_sh = features_sh.data_ptr() ? 1u : 0u;
-    ap.has_bias_steps = bias_correction_steps.data_ptr() ? 1u : 0u;
-    {
-        vkk::Fold f = vkk::fold_1d(num_add, 256);
-        ap.wgs_per_row = f.per_row;
-        vkk::dispatch_ring("densify.densify_mcmc_update_add",
-                           backend::vk::SpecList{spec}, f.per_row, f.rows, 1,
-                           &ap, sizeof(ap));
-    }
-
-    launch_copy_qsh_pairs(cur_num_splats, num_add, index_map.data_ptr(),
-                          /*dst_indices=*/nullptr, sh_value_packed.data_ptr(),
-                          sh_value_bounds.data_ptr(), num_sh, num_sh_buffer,
-                          sh_value_bits, sh_value_bounds_per_splat);
 }
 
 

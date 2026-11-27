@@ -223,7 +223,6 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(float, noise_lr, 160.0f, "detail", "expert", "")                        \
     X(float, noise_lr_final, 1.6f, "detail", "expert", "")                   \
     X(bool, noise_gate_peak_weight, false, "detail", "expert", "")           \
-    X(bool, use_revised_densification, true, "detail", "expert", "")         \
     X(std::string, densify_score_mode, "mean", "detail", "basic", "mean|max|median|geom") \
     X(float, densify_score_blend_world_grad, 0.0f, "detail", "advanced", "") \
     X(std::string, densify_loss_map_mode, "auto", "detail", "basic", "auto|none|loss_full|ssim_full|ssim_cs|ssim_structure|s_cielab|flip|flip_feature|edge_aware|robust_edge_aware|loss_full_nms|ssim_full_nms|ssim_cs_nms|ssim_structure_nms|s_cielab_nms|flip_nms|flip_feature_nms") \
@@ -472,8 +471,6 @@ inline constexpr TrainPresetInfo kTrainPresets[] = {
     {"hdr"},
     {"synthetic"},
     {"meshing"},
-    {"2dgs"},
-    // {"academic-baseline"},  // hidden by default, uncomment to enable
 };
 
 inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
@@ -565,78 +562,6 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.median_render_normal_reg_weight = 0.01f;
         c.erank_reg = 0.01f;
         c.erank_reg_s3 = 0.01f;
-        return true;
-    }
-    if (name == "2dgs") {
-        c.primitive = "2dgs";
-        c.sh_degree = 0;
-        c.dc_reg = 10.0f;
-        c.overexposure_reg = 10.0f;
-        c.background_transparency_suppression = "noise";
-        c.depth_distortion_reg = 0.1f;
-        c.normal_distortion_reg = 0.01f;
-        c.normal_reg_weight = 0.04f;
-        c.mean_median_depth_weight = 0.01f;
-        c.median_depth_normal_reg_weight = 0.01f;
-        // c.normal_supervision_weight = 0.01f;
-        c.median_normal_supervision_weight = 0.01f;
-        c.median_render_normal_reg_weight = 0.01f;
-        c.erank_reg = 0.01f;
-        return true;
-    }
-    if (name == "academic-baseline") {
-        c.eval_mode = "interval";
-        c.eval_interval = 8;
-        c.center_method = "gsplat";
-        c.orientation_method = "gsplat";
-        c.max_batch_per_epoch = 387420489;
-        c.load_depths = false;
-        c.load_normals = false;
-        c.primitive = "3dgs";
-        c.relative_scale = 1.0f;
-        c.use_bilateral_grid = false;
-        c.use_bilateral_grid_for_geometry = false;
-        c.use_ppisp = false;
-        c.calib_correction = "off";
-        c.use_revised_densification = false;
-        c.reg_rendered_only = false;
-        c.dead_after_epochs = 0.0f;
-        c.split_weight_by_renders = false;
-        c.max_split_fraction = 1.0f;
-        c.densify_loss_map_mode = "none";
-        c.use_long_axis_split = false;
-        c.use_fused_proj_bwd_optim = false;
-        c.quantization_level = 0;
-        c.max_screen_size = kTrainInf;
-        c.max_world_size = kTrainInf;
-        c.suppress_initial_scales = false;
-        c.scale_init = 0.1f;
-        c.opacity_init = 0.5f;
-        c.depth_distortion_reg = 0.0f;
-        c.normal_reg_weight = 0.0f;
-        c.alpha_reg_weight = 0.0f;
-        c.alpha_loss_weight = 0.0f;
-        c.alpha_loss_weight_under = 0.0f;
-        c.erank_reg = 0.0f;
-        c.erank_reg_s3 = 0.0f;
-        c.quat_norm_reg = 0.0f;
-        c.dc_reg = 0.0f;
-        c.sh_reg = 0.0f;
-        c.normal_supervision_weight = 0.0f;
-        c.opacity_reg = 0.01f;
-        c.scale_reg = 0.01f;
-        c.max_steps = 30000;
-        c.use_scale_agnostic_mean = false;
-        c.projective_depth_lr = 0.0f;
-        c.use_per_splat_bias_correction = false;
-        c.means_lr = 0.00016f;
-        c.means_lr_final = 1.6e-06f;
-        c.scales_lr = 0.005f;
-        c.scales_lr_final = std::nullopt;
-        c.quats_lr = 0.001f;
-        c.opacities_lr = 0.05f;
-        c.features_dc_lr = 0.0025f;
-        c.features_sh_lr = 0.000125f;
         return true;
     }
     (void)c;

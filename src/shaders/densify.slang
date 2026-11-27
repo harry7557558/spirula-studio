@@ -26,25 +26,6 @@ float3 densify_normal(uint4 key) {
     return float3(box_muller(u.xz), box_muller(u.yw).x);
 }
 
-[CudaDeviceExport]
-void mcmc_add_noise_3dgs(
-    float scaler,  // unit: L^-1, same as mean_lr
-    inout float3 mean, float3 log_scale, float4 quat, float logit_opac, uint4 noise_key
-) {
-    constexpr float min_opacity = 0.005f;
-    float k = 0.5 / min_opacity;
-    float x0 = 1.0 - min_opacity;
-    float opac = 1.0f / (1.0f + exp(-logit_opac));
-    float op_sigmoid = 1.0 / (1.0 + exp(-k * ((1.0 - opac) - x0)));
-
-    float3x3 covar;
-    quat_scale_to_covar(normalize(quat), exp(log_scale), covar);  // unit: L^2
-
-    float3 noise = densify_normal(noise_key);
-    noise = noise * scaler * op_sigmoid;  // unit: L^-1
-    mean += mul(covar, noise);  // unit: L (same as mean)
-}
-
 // gate_opac caps the opacity the noise gate sees: a splat's peak alpha * T when tracked, else 1
 [CudaDeviceExport]
 void revised_add_noise_3dgs(
