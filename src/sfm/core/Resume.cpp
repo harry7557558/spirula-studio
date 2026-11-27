@@ -2,6 +2,7 @@
 
 #include "sfm/core/Resume.h"
 
+#include <cerrno>
 #include <chrono>
 #include <cstring>
 
@@ -17,6 +18,13 @@ namespace {
 // learned matcher is seconds per pair -- from holding an hour in memory.
 constexpr size_t kFlushBytes = 4u << 20;
 constexpr double kFlushSeconds = 5.0;
+constexpr size_t kRecordHeaderBytes = 20;
+constexpr size_t kMatchBytes = 8;
+
+std::error_code streamError() {
+    return errno ? std::error_code(errno, std::generic_category())
+                 : std::make_error_code(std::errc::io_error);
+}
 
 double steadyNow() {
     using namespace std::chrono;
@@ -115,23 +123,36 @@ void writePairs(const fs::path& file, const std::string& signature,
 // The verification journal
 // ---------------------------------------------------------------------------
 
-bool MatchJournal::open(const fs::path& file, const std::string& signature,
-                        bool append) {
+std::error_code MatchJournal::open(const fs::path& file, const std::string& signature,
+                                   std::optional<uintmax_t> append_at) {
     close();
     std::error_code ec;
-    fs::create_directories(file.parent_path(), ec);
-    _f.open(file, std::ios::binary |
-                      (append ? std::ios::app : std::ios::trunc));
-    if (!_f) return false;
-    if (!append) {
+    if (append_at) {
+        const auto size = fs::file_size(file, ec);
+        if (ec) return ec;
+        if (size < *append_at) return std::make_error_code(std::errc::invalid_argument);
+        if (size > *append_at) {
+            fs::resize_file(file, *append_at, ec);
+            if (ec) return ec;
+        }
+    } else if (file.has_parent_path()) {
+        fs::create_directories(file.parent_path(), ec);
+        if (ec) return ec;
+    }
+    errno = 0;
+    _f.open(file, std::ios::binary | (append_at ? std::ios::app : std::ios::trunc));
+    if (!_f) return streamError();
+    if (!append_at) {
         std::string head;
         head += "VKRJ";
         put_signature(head, signature);
+        errno = 0;
         _f.write(head.data(), (std::streamsize)head.size());
+        if (!_f) return streamError();
     }
     _flushed_at = steadyNow();
-    _armed = (bool)_f;
-    return _armed;
+    _armed = true;
+    return {};
 }
 
 void MatchJournal::record(uint32_t a, uint32_t b, int32_t config, uint32_t putative,
@@ -140,7 +161,7 @@ void MatchJournal::record(uint32_t a, uint32_t b, int32_t config, uint32_t putat
     if (!_armed) return;
     // Packed before the lock: this runs on every verification worker.
     std::string rec;
-    rec.reserve(20 + (size_t)count * 8);
+    rec.reserve(kRecordHeaderBytes + (size_t)count * kMatchBytes);
     put_u32(rec, a);
     put_u32(rec, b);
     put_i32(rec, config);
@@ -180,12 +201,38 @@ void MatchJournal::close() {
     _armed = false;
 }
 
-bool readJournal(const fs::path& file, const std::string& signature,
-                 const std::vector<ImageEntry>& images,
-                 std::unordered_map<uint64_t, TwoViewMatches>& kept,
-                 std::vector<uint64_t>& done, uint64_t& putative) {
+std::optional<uintmax_t> readJournal(const fs::path& file, const std::string& signature,
+                                     const std::vector<ImageEntry>& images,
+                                     std::unordered_map<uint64_t, TwoViewMatches>& kept,
+                                     std::vector<uint64_t>& done, uint64_t& putative,
+                                     std::error_code& error) {
+    const auto size = fs::file_size(file, error);
+    if (error) {
+        if (error == std::errc::no_such_file_or_directory) error.clear();
+        return std::nullopt;
+    }
+    errno = 0;
     spirula::BufferedInputFile f(file, std::ios::binary);
-    if (!f || !magic_is(f, "VKRJ") || !check_signature(f, signature)) return false;
+    if (!f) {
+        error = streamError();
+        return std::nullopt;
+    }
+    const auto at_eof = [&] {
+        if (f.bad() || !f.eof()) return false;
+        f.clear();
+        const std::streamoff end = f.tellg();
+        return end >= 0 && (uintmax_t)end == size;
+    };
+    if (!magic_is(f, "VKRJ") || !check_signature(f, signature)) {
+        if (!f && !at_eof()) error = std::make_error_code(std::errc::io_error);
+        return std::nullopt;
+    }
+    const std::streamoff header_end = f.tellg();
+    if (header_end < 0) {
+        error = std::make_error_code(std::errc::io_error);
+        return std::nullopt;
+    }
+    uintmax_t valid_end = (uintmax_t)header_end;
     std::unordered_map<uint64_t, TwoViewMatches> k;
     std::vector<uint64_t> d;
     uint64_t put = 0;
@@ -196,9 +243,10 @@ bool readJournal(const fs::path& file, const std::string& signature,
         if (!read_u32(f, a) || !read_u32(f, b)) break;
         f.read((char*)&config, 4);
         if (f.gcount() != 4 || !read_u32(f, offered) || !read_u32(f, count)) break;
-        // A count the file cannot hold is the tail the writer never flushed,
-        // not a corrupt record: stop, keep what came before.
-        if (a >= nimg || b >= nimg || count > images[a].num_features) break;
+        if (a >= nimg || b >= nimg || count > images[a].num_features) {
+            error = std::make_error_code(std::errc::illegal_byte_sequence);
+            return std::nullopt;
+        }
         TwoViewMatches tvm;
         tvm.image1 = a;
         tvm.image2 = b;
@@ -212,15 +260,20 @@ bool readJournal(const fs::path& file, const std::string& signature,
             if (!f) { torn = true; break; }
         }
         if (torn) break;
+        valid_end += kRecordHeaderBytes + (uintmax_t)count * kMatchBytes;
         const uint64_t key = pairKey(a, b);
         d.push_back(key);
         put += offered;
         if (count) k.emplace(key, std::move(tvm));
     }
+    if (!at_eof()) {
+        error = std::make_error_code(std::errc::io_error);
+        return std::nullopt;
+    }
     kept.swap(k);
     done.swap(d);
     putative = put;
-    return true;
+    return valid_end;
 }
 
 }  // namespace resume

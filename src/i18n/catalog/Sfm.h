@@ -1013,6 +1013,21 @@ SS_MSG(match_resuming,
     RU("Пар, уже проверенных прошлым запуском: {0}/{1} — продолжаем с этого места."),
     TR("Önceki çalıştırmanın doğruladığı çift: {0}/{1} -- oradan devam ediliyor."));
 
+SS_MSG(match_checkpoint_disabled,
+    EN("Matching will not checkpoint to {0}: {1}"),
+    JA("照合の途中結果を {0} に保存しません: {1}"),
+    ZH_HANS("不在 {0} 保存匹配进度：{1}"),
+    ZH_HANT("不在 {0} 儲存匹配進度：{1}"),
+    KO("정합 진행 상황을 {0}에 저장하지 않습니다: {1}"),
+    DE("Kein Zwischenstand der Paarbildung in {0}: {1}"),
+    FR("La progression de l'appariement ne sera pas sauvegardée dans {0} : {1}"),
+    ES("No se guardará el progreso del emparejamiento en {0}: {1}"),
+    PT("O progresso do pareamento não será salvo em {0}: {1}"),
+    IT("L'avanzamento dell'abbinamento non verrà salvato in {0}: {1}"),
+    NL("De voortgang van het koppelen wordt niet opgeslagen in {0}: {1}"),
+    RU("Ход сопоставления не будет сохранён в {0}: {1}"),
+    TR("Eşleme ilerlemesi {0} konumuna kaydedilmeyecek: {1}"));
+
 SS_MSG(match_reusing_matches,
     EN("Matching is already done: pairs kept: {0}, from {1}"),
     JA("照合は完了済みです。残っているペア: {0}（{1} から）"),

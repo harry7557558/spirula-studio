@@ -143,17 +143,20 @@ static void testJournal(const fs::path& dir, int& fails) {
     const uint32_t idx1[] = {1, 4, 9}, idx2[] = {2, 5, 7};
     {
         resume::MatchJournal j;
-        check(j.open(file, sig, /*append=*/false), "journal opens", fails);
+        check(!j.open(file, sig), "journal opens", fails);
         j.record(0, 1, 3, 40, idx1, idx2, 4, 3);
         j.record(0, 2, 0, 12, nullptr, nullptr, 4, 0);
-        j.record(1, 2, 2, 30, idx1, idx2, 4, 2);
+        j.record(1, 2, 2, 30, idx1 + 1, idx2 + 1, 4, 2);
         j.close();
     }
 
     std::unordered_map<uint64_t, TwoViewMatches> kept;
     std::vector<uint64_t> done;
     uint64_t putative = 0;
-    check(resume::readJournal(file, sig, images, kept, done, putative), "journal reads", fails);
+    std::error_code error;
+    check(resume::readJournal(file, sig, images, kept, done, putative, error).has_value() &&
+              !error,
+          "journal reads", fails);
     check(done.size() == 3, "every finished pair is named", fails);
     check(kept.size() == 2, "only the kept pairs carry matches", fails);
     check(putative == 82, "the putative count survives", fails);
@@ -167,36 +170,40 @@ static void testJournal(const fs::path& dir, int& fails) {
     std::unordered_map<uint64_t, TwoViewMatches> other_kept;
     std::vector<uint64_t> other_done;
     uint64_t other_putative = 0;
-    check(!resume::readJournal(file, sig + "x", images, other_kept, other_done, other_putative),
+    check(!resume::readJournal(file, sig + "x", images, other_kept, other_done, other_putative,
+                               error) && !error,
           "a signature mismatch refuses the journal", fails);
 
-    // The tail a killed writer never finished: everything before it survives.
-    {
-        const uintmax_t whole = fs::file_size(file);
-        std::vector<char> bytes(whole);
-        std::ifstream(file, std::ios::binary).read(bytes.data(), (std::streamsize)whole);
-        std::ofstream torn(file, std::ios::binary | std::ios::trunc);
-        torn.write(bytes.data(), (std::streamsize)whole - 6);
+    // Tear the last record in its payload, then in its header.
+    for (int missing : {6, 33}) {
+        fs::resize_file(file, fs::file_size(file) - missing);
+        const auto append_at = resume::readJournal(file, sig, images, kept, done, putative, error);
+        check(append_at.has_value() && !error, "a torn journal reads", fails);
+        check(done.size() == 2 && kept.size() == 1, "a torn record is dropped, not the file", fails);
+        {
+            resume::MatchJournal j;
+            check(!j.open(file, sig, append_at), "journal reopens", fails);
+            j.record(1, 2, 2, 30, idx1 + 1, idx2 + 1, 4, 2);
+        }
+        check(resume::readJournal(file, sig, images, kept, done, putative, error).has_value() &&
+                  !error,
+              "the appended journal reads", fails);
+        check(done.size() == 3 && kept.size() == 2, "appending keeps what was there", fails);
+        const auto appended = kept.find(resume::pairKey(1, 2));
+        check(appended != kept.end() && appended->second.matches.size() == 2 &&
+                  appended->second.matches[0].idx1 == 4 && appended->second.matches[0].idx2 == 5 &&
+                  appended->second.matches[1].idx1 == 9 && appended->second.matches[1].idx2 == 7,
+              "appended match indices round-trip after a torn write", fails);
     }
-    kept.clear();
-    done.clear();
-    putative = 0;
-    check(resume::readJournal(file, sig, images, kept, done, putative), "a torn journal reads",
-          fails);
-    check(done.size() == 2 && kept.size() == 1, "a torn record is dropped, not the file", fails);
 
-    // Appending continues the same file rather than starting one.
     {
         resume::MatchJournal j;
-        check(j.open(file, sig, /*append=*/true), "journal reopens", fails);
-        j.record(1, 2, 2, 30, idx1, idx2, 4, 2);
-        j.close();
+        check(!j.open(file, sig, fs::file_size(file)), "complete journal reopens", fails);
+        j.record(0, 3, 0, 0, nullptr, nullptr, 4, 0);
     }
-    kept.clear();
-    done.clear();
-    putative = 0;
-    resume::readJournal(file, sig, images, kept, done, putative);
-    check(done.size() == 3 && kept.size() == 2, "appending keeps what was there", fails);
+    check(!resume::readJournal(file, sig, images, other_kept, other_done, other_putative, error) &&
+              error == std::errc::illegal_byte_sequence && other_done.empty(),
+          "an invalid complete record is not repairable tail damage", fails);
 }
 
 // ---------------------------------------------------------------------------
