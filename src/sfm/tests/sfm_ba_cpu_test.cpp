@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstring>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -430,6 +431,51 @@ double relMax(const double* a, const double* b, size_t n) {
     return d / std::max(s, 1e-300);
 }
 
+void testDenseSchurDeterminism() {
+    constexpr double lambda = 1e-2;
+    BAProblem P = makeProblem(3, 4, 1024, 8, 0.15, 97, 2, 2);
+    // Image 1 is exclusive; its tracks connect the shared columns across tasks.
+    std::fill(P.image_group.begin() + 2, P.image_group.end(), 0u);
+    P.groups.resize(2);
+    P.intr.resize(2 * kModels[3].n_intr);
+    P.total_intr = (uint32_t)P.intr.size();
+    P.free_intr = P.groups[0].n_intr + P.groups[1].n_intr;
+    P.n_dim = P.pose_dim + P.ext_dim + P.free_intr;
+    finalizeTables(P);
+
+    SolverOptions opt;
+    opt.solver = SolverSel::Dense;
+    opt.verbose = false;
+    opt.threads = 2;
+    const Reference want = referenceSolve(P, lambda, opt.loss_param, opt.loss);
+    bacpu::Solver parallel(P, opt);
+    parallel.init();
+    parallel.assembleOnly(lambda);
+    const auto first = parallel.packedS();
+    if (bacpu::Pool::get().size() < 2) {
+        printf("dense Schur parallel repeat        SKIP (requires two threads)\n");
+    } else {
+        bool identical = true;
+        for (int i = 0; i < 7 && identical; i++) {
+            parallel.assembleOnly(lambda);
+            const auto next = parallel.packedS();
+            identical = std::memcmp(first.data(), next.data(), first.size() * sizeof(double)) == 0;
+        }
+        report("dense Schur parallel repeat", !identical, 0.5);
+    }
+
+    double worst = 0.0;
+    const auto& gr = P.groups[1];
+    for (uint32_t r = gr.intr_col; r < gr.intr_col + gr.n_intr; r++)
+        for (uint32_t c = P.members[1].ext_col; c < r; c++) {
+            const size_t k = (size_t)r * (r + 1) / 2 + c;
+            const double ref = want.S[(size_t)r * P.n_dim + c];
+            const double err = std::fabs(first[k] - ref) / std::max(1.0, std::fabs(ref));
+            worst = std::max(worst, std::isfinite(err) ? err : 1.0);
+        }
+    report("dense Schur shared/exclusive", worst, 1e-10);
+}
+
 // One LM iteration of the solver against the reference: the assembled S and g,
 // and the parameters the step leaves behind.
 void testAgainstReference(uint32_t model, uint32_t groups, const char* loss, bool cg,
@@ -554,12 +600,28 @@ void testFullSolve(uint32_t model, uint32_t groups, uint32_t rig = 0) {
     report(name, relMax(poses[0].data(), poses[1].data(), poses[0].size()), 1e-6);
 }
 
+void testInvalidPoseDim() {
+    BAProblem P = makeProblem(3, 2, 1, 1, 0.0, 7, 0);
+    P.n_dim = P.pose_dim - 1;
+    SolverOptions opt;
+    bacpu::Solver s(P, opt);
+    bool rejected = false;
+    try {
+        s.init();
+    } catch (const std::runtime_error& error) {
+        rejected = std::strcmp(error.what(), "BA parameter columns overlap") == 0;
+    }
+    report("reject pose_dim > n_dim", rejected ? 0.0 : 1.0, 0.5);
+}
+
 }  // namespace
 
 int run(int argc, char** argv) {
     bool quick = false;
     for (int i = 1; i < argc; i++)
         if (std::string(argv[i]) == "--quick") quick = true;
+
+    testInvalidPoseDim();
 
     testChol(37);
     testChol(200);
@@ -618,6 +680,7 @@ int run(int argc, char** argv) {
         testAgainstReference(6, 1, "huber", false, 7, -1, rig, true, 0x27);
         testAgainstReference(3, 1, "huber", true, 7, 6, rig, true, 0x20);
     }
+    testDenseSchurDeterminism();
 
     if (!quick)
         for (uint32_t model : {3u, 6u, 7u, 8u})

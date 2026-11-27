@@ -1052,6 +1052,15 @@ running both on the same state, 0 differences over 373 passes and every
 growth-time triangulation of a 638-image capture. Growth-time triangulation
 after each registration goes the same way, feature by feature.
 
+Track fusion (`mergeTracks`) follows the same pattern. Every point walks its
+correspondences and checks each partner with a higher id against the starting
+state on every core; the serial pass then replays each untouched point's walk
+from those results, in id order with the shared `tried` set. A fusion marks
+both of its points and every previous owner of a feature it rewrites (a seed
+can leave one feature on two tracks); a walk that reaches a marked partner, or
+a cached accept that `tried` skips, continues live from that correspondence.
+A fusion that takes an ownerless feature sends the rest of the pass live.
+
 Most of what the pass then does is futile: on a 4000-image dual-fisheye video
 it tried 166M candidate pairs a pass for 13M free features and made no point
 from any of them in steady state -- neighbouring frames 1/30 s apart are all

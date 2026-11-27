@@ -7,6 +7,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -15,6 +16,10 @@
 #include <limits>
 #include <string>
 #include <vector>
+
+#if defined(__SSE2__) || defined(_M_X64)
+#include <emmintrin.h>
+#endif
 
 #include "sfm/ba/CpuCamera.h"
 #include "sfm/ba/CpuDense.h"
@@ -281,6 +286,7 @@ private:
 
     void buildImageTables() {
         dof_.resize(nImg_);
+        cols_.resize(nImg_);
         gz_.resize(nImg_);
         icol_.resize(nImg_);
         ioff_.resize(nImg_);
@@ -305,15 +311,33 @@ private:
             icol_[i] = g.intr_col;
             ioff_[i] = g.intr_offset;
             model_[i] = (uint8_t)g.model;
+            imageColumns(P_, i, cols_[i].data());
         }
         exclusive_ = exclusiveGroups(P_);
+        if (poseDim_ > n_)
+            throw std::runtime_error("BA parameter columns overlap");
         tail_ = n_ - poseDim_;
+        // schurPair routes whole column spans, so every member's and group's
+        // columns must lie in the tail, disjoint from all others. The builders do so.
+        std::vector<std::pair<uint64_t, uint64_t>> spans;
+        for (const BAProblem::Member& m : P_.members)
+            if (m.n_free) spans.emplace_back(m.ext_col, m.n_free);
+        for (const BAProblem::Group& gr : P_.groups)
+            if (gr.n_intr) spans.emplace_back(gr.intr_col, gr.n_intr);
+        std::sort(spans.begin(), spans.end());
+        uint64_t end = poseDim_;
+        for (const auto& [c0, n] : spans) {
+            if (c0 < end || c0 + n > n_)
+                throw std::runtime_error("BA parameter columns overlap");
+            end = c0 + n;
+        }
 
         // Rows an image-per-task assembly cannot own outright: a member's
         // extrinsic columns (every frame of the rig touches them) and the
         // columns of an intrinsics group that more than one image refines.
         srow_.assign(tail_, -1);
         sharedCol_.clear();
+        exclusiveEnd_ = 0;
         for (const BAProblem::Member& m : P_.members)
             for (uint32_t j = 0; j < m.n_free; j++) {
                 srow_[m.ext_col - poseDim_ + j] = (int)sharedCol_.size();
@@ -321,7 +345,11 @@ private:
             }
         for (size_t g = 0; g < P_.groups.size(); g++) {
             const BAProblem::Group& gr = P_.groups[g];
-            if (guse[g] < 2 || gr.n_intr == 0) continue;
+            if (gr.n_intr == 0) continue;
+            if (guse[g] < 2) {
+                if (guse[g]) exclusiveEnd_ = std::max(exclusiveEnd_, gr.intr_col + gr.n_intr);
+                continue;
+            }
             for (uint32_t j = 0; j < gr.n_intr; j++) {
                 srow_[gr.intr_col - poseDim_ + j] = (int)sharedCol_.size();
                 sharedCol_.push_back(gr.intr_col + j);
@@ -534,6 +562,7 @@ private:
              (tcEnt_.capacity() + tcKey_.capacity() + Jc32_.capacity() + Jp32_.capacity()) * 4;
         b += S_.bytes() + (P_.cam_obs.capacity() + P_.cam_obs_ranges.capacity() +
                            P_.cam_chunks.capacity() + P_.prec_blocks.capacity()) * 4;
+        b += cols_.capacity() * sizeof(cols_[0]);
         return (double)b / (1024.0 * 1024.0);
     }
 
@@ -558,10 +587,6 @@ private:
             while (i > 0 && i < nImg_ && frame_[i - 1] == frame_[i]) i--;
             split[k] = std::max(i, split[k - 1]);
         }
-    }
-
-    uint32_t imgCols(uint32_t img, uint32_t* cols) const {
-        return imageColumns(P_, img, cols);
     }
 
     // ================
@@ -618,9 +643,9 @@ private:
     // before any Schur reduction: every column and point, priors included.
     bool gradientConverged() {
         gfull_.assign(n_, 0.0);
-        uint32_t cols[kMaxCamDof];
         for (uint32_t a = 0; a < nImg_; a++) {
-            const uint32_t dof = imgCols(a, cols);
+            const uint32_t* cols = cols_[a].data();
+            const uint32_t dof = dof_[a];
             for (uint32_t t = P_.cam_obs_ranges[a]; t < P_.cam_obs_ranges[a + 1]; t++) {
                 const uint32_t o = P_.cam_obs[t];
                 double J_b[2 * kMaxCamDof];
@@ -759,24 +784,107 @@ private:
     // dense path
     // ================
 
-    void addAt(uint32_t R, uint32_t C, double v, double* sb) {
-        if (R >= poseDim_) {
-            const int k = srow_[R - poseDim_];
-            if (k >= 0) {
-                sb[(size_t)C * m_ + k] += v;
-                return;
+    int sharedSlot(uint32_t col) const {
+        return col >= poseDim_ ? srow_[col - poseDim_] : -1;
+    }
+
+    // Multiple tasks can touch an exclusive row through a shared column.
+    // Buffer those lower entries in the shared column's unused mirrored slots.
+    void addAt(uint32_t r, uint32_t c, double v, double* sb) {
+        const int k = sharedSlot(r);
+        if (k >= 0) sb[(size_t)c * m_ + k] += v;
+        else if (const int j = sharedSlot(c); j >= 0) sb[(size_t)r * m_ + j] += v;
+        else S_.row(r)[c] += v;
+    }
+
+    static void schurSpan(double* dst, const double* j0, const double* j1, uint32_t count,
+                          double z0, double z1) {
+        uint32_t c = 0;
+#if defined(__SSE2__) || defined(_M_X64)
+        const __m128d x = _mm_set1_pd(z0), y = _mm_set1_pd(z1), sign = _mm_set1_pd(-0.0);
+        const __m128i exp = _mm_set_epi32(0x7ff00000, 0, 0x7ff00000, 0);
+        for (; c + 1 < count; c += 2) {
+            const __m128d v = _mm_xor_pd(sign, _mm_add_pd(_mm_mul_pd(x, _mm_loadu_pd(j0 + c)),
+                                                         _mm_mul_pd(y, _mm_loadu_pd(j1 + c))));
+            const __m128i e = _mm_cmpeq_epi32(_mm_and_si128(_mm_castpd_si128(v), exp), exp);
+            const int bad = _mm_movemask_pd(_mm_castsi128_pd(e));
+            if (!bad) {
+                _mm_storeu_pd(dst + c, _mm_add_pd(_mm_loadu_pd(dst + c), v));
+            } else {
+                if (!(bad & 1)) dst[c] += _mm_cvtsd_f64(v);
+                if (!(bad & 2)) dst[c + 1] += _mm_cvtsd_f64(_mm_unpackhi_pd(v, v));
             }
         }
-        S_.row(R)[C] += v;
-    }
-    // An element whose two columns coincide is reached by both orderings of the
-    // observation pair, so it takes the value twice.
-    void addSym(uint32_t u, uint32_t v, double val, double* sb) {
-        if (u == v) {
-            addAt(u, u, val + val, sb);
-            return;
+#endif
+        for (; c < count; c++) {
+            const double v = -(z0 * j0[c] + z1 * j1[c]);
+            if (std::isfinite(v)) dst[c] += v;
         }
-        addAt(u > v ? u : v, u > v ? v : u, val, sb);
+    }
+
+    void schurPair(const uint32_t* colsA, const uint32_t* colsB, const uint32_t aEnd[4],
+                   const uint32_t bEnd[4], const double* z0, const double* z1,
+                   const double* Jcj, double* sb) {
+        const double* j1 = Jcj + bEnd[3];
+        const bool differentFrame = colsA[0] != colsB[0];
+        if (differentFrame)
+            for (uint32_t r = 0; r < 6; r++)
+                schurSpan(S_.row(colsA[0] + r) + colsB[0], Jcj, j1, 6, z0[r], z1[r]);
+        // Pose, extrinsic and intrinsics spans are contiguous and either coincide
+        // or are disjoint. Keep A spans in order for the mirrored destinations.
+        for (int ai = 0; ai < 3; ai++) {
+            const uint32_t a = aEnd[ai], na = aEnd[ai + 1] - a;
+            if (!na) continue;
+            const uint32_t R = colsA[a];
+            const int ar = sharedSlot(R);
+            for (int bi = differentFrame && ai == 0 ? 1 : 0; bi < 3; bi++) {
+                const uint32_t b = bEnd[bi], nb = bEnd[bi + 1] - b;
+                if (!nb) continue;
+                const uint32_t C = colsB[b];
+                const bool same = R == C;
+                if (R <= C) {
+                    const int br = sharedSlot(C);
+                    if (br >= 0) {
+                        for (uint32_t r = 0; r < na; r++) {
+                            const uint32_t lo = same ? r + 1 : 0;
+                            if (lo < nb)
+                                schurSpan(sb + (size_t)(R + r) * m_ + br + lo,
+                                          Jcj + b + lo, j1 + b + lo, nb - lo, z0[a + r], z1[a + r]);
+                        }
+                    } else if (ar >= 0) {
+                        for (uint32_t c = 0; c < nb; c++)
+                            schurSpan(sb + (size_t)(C + c) * m_ + ar, z0 + a, z1 + a, na,
+                                      Jcj[b + c], j1[b + c]);
+                    } else {
+                        for (uint32_t c = 0; c < nb; c++)
+                            schurSpan(S_.row(C + c) + R, z0 + a, z1 + a, same ? c : na,
+                                      Jcj[b + c], j1[b + c]);
+                    }
+                    if (!same) continue;
+                    // The upper contribution to a folded entry precedes its lower one.
+                    for (uint32_t r = 0; r < na; r++) {
+                        const double v = -(z0[a + r] * Jcj[b + r] + z1[a + r] * j1[b + r]);
+                        if (std::isfinite(v)) addAt(R + r, R + r, v + v, sb);
+                    }
+                }
+                if (ar >= 0) {
+                    for (uint32_t c = 0; c < nb; c++) {
+                        const uint32_t lo = same ? c + 1 : 0;
+                        if (lo < na)
+                            schurSpan(sb + (size_t)(C + c) * m_ + ar + lo,
+                                      z0 + a + lo, z1 + a + lo, na - lo, Jcj[b + c], j1[b + c]);
+                    }
+                } else if (const int br = sharedSlot(C); br >= 0) {
+                    for (uint32_t r = 0; r < na; r++)
+                        schurSpan(sb + (size_t)(R + r) * m_ + br, Jcj + b, j1 + b, nb,
+                                  z0[a + r], z1[a + r]);
+                } else {
+                    for (uint32_t r = 0; r < na; r++)
+                        schurSpan(S_.row(R + r) + C, Jcj + b, j1 + b, same ? r : nb,
+                                  z0[a + r], z1[a + r]);
+                }
+            }
+        }
     }
     void addG(uint32_t col, double v, double* sg) {
         if (col >= poseDim_) {
@@ -801,10 +909,11 @@ private:
         pool_->run(nt, nthreads_, [&](int task, int) {
             double* sb = m_ ? &sbuf_[(size_t)task * m_ * n_] : nullptr;
             double* sg = m_ ? &sgbuf_[(size_t)task * m_] : nullptr;
-            uint32_t colsA[kMaxCamDof];
             double z0[kMaxCamDof], z1[kMaxCamDof];
             for (uint32_t a = asmSplit_[task]; a < asmSplit_[task + 1]; a++) {
-                const uint32_t dofi = imgCols(a, colsA);
+                const uint32_t* colsA = cols_[a].data();
+                const uint32_t dofi = dof_[a];
+                const uint32_t aEnd[4] = {0, 6, 6u + efree_[a], dofi};
                 for (uint32_t t = P_.cam_obs_ranges[a]; t < P_.cam_obs_ranges[a + 1]; t++) {
                     const uint32_t oi = P_.cam_obs[t];
                     const uint32_t p = P_.obs_point[oi];
@@ -849,39 +958,10 @@ private:
                             continue;
                         }
                         const uint32_t b = P_.obs_image[oj];
-                        const uint32_t dofj = dof_[b];
                         double Jcj_b[2 * kMaxCamDof];
                         const double* Jcj = jcRow(oj, Jcj_b);
-                        uint32_t colsB[kMaxCamDof];
-                        imgCols(b, colsB);
-                        // Track images ascend, so frame(b) <= frame(a): two
-                        // frames put the pose x pose block below the diagonal,
-                        // one frame (rig-mates) folds both orderings onto it.
-                        if (frame_[a] != frame_[b]) {
-                            const uint32_t bp = 6 * frame_[b];
-                            for (uint32_t r = 0; r < 6; r++) {
-                                double* Srow = S_.row(colsA[r]) + bp;
-                                for (uint32_t c = 0; c < 6; c++) {
-                                    const double v = -(z0[r] * Jcj[c] + z1[r] * Jcj[dofj + c]);
-                                    if (std::isfinite(v)) Srow[c] += v;
-                                }
-                                for (uint32_t c = 6; c < dofj; c++) {
-                                    const double v = -(z0[r] * Jcj[c] + z1[r] * Jcj[dofj + c]);
-                                    if (std::isfinite(v)) addAt(colsB[c], colsA[r], v, sb);
-                                }
-                            }
-                            for (uint32_t r = 6; r < dofi; r++)
-                                for (uint32_t c = 0; c < dofj; c++) {
-                                    const double v = -(z0[r] * Jcj[c] + z1[r] * Jcj[dofj + c]);
-                                    if (std::isfinite(v)) addSym(colsA[r], colsB[c], v, sb);
-                                }
-                        } else {
-                            for (uint32_t r = 0; r < dofi; r++)
-                                for (uint32_t c = 0; c < dofj; c++) {
-                                    const double v = -(z0[r] * Jcj[c] + z1[r] * Jcj[dofj + c]);
-                                    if (std::isfinite(v)) addSym(colsA[r], colsB[c], v, sb);
-                                }
-                        }
+                        const uint32_t bEnd[4] = {0, 6, 6u + efree_[b], dof_[b]};
+                        schurPair(colsA, cols_[b].data(), aEnd, bEnd, z0, z1, Jcj, sb);
                     }
                 }
             }
@@ -891,15 +971,19 @@ private:
         pool_->run(nt2, nthreads_, [&](int t, int) {
             int64_t lo, hi;
             taskRange(n_, nt2, t, lo, hi);
+            const int64_t exclusiveHi = std::min<int64_t>(hi, exclusiveEnd_);
             for (uint32_t k = 0; k < m_; k++) {
                 const uint32_t R = sharedCol_[k];
                 double* Srow = S_.row(R);
-                for (int64_t c = lo; c < hi && c <= (int64_t)R; c++) {
+                const auto sumSlot = [&](int64_t c) {
                     double s = 0;
                     for (int q = 0; q < nt; q++)
                         s += sbuf_[(size_t)q * m_ * n_ + (size_t)c * m_ + k];
-                    Srow[c] += s;
-                }
+                    return s;
+                };
+                for (int64_t c = lo; c < hi && c <= (int64_t)R; c++) Srow[c] += sumSlot(c);
+                for (int64_t r = std::max(lo, (int64_t)R + 1); r < exclusiveHi; r++)
+                    if (sharedSlot((uint32_t)r) < 0) S_.row((uint32_t)r)[R] += sumSlot(r);
             }
         });
         for (uint32_t k = 0; k < m_; k++) {
@@ -991,10 +1075,10 @@ private:
         pool_->run(nt, nthreads_, [&](int task, int) {
             double* gi = exclusive_ ? nullptr : &cgGIntr_[(size_t)task * tail_];
             double* gb = exclusive_ ? nullptr : &cgGrp_[(size_t)task * nSharedBlk_ * kCamBlk];
-            uint32_t cols[kMaxCamDof];
             double accB[kCamBlk], accM[kCamBlk], gacc[kMaxCamDof], z0[kMaxCamDof], z1[kMaxCamDof];
             for (uint32_t img = cgSplit_[task]; img < cgSplit_[task + 1]; img++) {
-                const uint32_t dof = imgCols(img, cols);
+                const uint32_t* cols = cols_[img].data();
+                const uint32_t dof = dof_[img];
                 const uint32_t nb = dof * (dof + 1) / 2;
                 std::fill(accB, accB + nb, 0.0);
                 std::fill(accM, accM + nb, 0.0);
@@ -1296,7 +1380,6 @@ private:
         pool_->run(nt, nthreads_, [&](int t, int) {
             int64_t lo, hi;
             taskRange(nPts_, nt, t, lo, hi);
-            uint32_t cols[kMaxCamDof];
             for (int64_t p = lo; p < hi; p++) {
                 double u0 = 0, u1 = 0, u2 = 0;
                 for (uint32_t o = P_.obs_ranges[p]; o < P_.obs_ranges[p + 1]; o++) {
@@ -1305,7 +1388,8 @@ private:
                     const double* Jc = jcRow(o, Jc_b);
                     double Jp_b[6];
                     const double* Jp = jpRow(o, Jp_b);
-                    const uint32_t dof = imgCols(img, cols);
+                    const uint32_t* cols = cols_[img].data();
+                    const uint32_t dof = dof_[img];
                     double d0 = 0, d1 = 0;
                     for (uint32_t a = 0; a < dof; a++) {
                         const double xa = cgP_[cols[a]];
@@ -1332,9 +1416,9 @@ private:
         if (rigs) std::fill(cgSp_.begin(), cgSp_.begin() + poseDim_, 0.0);
         pool_->run(nt, nthreads_, [&](int task, int) {
             double* si = exclusive_ ? nullptr : &cgSpIntr_[(size_t)task * tail_];
-            uint32_t cols[kMaxCamDof];
             for (uint32_t img = cgSplit_[task]; img < cgSplit_[task + 1]; img++) {
-                const uint32_t dof = imgCols(img, cols);
+                const uint32_t* cols = cols_[img].data();
+                const uint32_t dof = dof_[img];
                 const double* B = &cgB_[(size_t)kCamBlk * img];
                 for (uint32_t r = 0; r < dof; r++) {
                     double acc = 0;
@@ -1351,10 +1435,10 @@ private:
         });
         pool_->run(nt, nthreads_, [&](int task, int) {
             double* si = exclusive_ ? nullptr : &cgSpIntr_[(size_t)task * tail_];
-            uint32_t cols[kMaxCamDof];
             double acc[kMaxCamDof];
             for (uint32_t img = cgSplit_[task]; img < cgSplit_[task + 1]; img++) {
-                const uint32_t dof = imgCols(img, cols);
+                const uint32_t* cols = cols_[img].data();
+                const uint32_t dof = dof_[img];
                 std::fill(acc, acc + dof, 0.0);
                 for (uint32_t t = P_.cam_obs_ranges[img]; t < P_.cam_obs_ranges[img + 1]; t++) {
                     const uint32_t o = P_.cam_obs[t], p = P_.obs_point[o];
@@ -1462,7 +1546,6 @@ private:
         pool_->run(nt, nthreads_, [&](int t, int) {
             int64_t lo, hi;
             taskRange(nPts_, nt, t, lo, hi);
-            uint32_t cols[kMaxCamDof];
             for (int64_t p = lo; p < hi; p++) {
                 double* Bp = &Bp_[3 * (size_t)p];
                 for (uint32_t o = P_.obs_ranges[p]; o < P_.obs_ranges[p + 1]; o++) {
@@ -1471,7 +1554,8 @@ private:
                     const double* Jc = jcRow(o, Jc_b);
                     double Jp_b[6];
                     const double* Jp = jpRow(o, Jp_b);
-                    const uint32_t dof = imgCols(img, cols);
+                    const uint32_t* cols = cols_[img].data();
+                    const uint32_t dof = dof_[img];
                     double d0 = 0, d1 = 0;
                     for (uint32_t a = 0; a < dof; a++) {
                         const double x = g_[cols[a]];
@@ -1528,11 +1612,12 @@ private:
     uint32_t n_ = 0, poseDim_ = 0, tail_ = 0, nImg_ = 0, nPts_ = 0, nObs_ = 0;
     std::vector<uint8_t> dof_, gz_, model_, efree_, emask_;
     std::vector<uint32_t> icol_, ioff_, frame_, eoff_;  // eoff_: into exts, or kNoSlot
+    std::vector<std::array<uint32_t, kMaxCamDof>> cols_;
     bool exclusive_ = true;
 
     std::vector<int32_t> srow_;       // tail column -> shared-row slot, or -1
     std::vector<uint32_t> sharedCol_;
-    uint32_t m_ = 0, nSharedBlk_ = 0;
+    uint32_t m_ = 0, exclusiveEnd_ = 0, nSharedBlk_ = 0;
 
     bool useCG_ = false, haveFallback_ = false, cgConverged_ = false;
     uint32_t cgMaxit_ = 100, cgIters_ = 0;

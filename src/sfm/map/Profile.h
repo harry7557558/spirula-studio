@@ -43,6 +43,9 @@ struct MapProf {
     ProfAcc tri;         // triangulateForImage() during growth
     ProfAcc retri;       // completeAndRetriangulate()
     ProfAcc merge;       // mergeTracks(), inside the above
+    ProfAcc merge_propose;  // ... its parallel candidate walk and checks (wall time)
+    ProfAcc merge_check;    // ... fusion checks run serially
+    ProfAcc merge_commit;   // ... applying accepted fusions
     ProfAcc filter;      // sanitizeCameras + filterPoints + filterImages
     ProfAcc snapshot;    // checkedRefine() reconstruction copy
     ProfAcc audit_check;  // audit(): poseContradicted over every registered image
@@ -102,6 +105,10 @@ struct MapProf {
                    n_reg_ok, tri, retri, merge,
                    n_merged, filter, snapshot, audit_check + audit_fix, audit_check, audit_fix,
                    ba, n_ba, n_ba_iters, ba_build, ba_init, ba_solve, ba_write);
+        slog::diag(slog::Tag::Map,
+                   "[prof]   fusion: propose %.2f s, checks %.2f s, commit %.2f s, walk %.2f s",
+                   merge_propose.get(), merge_check.get(), merge_commit.get(),
+                   merge - merge_propose.get() - merge_check.get() - merge_commit.get());
         slog::diag(slog::Tag::Map,
                    "[tracks] completed %llu created %llu removed %llu | fusion refusals "
                    "cap %llu clash %llu reprojection %llu angle %llu | associations "

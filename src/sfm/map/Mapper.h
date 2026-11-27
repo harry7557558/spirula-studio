@@ -5543,27 +5543,58 @@ private:
         if (rigs_ && !final_.no_rig) completeRigFrames();
     }
 
-    // A correspondence permits fusion only when the entire union still fits.
+    // A correspondence permits fusion only when the entire union still fits. Each
+    // point's walk and checks run on every core against the pass's starting state;
+    // the serial commit reuses them while neither point has fused since.
     size_t mergeTracks(const ModelIndex& mi, double err_scale) {
         const double err = err_scale * opt_.max_reproj_error;
         size_t merged = 0;
-        std::vector<uint64_t> ids;
-        ids.reserve(rec_.points3D.size());
-        for (const auto& kv : rec_.points3D) ids.push_back(kv.first);
-        // Point IDs occupy 32-bit halves; duplicate graph paths must not repeat a merge test.
-        std::unordered_set<uint64_t> tried;
-        tried.reserve(4 * rec_.points3D.size());
-        std::vector<uint8_t> on_track(db_.images.size(), 0);
+        std::vector<std::pair<uint64_t, Point3D*>> pts;
+        pts.reserve(rec_.points3D.size());
+        for (auto& kv : rec_.points3D) pts.emplace_back(kv.first, &kv.second);
         std::vector<Vec3> centers(db_.images.size());
         for (uint32_t i = 0; i < db_.images.size(); i++)
             if (mi.img[i] && mi.img[i]->registered) centers[i] = cameraCenter(mi.img[i]->pose);
-        for (uint64_t pid : ids) {
-            // The loop below may absorb a point into another and erase it, so
-            // the id is re-checked and the walk restarted from the survivor.
-            for (int hop = 0; hop < 8; hop++) {
+
+        constexpr size_t kBlock = 256;
+        fusion_blocks_.resize((pts.size() + kBlock - 1) / kBlock);
+        fusion_span_.resize(pts.size());
+        {
+            ProfTimer pt(g_map_prof.merge_propose);
+            parallelFor(pts.size(), kBlock, [&](size_t lo, size_t hi, std::vector<uint8_t>& on_track) {
+                std::vector<FusionCandidate>& out = fusion_blocks_[lo / kBlock];
+                out.clear();
+                for (size_t i = lo; i < hi; i++) {
+                    const size_t first = out.size();
+                    proposeFusions(mi, pts[i].first, *pts[i].second, err, on_track, centers, out);
+                    fusion_span_[i] = {first, out.size()};
+                }
+            });
+        }
+        // Point IDs occupy 32-bit halves; duplicate graph paths must not repeat a merge test.
+        fusion_tried_.clear();
+        KeySet& tried = fusion_tried_;
+        std::vector<uint8_t> on_track(db_.images.size(), 0);
+        fusion_dirty_.clear();
+        fusion_replay_ = true;
+        for (size_t i = 0; i < pts.size(); i++) {
+            const uint64_t pid = pts[i].first;
+            int hop = 0;
+            if (fusion_replay_ && !fusion_dirty_.contains(pid)) {
+                const FusionCandidate* block = fusion_blocks_[i / kBlock].data();
+                const size_t absorbed = replayFusions(mi, pid, *pts[i].second, err, tried, on_track,
+                                                      centers, block + fusion_span_[i].first,
+                                                      block + fusion_span_[i].second);
+                if (!absorbed) continue;
+                merged += absorbed;
+                hop = 1;
+            }
+            // A fusion may erase this point into another, so the id is re-checked
+            // and the walk restarted from the survivor.
+            for (; hop < 8; hop++) {
                 auto pit = rec_.points3D.find(pid);
                 if (pit == rec_.points3D.end()) break;
-                uint64_t absorbed = mergeOne(mi, pit->first, err, tried, on_track, centers);
+                const size_t absorbed = mergeOne(mi, pid, err, tried, on_track, centers);
                 if (!absorbed) break;
                 merged += absorbed;
             }
@@ -5573,76 +5604,218 @@ private:
 
     static constexpr size_t kSeamMergeMaxTrack = 20;
 
-    size_t mergeOne(const ModelIndex& mi, uint64_t pid, double err,
-                    std::unordered_set<uint64_t>& tried, std::vector<uint8_t>& on_track,
-                    const std::vector<Vec3>& centers) {
-        Point3D& pt = rec_.points3D.at(pid);
-        for (size_t ti = 0; ti < pt.track.size(); ti++) {
+    // Insert-only open-addressing set of 64-bit keys. A fusion pass inserts ~1.5M
+    // keys; std::unordered_set's node per insert cost 0.4 s of that, this ~0.03 s.
+    class KeySet {
+    public:
+        void clear() {
+            std::fill(slots_.begin(), slots_.end(), kEmpty);
+            n_ = 0;
+            has_empty_ = false;
+        }
+        bool contains(uint64_t k) const {
+            if (k == kEmpty) return has_empty_;
+            if (slots_.empty()) return false;
+            const size_t m = slots_.size() - 1;
+            for (size_t i = slot(k, m);; i = (i + 1) & m)
+                if (slots_[i] == k) return true;
+                else if (slots_[i] == kEmpty) return false;
+        }
+        // True if `k` was not present.
+        bool insert(uint64_t k) {
+            if (k == kEmpty) return !std::exchange(has_empty_, true);
+            if (2 * (n_ + 1) > slots_.size()) grow();
+            const size_t m = slots_.size() - 1;
+            size_t i = slot(k, m);
+            for (; slots_[i] != kEmpty; i = (i + 1) & m)
+                if (slots_[i] == k) return false;
+            slots_[i] = k;
+            n_++;
+            return true;
+        }
+
+    private:
+        static constexpr uint64_t kEmpty = ~0ull;
+        static size_t slot(uint64_t k, size_t m) { return (size_t)((k * 0x9E3779B97F4A7C15ull) >> 20) & m; }
+        void grow() {
+            std::vector<uint64_t> old(std::max<size_t>(1u << 16, 2 * slots_.size()), kEmpty);
+            old.swap(slots_);
+            n_ = 0;
+            for (uint64_t k : old)
+                if (k != kEmpty) insert(k);
+        }
+        std::vector<uint64_t> slots_;
+        size_t n_ = 0;
+        bool has_empty_ = false;
+    };
+
+    // kUnknown: not checked ahead, as the serial pass meets that pair from the
+    // lower id's side first. kMissing: the id names no point.
+    enum class Fusion : uint8_t { kAccept, kCap, kClash, kError, kAngle, kUnknown, kMissing };
+
+    // A point's walk reaches `q` first at track element `ti`, correspondence `ci`.
+    struct FusionCandidate {
+        uint64_t qid;
+        const Point3D* q;
+        uint32_t ti, ci;
+        Fusion verdict;
+        Vec3 x;
+    };
+
+    static void countFusion(Fusion v) {
+        if (!MapProf::enabled()) return;
+        if (v == Fusion::kCap) ++g_map_prof.fusion_cap;
+        else if (v == Fusion::kClash) ++g_map_prof.fusion_clash;
+        else if (v == Fusion::kError) ++g_map_prof.fusion_error;
+        else if (v == Fusion::kAngle) ++g_map_prof.fusion_angle;
+    }
+
+    // Reads only the two points and the poses, so a verdict computed on another
+    // thread holds while neither point changes. `x` is the fused position on accept.
+    Fusion fusionVerdict(const ModelIndex& mi, const Point3D& pt, const Point3D& q, double err,
+                         std::vector<uint8_t>& on_track, const std::vector<Vec3>& centers,
+                         Vec3& x) const {
+        // Dense Schur work grows quadratically with track length; PCG does not form it.
+        if (!opt_.tracks.allowsMerge(pt.track.size(), q.track.size())) return Fusion::kCap;
+        // One observation per image, or the union is not a track.
+        bool clash = false;
+        for (const TrackElement& a : pt.track) on_track[a.image_id] = 1;
+        for (const TrackElement& b : q.track)
+            if (on_track[b.image_id]) { clash = true; break; }
+        for (const TrackElement& a : pt.track) on_track[a.image_id] = 0;
+        if (clash) return Fusion::kClash;
+
+        const double wa = (double)pt.track.size(), wb = (double)q.track.size();
+        x = (pt.xyz * wa + q.xyz * wb) * (1.0 / (wa + wb));
+        if (opt_.tracks.refine_fusion) {
+            std::vector<PointObservation> observations;
+            observations.reserve(pt.track.size() + q.track.size());
+            for (const auto* track : {&pt.track, &q.track})
+                for (const auto& el : *track)
+                    observations.push_back({poseToP(mi.img[el.image_id]->pose),
+                        mi.cam[el.image_id]->bearing(kp(el.image_id, el.point2D_idx)),
+                        mi.cam[el.image_id]->errRad(err)});
+            x = refineTriangulatedPoint(x, observations);
+        }
+        for (const std::vector<TrackElement>* tr : {&pt.track, &q.track})
+            for (const TrackElement& el : *tr)
+                if (reprojErrAt(mi, el.image_id, el.point2D_idx, x) >
+                    err * mi.pixel_scale[el.image_id])
+                    return Fusion::kError;
+        // A union with no parallax would be filtered and rebuilt on the next round.
+        if (!wellTriangulated(pt.track, q.track, x, centers)) return Fusion::kAngle;
+        return Fusion::kAccept;
+    }
+
+    size_t fuse(const ModelIndex& mi, uint64_t pid, Point3D& pt,
+                std::map<uint64_t, Point3D>::iterator qit, const Vec3& x) {
+        ProfTimer t(g_map_prof.merge_commit);
+        const size_t absorbed = qit->second.track.size();
+        pt.xyz = x;
+        // Whoever owned a rewritten feature is marked too: a seed can leave a
+        // feature on two tracks, and walks reaching it must not trust a proposal.
+        for (const TrackElement& el : qit->second.track) {
+            uint64_t& owner = mi.img[el.image_id]->point3D_ids[el.point2D_idx];
+            if (owner == kInvalidPoint3D) fusion_replay_ = false;
+            else fusion_dirty_.insert(owner);
+            owner = pid;
+            pt.track.push_back(el);
+        }
+        fusion_dirty_.insert(pid);
+        fusion_dirty_.insert(qit->first);
+        rec_.points3D.erase(qit);
+        return absorbed;
+    }
+
+    // mergeOne's walk and checks without the shared `tried` set: each partner once,
+    // in first-reached order, up to the first accepted one. Appends to `out`.
+    void proposeFusions(const ModelIndex& mi, uint64_t pid, const Point3D& pt, double err,
+                        std::vector<uint8_t>& on_track, const std::vector<Vec3>& centers,
+                        std::vector<FusionCandidate>& out) const {
+        const size_t first = out.size();
+        for (uint32_t ti = 0; ti < pt.track.size(); ti++) {
             const TrackElement e = pt.track[ti];
+            uint32_t ci = 0;
             for (const Correspondence& c : graph_.at(e.image_id, e.point2D_idx)) {
+                const uint32_t at = ci++;
+                const Image* oi = mi.img[c.image_id];
+                if (!oi || !oi->registered) continue;
+                const uint64_t qid = oi->point3D_ids[c.feature_idx];
+                if (qid == kInvalidPoint3D || qid == pid) continue;
+                bool seen = false;  // ponytail: linear; a hash set if partners per point reach hundreds
+                for (size_t k = first; k < out.size() && !seen; k++) seen = out[k].qid == qid;
+                if (seen) continue;
+                FusionCandidate f{qid, nullptr, ti, at, Fusion::kMissing, {}};
+                auto qit = rec_.points3D.find(qid);
+                if (qit != rec_.points3D.end()) {
+                    f.q = &qit->second;
+                    f.verdict = qid > pid ? fusionVerdict(mi, pt, *f.q, err, on_track, centers, f.x)
+                                          : Fusion::kUnknown;
+                }
+                out.push_back(f);
+                if (f.verdict == Fusion::kAccept) return;
+            }
+        }
+    }
+
+    // mergeOne for a point no fusion has touched this pass, from its proposals.
+    // Until the walk reaches a touched partner, it meets exactly the proposals'
+    // partners in their order; from there it continues live.
+    size_t replayFusions(const ModelIndex& mi, uint64_t pid, Point3D& pt, double err,
+                         KeySet& tried, std::vector<uint8_t>& on_track,
+                         const std::vector<Vec3>& centers, const FusionCandidate* f,
+                         const FusionCandidate* end) {
+        for (; f != end; f++) {
+            if (fusion_dirty_.contains(f->qid))
+                return mergeOne(mi, pid, err, tried, on_track, centers, f->ti, f->ci);
+            const uint64_t lo = std::min(pid, f->qid), hi = std::max(pid, f->qid);
+            if (!tried.insert((lo << 32) ^ hi)) {
+                // The proposals stop at an accept; the serial walk goes on past a skipped one.
+                if (f->verdict == Fusion::kAccept)
+                    return mergeOne(mi, pid, err, tried, on_track, centers, f->ti, f->ci + 1);
+                continue;
+            }
+            if (f->verdict == Fusion::kMissing) continue;
+            Fusion v = f->verdict;
+            Vec3 x = f->x;
+            if (v == Fusion::kUnknown) {
+                ProfTimer t(g_map_prof.merge_check);
+                v = fusionVerdict(mi, pt, *f->q, err, on_track, centers, x);
+            }
+            countFusion(v);
+            if (v == Fusion::kAccept) return fuse(mi, pid, pt, rec_.points3D.find(f->qid), x);
+        }
+        return 0;
+    }
+
+    size_t mergeOne(const ModelIndex& mi, uint64_t pid, double err,
+                    KeySet& tried, std::vector<uint8_t>& on_track,
+                    const std::vector<Vec3>& centers, size_t ti0 = 0, size_t ci0 = 0) {
+        Point3D& pt = rec_.points3D.at(pid);
+        for (size_t ti = ti0; ti < pt.track.size(); ti++) {
+            const TrackElement e = pt.track[ti];
+            size_t skip = ti == ti0 ? ci0 : 0;
+            for (const Correspondence& c : graph_.at(e.image_id, e.point2D_idx)) {
+                if (skip) {
+                    skip--;
+                    continue;
+                }
                 const Image* oi = mi.img[c.image_id];
                 if (!oi || !oi->registered) continue;
                 const uint64_t qid = oi->point3D_ids[c.feature_idx];
                 if (qid == kInvalidPoint3D || qid == pid) continue;
                 const uint64_t lo = std::min(pid, qid), hi = std::max(pid, qid);
-                if (!tried.insert((lo << 32) ^ hi).second) continue;
+                if (!tried.insert((lo << 32) ^ hi)) continue;
                 auto qit = rec_.points3D.find(qid);
                 if (qit == rec_.points3D.end()) continue;
-                Point3D& q = qit->second;
-
-                // Dense Schur work grows quadratically with track length; PCG does not form it.
-                if (!opt_.tracks.allowsMerge(pt.track.size(), q.track.size())) {
-                    if (MapProf::enabled()) ++g_map_prof.fusion_cap;
-                    continue;
+                Vec3 x;
+                Fusion v;
+                {
+                    ProfTimer t(g_map_prof.merge_check);
+                    v = fusionVerdict(mi, pt, qit->second, err, on_track, centers, x);
                 }
-                // One observation per image, or the union is not a track.
-                bool clash = false;
-                for (const TrackElement& a : pt.track) on_track[a.image_id] = 1;
-                for (const TrackElement& b : q.track)
-                    if (on_track[b.image_id]) { clash = true; break; }
-                for (const TrackElement& a : pt.track) on_track[a.image_id] = 0;
-                if (clash) {
-                    if (MapProf::enabled()) ++g_map_prof.fusion_clash;
-                    continue;
-                }
-
-                const double wa = (double)pt.track.size(), wb = (double)q.track.size();
-                Vec3 x = (pt.xyz * wa + q.xyz * wb) * (1.0 / (wa + wb));
-                if (opt_.tracks.refine_fusion) {
-                    std::vector<PointObservation> observations;
-                    observations.reserve(pt.track.size() + q.track.size());
-                    for (const auto* track : {&pt.track, &q.track})
-                        for (const auto& el : *track)
-                            observations.push_back({poseToP(mi.img[el.image_id]->pose),
-                                mi.cam[el.image_id]->bearing(kp(el.image_id, el.point2D_idx)),
-                                mi.cam[el.image_id]->errRad(err)});
-                    x = refineTriangulatedPoint(x, observations);
-                }
-                bool ok = true;
-                for (const std::vector<TrackElement>* tr : {&pt.track, &q.track}) {
-                    for (const TrackElement& el : *tr)
-                        if (reprojErrAt(mi, el.image_id, el.point2D_idx, x) >
-                            err * mi.pixel_scale[el.image_id]) { ok = false; break; }
-                    if (!ok) break;
-                }
-                if (!ok) {
-                    if (MapProf::enabled()) ++g_map_prof.fusion_error;
-                    continue;
-                }
-                // A union with no parallax would be filtered and rebuilt on the next round.
-                if (!wellTriangulated(pt.track, q.track, x, centers)) {
-                    if (MapProf::enabled()) ++g_map_prof.fusion_angle;
-                    continue;
-                }
-
-                const size_t absorbed = q.track.size();
-                pt.xyz = x;
-                for (const TrackElement& el : q.track) {
-                    mi.img[el.image_id]->point3D_ids[el.point2D_idx] = pid;
-                    pt.track.push_back(el);
-                }
-                rec_.points3D.erase(qit);
-                return absorbed;
+                countFusion(v);
+                if (v == Fusion::kAccept) return fuse(mi, pid, pt, qit, x);
             }
         }
         return 0;
@@ -6217,6 +6390,12 @@ private:
     bool ba_requested_ = false;
     std::unordered_set<uint64_t> welded_;  // fused by fuseSeams; the next globalRefine spares them
     int refine_rounds_ = 0;                // BA rounds the last globalRefine ran
+    // mergeTracks scratch, kept across passes: proposals per 256-point block, each
+    // point's [first, last) in its block, and the points fused so far this pass.
+    std::vector<std::vector<FusionCandidate>> fusion_blocks_;
+    std::vector<std::pair<size_t, size_t>> fusion_span_;
+    KeySet fusion_dirty_, fusion_tried_;
+    bool fusion_replay_ = true;  // false once a fusion took an ownerless feature: walk live
     // Counted from const passes that fan out over threads (the audit, the
     // seed prefetch).
     mutable std::atomic<uint32_t> prior_vouched_{0}, prior_seeds_{0};
