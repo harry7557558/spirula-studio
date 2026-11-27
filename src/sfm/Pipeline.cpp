@@ -2161,13 +2161,17 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
     std::unordered_map<uint64_t, TwoViewMatches> done_kept;
     std::vector<uint64_t> done_keys;
     const fs::path journal_path = res ? res->dir / resume::kMatchJournal : fs::path();
-    const bool resumed_verify =
-        res && verify &&
-        resume::readJournal(journal_path, res->signature, db.images, done_kept, done_keys,
-                            stats.putative);
+    std::error_code journal_read_error;
+    const auto journal_end = res && verify
+        ? resume::readJournal(journal_path, res->signature, db.images, done_kept, done_keys,
+                              stats.putative, journal_read_error)
+        : std::nullopt;
+    if (journal_read_error)
+        L::warn(Tag::Match, M::match_checkpoint_disabled,
+                {journal_path.u8string(), journal_read_error.message()});
     std::set<uint64_t> done_set(done_keys.begin(), done_keys.end());
     std::vector<std::pair<uint32_t, uint32_t>> todo;
-    if (resumed_verify && !done_set.empty()) {
+    if (journal_end && !done_set.empty()) {
         for (const auto& p : pairs)
             if (!done_set.count(resume::pairKey(p.first, p.second))) todo.push_back(p);
         L::out(Tag::Match, M::match_resuming,
@@ -2413,8 +2417,14 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                                                       : (uint32_t)it->second.matches.size());
         }
         resume::MatchJournal journal;
-        if (res) journal.open(journal_path, res->signature, resumed_verify);
-        vopt.journal = &journal;
+        if (res && !journal_read_error) {
+            const auto error = journal.open(journal_path, res->signature, journal_end);
+            if (error)
+                L::warn(Tag::Match, M::match_checkpoint_disabled,
+                        {journal_path.u8string(), error.message()});
+            else
+                vopt.journal = &journal;
+        }
         // The rig-mate pass below verifies pairs only this pass's results name.
         // Its bound is counted in now, so the bar jumps forward when the
         // real count is known rather than falling back.

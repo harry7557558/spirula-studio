@@ -19,7 +19,9 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <system_error>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -68,10 +70,10 @@ class MatchJournal {
 public:
     ~MatchJournal() { close(); }
 
-    // Open for appending after `resume` read it, or fresh. False leaves the
-    // journal disarmed and every call below a no-op.
-    bool open(const std::filesystem::path& file, const std::string& signature,
-              bool append);
+    // Pass the boundary from readJournal to resume, or omit it to start fresh.
+    // An error leaves the journal disarmed.
+    std::error_code open(const std::filesystem::path& file, const std::string& signature,
+                         std::optional<uintmax_t> append_at = std::nullopt);
     // `putative` is what the matcher offered before verification, which only
     // this record can say afterwards -- the summary counts it.
     void record(uint32_t a, uint32_t b, int32_t config, uint32_t putative,
@@ -91,13 +93,12 @@ private:
     bool _armed = false;
 };
 
-// What a journal holds: the pairs it finished, and the matches of the ones it
-// kept. False (leaving both untouched) when the file is absent, was written for
-// other settings, or names other images.
-bool readJournal(const std::filesystem::path& file, const std::string& signature,
-                 const std::vector<ImageEntry>& images,
-                 std::unordered_map<uint64_t, TwoViewMatches>& kept,
-                 std::vector<uint64_t>& done, uint64_t& putative);
+// Nullopt leaves the outputs untouched. An error also disallows replacing the journal.
+std::optional<uintmax_t> readJournal(const std::filesystem::path& file, const std::string& signature,
+                                     const std::vector<ImageEntry>& images,
+                                     std::unordered_map<uint64_t, TwoViewMatches>& kept,
+                                     std::vector<uint64_t>& done, uint64_t& putative,
+                                     std::error_code& error);
 
 }  // namespace resume
 }  // namespace sfm

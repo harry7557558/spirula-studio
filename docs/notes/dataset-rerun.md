@@ -233,6 +233,11 @@ files' presence says whether there is anything to reuse at all. "Reconstruct
 again" on unchanged settings therefore reads as extraction and matching
 reused, mapping redone -- minutes, where the line above it says the hour.
 
+Interrupted pair verification reuses complete records in `.resume/matches.part`
+and discards any incomplete final record before appending new results.
+If the journal cannot be read or reopened safely, matching warns and continues
+without checkpointing.
+
 Each stage's line carries a checkbox: ticked, it runs. Unticking one the plan
 would redo keeps what is on disk (`PartChoice::Keep`, `spirula sfm
 --reuse-features|--reuse-matches keep`, or no `spirula lidar` at all), and
