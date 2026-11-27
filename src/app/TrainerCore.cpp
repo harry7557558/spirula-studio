@@ -2343,9 +2343,9 @@ void TrainerSession::train_steps(const TrainerCallbacks& cb) {
                 std::string line = "[step-timing] step " + std::to_string(step + 1);
                 char buf[160];
                 const DevicePool::CategoryBytes pool = DevicePool::global().category_bytes();
-                std::snprintf(buf, sizeof buf, "  splats %lld  splat_x_img %.1f MiB",
+                std::snprintf(buf, sizeof buf, "  splats %lld  splat_x_pix %.1f MiB",
                               (long long)_live_splats.load(),
-                              pool.cap[(int)VramCategory::SplatXImg] / 1048576.0);
+                              pool.cap[(int)VramCategory::SplatXPix] / 1048576.0);
                 line += buf;
                 std::snprintf(buf, sizeof buf, "  total %.2f ms  unaccounted %.2f", b.total() * 1e3,
                               b.unaccounted * 1e3);

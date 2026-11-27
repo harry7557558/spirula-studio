@@ -127,14 +127,14 @@ schedule, so it is the same at every step).
 | pixels column, `r^q` | q = 0.91-0.92 | q = 0.99-1.00 |
 | splats x pixels column, `r^q` | 0.52 at 169k splats, 0.38 at 1M | 0.53 at 251k, 0.39 at 1M |
 | splats column | unchanged | unchanged |
-| splat x img bytes, `r^q` | 0.30-0.50 | 0.09-0.45 |
+| splat x pixel bytes, `r^q` | 0.30-0.50 | 0.09-0.45 |
 
 Within a run, from ~200k to 1M splats: the splats column is linear (garden
 1/4: 0.59 -> 3.42 ms for 5.9x the splats); the splats x pixels column grows
 as `N^0.36-0.58` -- splats shrink as they multiply, so each covers fewer
-tiles -- and splat x img bytes as `N^0.3-0.5`. Hence
+tiles -- and splat x pixel bytes as `N^0.3-0.5`. Hence
 `kSplatPixelTimeExp = 0.45`, `kSplatPixelSplatExp = 0.5` and
-`kSplatXImgVramExp = 0.35` (`app/TrainForecast.h`). The splats x pixels
+`kSplatXPixVramExp = 0.35` (`app/TrainForecast.h`). The splats x pixels
 column falls toward `r^0.4` as a run goes on; the constant is the run's mean.
 The ETA does not use the constant for the count: it filters the two splat
 columns themselves and fits the exponent as the count moves
@@ -195,10 +195,13 @@ and shown when it saves at least 5%, the three largest:
 - a Basic Options switch's row: the colour corrections (bilateral grid and
   PPISP together), the dataset's depth and normal maps;
 - a Basic Options dropdown one step down, through the factors above:
-  calibration correction, floater suppression, the SH degree, and 3dgs for
-  another primitive;
+  calibration correction, floater suppression, the SH degree, and mip for
+  3dgut or 2dgs (closer in quality than 3dgs, at about the same cost);
 - the viewport's *live* refresh, the checkpoint interval, a faster disk for
   the image wait, half the training images.
+
+Under the meshing preset the primitive, floater suppression and the dataset's
+depth and normal maps are left out: the preset picks them for the mesh.
 
 A run that split its frames into views is listed whatever its rank, since
 with appearance correction on it is often the largest thing to try: every
@@ -211,7 +214,7 @@ column x `1 - frames / views`. On a mixed fisheye and pinhole indoor capture
 row, 2.0 of 9.2 ms a step, and the training-images column 1.6 ms of it.
 
 The VRAM card's: half the resolution takes x 3/4 of the Image category and
-of the arena's per-pixel slices in the projected splat x img peak, and x `1 -
+of the arena's per-pixel slices in the projected splat x pixel peak, and x `1 -
 0.25^0.35` of the rest of that peak; half the cap takes the Splat category
 (sized for `cap_max`) x 1/2 and that rest x `1 - 0.5^p`, `p` the VRAM
 forecast's fitted exponent; one SH degree less takes the SH rows and

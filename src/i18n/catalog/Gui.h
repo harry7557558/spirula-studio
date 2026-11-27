@@ -2450,12 +2450,12 @@ SS_MSG(vram_cat_splat,
     DE("Splats"), FR("Splats"), ES("Splats"), PT("Splats"), IT("Splat"),
     NL("Splats"), RU("Сплаты"), TR("Splat'ler"));
 
-SS_MSG(vram_cat_splat_x_img,
-    EN("Splats × images"), JA("スプラット × 画像"), ZH_HANS("泼溅 × 图像"),
-    ZH_HANT("潑濺 × 影像"), KO("스플랫 × 이미지"), DE("Splats × Bilder"),
-    FR("Splats × images"), ES("Splats × imágenes"), PT("Splats × imagens"),
-    IT("Splat × immagini"), NL("Splats × beelden"), RU("Сплаты × изображения"),
-    TR("Splat × görüntü"));
+SS_MSG(vram_cat_splat_x_pix,
+    EN("Splats × pixels"), JA("スプラット × 画素"), ZH_HANS("泼溅 × 像素"),
+    ZH_HANT("潑濺 × 像素"), KO("스플랫 × 픽셀"), DE("Splats × Pixel"),
+    FR("Splats × pixels"), ES("Splats × píxeles"), PT("Splats × pixels"),
+    IT("Splat × pixel"), NL("Splats × pixels"), RU("Сплаты × пиксели"),
+    TR("Splat × piksel"));
 
 SS_MSG(vram_cat_image,
     EN("Images"), JA("画像"), ZH_HANS("图像"), ZH_HANT("影像"), KO("이미지"),

@@ -28,7 +28,7 @@ the detail.
 | [notes/calib-warp.md](notes/calib-warp.md) | a per-image smooth warp of the ground truth that absorbs calibration residual, its Gauss-Newton fit, the aligned eval metrics (`al_`, `alcc_`), results and what was dropped |
 | [notes/ssim-blur-tolerance.md](notes/ssim-blur-tolerance.md) | blur-tolerant SSIM, so blurry photos stop blurring the scene; the loss and map study behind it on degraded mip-NeRF 360 scenes |
 | [notes/web-viewer-robustness.md](notes/web-viewer-robustness.md) | what web viewers draw differently, training on PlayCanvas's kernel for part of the steps, the peak-weight noise gate, the per-coefficient SH reg, and what did not help |
-| [notes/vram-splat-x-img.md](notes/vram-splat-x-img.md) | what the largest scratch category costs per element, the bitmask compaction, and the measured dead ends |
+| [notes/vram-splat-x-pixel.md](notes/vram-splat-x-pixel.md) | what the largest scratch category costs per element, the bitmask compaction, and the measured dead ends |
 | [notes/vram-high-res.md](notes/vram-high-res.md) | the per-pixel half of VRAM: the fused appearance chain, float16 images, what a 60 and a 120 MP image cost |
 | [notes/color-transfer.md](notes/color-transfer.md) | linear storage vs the output tone curve, the dynamic range a curve buys, and why its clip is straight-through |
 | [notes/gui-editing-plan.md](notes/gui-editing-plan.md) | editing in the GUI: the selection seam every tool shares, transforms, mask editing, trajectories, and the order to build them in |

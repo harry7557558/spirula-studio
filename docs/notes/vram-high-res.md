@@ -1,6 +1,6 @@
 # Per-pixel VRAM at high resolution
 
-`docs/notes/vram-splat-x-img.md` is about the memory that follows the splat
+`docs/notes/vram-splat-x-pixel.md` is about the memory that follows the splat
 count. This note is about the other half: buffers sized by the image. At
 60 MP a single float32 RGB image is 689 MiB and a float32 scalar map 230 MiB,
 so a step that keeps a dozen of each spends more on pixels than on a

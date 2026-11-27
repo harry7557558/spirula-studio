@@ -130,7 +130,7 @@ static void eta_tracks_growth() {
     }
 }
 
-// splat x img follows 60 bytes per splat at 300k splats, as msplats^power,
+// splat x pixel follows 60 bytes per splat at 300k splats, as msplats^power,
 // with per-step spread; the rest is 1 GiB.
 static VramForecast run_vram(double others_gib, int stop_at, double power = 1.0) {
     const DensifyConfig d = densify(500, 15000, 100, 1.05f);
@@ -163,8 +163,8 @@ static VramForecast run_vram(double others_gib, int stop_at, double power = 1.0)
         m.step = s;
         m.splats_ran = n_at[s];
         m.splats_next = n_at[s + 1];
-        m.pool_used[(int)VramCategory::SplatXImg] = used;
-        m.pool_cap[(int)VramCategory::SplatXImg] = hw;
+        m.pool_used[(int)VramCategory::SplatXPix] = used;
+        m.pool_cap[(int)VramCategory::SplatXPix] = hw;
         m.pool_cap[(int)VramCategory::Splat] = (size_t)gib;
         m.has_process = m.has_used = m.has_total = true;
         m.process_bytes = (uint64_t)gib + hw;
@@ -216,7 +216,7 @@ static void vram_bounded_views(double loss_gib) {
     for (int i = 0; i < 1000; ++i) order[i] = i;
 
     const double gib = 1024.0 * 1024.0 * 1024.0;
-    const int sxi = (int)VramCategory::SplatXImg;
+    const int sxp = (int)VramCategory::SplatXPix;
     std::vector<int64_t> n_at(T + 1);
     sch.segments(0, 300000, [&](int f, int e, int64_t n) {
         for (int s = f; s < e; ++s) n_at[s] = n;
@@ -238,8 +238,8 @@ static void vram_bounded_views(double loss_gib) {
         m.step = s;
         m.splats_ran = n_at[s];
         m.splats_next = n_at[s + 1];
-        m.pool_used[sxi] = (size_t)(160.0 * visible);
-        m.pool_cap[sxi] = owned + arena;
+        m.pool_used[sxp] = (size_t)(160.0 * visible);
+        m.pool_cap[sxp] = owned + arena;
         m.pool_cap[(int)VramCategory::Splat] = (size_t)gib;
         m.arena_cap = arena;
         m.phase_pixels[(int)PoolPhase::Loss] = loss;
@@ -497,7 +497,7 @@ static void vram_resolution_boundaries() {
     m.splats_ran = m.splats_next = 1000000;
     m.pool_cap[(int)VramCategory::Splat] = 200 * MiB;
     m.pool_cap[(int)VramCategory::Image] = 4 * MiB;
-    m.pool_cap[(int)VramCategory::SplatXImg] = 32 * MiB;
+    m.pool_cap[(int)VramCategory::SplatXPix] = 32 * MiB;
     m.arena_cap = 16 * MiB;
     m.phase_pixels[(int)PoolPhase::Loss] = 16 * MiB;
     m.isect_pairs = 100000;
@@ -513,7 +513,7 @@ static void vram_resolution_boundaries() {
     m.step = 299;
     m.resolution_divisor = 2;
     m.pool_cap[(int)VramCategory::Image] *= 4;
-    m.pool_cap[(int)VramCategory::SplatXImg] += 48 * MiB;
+    m.pool_cap[(int)VramCategory::SplatXPix] += 48 * MiB;
     m.arena_cap *= 4;
     m.phase_pixels[(int)PoolPhase::Loss] *= 4;
     fc.add_memory(m);
@@ -571,7 +571,7 @@ static void vram_sh_warmup_keeps_view_horizon() {
         m.step = 0;
         m.splats_ran = m.splats_next = 1000000;
         m.pool_cap[(int)VramCategory::Splat] = 200 * MiB;
-        m.pool_cap[(int)VramCategory::SplatXImg] = 32 * MiB;
+        m.pool_cap[(int)VramCategory::SplatXPix] = 32 * MiB;
         m.arena_cap = 16 * MiB;
         m.phase_splats[(int)PoolPhase::RasterBwd] = 16 * MiB;
         m.isect_pairs = 100000;

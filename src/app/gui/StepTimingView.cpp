@@ -348,11 +348,15 @@ void tips(const TimeBreakdown& b, const TrainConfig& cfg, const SavingsContext& 
     }
     off(part(StepPart::Appearance), cfg.use_bilateral_grid, msg::opt_bilateral_grid,
         cfg.use_ppisp, msg::opt_ppisp, basic);
-    off(part(StepPart::Geometry), cfg.load_depths && cfg.depth_supervision_weight > 0.0f,
-        msg::opt_dataset_depths,
-        cfg.load_normals && (cfg.normal_supervision_weight > 0.0f ||
-                             cfg.median_normal_supervision_weight > 0.0f),
-        msg::opt_dataset_normals, basic);
+    // The meshing preset's primitive, floater suppression and geometry priors
+    // are there for the mesh, so they are not offered as savings.
+    const bool mesh = ctx.preset_meshing;
+    if (!mesh)
+        off(part(StepPart::Geometry), cfg.load_depths && cfg.depth_supervision_weight > 0.0f,
+            msg::opt_dataset_depths,
+            cfg.load_normals && (cfg.normal_supervision_weight > 0.0f ||
+                                 cfg.median_normal_supervision_weight > 0.0f),
+            msg::opt_dataset_normals, basic);
     // A dropdown lowered, with what that does to the kernels it touches
     // (SettingCosts.h): one step, except where the costs are not monotonic.
     const auto step_down = [&](const char* key, const std::string& now, const char* lower,
@@ -383,11 +387,12 @@ void tips(const TimeBreakdown& b, const TrainConfig& cfg, const SavingsContext& 
             spirula::setting_saving(b.cells, "floater_suppression", cfg.floater_suppression, l);
         if (s > best_saved) best = l, best_saved = s;
     }
-    if (best)
+    if (best && !mesh)
         step_down("floater_suppression", cfg.floater_suppression, best,
                   fld::floater_suppression.get(), choice_display("floater_suppression", best));
-    if (cfg.primitive != "3dgs")
-        step_down("primitive", cfg.primitive, "3dgs", msg::opt_primitive.get(), "3dgs");
+    // mip rather than 3dgs: closer in quality, at about the same cost.
+    if (!mesh && (cfg.primitive == "3dgut" || cfg.primitive == "2dgs"))
+        step_down("primitive", cfg.primitive, "mip", msg::opt_primitive.get(), "mip");
     if (cfg.sh_degree > 0)
         step_down("sh_degree", std::to_string(cfg.sh_degree),
                   std::to_string(cfg.sh_degree - 1).c_str(), msg::opt_sh_degree.get(),

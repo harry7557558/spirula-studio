@@ -939,6 +939,7 @@ SavingsContext GuiApp::savings_context(const spirula::TrainerSession& session) c
         ctx.images_kept =
             (double)session.post.K_per_camera.size() / (double)session.post.n_post;
     ctx.preset_360 = _train_presets.file.empty() && _preset == "360-camera";
+    ctx.preset_meshing = _train_presets.file.empty() && _preset == "meshing";
     ctx.preset_360_label = preset_label("360-camera");
     ctx.preset_general_label = preset_label("3dgs");
     return ctx;

@@ -18,6 +18,7 @@ struct SavingsContext {
     bool frames_split = false;
     double images_kept = 1.0;   // without the split: frames over the views they became
     bool preset_360 = false;
+    bool preset_meshing = false;
     std::string preset_360_label, preset_general_label;
     int sh_degree = 0;
 };

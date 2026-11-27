@@ -1,6 +1,6 @@
-# The "splat x img" VRAM category
+# The "splat x pixel" VRAM category
 
-`SS_PROFILE=1` buckets every pool buffer (`core/PoolSlots.h`). **splat x img**
+`SS_PROFILE=1` buckets every pool buffer (`core/PoolSlots.h`). **splat x pixel**
 is the scratch whose size follows *(splats seen per image)* rather than the
 splat count: the packed projection's compaction, the projected screen rows,
 and the splat-tile intersection list. It is the category that decides whether
@@ -33,7 +33,7 @@ one call, in which case it belongs in the arena (the densify scratch below).
 The arena follows the same rule for its per-splat slices: one carved in the
 Splat category asks the arena for cap / live times its bytes
 (`DevicePool::_arena_bump`), so a phase's per-splat part is `cap_max`-sized
-from the first step that carves it and only the per-pair slices (SplatXImg)
+from the first step that carves it and only the per-pair slices (SplatXPix)
 grow. `arena_phases()` reports the three apart -- `pixels`, `splats` (per
 pair) and `capped` -- which is what the forecast projects from.
 
@@ -224,7 +224,7 @@ london to step 8100 (the cap is reached at 5500), Vulkan, RTX 5070, MiB:
 
 | | one sort | bands |
 |---|---|---|
-| owned `splat x img` | 1733 | 1256 |
+| owned `splat x pixel` | 1733 | 1256 |
 | arena | 1956 | 839 |
 | pool + scratch | 10404 | 8696 |
 

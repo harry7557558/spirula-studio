@@ -347,10 +347,8 @@ std::vector<std::tuple<std::string, size_t, size_t>> engine_get_pool_breakdown()
     return DevicePool::global().getBreakdown();
 }
 
-// Same buffers as engine_get_pool_breakdown(), but each row also carries its
-// VRAM category as a string ("splat", "splat x img", "image", "appearance",
-// "viewer", "other") sourced from the pool-slot metadata table -- so Python
-// buckets by an authoritative tag instead of guessing from the key prefix.
+// Same buffers as engine_get_pool_breakdown(), each with its VRAM category's
+// tag from the pool-slot table (to_string in core/PoolSlots.h).
 std::vector<std::tuple<std::string, std::string, size_t, size_t>>
 engine_get_pool_breakdown_categorized() {
     auto raw = DevicePool::global().getBreakdownCategorized();

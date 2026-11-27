@@ -3,7 +3,7 @@
 // (tile_id << 32) | ordered-float depth, sorted by the host over
 // backend::sort_pairs<int64,int32>), and the per-tile offset kernel. Both
 // passes take a band of tile rows, so the host can sort a large image a band
-// at a time (docs/notes/vram-splat-x-img.md, "Sorting in bands").
+// at a time (docs/notes/vram-splat-x-pixel.md, "Sorting in bands").
 //
 // The ellipse-vs-AABB mode split is a runtime null-check on proj_screen
 // (the CUDA template bool exists only to fold that check; the branch is

@@ -109,7 +109,7 @@ when training ends.
 - Reuse large scratch allocations. For caller-owned `thread_local` scratch
   shared with an OpenMP team, resolve the pointer before entering the region.
   Training pool aliases are valid only in their owning phase. When changing
-  allocations, keep the [phase arena](docs/notes/vram-splat-x-img.md#the-phase-arena)
+  allocations, keep the [phase arena](docs/notes/vram-splat-x-pixel.md#the-phase-arena)
   and [training forecast](docs/notes/train-forecast.md#vram) in sync.
 - Use a reusable 8–32 MiB buffer for repeated sequential file I/O, with
   16 MiB as the default. Use `BufferedInputFile` and `BufferedOutputFile` from

@@ -46,14 +46,14 @@
 #include <cstddef>
 
 
-// VRAM report buckets: splat / splat x img / image / appearance / viewer /
+// VRAM report buckets: splat / splat x pixel / image / appearance / viewer /
 // other.
 enum class VramCategory : uint8_t {
     Splat = 0,   // per-splat params, gradients, optimizer state, densify aux
     // Scratch sized by (camera, gaussian), visible or splat-tile PAIRS, and
     // the alias arena: the one category that grows during training. Splat is
-    // sized for cap_max (POOL_LIVE_SPLAT_TABLE) -- docs/notes/vram-splat-x-img.md.
-    SplatXImg,
+    // sized for cap_max (POOL_LIVE_SPLAT_TABLE) -- docs/notes/vram-splat-x-pixel.md.
+    SplatXPix,
     Image,       // per-image buffers: render outputs, GT, loss maps, img grads
     Appearance,  // bilagrid / background-SH / PPISP / color-space / color-shift
     Viewer,      // interactive viewer + sync visualizer caches and scratch
@@ -178,23 +178,23 @@ enum class SaveClass : uint8_t {
   X(EngMedianNormal                , "eng.median_normal",                 Image    , Never) \
   X(EngLossMap                     , "eng.loss_map",                      Image    , Never) \
   /* ---- projection scratch ---- */ \
-  X(ProjAabb                       , "proj.aabb",                         SplatXImg, Never) \
-  X(ProjDepths                     , "proj.depths",                       SplatXImg, Never) \
-  X(ProjMask                       , "proj.mask",                         SplatXImg, Never) \
-  X(ProjBlockCount                 , "proj.block_count",                  SplatXImg, Never) \
-  X(ProjScan                       , "proj.scan",                         SplatXImg, Never) \
-  X(ProjCameraIds                  , "proj.camera_ids",                   SplatXImg, Never) \
-  X(ProjGaussianIds                , "proj.gaussian_ids",                 SplatXImg, Never) \
-  X(ProjScreen                     , "proj.screen",                       SplatXImg, Never) \
+  X(ProjAabb                       , "proj.aabb",                         SplatXPix, Never) \
+  X(ProjDepths                     , "proj.depths",                       SplatXPix, Never) \
+  X(ProjMask                       , "proj.mask",                         SplatXPix, Never) \
+  X(ProjBlockCount                 , "proj.block_count",                  SplatXPix, Never) \
+  X(ProjScan                       , "proj.scan",                         SplatXPix, Never) \
+  X(ProjCameraIds                  , "proj.camera_ids",                   SplatXPix, Never) \
+  X(ProjGaussianIds                , "proj.gaussian_ids",                 SplatXPix, Never) \
+  X(ProjScreen                     , "proj.screen",                       SplatXPix, Never) \
   /* ---- tile intersect scratch ---- */ \
-  X(IsectTilesPerSplat             , "isect.tiles_per_splat",             SplatXImg, Never) \
-  X(IsectCumTiles                  , "isect.cum_tiles",                   SplatXImg, Never) \
-  X(IsectTotal                     , "isect.total",                       SplatXImg, Never) \
-  X(IsectOffsets                   , "isect.offsets",                     SplatXImg, Never) \
-  X(IsectIdsA                      , "isect.ids_a",                       SplatXImg, Never) \
-  X(IsectIdsB                      , "isect.ids_b",                       SplatXImg, Never) \
-  X(IsectFlatA                     , "isect.flat_a",                      SplatXImg, Never) \
-  X(IsectFlatB                     , "isect.flat_b",                      SplatXImg, Never) \
+  X(IsectTilesPerSplat             , "isect.tiles_per_splat",             SplatXPix, Never) \
+  X(IsectCumTiles                  , "isect.cum_tiles",                   SplatXPix, Never) \
+  X(IsectTotal                     , "isect.total",                       SplatXPix, Never) \
+  X(IsectOffsets                   , "isect.offsets",                     SplatXPix, Never) \
+  X(IsectIdsA                      , "isect.ids_a",                       SplatXPix, Never) \
+  X(IsectIdsB                      , "isect.ids_b",                       SplatXPix, Never) \
+  X(IsectFlatA                     , "isect.flat_a",                      SplatXPix, Never) \
+  X(IsectFlatB                     , "isect.flat_b",                      SplatXPix, Never) \
   X(IsectTileActive                , "isect.tile_active",                 Image    , Never) \
   X(IsectTileRays                  , "isect.tile_rays",                   Image    , Never) \
   /* ---- render outputs ---- */ \
@@ -208,12 +208,12 @@ enum class SaveClass : uint8_t {
   /* ---- raster backward scratch ---- */ \
   X(RasterBwdAccumWeight           , "raster_bwd.accum_weight",           Splat    , Never) \
   X(RasterBwdVViewmats             , "raster_bwd.v_viewmats",             Other    , Never) \
-  X(RasterBwdVScreen               , "raster_bwd.v_screen",               SplatXImg, Never) \
+  X(RasterBwdVScreen               , "raster_bwd.v_screen",               SplatXPix, Never) \
   X(RasterBwdVWorld                , "raster_bwd.v_world",                Splat    , Never) \
   /* ---- fused proj-bwd scratch ---- */ \
-  X(FusedProjBwdGaussSorted        , "fused_proj_bwd.gauss_sorted",       SplatXImg, Never) \
-  X(FusedProjBwdPerm               , "fused_proj_bwd.perm",               SplatXImg, Never) \
-  X(FusedProjBwdPermSorted         , "fused_proj_bwd.perm_sorted",        SplatXImg, Never) \
+  X(FusedProjBwdGaussSorted        , "fused_proj_bwd.gauss_sorted",       SplatXPix, Never) \
+  X(FusedProjBwdPerm               , "fused_proj_bwd.perm",               SplatXPix, Never) \
+  X(FusedProjBwdPermSorted         , "fused_proj_bwd.perm_sorted",        SplatXPix, Never) \
   X(FusedProjBwdCamBounds          , "fused_proj_bwd.cam_bounds",         Splat    , Never) \
   /* ---- PCA regularizer (kernels/loss/PcaReg.cu) ---- */ \
   X(PcaRegWork                     , "pca_reg.work",                      Splat    , Never) \
@@ -225,22 +225,22 @@ enum class SaveClass : uint8_t {
   X(PcaRegNbrsCache                , "pca_reg.nbrs_cache",                Splat    , Never) \
   X(PcaRegLossSums                 , "pca_reg.loss_sums",                 Other    , Never) \
   /* ---- splat-tile intersector scratch ---- */ \
-  X(StiBruteCount                  , "sti.brute.count",                   SplatXImg, Never) \
-  X(StiBruteCountMap               , "sti.brute.count_map",               SplatXImg, Never) \
-  X(StiBruteIds                    , "sti.brute.ids",                     SplatXImg, Never) \
-  X(StiLbvhSplatAabb               , "sti.lbvh.splat_aabb",               SplatXImg, Never) \
-  X(StiLbvhRootAabb                , "sti.lbvh.root_aabb",                SplatXImg, Never) \
-  X(StiLbvhMorton                  , "sti.lbvh.morton",                   SplatXImg, Never) \
-  X(StiLbvhArgsortIn               , "sti.lbvh.argsort_in",               SplatXImg, Never) \
-  X(StiLbvhSortedMorton            , "sti.lbvh.sorted_morton",            SplatXImg, Never) \
-  X(StiLbvhArgsort                 , "sti.lbvh.argsort",                  SplatXImg, Never) \
-  X(StiLbvhTreeRanges              , "sti.lbvh.tree_ranges",              SplatXImg, Never) \
-  X(StiLbvhInternalNodes           , "sti.lbvh.internal_nodes",           SplatXImg, Never) \
-  X(StiLbvhParentNodes             , "sti.lbvh.parent_nodes",             SplatXImg, Never) \
-  X(StiLbvhTreeAabb                , "sti.lbvh.tree_aabb",                SplatXImg, Never) \
-  X(StiLbvhCount                   , "sti.lbvh.count",                    SplatXImg, Never) \
-  X(StiLbvhCountMap                , "sti.lbvh.count_map",                SplatXImg, Never) \
-  X(StiLbvhIds                     , "sti.lbvh.ids",                      SplatXImg, Never) \
+  X(StiBruteCount                  , "sti.brute.count",                   SplatXPix, Never) \
+  X(StiBruteCountMap               , "sti.brute.count_map",               SplatXPix, Never) \
+  X(StiBruteIds                    , "sti.brute.ids",                     SplatXPix, Never) \
+  X(StiLbvhSplatAabb               , "sti.lbvh.splat_aabb",               SplatXPix, Never) \
+  X(StiLbvhRootAabb                , "sti.lbvh.root_aabb",                SplatXPix, Never) \
+  X(StiLbvhMorton                  , "sti.lbvh.morton",                   SplatXPix, Never) \
+  X(StiLbvhArgsortIn               , "sti.lbvh.argsort_in",               SplatXPix, Never) \
+  X(StiLbvhSortedMorton            , "sti.lbvh.sorted_morton",            SplatXPix, Never) \
+  X(StiLbvhArgsort                 , "sti.lbvh.argsort",                  SplatXPix, Never) \
+  X(StiLbvhTreeRanges              , "sti.lbvh.tree_ranges",              SplatXPix, Never) \
+  X(StiLbvhInternalNodes           , "sti.lbvh.internal_nodes",           SplatXPix, Never) \
+  X(StiLbvhParentNodes             , "sti.lbvh.parent_nodes",             SplatXPix, Never) \
+  X(StiLbvhTreeAabb                , "sti.lbvh.tree_aabb",                SplatXPix, Never) \
+  X(StiLbvhCount                   , "sti.lbvh.count",                    SplatXPix, Never) \
+  X(StiLbvhCountMap                , "sti.lbvh.count_map",                SplatXPix, Never) \
+  X(StiLbvhIds                     , "sti.lbvh.ids",                      SplatXPix, Never) \
   /* ---- meshing scratch ---- */ \
   X(MeshingRenderRadii             , "meshing.render.radii",              Splat    , Never) \
   /* ---- per-pixel-loss scratch ---- */ \
@@ -467,7 +467,7 @@ constexpr SaveClass    slot_save(PoolSlot s)     { return slot_meta(s).save; }
 constexpr const char* to_string(VramCategory c) {
     switch (c) {
         case VramCategory::Splat:      return "splat";
-        case VramCategory::SplatXImg:  return "splat x img";
+        case VramCategory::SplatXPix:  return "splat x pixel";
         case VramCategory::Image:      return "image";
         case VramCategory::Appearance: return "appearance";
         case VramCategory::Viewer:     return "viewer";
@@ -488,8 +488,8 @@ constexpr const char* to_string(SaveClass s) {
 // ---- Aliasing: phases that share one arena --------------------------------
 
 // A slot listed in POOL_ALIAS_TABLE below owns no storage: every phase carves
-// out of ONE arena (booked to SplatXImg), so it costs the largest phase. Adding
-// a row is a lifetime claim -- docs/notes/vram-splat-x-img.md says how to test it.
+// out of ONE arena (booked to SplatXPix), so it costs the largest phase. Adding
+// a row is a lifetime claim -- docs/notes/vram-splat-x-pixel.md says how to test it.
 enum class PoolPhase : uint8_t {
     None = 0,   // owns its allocation -- every slot not listed below
     TileIsect,  // scratch that dies inside do_intersect_tile_generic

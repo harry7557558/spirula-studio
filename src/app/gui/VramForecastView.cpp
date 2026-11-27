@@ -39,11 +39,11 @@ void breakdown(const VramForecast& v) {
     struct Row { const spirula::i18n::Msg* label; double now; double peak; ImVec4 color; };
     const ImVec4 bar = ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram);
     const auto cat = [&](VramCategory c) { return v.category[(int)c]; };
-    const double sxi = cat(VramCategory::SplatXImg);
-    const double sxi_peak = std::max(sxi, v.grow_peak_mean - v.scratch);
+    const double sxp = cat(VramCategory::SplatXPix);
+    const double sxp_peak = std::max(sxp, v.grow_peak_mean - v.scratch);
     const Row rows[] = {
         {&msg::vram_cat_splat, cat(VramCategory::Splat), 0.0, bar},
-        {&msg::vram_cat_splat_x_img, sxi, v.projected ? sxi_peak : 0.0, bar},
+        {&msg::vram_cat_splat_x_pix, sxp, v.projected ? sxp_peak : 0.0, bar},
         {&msg::vram_cat_image, cat(VramCategory::Image), 0.0, bar},
         {&msg::vram_cat_appearance, cat(VramCategory::Appearance), 0.0, bar},
         {&msg::vram_cat_viewer, cat(VramCategory::Viewer), 0.0, bar},
@@ -94,14 +94,14 @@ void breakdown(const VramForecast& v) {
 }
 
 // What a basic setting takes off the peak: Splat is sized for cap_max, Image
-// and the arena's per-pixel slices follow the pixels, the rest of splat x img
+// and the arena's per-pixel slices follow the pixels, the rest of splat x pixel
 // both, and the 360-camera preset's five views are five appearance grids.
 void savings(const VramForecast& v, const SavingsContext& ctx) {
     if (!v.projected || v.peak_mean <= 0.0) return;
     const auto cat = [&](VramCategory c) { return v.category[(int)c]; };
-    const double sxi_all = std::max(cat(VramCategory::SplatXImg), v.grow_peak_mean - v.scratch);
-    const double sxi_px = std::min(sxi_all, v.grow_peak_pixels);
-    const double sxi = sxi_all - sxi_px;
+    const double sxp_all = std::max(cat(VramCategory::SplatXPix), v.grow_peak_mean - v.scratch);
+    const double sxp_px = std::min(sxp_all, v.grow_peak_pixels);
+    const double sxp = sxp_all - sxp_px;
     const std::string basic = msg::section_basic_options.get();
     struct Tip { double saved; std::string text; };
     std::vector<Tip> tips;
@@ -109,10 +109,10 @@ void savings(const VramForecast& v, const SavingsContext& ctx) {
                          const std::string& c, const std::string& d = {}) {
         tips.push_back({saved, ui::format(m, {gib(saved), a, c, d})});
     };
-    add((cat(VramCategory::Image) + sxi_px) * 0.75 +
-            sxi * (1.0 - std::pow(0.25, spirula::kSplatXImgVramExp)),
+    add((cat(VramCategory::Image) + sxp_px) * 0.75 +
+            sxp * (1.0 - std::pow(0.25, spirula::kSplatXPixVramExp)),
         msg::vram_tip_halve, msg::opt_resolution.get(), basic);
-    add(cat(VramCategory::Splat) * 0.5 + sxi * (1.0 - std::pow(0.5, v.growth_power)),
+    add(cat(VramCategory::Splat) * 0.5 + sxp * (1.0 - std::pow(0.5, v.growth_power)),
         msg::vram_tip_halve, msg::opt_max_splats.get(), basic);
     if (ctx.sh_degree > 0 && v.sh_bytes > 0.0) {
         // SH rows hold (d + 1)^2 - 1 coefficients; measured 3 -> 2 -> 1 -> 0

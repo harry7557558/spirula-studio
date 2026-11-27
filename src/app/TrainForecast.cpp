@@ -110,7 +110,7 @@ void robust_mean(const std::vector<double>& v, double& mean, double& var, bool k
 constexpr double kFirstDensifySplatShare = 0.0;
 constexpr double kFirstDensifySplatSigma = 0.012;
 // A relocate's mask, list and draw in the arena's Densify phase, per splat of
-// cap_max, before the first one has carved them (docs/notes/vram-splat-x-img.md).
+// cap_max, before the first one has carved them (docs/notes/vram-splat-x-pixel.md).
 constexpr double kDensifyBytesPerSplat = 28.0;
 // A splat-tile pair unbanded: the list's 4 bytes and the sort's 20. The scale
 // of the fit's variable, not a size the forecast charges.
@@ -128,7 +128,7 @@ constexpr int kWarmupSteps = 50;
 // How the splat stages' cost scales with the count. 1.0 fit bonsai at 1/4
 // resolution, 0.85 bonsai at 1/2 and 0.8 garden at 1/4; each run weighs them.
 constexpr double kGammas[3] = {0.75, 0.875, 1.0};
-// The same for splat x img bytes: smaller splats cover fewer tiles each, and
+// The same for splat x pixel bytes: smaller splats cover fewer tiles each, and
 // the high-water grew as msplats^0.3-0.5 on garden and bonsai to 1M splats.
 // The prior leans linear, the side that over-reads the peak.
 constexpr double kMemPowers[3] = {0.6, 0.8, 1.0};
@@ -779,7 +779,7 @@ TimeBreakdown TrainForecast::time_forecast(int next_step, int64_t live) const {
 
 double TrainForecast::memory_x(const MemModel& m, double msplats, int step) const {
     return std::pow(std::max(msplats, 1e-9), m.p) *
-           std::pow(pixel_ratio(step), kSplatXImgVramExp);
+           std::pow(pixel_ratio(step), kSplatXPixVramExp);
 }
 
 namespace {
@@ -791,16 +791,16 @@ double splat_phase(const MemorySample& m) {
     return phase;
 }
 
-// The arena, as much of splat x img as it is.
+// The arena, as much of splat x pixel as it is.
 double arena_bytes(const MemorySample& m) {
-    return std::min((double)m.arena_cap, (double)m.pool_cap[(int)VramCategory::SplatXImg]);
+    return std::min((double)m.arena_cap, (double)m.pool_cap[(int)VramCategory::SplatXPix]);
 }
 
-// What follows the splats: scratch, the splat x img buffers that own their
+// What follows the splats: scratch, the splat x pixel buffers that own their
 // memory, and of the arena the phase that asks most per splat. The arena's
 // per-pixel slices (the loss pyramid) do not, and are projected apart.
 double splat_demand(const MemorySample& m) {
-    return (double)m.pool_cap[(int)VramCategory::SplatXImg] - arena_bytes(m) + splat_phase(m) +
+    return (double)m.pool_cap[(int)VramCategory::SplatXPix] - arena_bytes(m) + splat_phase(m) +
            (double)m.scratch;
 }
 
@@ -814,7 +814,7 @@ bool pairs_known(const MemorySample& m) {
 
 void TrainForecast::add_memory(const MemorySample& m) {
     std::lock_guard<std::mutex> lk(_mu);
-    const int sxi = (int)VramCategory::SplatXImg;
+    const int sxp = (int)VramCategory::SplatXPix;
     if (m.has_used && m.has_process) {
         const double o = (double)m.used_bytes - (double)m.process_bytes;
         const double a = _others_n == 0 ? 1.0 : 0.05;
@@ -830,7 +830,7 @@ void TrainForecast::add_memory(const MemorySample& m) {
     }
     // A step's demand: its splat-tile pairs where the engine counts them, else
     // the category's bytes in use.
-    const double demand = m.isect_step > 0 ? (double)m.isect_step : (double)m.pool_used[sxi];
+    const double demand = m.isect_step > 0 ? (double)m.isect_step : (double)m.pool_used[sxp];
     if (m.splats_ran > 0 && demand > 0.0)
         _mw.log_ratio.push_back((float)std::log(demand / (double)m.splats_ran));
     if (m.splats_ran != _held_count) {
@@ -876,7 +876,7 @@ void TrainForecast::close_mem_window(const MemorySample& m) {
         _demand_sd = _demand_init ? 0.7 * _demand_sd + 0.3 * sd : sd;
         _demand_init = true;
     }
-    // The first densify step allocates splat x img scratch of its own -- 10
+    // The first densify step allocates splat x pixel scratch of its own -- 10
     // -> 55 MiB on garden with the count unchanged -- so nothing before it
     // says how the rest grows.
     const int first = _setup.schedule.first_densify(_setup.start_step);
@@ -891,7 +891,7 @@ void TrainForecast::close_mem_window(const MemorySample& m) {
         double pred = 0.0, wsum = 0.0;
         for (const MemModel& mm : _mm) {
             const double wi = std::exp(mm.score - best);
-            pred += wi * (mm.g[0] + mm.g[1] * std::pow(n, mm.p) * std::pow(_image_ratio, kSplatXImgVramExp));
+            pred += wi * (mm.g[0] + mm.g[1] * std::pow(n, mm.p) * std::pow(_image_ratio, kSplatXPixVramExp));
             wsum += wi;
         }
         pred /= wsum;
@@ -903,7 +903,7 @@ void TrainForecast::close_mem_window(const MemorySample& m) {
     }
     const double R = (kMemFloor * _grow_hw) * (kMemFloor * _grow_hw);
     for (MemModel& mm : _mm) {
-        const double x = std::pow(n, mm.p) * std::pow(_image_ratio, kSplatXImgVramExp);
+        const double x = std::pow(n, mm.p) * std::pow(_image_ratio, kSplatXPixVramExp);
         if (!_mem_init) {
             mm.g[0] = 0.0;
             mm.g[1] = _grow_hw / x;
@@ -929,7 +929,7 @@ void TrainForecast::close_mem_window(const MemorySample& m) {
 void TrainForecast::refresh_vram(const MemorySample& m) {
     VramForecast v;
     const int nc = (int)VramCategory::Count;
-    const int sxi = (int)VramCategory::SplatXImg;
+    const int sxp = (int)VramCategory::SplatXPix;
     double pool_total = (double)m.scratch;
     for (int c = 0; c < nc; ++c) {
         v.category[c] = (double)m.pool_cap[c];
@@ -964,7 +964,7 @@ void TrainForecast::refresh_vram(const MemorySample& m) {
     // arena, the largest of its phases.
     const bool by_pairs = pairs_known(m);
     const double arena = arena_bytes(m);
-    const double owned = v.category[sxi] - arena;
+    const double owned = v.category[sxp] - arena;
     const double base = by_pairs ? owned : std::max(0.0, _grow_hw - splat_phase(m));
     const double fixed = by_pairs ? ours + _transient - owned - arena
                                   : ours - (splat_demand(m) - splat_phase(m)) - arena;
@@ -1004,7 +1004,7 @@ void TrainForecast::refresh_vram(const MemorySample& m) {
         if (!_mem_init) {
             MemModel& f = fits[i].m;
             f.g[0] = 0.0;
-            f.g[1] = _grow_hw / (std::pow(n_now, f.p) * std::pow(_image_ratio, kSplatXImgVramExp));
+            f.g[1] = _grow_hw / (std::pow(n_now, f.p) * std::pow(_image_ratio, kSplatXPixVramExp));
             f.G[0][0] = f.G[0][1] = f.G[1][0] = 0.0;
             f.G[1][1] = (kPerSplatSigma * f.g[1]) * (kPerSplatSigma * f.g[1]);
         }

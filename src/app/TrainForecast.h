@@ -58,7 +58,7 @@ struct EtaForecast {
 // everything else on the device, which includes the backend's own context.
 struct VramForecast : ResourceForecast {
     // Ours now, split by pool category, plus scratch and what the pool does
-    // not account for; and splat x img plus scratch projected at the peak,
+    // not account for; and splat x pixel plus scratch projected at the peak,
     // with the part of that the arena's per-pixel slices hold.
     std::array<double, (int)VramCategory::Count> category{};
     double scratch = 0.0;
@@ -96,7 +96,7 @@ struct MemorySample {
     uint64_t process_peak_bytes = 0;   // since the previous sample
     uint64_t commit_free_bytes = 0;
     size_t sh_bytes = 0;         // the splats' SH rows, part of the Splat category
-    // Of pool_cap[SplatXImg], the alias arena; and per PoolPhase the most its
+    // Of pool_cap[SplatXPix], the alias arena; and per PoolPhase the most its
     // per-pixel, its per-pair and (as sized for cap_max) its per-splat slices
     // came to (DevicePool::arena_phases).
     size_t arena_cap = 0;
@@ -135,12 +135,12 @@ struct TimeBreakdown {
     double total() const { return cells.total() + unaccounted; }
 };
 
-// Splat x pixel kernels' time ~ r^0.45 msplats^0.5 and splat x img bytes ~
+// Splat x pixel kernels' time ~ r^0.45 msplats^0.5 and splat x pixel bytes ~
 // r^0.35, r the pixel count over the full resolution's: paired runs on garden
 // and bonsai at two resolutions, docs/notes/step-timing.md.
 constexpr double kSplatPixelTimeExp = 0.45;
 constexpr double kSplatPixelSplatExp = 0.5;
-constexpr double kSplatXImgVramExp = 0.35;
+constexpr double kSplatXPixVramExp = 0.35;
 
 class TrainForecast {
 public:
@@ -195,7 +195,7 @@ private:
     };
     struct MemWindow {
         int steps = 0;
-        std::vector<float> log_ratio;    // per step: splat x img bytes in use, per splat
+        std::vector<float> log_ratio;    // per step: splat x pixel bytes in use, per splat
         double peak = 0.0;               // the window's own high-water of the growth
     };
     // What follows the splats (splat_demand), at its high-water = g0 + g1 *

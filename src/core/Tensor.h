@@ -186,7 +186,7 @@ class DevicePool {
     // later reservation of that phase must leave room for.
     std::array<size_t, (size_t)PoolPhase::Count> _tail{};
     // Per phase, the most its slices came to: `pixels` in the per-image
-    // categories, `splats` in SplatXImg, `capped` in Splat -- those at what
+    // categories, `splats` in SplatXPix, `capped` in Splat -- those at what
     // cap_max makes them, which is what the arena holds for them (_arena_bump).
 public:
     struct PhaseBytes { size_t pixels = 0, splats = 0, capped = 0; };
@@ -321,7 +321,7 @@ private:
             _phase_now.capped += std::max(span, (size_t)((double)bytes * grow));
             _phase_live += span;
         } else {
-            (cat == VramCategory::SplatXImg ? _phase_now.splats : _phase_now.pixels) += span;
+            (cat == VramCategory::SplatXPix ? _phase_now.splats : _phase_now.pixels) += span;
         }
         PhaseBytes& peak = _phase_peak[(size_t)_phase];
         peak.pixels = std::max(peak.pixels, _phase_now.pixels);
@@ -598,7 +598,7 @@ public:
             out.used[c] += kv.second.slot.used_bytes;
             out.cap[c] += kv.second.slot.cap_bytes;
         }
-        out.cap[(int)VramCategory::SplatXImg] += _arena.cap;
+        out.cap[(int)VramCategory::SplatXPix] += _arena.cap;
         return out;
     }
 

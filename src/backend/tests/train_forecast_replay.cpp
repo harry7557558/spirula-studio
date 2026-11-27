@@ -28,24 +28,24 @@ int main(int argc, char** argv) {
         if (m.isect_count > 0 || m.arena_cap == 0) continue;
         const double rb = (double)m.phase_splats[(int)PoolPhase::RasterBwd];
         const double pairs = std::max(0.0, (rb - 8.0 * (double)m.splats_ran) / 40.0);
-        const double owned = (double)m.pool_cap[(int)VramCategory::SplatXImg] - (double)m.arena_cap;
+        const double owned = (double)m.pool_cap[(int)VramCategory::SplatXPix] - (double)m.arena_cap;
         m.isect_pairs = (int64_t)pairs;
         m.isect_count = (int64_t)std::max(0.0, (owned - 60.0 * pairs) / 4.0);
     }
     const double gib = 1024.0 * 1024.0 * 1024.0;
-    const int sxi = (int)VramCategory::SplatXImg;
+    const int sxp = (int)VramCategory::SplatXPix;
 
-    double truth = 0.0, sxi_end = 0.0;
+    double truth = 0.0, sxp_end = 0.0;
     for (const MemorySample& m : tr.samples) {
         truth = std::max(truth, (double)std::max(m.process_bytes, m.process_peak_bytes));
-        sxi_end = std::max(sxi_end, (double)m.pool_cap[sxi]);
+        sxp_end = std::max(sxp_end, (double)m.pool_cap[sxp]);
     }
     const int last = tr.samples.back().step;
     const bool whole = last + 1 >= tr.setup.schedule.total_steps();
-    std::printf("%zu samples to step %d of %d%s; peak %.3f GiB, splat x img %.3f GiB\n",
+    std::printf("%zu samples to step %d of %d%s; peak %.3f GiB, splat x pixel %.3f GiB\n",
                 tr.samples.size(), last, tr.setup.schedule.total_steps(),
-                whole ? "" : " (partial: the peak is so far)", truth / gib, sxi_end / gib);
-    std::printf("%8s %10s %8s %8s %8s %7s %7s %6s\n", "step", "splats", "ours", "sxi", "peak",
+                whole ? "" : " (partial: the peak is so far)", truth / gib, sxp_end / gib);
+    std::printf("%8s %10s %8s %8s %8s %7s %7s %6s\n", "step", "splats", "ours", "sxp", "peak",
                 "sigma", "err%", "z");
 
     TrainForecast fc;
@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
         worst_under = std::min(worst_under, err);
         worst_over = std::max(worst_over, err);
         std::printf("%8d %10lld %8.3f %8.3f %8.3f %7.3f %+7.1f %+6.1f\n", m.step + 1,
-                    (long long)m.splats_next, v.ours / gib, (double)m.pool_cap[sxi] / gib,
+                    (long long)m.splats_next, v.ours / gib, (double)m.pool_cap[sxp] / gib,
                     v.peak_mean / gib, v.peak_sigma / gib, 100.0 * err, z);
     }
     std::printf("projected peak vs truth: %+.1f%% .. %+.1f%%\n", 100.0 * worst_under,

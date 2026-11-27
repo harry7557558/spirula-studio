@@ -198,7 +198,7 @@ naive estimate, read 23% to 66% low on these runs while the count still grew.
 
 ## VRAM
 
-Only `splat x img` grows during training (docs/notes/vram-splat-x-img.md),
+Only `splat x pixel` grows during training (docs/notes/vram-splat-x-pixel.md),
 so ours at a future step is everything else now plus that category,
 projected. It is projected from what its buffers hold, not from its total:
 
@@ -234,7 +234,7 @@ memory.
 
 Nothing else is added at a later step: what a schedule turns on mid-run (the
 PCA regularizer, the calibration warp) reserves its memory from step 0
-(docs/notes/vram-splat-x-img.md), so the forecast has no start steps to know.
+(docs/notes/vram-splat-x-pixel.md), so the forecast has no start steps to know.
 
 `engine_get_isect_peaks` supplies the two pair counts and the last forward's
 splat-tile pairs. Without them (`SS_POOL_ALIAS=0`, which leaves the arena
@@ -325,7 +325,7 @@ the system commit limit (RAM plus page file): on the RTX 3070 laptop a 4140
 MiB pool raised the commit charge by 4140 MiB and the process's private bytes
 matched its VRAM. With a small page file the commit runs out first and the
 allocation fails as an out-of-memory with VRAM to spare -- the 13M-splat run
-in vram-splat-x-img.md left 0.2 GiB of commit and an 8 GB device. So on Vulkan
+in vram-splat-x-pixel.md left 0.2 GiB of commit and an 8 GB device. So on Vulkan
 under Windows the limit is the lower of the device's and ours plus the commit
 still free (`limit`, `commit_limited`), and the out-of-memory error
 says so when commit is what is short.
