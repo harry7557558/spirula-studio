@@ -307,6 +307,8 @@ private:
             model_[i] = (uint8_t)g.model;
         }
         exclusive_ = exclusiveGroups(P_);
+        if (poseDim_ > n_)
+            throw std::runtime_error("BA parameter columns overlap");
         tail_ = n_ - poseDim_;
 
         // Rows an image-per-task assembly cannot own outright: a member's

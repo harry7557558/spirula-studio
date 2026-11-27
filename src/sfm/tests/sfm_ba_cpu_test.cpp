@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstring>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -554,12 +555,28 @@ void testFullSolve(uint32_t model, uint32_t groups, uint32_t rig = 0) {
     report(name, relMax(poses[0].data(), poses[1].data(), poses[0].size()), 1e-6);
 }
 
+void testInvalidPoseDim() {
+    BAProblem P = makeProblem(3, 2, 1, 1, 0.0, 7, 0);
+    P.n_dim = P.pose_dim - 1;
+    SolverOptions opt;
+    bacpu::Solver s(P, opt);
+    bool rejected = false;
+    try {
+        s.init();
+    } catch (const std::runtime_error& error) {
+        rejected = std::strcmp(error.what(), "BA parameter columns overlap") == 0;
+    }
+    report("reject pose_dim > n_dim", rejected ? 0.0 : 1.0, 0.5);
+}
+
 }  // namespace
 
 int run(int argc, char** argv) {
     bool quick = false;
     for (int i = 1; i < argc; i++)
         if (std::string(argv[i]) == "--quick") quick = true;
+
+    testInvalidPoseDim();
 
     testChol(37);
     testChol(200);
