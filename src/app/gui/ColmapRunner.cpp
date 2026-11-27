@@ -991,6 +991,7 @@ void ColmapRunner::run(ColmapJob job) {
         if (!reuse_model) record.finish(Step::Model);
 
         take_dense(job);
+        job.dense.config.image_colors = source_colors(pj);
         plan = plan_dataset(plan_job(job, pj), prior, rec, req, &plan, Step::Dense);
         verify_dense_reuse(plan,ws.string(),_cancel);
         say(Step::Dense);
@@ -1008,6 +1009,7 @@ void ColmapRunner::run(ColmapJob job) {
 
         // ---- depth and normals ---------------------------------------------
         take_geometry(job);
+        job.geometry.image_colors = source_colors(pj);
         plan = plan_dataset(plan_job(job, pj), prior, rec, req, &plan, Step::Geometry);
         say(Step::Geometry);
         if (makes(plan[Step::Geometry].act)) {

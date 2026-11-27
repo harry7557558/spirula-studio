@@ -19,6 +19,7 @@
 #include "app/cli/LicenseCli.h"
 #include "data/CameraMath.h"
 #include "data/DatasetParser.h"
+#include "data/ImageColors.h"
 #include "data/ImageProbe.h"
 #include "data/JsonWrite.h"
 #include "core/VulkanDeviceSelection.h"
@@ -90,6 +91,7 @@ struct Options {
     uint64_t worker_memory = app::default_worker_memory_bytes();
     unsigned worker_threads = 1;
     // The dataset's colour space; frames convert to sRGB before inference.
+    spirula::ImageColors image_colors;
     std::string image_gamut;
     std::optional<bool> image_is_linear;   // unset: the file's own declaration
     colorspace::Exposure image_exposure;
@@ -873,6 +875,14 @@ int spirula_geometry_main(int argc, char** argv) {
                 return 2;
             }
         }
+        else if (a == "--image-colors") {
+            try {
+                o.image_colors = spirula::read_image_colors(json_parse(next()));
+            } catch (const std::exception& e) {
+                std::fprintf(stderr, "--image-colors: %s\n", e.what());
+                return 2;
+            }
+        }
         else if (a == "--image-gamut") o.image_gamut = next();
         else if (a == "--image-linear") o.image_is_linear = true;
         else if (a == "--no-image-linear") o.image_is_linear = false;
@@ -1132,16 +1142,22 @@ int spirula_geometry_main(int argc, char** argv) {
                              ds.image_filenames[(size_t)i].c_str());
                 }
             });
+        auto color_for = [&](size_t i) {
+            return o.image_colors.empty() ? nullptr : spirula::image_color_for(
+                o.image_colors, fs::path(ds.image_filenames[i]).lexically_relative(image_root));
+        };
         auto input_key = [&](const std::string& source,
-                             const std::string& camera, const WarpInfo& warp) {
+                             const std::string& camera, const WarpInfo& warp,
+                             const spirula::ImageColor* color) {
+            const auto linear = color ? color->linear : o.image_is_linear;
             return source + "|" + camera + "|" +
                 o.model + "|" + std::to_string(warp.out_w) + "," +
                 std::to_string(warp.out_h) + "," + std::to_string(warp.faces) + "|" +
                 std::to_string(o.max_size) + "," + std::to_string(o.num_tokens) + "," +
                 std::to_string(o.refine_steps) + "," + std::to_string((int)o.split) + "," +
                 std::to_string((int)o.face_res) + "," + std::to_string((int)o.ray_depth) + "," +
-                std::to_string(o.depth_mm) + "|" + o.image_gamut + "|" +
-                (o.image_is_linear ? (*o.image_is_linear ? "linear" : "srgb") : "auto") + "|" +
+                std::to_string(o.depth_mm) + "|" + (color ? color->gamut : o.image_gamut) + "|" +
+                (linear ? (*linear ? "linear" : "srgb") : "auto") + "|" +
                 std::to_string(o.image_exposure.automatic) + "," +
                 std::to_string(o.image_exposure.stops);
         };
@@ -1167,7 +1183,7 @@ int spirula_geometry_main(int argc, char** argv) {
                              "multiple images own geometry output %s", path.string().c_str());
                 }
             }
-            t.key = input_key(source_hashes[(size_t)i], keys[(size_t)i], warps[t.g]);
+            t.key = input_key(source_hashes[(size_t)i], keys[(size_t)i], warps[t.g], color_for((size_t)i));
             const std::string normal_key = t.key + "|normal|" + o.normal_format + "|" +
                                            std::to_string(o.jpeg_quality);
             t.normal = o.want_normal && (o.overwrite ||
@@ -1207,9 +1223,10 @@ int spirula_geometry_main(int argc, char** argv) {
             const size_t g = todo[j].g;
             return std::async(std::launch::async, [&, i, g] {
                 const WarpInfo& warp = warps[g];
-                const nn::Image img =
-                    nn::load_image(ds.image_filenames[(size_t)i], o.image_gamut,
-                                   o.image_is_linear, o.image_exposure);
+                const auto* color = color_for((size_t)i);
+                const nn::Image img = nn::load_image(ds.image_filenames[(size_t)i],
+                    color ? color->gamut : o.image_gamut,
+                    color ? color->linear : o.image_is_linear, o.image_exposure);
                 if (img.empty()) return std::vector<float>();
                 return app::resize_area(img.data.data(), img.width, img.height,
                                         img.channels, warp.sample_w,
@@ -1476,7 +1493,7 @@ int spirula_geometry_main(int argc, char** argv) {
                 for (const auto& task : pending) {
                     const auto hash = spirula::sha256_file(ds.image_filenames[(size_t)task.i]);
                     NN_CHECK(!hash.empty() &&
-                             task.key == input_key(hash, cameras[task.g], warps[task.g]),
+                             task.key == input_key(hash, cameras[task.g], warps[task.g], color_for((size_t)task.i)),
                              "geometry worker request does not match frozen inputs");
                     const fs::path folder = (task.normal ? task.np : task.dp).parent_path();
                     NN_CHECK(fs::create_directory(folder), "geometry staging directory is not private");

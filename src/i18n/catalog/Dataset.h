@@ -84,27 +84,15 @@ SS_MSG(section_color_space,
     ES("Espacio de color"), PT("Espaço de cor"), IT("Spazio colore"),
     NL("Kleurruimte"),    RU("Цветовое пространство"), TR("Renk uzayı"));
 
-SS_MSG(color_space_section_caption,
-    EN("Set how the app reads input colours and adjusts exposure."),
-    JA("入力画像の色の読み取り方と露出の調整方法を設定します。"),
-    ZH_HANS("设置如何读取输入图像的颜色和调整曝光。"),
-    ZH_HANT("設定如何讀取輸入影像的色彩和調整曝光。"),
-    KO("입력 이미지의 색을 읽고 노출을 조정하는 방식을 설정합니다."),
-    DE("Legt fest, wie Eingabefarben gelesen und die Belichtung angepasst werden."),
-    FR("Règle la lecture des couleurs d’entrée et l’ajustement de l’exposition."),
-    ES("Ajusta cómo se leen los colores de entrada y se corrige la exposición."),
-    PT("Define como são lidas as cores de entrada e ajustada a exposição."),
-    IT("Imposta come leggere i colori in ingresso e regolare l’esposizione."),
-    NL("Stel in hoe de app invoerkleuren leest en de belichting aanpast."),
-    RU("Задайте, как читать цвета исходных снимков и менять экспозицию."),
-    TR("Girdi renklerinin nasıl okunacağını ve pozlamanın nasıl ayarlanacağını belirler."));
+SS_MSG(source_color_lut,
+    EN("LUT"), JA("LUT"), ZH_HANS("LUT"), ZH_HANT("LUT"), KO("LUT"), DE("LUT"),
+    FR("LUT"), ES("LUT"), PT("LUT"), IT("LUT"), NL("LUT"), RU("LUT"), TR("LUT"));
 
-SS_MSG(input_gamut,
-    EN("Input colour space"), JA("入力の色域"),  ZH_HANS("输入色域"),  ZH_HANT("輸入色域"),
-    KO("입력 색역"),          DE("Eingabefarbraum"), FR("Espace des entrées"),
-    ES("Espacio de entrada"), PT("Espaço de entrada"), IT("Spazio d'ingresso"),
-    NL("Invoerkleurruimte"),  RU("Цветовое пространство входа"),
-    TR("Girdi renk uzayı"));
+SS_MSG(source_color_encoding,
+    EN("Light encoding"), JA("光の符号化"), ZH_HANS("光编码"), ZH_HANT("光編碼"),
+    KO("광 인코딩"), DE("Lichtcodierung"), FR("Encodage"), ES("Codificación"),
+    PT("Codificação"), IT("Codifica"), NL("Lichtcodering"), RU("Кодировка света"),
+    TR("Işık kodlaması"));
 
 SS_MSG(input_gamut_help,
     EN("Photo color primaries. Reconstruction, AI masks and geometry estimation convert them to sRGB for their models."),
@@ -120,21 +108,6 @@ SS_MSG(input_gamut_help,
     NL("Kleurprimairen van foto’s. Reconstructie, AI-maskers en geometrieschatting zetten ze om naar sRGB voor hun modellen."),
     RU("Цветовые первичные фото. Реконструкция, ИИ-маски и оценка геометрии переводят их в sRGB для своих моделей."),
     TR("Fotoğrafın ana renkleri. Yeniden oluşturma, AI maskeleri ve geometri kestirimi modelleri için sRGB’ye dönüştürür."));
-
-SS_MSG(input_is_linear,
-    EN("Input light encoding"),
-    JA("入力の光エンコード"),
-    ZH_HANS("输入的光编码"),
-    ZH_HANT("輸入的光編碼"),
-    KO("입력 광 인코딩"),
-    DE("Lichtcodierung der Eingabe"),
-    FR("Encodage de la lumière"),
-    ES("Codificación de la luz de entrada"),
-    PT("Codificação da luz de entrada"),
-    IT("Codifica della luce in ingresso"),
-    NL("Lichtcodering van de invoer"),
-    RU("Кодировка света на входе"),
-    TR("Girdi ışık kodlaması"));
 
 // Item 0 of BOTH colour-space pickers: an EXR or a TIFF with an ICC profile
 // declares its own, and this is what says "do not override it".
@@ -219,35 +192,38 @@ SS_MSG(input_exposure_help,
     RU("Осветляет в линейном свете входы реконструкции, масок и геометрии. Авто осветляет тёмные снимки. Файлы, входы обучения и цвета точек не меняются."),
     TR("Yeniden oluşturma, maskeleme ve geometri girdilerini doğrusal ışıkta aydınlatır. Otomatik koyu resimleri açar. Dosyalar, eğitim girdileri ve nokta renkleri değişmez."));
 
-SS_MSG(point_color_image_space,
-    EN("Point cloud colours in the input colour space"),
-    JA("点群の色を入力の色空間で"),
-    ZH_HANS("点云颜色使用输入色彩空间"),
-    ZH_HANT("點雲顏色使用輸入色彩空間"),
-    KO("점 구름 색을 입력 색 공간으로"),
-    DE("Punktwolkenfarben im Eingabefarbraum"),
-    FR("Couleurs du nuage de points dans l'espace d'entrée"),
-    ES("Colores de la nube de puntos en el espacio de entrada"),
-    PT("Cores da nuvem de pontos no espaço de entrada"),
-    IT("Colori della nuvola di punti nello spazio d'ingresso"),
-    NL("Puntenwolkkleuren in de invoerkleurruimte"),
-    RU("Цвета облака точек в цветовом пространстве входа"),
-    TR("Nokta bulutu renkleri girdi renk uzayında"));
+SS_MSG(point_cloud_gamut,
+    EN("Point cloud gamut"), JA("点群の色域"), ZH_HANS("点云色域"), ZH_HANT("點雲色域"),
+    KO("점 구름 색역"), DE("Farbraum der Punktwolke"), FR("Gamut du nuage de points"),
+    ES("Gama de la nube de puntos"), PT("Gama da nuvem de pontos"), IT("Gamut della nuvola di punti"),
+    NL("Kleurbereik van de puntenwolk"), RU("Цветовой охват облака точек"), TR("Nokta bulutu renk gamı"));
 
-SS_MSG(point_color_image_space_help,
-    EN("On writes the sparse point cloud in the photographs' own space, which is where training assumes it by default.\nOff leaves it in sRGB; train it with \"Seed point color space\" set to Rec.709."),
-    JA("オンなら疎な点群を写真と同じ空間で書き出します。学習側は既定でそう想定します。オフなら sRGB のままで、学習では「初期点群の色空間」を Rec.709 にしてください。"),
-    ZH_HANS("开启时稀疏点云以照片自身的空间写出，这也是训练端的默认假定。关闭则保持 sRGB，训练时请把\"初始点云色彩空间\"设为 Rec.709。"),
-    ZH_HANT("開啟時稀疏點雲以照片自身的空間寫出，這也是訓練端的預設假定。關閉則保持 sRGB，訓練時請把「初始點雲色彩空間」設為 Rec.709。"),
-    KO("켜면 희소 점 구름을 사진과 같은 공간으로 씁니다. 학습 쪽의 기본 가정도 그렇습니다. 끄면 sRGB로 남으며, 학습 시 \"초기 포인트 색 공간\"을 Rec.709로 설정하십시오."),
-    DE("An schreibt die dünne Punktwolke im Raum der Fotos, wovon das Training standardmäßig ausgeht.\nAus lässt sie in sRGB; dann im Training \"Farbraum der Startpunkte\" auf Rec.709 setzen."),
-    FR("Activé écrit le nuage épars dans l'espace des photographies, ce que l'entraînement suppose par défaut.\nDésactivé le laisse en sRGB ; entraînez alors avec « Espace colorimétrique des points initiaux » sur Rec.709."),
-    ES("Activado: nube dispersa en el espacio de las fotos, como espera el entrenamiento. Desactivado: sRGB; usa «Espacio de color de los puntos iniciales»: Rec.709."),
-    PT("Ligado escreve a nuvem esparsa no espaço das fotografias, que é o que o treino supõe por omissão.\nDesligado deixa-a em sRGB; treine então com «Espaço de cor dos pontos iniciais» em Rec.709."),
-    IT("Attivo: nuvola sparsa nello spazio delle foto, come atteso dal training. Spento: sRGB; usare «Spazio colore dei punti iniziali»: Rec.709."),
-    NL("Aan schrijft de dunne puntenwolk in de ruimte van de foto's, waar de training standaard van uitgaat.\nUit laat haar in sRGB; train dan met \"Kleurruimte van de startpunten\" op Rec.709."),
-    RU("Включено пишет разреженное облако в пространстве фотографий -- это и предполагает обучение по умолчанию.\nВыключено оставляет его в sRGB; тогда при обучении задайте «Цветовое пространство начальных точек» Rec.709."),
-    TR("Açık, seyrek nokta bulutunu fotoğrafların uzayında yazar; eğitim varsayılan olarak bunu kabul eder.\nKapalı onu sRGB'de bırakır; eğitimde \"Başlangıç noktası renk uzayı\"nı Rec.709 yapın."));
+SS_MSG(point_cloud_encoding,
+    EN("Point cloud light encoding"), JA("点群の光の符号化"), ZH_HANS("点云光编码"), ZH_HANT("點雲光編碼"),
+    KO("점 구름 광 인코딩"), DE("Lichtcodierung der Punktwolke"), FR("Encodage du nuage de points"),
+    ES("Codificación de la nube de puntos"), PT("Codificação da nuvem de pontos"),
+    IT("Codifica della nuvola di punti"), NL("Lichtcodering van de puntenwolk"),
+    RU("Кодировка света облака точек"), TR("Nokta bulutu ışık kodlaması"));
+
+SS_MSG(point_color_auto_value,
+    EN("Auto ({0})"), JA("自動（{0}）"), ZH_HANS("自动（{0}）"), ZH_HANT("自動（{0}）"),
+    KO("자동 ({0})"), DE("Auto ({0})"), FR("Auto ({0})"), ES("Auto ({0})"), PT("Auto ({0})"),
+    IT("Auto ({0})"), NL("Auto ({0})"), RU("Авто ({0})"), TR("Otomatik ({0})"));
+
+SS_MSG(point_color_auto_help,
+    EN("Auto uses the sources' shared setting. If they differ, it uses Rec.709 gamut or display encoding for that field."),
+    JA("自動では入力に共通する設定を使います。異なる項目には Rec.709 色域または表示用の符号化を使います。"),
+    ZH_HANS("自动使用各来源的共同设置。有差异的项目使用 Rec.709 色域或显示编码。"),
+    ZH_HANT("自動使用各來源的共同設定。有差異的項目使用 Rec.709 色域或顯示編碼。"),
+    KO("자동은 소스의 공통 설정을 사용합니다. 서로 다른 항목에는 Rec.709 색역 또는 디스플레이 인코딩을 사용합니다."),
+    DE("Auto übernimmt den gemeinsamen Quellwert. Bei Abweichungen gilt für das Feld Rec.709 oder Anzeigecodierung."),
+    FR("Auto suit le réglage commun aux sources. En cas d’écart, le champ utilise Rec.709 ou l’encodage pour l’affichage."),
+    ES("Auto sigue el ajuste común de las fuentes. Si difieren, el campo usa Rec.709 o codificación para pantalla."),
+    PT("Auto usa a configuração comum das fontes. Se houver diferenças, o campo usa Rec.709 ou codificação para exibição."),
+    IT("Auto segue l’impostazione comune. Se le sorgenti differiscono, il campo usa Rec.709 o la codifica per lo schermo."),
+    NL("Auto volgt de gedeelde broninstelling. Bij verschillen gebruikt het veld Rec.709 of weergavecodering."),
+    RU("Авто берёт общий параметр источников. При различиях поле использует Rec.709 или кодировку для дисплея."),
+    TR("Otomatik, kaynakların ortak ayarını kullanır. Fark varsa alan Rec.709 veya ekran kodlamasını kullanır."));
 
 SS_MSG(gamut_rec709,
     EN("sRGB / Rec.709"), JA("sRGB / Rec.709"), ZH_HANS("sRGB / Rec.709"),

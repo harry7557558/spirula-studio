@@ -111,6 +111,24 @@ bool is_image_file(const fs::path& p) {
            e == ".insp" || is_heif_path(p.string());
 }
 
+spirula::ImageColor probe_photo_color(const std::string& path, const std::atomic<bool>& cancel) {
+    std::error_code walk, ec;
+    for (fs::recursive_directory_iterator it(path, fs::directory_options::skip_permission_denied, walk), end;
+         !walk && it != end && !cancel.load(); it.increment(walk)) {
+        if (image_discovery::skip_cache(it)) continue;
+        if (it->is_directory(ec) && it->path().filename() == "masks") {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (!it->is_regular_file(ec) || !is_image_file(it->path())) continue;
+        imagefile::DeclaredColor declared;
+        if (imagefile::declared_color_space(it->path().string(), declared))
+            return {declared.gamut, declared.is_linear};
+        break;
+    }
+    return {};
+}
+
 bool MaskOutputOwners::Less::operator()(const fs::path& a, const fs::path& b) const {
 #ifdef _WIN32
     return CompareStringOrdinal(a.c_str(), -1, b.c_str(), -1, TRUE) == CSTR_LESS_THAN;
@@ -3883,8 +3901,10 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
 
     app::MaskFramesJob masking;
     masking.mask = mo;
-    masking.gamut = job.image_gamut;
-    masking.linear = job.image_is_linear;
+    const spirula::ImageColor color = in.color.value_or(
+        spirula::ImageColor{job.image_gamut, job.image_is_linear});
+    masking.gamut = color.gamut;
+    masking.linear = color.linear;
     masking.exposure = job.image_exposure;
     masking.train = write_train;
     masking.features = write_features;

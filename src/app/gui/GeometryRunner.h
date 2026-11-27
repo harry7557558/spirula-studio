@@ -1,5 +1,7 @@
 #pragma once
 
+#include "data/ImageColors.h"
+
 // The depth-and-normal step of a dataset run: `spirula geometry` over the
 // dataset the reconstruction just wrote, or over one that was already there.
 //
@@ -40,6 +42,7 @@ struct GeometryJob {
     int  face_res = 0;            // `--face-res`: 0 output, 1 source
     bool overwrite = false;       // recompute maps that are already on disk
     // The dataset's colour space; frames convert to sRGB before inference.
+    spirula::ImageColors image_colors;
     std::string image_gamut;
     std::optional<bool> image_is_linear;
     std::string image_exposure;

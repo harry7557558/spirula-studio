@@ -48,12 +48,15 @@ int main() {
         const ParsedDataset ds = read(dir, head +
             "# x east, y north of this WGS-84 point, in metres\n"
             "origin_lat 62.669093790\norigin_lon -13.967551870\n"
-            "origin_alt 710.520\nalt_source dji\n");
+            "origin_alt 710.520\nalt_source dji\n"
+            "point_gamut Rec.2020\npoint_linear 0\n");
         const spirula::GeoReference& g = ds.gauge_geo;
         check(ds.gauge_oriented && ds.gauge_metric, "the two bits still read");
         check(g.ok && g.lat_deg == 62.669093790 && g.lon_deg == -13.967551870 &&
                   g.alt_m == 710.520 && g.alt_source == "dji",
               "origin and its height");
+        check(ds.point_color_gamut == "Rec.2020" && ds.point_color_is_linear == false,
+              "the sparse point cloud declares its own gamut and transfer");
         const JsonValue j = transform_json(ds);
         const JsonValue* geo = j.find("georeference");
         check(geo && geo->is_object() && geo->get_double("origin_lat", 0) == g.lat_deg &&

@@ -109,7 +109,7 @@ Step settings_step(const std::string& key) {
     if (starts("geometry_")) return Step::Geometry;
     if (starts("dense_")) return Step::Dense;
     if (starts("sfm_") || starts("colmap_") || starts("image_") || key == "engine_colmap" ||
-        key == "point_color_in_image_space")
+        starts("point_color_"))
         return Step::Model;
     return Step::Frames;
 }
@@ -277,6 +277,10 @@ std::string encode_record_inputs(const RecordInputs& in,
         }
         if (s.active_lens >= 0) w.field("active_lens", s.active_lens);
         w.field("lut", s.lut);
+        if (s.color) {
+            w.key("color");
+            spirula::write_image_color(w, *s.color);
+        }
         w.field("sequential", s.sequential);
         w.field("imu", s.use_imu);
         w.field("gps", s.use_gps);
@@ -331,6 +335,11 @@ RecordInputs decode_record_inputs(const JsonValue& v,
             s.clip_end = r.get_double("clip_end", 0.0);
             s.active_lens = (int)r.get_double("active_lens", -1.0);
             s.lut = text(r, "lut");
+            if (const auto* color = r.find("color"); color && color->is_object()) {
+                s.color = spirula::ImageColor{text(*color, "gamut"), std::nullopt};
+                if (const auto* linear = color->find("linear"); linear && linear->type == JsonValue::Type::Bool)
+                    s.color->linear = linear->b;
+            }
             s.sequential = r.find("sequential") && r.find("sequential")->as_bool();
             s.use_imu = !r.find("imu") || r.find("imu")->as_bool();
             s.use_gps = !r.find("gps") || r.find("gps")->as_bool();

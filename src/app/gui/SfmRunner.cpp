@@ -446,6 +446,10 @@ sfm::Manifest SfmRunner::build_manifest(const SfmJob& job, const PrepResult& pre
     const std::string& ws = job.prep.workspace;
     sfm::Manifest man;
     man.image_dir = spirula::relative_to_dir(prep.image_dir, ws);
+    const bool per_file = job.prep.inputs.size() > 1 &&
+                          job.image_gamut.empty() && !job.image_is_linear;
+    man.image_colors = source_colors(job.prep, per_file);
+    man.point_color = resolve_point_color(job, job.prep.inputs);
     // Named here only when the reconstruction is to read them: the manifest is
     // the other way masks reach it, so leaving it in would undo --no-masks.
     if (!prep.mask_dir.empty() && job.mask_features) {
@@ -749,10 +753,6 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
     if (!job.image_exposure.empty()) {
         argv.push_back("--image-exposure");
         argv.push_back(job.image_exposure);
-    }
-    if (job.point_color_in_image_space) {
-        argv.push_back("--point-color");
-        argv.push_back("image");
     }
     // The sky's 128 band is dropped whatever the checkbox says: it is there
     // only to be kept from the features.
@@ -1098,6 +1098,7 @@ void SfmRunner::run(SfmJob job) {
         }
 
         take_dense(job);
+        job.dense.config.image_colors = source_colors(job.prep);
         plan = plan_dataset(plan_job(job), prior, rec, req, &plan, Step::Dense);
         verify_dense_reuse(plan,ws.string(),_cancel);
         say(Step::Dense);
@@ -1115,6 +1116,7 @@ void SfmRunner::run(SfmJob job) {
 
         // ---- 4. depth and normals -------------------------------------------
         take_geometry(job);
+        job.geometry.image_colors = source_colors(job.prep);
         // The scans gave the run its depth and normals.
         if (job.lidar.enabled()) job.geometry.enable = false;
         plan = plan_dataset(plan_job(job), prior, rec, req, &plan, Step::Geometry);

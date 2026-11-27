@@ -72,6 +72,8 @@ struct Manifest {
     // taken in file-name order (sfm/core/Sequence.h).
     std::vector<SequenceDef> sequences;
 
+    spirula::ImageColors image_colors;
+    std::optional<spirula::ImageColor> point_color;
     std::string image_gamut;         // empty = leave the run's own
     int image_linear = -1;           // -1 unset, 0 no, 1 yes
 };

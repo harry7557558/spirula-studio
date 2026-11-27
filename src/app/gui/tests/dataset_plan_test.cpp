@@ -143,6 +143,69 @@ int main() {
                "GPU routing does not change output recipes");
     }
 
+    {
+        SfmJob color_job = made;
+        auto& inputs = color_job.prep.inputs;
+        inputs[0].subdir = "cam";
+        inputs.push_back(inputs[0]);
+        inputs[1].path += "2";
+        inputs[1].subdir = "cam2";
+        color_job.prep.image_gamut = "Rec.709";
+        color_job.prep.image_is_linear = true;
+        const auto before = plan_job(color_job);
+        const auto frames = frames_fields(color_job.prep);
+        const auto masks = masks_fields(color_job.prep);
+        inputs[0].color = spirula::ImageColor{"Rec.2020", false};
+        inputs[1].color = spirula::ImageColor{};
+        const auto now = plan_job(color_job);
+        expect(frames == frames_fields(color_job.prep) &&
+                   masks != masks_fields(color_job.prep) && before.model != now.model &&
+                   geometry_fields(before.geometry) != geometry_fields(now.geometry) &&
+                   dense_fields(before.dense) != dense_fields(now.dense),
+               "source color changes analysis without changing frame extraction");
+
+        const auto saved = encode_record_inputs({inputs, {}}, ws.string());
+        DatasetRecord rec;
+        rec.inputs = json_parse(saved);
+        inputs[0].color.reset();
+        inputs[1].color.reset();
+        restore_record_inputs(rec, color_job.prep, color_job.camera_model);
+        expect(inputs[0].color && inputs[0].color->gamut == "Rec.2020" &&
+                   inputs[0].color->linear == false && inputs[1].color &&
+                   inputs[1].color->gamut.empty() && !inputs[1].color->linear,
+               "source colors preserve display overrides and file defaults across restore");
+
+        auto colors = spirula::read_image_colors(json_parse(
+            spirula::write_image_colors(source_colors(color_job.prep))));
+        const auto* nested = spirula::image_color_for(colors, "cam/lens/frame.jpg");
+        const auto* separate = spirula::image_color_for(colors, "cam2/frame.jpg");
+        expect(nested && nested->gamut == "Rec.2020" && nested->linear == false &&
+                   separate && separate->gamut.empty() && !separate->linear &&
+                   !spirula::image_color_for(colors, "camera/frame.jpg"),
+               "folder colors match nested images and respect directory boundaries");
+    }
+
+    {
+        SfmJob job = made;
+        PrepInput video = insv();
+        video.color = spirula::ImageColor{"Rec.2020", true};
+        PrepInput photos;
+        photos.path = "photos";
+        photos.detected_color = {"Rec.2020", true};
+        job.prep.inputs = {video, photos};
+        auto point = resolve_point_color(job, job.prep.inputs);
+        expect(point.gamut == "Rec.2020" && point.linear == true,
+               "automatic point color uses shared source settings, including metadata");
+        job.prep.inputs[1].color = spirula::ImageColor{"ACEScg", true};
+        point = resolve_point_color(job, job.prep.inputs);
+        expect(point.gamut == "Rec.709" && point.linear == true,
+               "automatic point color falls back only for fields that disagree");
+        job.point_color = {"DCI-P3", false};
+        point = resolve_point_color(job, job.prep.inputs);
+        expect(point.gamut == "DCI-P3" && point.linear == false,
+               "manual point settings override both automatic fields");
+    }
+
     // ---- which LUT a row's frames go through ---------------------------------
     {
         std::vector<PrepInput> rows(5);

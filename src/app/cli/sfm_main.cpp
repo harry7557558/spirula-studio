@@ -646,8 +646,11 @@ static int cmdExtract(int argc, char** argv) {
             L::warn(Tag::Extract, M::match_no_mask_for,
                     {image, cfg.mask_dir});
     }
+    const auto* color = spirula::image_color_for(cfg.image_colors, fs::path(image).filename());
     GrayImage img = loadGrayImage(image, cfg.max_image_size, /*want_color=*/true, maskpath,
-                                  cfg.image_gamut, cfg.image_is_linear, cfg.flip_mask,
+                                  color ? color->gamut : cfg.image_gamut,
+                                  color ? color->linear : std::optional<bool>{cfg.image_is_linear},
+                                  cfg.flip_mask,
                                   false, "", cfg.exposure);
     if (cfg.sift.verbose)
         L::err(Tag::Extract, M::extract_to_gray,
@@ -1091,7 +1094,7 @@ static int cmdMap(int argc, char** argv) {
         fixGauge(models, cfg, cfg.image_dir, opt.verbose, map_gauge, &sensors, mapped);
     recolorPoints(models, cfg);
     splitCamerasBySize(models, feats);
-    if (!output.empty()) writeModels(models, output, opt.verbose, map_gauge, &rigs);
+    if (!output.empty()) writeModels(models, output, opt.verbose, map_gauge, &rigs, cfg.point_color);
     if (!output.empty() && !ast.pre_weld.empty()) {
         resolveImageNames(ast.pre_weld, cfg.image_dir);
         writeModels(ast.pre_weld, fs::path(output) / "pre_weld", opt.verbose, {}, &rigs);

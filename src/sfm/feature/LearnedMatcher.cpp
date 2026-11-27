@@ -290,8 +290,13 @@ private:
             return it->second.first;
         }
         const auto t0 = std::chrono::steady_clock::now();
-        const GrayImage img = loadGrayImage(opt_.image_paths[i], 1 << 30, true, "", opt_.gamut,
-                                            opt_.is_linear, false,
+        const auto& path = opt_.image_paths[i];
+        const auto* color = opt_.image_colors && !opt_.image_colors->empty()
+            ? spirula::image_color_for(*opt_.image_colors,
+                std::filesystem::path(path).lexically_relative(opt_.image_dir)) : nullptr;
+        const GrayImage img = loadGrayImage(path, 1 << 30, true, "",
+                                            color ? color->gamut : opt_.gamut,
+                                            color ? color->linear : opt_.is_linear, false,
                                             opt_.apply_exif_orientation, "", opt_.exposure);
         if (!img.hasColor())
             throw std::runtime_error("FlexGlue could not read " + opt_.image_paths[i]);

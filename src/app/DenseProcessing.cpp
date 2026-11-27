@@ -458,7 +458,11 @@ private:
 
     std::shared_ptr<const Source> load_source(uint32_t id) {
         const Prepared& p = prepared_.at(id);
-        nn::Image image = nn::load_image(ds_.image_filenames[p.image], config_.image_gamut, config_.image_is_linear, exposure_);
+        const auto& path = ds_.image_filenames[p.image];
+        const auto* color = config_.image_colors.empty() ? nullptr : spirula::image_color_for(
+            config_.image_colors, fs::path(path).lexically_relative(fs::path(root_) / config_.image_dir));
+        nn::Image image = nn::load_image(path, color ? color->gamut : config_.image_gamut,
+            color ? color->linear : config_.image_is_linear, exposure_);
         if (image.empty()) throw std::runtime_error("cannot decode dense image: " + ds_.image_filenames[p.image]);
         const int turns = ds_.exif_quarter_turns.empty() ? 0 : ds_.exif_quarter_turns[p.image];
         if (turns) turn_pixels(sfm::ExifTransform{turns, false}, 3, image.data, image.width, image.height);
@@ -817,6 +821,8 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
     if (resolved_precision == roma::InferencePrecision::Mixed) identity.field("precision", "mixed-v1");
     identity.field("color", config.image_gamut).field("exposure", config.image_exposure);
     identity.field_raw("linear", json_field::emit(config.image_is_linear));
+    if (!config.image_colors.empty())
+        identity.field_raw("image_colors", spirula::write_image_colors(config.image_colors));
     identity.field("split", config.split_views).field("face_size", config.max_face_size).field("exif", config.exif_orientation);
     identity.field("low_width", config.match.low_width).field("low_height", config.match.low_height);
     identity.field("high_width", config.match.high_width).field("high_height", config.match.high_height);
@@ -827,7 +833,8 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
     inference.field("low_width",config.match.low_width).field("low_height",config.match.low_height);
     inference.field("high_width",config.match.high_width).field("high_height",config.match.high_height);
     inference.field("bidirectional",config.match.bidirectional).field("saturation",config.match.overlap_saturation).end();
-    const auto inference_identity = digest(inference.str());
+    const auto inference_identity = digest(inference.str() +
+        (config.image_colors.empty() ? std::string() : spirula::write_image_colors(config.image_colors)));
     identity.key("images").array();
     struct FacePlan { std::vector<std::array<double, 6>> faces; std::vector<double> axes; };
     std::vector<std::string> image_hashes((size_t)ds.num_cameras);

@@ -326,10 +326,6 @@ void GuiApp::apply_dataset_settings(const DatasetSettings& in) {
     _geometry = s.sfm.geometry;
     _dense = s.sfm.dense;
     _dense_config_error.clear();
-    // A colour space the preset spelled out is a decision, so the EXR probe
-    // must not overwrite it later.
-    _color_space_touched =
-        !s.sfm.image_gamut.empty() || s.sfm.image_is_linear.has_value();
     resolve_source_lenses(_sources, _sfm_job, _colmap_job);
     // A preset answers "how", never "where": refresh_sources() re-derives the
     // output folder whenever the user has not taken it over, and a fresh one

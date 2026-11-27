@@ -8,6 +8,7 @@
 #include "app/gui/ColmapRunner.h"
 #include "app/gui/SfmOptions.h"
 #include "app/gui/SfmRunner.h"
+#include "core/ColorSpace.h"
 #include "data/Yaml.h"
 #include "i18n/catalog/Log.h"
 
@@ -281,7 +282,7 @@ ModelPart field_part(const std::string& key) {
     static const char* const mapping[] = {
         "mapper",         "distortion_refine", "final_per_image_intrinsics",
         "final_free_rig", "metric_gps",        "sensor_gauge",
-        "exif_attitude",  "attitude",
+        "exif_attitude",  "attitude", "point_color", "point_color_gamut", "point_color_linear",
     };
     for (const char* k : matching)
         if (key == k) return ModelPart::Matching;
@@ -559,7 +560,7 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
     job.image_gamut.clear();
     job.image_is_linear.reset();
     job.image_exposure.clear();
-    job.point_color_in_image_space = false;
+    job.point_color = {"Rec.709", false};
     for (size_t k = 1; k < a.size(); k++) {
         const std::string& flag = a[k];
         const std::string v = k + 1 < a.size() ? a[k + 1] : std::string();
@@ -596,7 +597,9 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
         else if (flag == "--image-linear") job.image_is_linear = true;
         else if (flag == "--no-image-linear") job.image_is_linear = false;
         else if (flag == "--image-exposure") job.image_exposure = take();
-        else if (flag == "--point-color") job.point_color_in_image_space = take() == "image";
+        else if (flag == "--point-color") {
+            if (take() == "image") job.point_color = {};
+        }
         else if (flag == "--masks") { take(); job.mask_features = true; }
         else if (flag == "--no-masks") job.mask_features = false;
     }
@@ -604,6 +607,10 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
     try {
         if (!manifest.empty()) m = yaml_parse(manifest);
     } catch (const std::exception&) {
+    }
+    if (const auto* point = m.find("point_color")) {
+        try { job.point_color = spirula::read_image_color(*point); }
+        catch (const std::exception&) {}
     }
     std::vector<std::pair<std::string, std::string>> cameras;   // prefix, model
     if (const JsonValue* cs = m.find("cameras"); cs && cs->is_array())
@@ -780,6 +787,12 @@ StepFields frames_fields(const PrepJob& job) {
     return f;
 }
 
+void add_source_color(StepFields& fields, const std::string& scope,
+                      const spirula::ImageColor& color) {
+    add(fields, "source_gamut", scope, color.gamut.empty() ? "auto" : color.gamut);
+    add(fields, "source_linear", scope, color.linear ? onoff(*color.linear) : "auto");
+}
+
 StepFields masks_fields(const PrepJob& job) {
     StepFields f;
     // Some input's masks come from segmentation rather than from the input.
@@ -806,6 +819,12 @@ StepFields masks_fields(const PrepJob& job) {
     if (!job.mask_detector_path.empty()) {
         add(f, "mask_detector", "", file_name(job.mask_detector_path));
         add(f, "mask_box_threshold", "", num(job.mask_detector_threshold));
+    }
+    for (const PrepInput& in : job.inputs) {
+        if (!feature && !in.mask_dir.empty()) continue;
+        const auto color = in.color.value_or(spirula::ImageColor{job.image_gamut, job.image_is_linear});
+        if (in.color || !color.gamut.empty() || color.linear)
+            add_source_color(f, scope_of(in.subdir), color);
     }
     add(f, "mask_max_size", "", num(job.mask_max_image_size));
     if (!job.image_exposure.empty()) add(f, "image_exposure", "", job.image_exposure);
@@ -859,7 +878,15 @@ StepFields model_fields(const SfmJob& job) {
     if (!job.image_gamut.empty()) add(f, "image_gamut", "", job.image_gamut);
     if (job.image_is_linear) add(f, "image_linear", "", onoff(*job.image_is_linear));
     if (!job.image_exposure.empty()) add(f, "image_exposure", "", job.image_exposure);
-    add(f, "point_color", "", job.point_color_in_image_space ? "image" : "srgb");
+    for (const auto& [scope, color] : source_colors(p))
+        add_source_color(f, scope, color);
+    const auto point = resolve_point_color(job, p.inputs);
+    if (colorspace::is_identity(point.gamut, *point.linear)) {
+        add(f, "point_color", "", "srgb");
+    } else {
+        add(f, "point_color_gamut", "", point.gamut);
+        add(f, "point_color_linear", "", onoff(*point.linear));
+    }
     if (!job.extra_args.empty()) add(f, "extra_args", "", job.extra_args);
     add_rigs(f, p);
     add_sequences(f, p);
@@ -924,6 +951,8 @@ StepFields geometry_fields(const GeometryJob& g) {
     add(f, "depth_mm", "", onoff(g.depth_mm));
     add(f, "normal_jpg", "", onoff(g.normal_jpg));
     if (g.normal_jpg) add(f, "jpeg_quality", "", num(g.jpeg_quality));
+    for (const auto& [scope, color] : g.image_colors)
+        add_source_color(f, scope, color);
     if (!g.image_gamut.empty()) add(f, "image_gamut", "", g.image_gamut);
     if (g.image_is_linear) add(f, "image_linear", "", onoff(*g.image_is_linear));
     if (!g.image_exposure.empty()) add(f, "image_exposure", "", g.image_exposure);
@@ -959,13 +988,15 @@ StepFields dense_fields(const DenseJob& job) {
     StepFields fields;
     const auto object = json_parse(spirula::dense::config_json(job.config));
     for (const auto& [key, value] : object.obj) {
-        if (key == "preset" || key == "device" || key == "memory_budget_bytes" || key == "image_cache_bytes" ||
+        if (key == "image_colors" || key == "preset" || key == "device" || key == "memory_budget_bytes" || key == "image_cache_bytes" ||
             key == "cpu_workers" || key == "resume" || key == "rebuild" || key == "keep_cache") continue;
         // A record from before reference spacing existed means 0, so such a cloud stays fresh.
         if (key == "reference_coverage" && value.num == 0) continue;
         JsonWriter writer; json_write(writer, value);
         fields.push_back({key, "", writer.str()});
     }
+    for (const auto& [scope, color] : job.config.image_colors)
+        add_source_color(fields, scope, color);
     return fields;
 }
 
@@ -983,12 +1014,14 @@ PlanJob plan_job(const SfmJob& job) {
     p.model = model_fields(job);
     p.mask_features = job.mask_features;
     p.geometry = job.geometry;
+    p.geometry.image_colors = source_colors(p.prep);
     // The scans give the run its depth and normals.
     if (job.lidar.enabled()) p.geometry.enable = false;
     p.staged = true;
     p.lidar_clouds = job.lidar.clouds;
     p.lidar_in_frame = job.lidar.in_frame;
     p.dense = job.dense;
+    p.dense.config.image_colors = source_colors(p.prep);
     return p;
 }
 
@@ -998,7 +1031,9 @@ PlanJob plan_job(const ColmapJob& job, const PrepJob& prep) {
     p.model = model_fields(job, prep);
     p.mask_features = job.mask_features;
     p.geometry = job.geometry;
+    p.geometry.image_colors = source_colors(p.prep);
     p.dense = job.dense;
+    p.dense.config.image_colors = source_colors(p.prep);
     return p;
 }
 
@@ -1342,6 +1377,7 @@ void restore_record_inputs(const DatasetRecord& rec, PrepJob& job,
             in.sequential = r.sequential || (in.is_video && ran_in_order(in));
             in.use_imu = r.use_imu;
             in.use_gps = r.use_gps;
+            in.color = r.color;
             for (SubCamera& sc : in.subcameras)
                 for (const SubCamera& o : r.subcameras)
                     if (o.rel == sc.rel) sc = o;

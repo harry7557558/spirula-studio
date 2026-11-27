@@ -15,8 +15,13 @@ std::string probe_key(const std::string& path, const std::string& ffmpeg_exe) {
 }
 
 SourceProbeInfo probe(const std::string& path, const std::string& ffmpeg_exe,
-                      const std::atomic<bool>& cancel) {
+                      bool video, const std::atomic<bool>& cancel) {
     SourceProbeInfo out;
+    if (!video) {
+        out.color = probe_photo_color(path, cancel);
+        out.done = true;
+        return out;
+    }
     bool have_native_metadata = false;
 #ifdef SS_HAVE_VIDEO
     std::string native_error;
@@ -54,7 +59,7 @@ SourceProbeInfo probe(const std::string& path, const std::string& ffmpeg_exe,
 SourceProbe::~SourceProbe() { stop(); }
 
 SourceProbeInfo SourceProbe::get(const std::string& path,
-                                 const std::string& ffmpeg_exe) {
+                                 const std::string& ffmpeg_exe, bool video) {
     if (path.empty()) return {};
     const std::string key = probe_key(path, ffmpeg_exe);
     std::unique_lock<std::mutex> lk(_mu);
@@ -63,7 +68,7 @@ SourceProbeInfo SourceProbe::get(const std::string& path,
     SourceProbeInfo pending;
     _known[key] = pending;
     auto cancel = std::make_shared<std::atomic<bool>>(false);
-    _queue.push_back({_generation, key, path, ffmpeg_exe, cancel});
+    _queue.push_back({_generation, key, path, ffmpeg_exe, video, cancel});
     if (!_worker.joinable()) _worker = std::thread([this] { run(); });
     lk.unlock();
     _cv.notify_one();
@@ -100,7 +105,7 @@ void SourceProbe::run() {
             _active_cancel = request.cancel;
         }
         SourceProbeInfo info =
-            probe(request.path, request.ffmpeg_exe, *request.cancel);
+            probe(request.path, request.ffmpeg_exe, request.video, *request.cancel);
         std::lock_guard<std::mutex> lk(_mu);
         if (_active_cancel == request.cancel) _active_cancel.reset();
         if (request.generation == _generation) _known[request.key] = info;

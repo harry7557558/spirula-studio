@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/Pano360.h"
+#include "data/ImageColors.h"
 
 #include <atomic>
 #include <cstdint>
@@ -22,13 +23,14 @@ struct SourceProbeInfo {
     bool pano360_unsupported = false;
     bool unstitched = false;   // app::kandao_unstitched
     std::string lut;   // app::detect_log_lut
+    spirula::ImageColor color;
 };
 
 class SourceProbe {
 public:
     ~SourceProbe();
 
-    SourceProbeInfo get(const std::string& path, const std::string& ffmpeg_exe);
+    SourceProbeInfo get(const std::string& path, const std::string& ffmpeg_exe, bool video);
     void invalidate();
     void stop();
 
@@ -38,6 +40,7 @@ private:
         std::string key;
         std::string path;
         std::string ffmpeg_exe;
+        bool video = false;
         std::shared_ptr<std::atomic<bool>> cancel;
     };
 

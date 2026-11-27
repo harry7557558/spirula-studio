@@ -13,6 +13,7 @@
 #include "app/Pano360.h"
 #include "app/gui/FilmReel.h"
 #include "app/gui/PrepProgress.h"
+#include "data/ImageColors.h"
 
 #include <cstddef>
 #include <algorithm>
@@ -130,6 +131,8 @@ struct PrepInput {
     // The colour LUT baked into this video's frames as they are extracted: a
     // spec (app/CubeLut.h), kLutNone, or empty for automatic (input_lut).
     std::string lut;
+    std::optional<spirula::ImageColor> color;
+    spirula::ImageColor detected_color;
     // The built-in the file's own metadata asks for (app::detect_log_lut).
     // Probed, never saved.
     std::string lut_detected;
@@ -501,6 +504,20 @@ inline constexpr bool kStreamingFrameExtraction = false;
 // The numbering that wrote a capture, independent of today's decoder/device.
 PrepCapture video_capture(const PrepJob& job, const PrepInput& in, bool source_indices);
 
+inline bool has_source_colors(const std::vector<PrepInput>& inputs) {
+    return std::any_of(inputs.begin(), inputs.end(),
+                       [](const PrepInput& in) { return in.color.has_value(); });
+}
+
+inline spirula::ImageColors source_colors(const PrepJob& job, bool per_file = false) {
+    spirula::ImageColors colors;
+    if (!per_file && !has_source_colors(job.inputs)) return colors;
+    const spirula::ImageColor fallback{job.image_gamut, job.image_is_linear};
+    for (const PrepInput& in : job.inputs)
+        colors[in.subdir.empty() ? "." : in.subdir] = in.color.value_or(fallback);
+    return colors;
+}
+
 struct PrepResult {
     std::vector<PrepCapture> captures;
     std::string image_dir;           // absolute; what SfM should index
@@ -694,6 +711,7 @@ bool folder_has_heif(const std::string& dir);
 
 // The photo extensions an input folder is indexed for.
 bool is_image_file(const std::filesystem::path& p);
+spirula::ImageColor probe_photo_color(const std::string& path, const std::atomic<bool>& cancel);
 
 // Is this folder an already-reconstructed dataset -- something the trainer's
 // dataparsers can read -- rather than raw input? True for a Nerfstudio

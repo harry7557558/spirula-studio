@@ -211,10 +211,32 @@ struct SfmJob : SfmReconSettings {
     // What the detectors and models see, brightened in linear light: "", "auto"
     // or stops (core/ColorSpace.h). Training reads the files as they are.
     std::string image_exposure;
-    // false: the sparse point cloud stays sRGB (train with point-color-gamut
-    // Rec.709). true: written in the images' space, the trainer's default.
-    bool point_color_in_image_space = false;
+    // Each empty field selects the common source setting when it exists.
+    spirula::ImageColor point_color;
 };
+
+inline spirula::ImageColor resolve_point_color(const SfmJob& job,
+                                               const std::vector<PrepInput>& inputs) {
+    const spirula::ImageColor fallback{job.image_gamut, job.image_is_linear};
+    std::optional<spirula::ImageColor> common;
+    for (const PrepInput& in : inputs) {
+        if (in.path.empty()) continue;
+        spirula::ImageColor color = in.color.value_or(fallback);
+        if (color.gamut.empty()) color.gamut = in.detected_color.gamut;
+        if (color.gamut.empty()) color.gamut = "Rec.709";
+        color.linear = color.linear.value_or(in.detected_color.linear.value_or(false));
+        if (!common) {
+            common = std::move(color);
+        } else {
+            if (common->gamut != color.gamut) common->gamut = "Rec.709";
+            if (common->linear != color.linear) common->linear = false;
+        }
+    }
+    spirula::ImageColor output = job.point_color;
+    if (output.gamut.empty()) output.gamut = common ? common->gamut : "Rec.709";
+    if (!output.linear) output.linear = common && common->linear.value_or(false);
+    return output;
+}
 
 // Whether `overlap` and `loop_closure` mean anything.
 inline bool sequential_pairing(const SfmReconSettings& j) {

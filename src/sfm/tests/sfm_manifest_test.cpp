@@ -148,6 +148,29 @@ static int cmdManifestTest(int, char**) {
     check(manifest_write(manifest_read(dir + "/m2.yaml")) == manifest_write(m),
           "a written manifest reads back");
 
+    {
+        auto colored = m;
+        colored.image_colors["."] = {"Rec.709", false};
+        colored.image_colors["cam0"] = {"Rec.2020", true};
+        colored.image_colors["cam1"] = {};
+        colored.point_color = spirula::ImageColor{"ACEScg", true};
+        write_file(dir + "/color.yaml", manifest_write(colored));
+        SfmConfig color_config;
+        std::string color_dir;
+        check(manifest_apply(manifest_read(dir + "/color.yaml"), color_config, {}, color_dir).empty(),
+              "per-source colors survive the SfM manifest");
+        const auto* cam0 = spirula::image_color_for(color_config.image_colors, "cam0/lens/photo.exr");
+        const auto* cam1 = spirula::image_color_for(color_config.image_colors, "cam1/photo.tif");
+        check(cam0 && cam0->gamut == "Rec.2020" && cam0->linear == true &&
+                  cam1 && cam1->gamut.empty() && !cam1->linear,
+              "a source can override the gamut or use file metadata independently");
+        check(color_config.point_color && color_config.point_color->gamut == "ACEScg" &&
+                  color_config.point_color->linear == true,
+              "point cloud output color is independent of image input colors");
+        check(stageSignature(color_config, CMD_EXTRACT) != stageSignature(SfmConfig{}, CMD_EXTRACT),
+              "SfM extraction records per-source colors in its resume signature");
+    }
+
     // ---- precedence ----
     SfmConfig cfg;
     std::string image_dir;

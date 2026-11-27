@@ -158,8 +158,10 @@ void probe_sources(std::vector<PrepInput>& sources,
         if ((kandao || is_packed_lens_path(s.path)) && source_pixel_size(s, ffmpeg_exe, w, h))
             set_packed_lenses(s, w, h, kandao && app::kandao_unstitched(s.path, w, h));
     }
-    for (PrepInput& s : sources)
+    for (PrepInput& s : sources) {
         if (s.is_video) s.lut_detected = app::detect_log_lut(s.path);
+        else s.detected_color = probe_photo_color(s.path, never);
+    }
     normalize_source_luts(sources);
 }
 

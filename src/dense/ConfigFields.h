@@ -56,6 +56,8 @@ inline std::string config_json(const DenseConfig& config) {
     w.object();
 #define SS_DENSE_EMIT(key, member) w.field_raw(#key, json_field::emit(config.member));
     SS_DENSE_CONFIG_FIELDS(SS_DENSE_EMIT)
+    if (!config.image_colors.empty())
+        w.field_raw("image_colors", spirula::write_image_colors(config.image_colors));
 #undef SS_DENSE_EMIT
     w.end();
     return w.str();
@@ -64,6 +66,10 @@ inline std::string config_json(const DenseConfig& config) {
 inline bool assign_config_field(DenseConfig& config, const std::string& key, const JsonValue& value) {
 #define SS_DENSE_ASSIGN(name, member) if (key == #name) { assign_dense_value(config.member, value); return true; }
     SS_DENSE_CONFIG_FIELDS(SS_DENSE_ASSIGN)
+    if (key == "image_colors") {
+        config.image_colors = spirula::read_image_colors(value);
+        return true;
+    }
 #undef SS_DENSE_ASSIGN
     return false;
 }

@@ -232,8 +232,7 @@ void GuiApp::sync_dataset_jobs() {
     // make a run on one that has not fail at the last step.
     _sfm_job.geometry.enable = _colmap_job.geometry.enable =
         _geometry.enable && geometry_availability().empty();
-    // One colour space for the whole run: SfM, masking and geometry all read
-    // the same photographs.
+    // Saved presets supply the defaults for rows without color overrides.
     _colmap_job.image_gamut = _sfm_job.image_gamut;
     _colmap_job.image_is_linear = _sfm_job.image_is_linear;
     _sfm_job.geometry.image_gamut = _colmap_job.geometry.image_gamut =

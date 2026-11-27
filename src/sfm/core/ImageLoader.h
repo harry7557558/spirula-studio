@@ -48,6 +48,7 @@
 
 #include "core/HardwareThreads.h"
 #include "core/HostMemory.h"
+#include "data/ImageColors.h"
 #include "sfm/core/Image.h"
 
 namespace sfm {
@@ -59,6 +60,8 @@ struct ImageLoadOptions {
     // The files' colour space; decoded pixels are converted to sRGB.
     std::string gamut;
     std::optional<bool> is_linear;
+    const spirula::ImageColors* image_colors = nullptr;
+    std::filesystem::path image_root;
     colorspace::Exposure exposure;
     // Keypoint masks (sfm/core/Mask.h), one per entry of the `paths` passed to
     // loadImagesInOrder and in the same order; "" means "no mask for this
@@ -182,8 +185,12 @@ inline void loadImagesInOrder(const std::vector<std::string>& paths, const Image
         static const std::string kNoMask;
         const std::string& mp = i < opt.mask_paths.size() ? opt.mask_paths[i] : kNoMask;
         try {
+            const auto* color = opt.image_colors ? spirula::image_color_for(
+                *opt.image_colors, std::filesystem::path(paths[i]).lexically_relative(opt.image_root))
+                : nullptr;
             out = loadGrayImage(paths[i], opt.max_image_size, opt.want_color, mp,
-                                opt.gamut, opt.is_linear, opt.flip_mask,
+                                color ? color->gamut : opt.gamut,
+                                color ? color->linear : opt.is_linear, opt.flip_mask,
                                 opt.apply_exif_orientation, opt.mask_segment_only,
                                 opt.exposure);
         } catch (const std::exception& e) {

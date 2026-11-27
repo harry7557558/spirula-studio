@@ -250,6 +250,8 @@ struct ParsedDataset {
     // Seed point cloud in the training frame. Empty when the dataset has
     // none, which is the trainer's cue to draw one (--random-init).
     ColmapPoints3D           points;
+    std::string              point_color_gamut;
+    std::optional<bool>      point_color_is_linear;
 
     // p_train = p_raw - center, where p_raw is the frame the files came in
     // (COLMAP's own, or nerfstudio's with applied_transform undone).

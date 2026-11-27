@@ -537,21 +537,13 @@ struct ComboChoice {
     const Msg& help;
 };
 
-inline bool ComboWithHelp(const Msg& label, int* value, const Msg& help,
-                          std::initializer_list<ComboChoice> choices) {
+inline bool ComboWithHelpRaw(const char* widget, int* value, const Msg& help,
+                             std::initializer_list<ComboChoice> choices,
+                             const char* automatic_preview = nullptr) {
     const int count = (int)choices.size();
-    const char* preview = *value >= 0 && *value < count ? choices.begin()[*value].label.get()
-                                                        : nullptr;
-    const float width = ImGui::CalcItemWidth();
-    const float available = ImGui::GetContentRegionAvail().x;
-    const bool wrap_label = width + ImGui::GetStyle().ItemInnerSpacing.x +
-                            ImGui::CalcTextSize(label.get()).x > available;
-    if (wrap_label) {
-        TextWrapped(label);
-        help_on_hover(help);
-        ImGui::SetNextItemWidth(std::min(width, available));
-    }
-    const char* widget = detail::label(wrap_label ? "" : label.get(), label.id);
+    const char* preview = *value == 0 && automatic_preview ? automatic_preview
+                        : *value >= 0 && *value < count ? choices.begin()[*value].label.get()
+                        : nullptr;
     if (!detail::named_combo(widget, [&] { return BeginComboRaw(widget, preview); })) {
         help_on_hover(help);
         return false;
@@ -570,6 +562,22 @@ inline bool ComboWithHelp(const Msg& label, int* value, const Msg& help,
     }
     ImGui::EndCombo();
     return changed;
+}
+
+inline bool ComboWithHelp(const Msg& label, int* value, const Msg& help,
+                          std::initializer_list<ComboChoice> choices,
+                          const char* automatic_preview = nullptr) {
+    const float width = ImGui::CalcItemWidth();
+    const float available = ImGui::GetContentRegionAvail().x;
+    const bool wrap_label = width + ImGui::GetStyle().ItemInnerSpacing.x +
+                            ImGui::CalcTextSize(label.get()).x > available;
+    if (wrap_label) {
+        TextWrapped(label);
+        help_on_hover(help);
+        ImGui::SetNextItemWidth(std::min(width, available));
+    }
+    const char* widget = detail::label(wrap_label ? "" : label.get(), label.id);
+    return ComboWithHelpRaw(widget, value, help, choices, automatic_preview);
 }
 
 inline bool SliderInt(const Msg& m, int* v, int lo, int hi) {

@@ -6,7 +6,6 @@
 #include "app/LogLuts.h"
 #include "app/gui/DatasetPrep.h"
 #include "app/gui/Ui.h"
-#include "core/ImageFile.h"
 #include "i18n/catalog/Dataset.h"
 #include "i18n/catalog/Gui.h"
 #include "i18n/catalog/Lidar.h"
@@ -97,7 +96,7 @@ void GuiApp::mark_source_metadata_dirty() {
     _source_probe.invalidate();
     _source_probes_ready = true;
     for (const PrepInput& s : _sources) {
-        if (s.is_video && !s.path.empty()) {
+        if (!s.path.empty()) {
             _source_probes_ready = false;
             return;
         }
@@ -109,14 +108,17 @@ void GuiApp::pump_source_probes() {
     bool pano_changed = false, lut_changed = false;
     for (size_t i = 0; i < _sources.size(); i++) {
         PrepInput& s = _sources[i];
-        if (!s.is_video || s.path.empty()) continue;
+        if (s.path.empty()) continue;
         const std::string path = s.path;
-        const SourceProbeInfo info = _source_probe.get(path, _ffmpeg_exe);
+        const SourceProbeInfo info = _source_probe.get(path, _ffmpeg_exe, s.is_video);
         if (!info.done) {
             pending = true;
             continue;
         }
-        if (_sources[i].path != path || !_sources[i].is_video) continue;
+        if (!s.is_video) {
+            s.detected_color = info.color;
+            continue;
+        }
         if (info.width > 0 && info.height > 0)
             _input_size[path] = {info.width, info.height};
         s.pano360_unsupported = info.pano360_unsupported;
@@ -209,11 +211,6 @@ void GuiApp::replace_source(size_t input, const std::string& path) {
     mark_source_metadata_dirty();
     apply_capture_defaults(_sources, _sfm_job, _colmap_job);
     reapply_dataset_builtin();
-    if (!_color_space_touched) {
-        _sfm_job.image_gamut.clear();
-        _sfm_job.image_is_linear.reset();
-    }
-    adopt_file_color_space();
     refresh_sources();
 }
 bool GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
@@ -271,7 +268,6 @@ bool GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
     apply_capture_defaults(_sources, _sfm_job, _colmap_job);
     reapply_dataset_builtin();
     if (_mask_preview_input >= (int)_sources.size()) _mask_preview_input = 0;
-    adopt_file_color_space();
     refresh_sources();
     return true;
 }
@@ -292,7 +288,6 @@ void GuiApp::clear_sources() {
     // ... and a different capture is a different colour space.
     _sfm_job.image_gamut.clear();
     _sfm_job.image_is_linear.reset();
-    _color_space_touched = false;
 }
 
 void GuiApp::add_existing_dataset(const std::string& dir) {
@@ -328,32 +323,6 @@ void GuiApp::apply_frame_shapes(std::vector<PrepInput>& inputs, std::string& pre
     }
     for (size_t i = first_input; i < inputs.size(); i++)
         app::apply_mask_set(inputs[i].stencil, set);
-}
-
-// A folder of EXRs, or of TIFFs with an ICC profile, declares its own colour
-// space, and the picker for it is under Advanced where nobody would think to
-// look. Fill it in from the first such file and say so.
-void GuiApp::adopt_file_color_space() {
-    if (_color_space_touched) return;
-    std::error_code ec;
-    for (const PrepInput& s : _sources) {
-        if (s.is_video) continue;
-        for (fs::recursive_directory_iterator it(s.path, ec), end;
-             !ec && it != end; it.increment(ec)) {
-            if (!it->is_regular_file(ec)) continue;
-            std::string e = it->path().extension().string();
-            for (char& c : e) c = (char)std::tolower((unsigned char)c);
-            if (e != ".exr" && e != ".tif" && e != ".tiff") continue;
-            imagefile::DeclaredColor d;
-            if (!imagefile::declared_color_space(it->path().string(), d)) return;
-            _sfm_job.image_gamut = d.gamut;
-            _sfm_job.image_is_linear = d.is_linear;
-            log(i18n::format(d.is_linear ? dmsg::log_file_color_linear
-                                         : dmsg::log_file_color_display,
-                             {d.format, d.gamut.empty() ? "Rec.709" : d.gamut}));
-            return;
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -495,51 +464,6 @@ size_t first_video_row(const std::vector<PrepInput>& sources) {
 
 }  // namespace
 
-// The LUT box of a video row. Automatic is what the file says it was shot
-// for, else the row above's choice; the rest are choices of its own.
-bool GuiApp::draw_source_lut(size_t i) {
-    PrepInput& s = _sources[i];
-    const std::string resolved = input_lut(_sources, i);
-    const std::string shown = !s.lut.empty()          ? (s.lut == kLutNone
-                                                             ? dmsg::video_lut_none.get()
-                                                             : app::lut_display_name(s.lut))
-                              : !s.lut_detected.empty() ? app::lut_display_name(s.lut_detected)
-                              : !resolved.empty()       ? dmsg::lens_same_as_above.get()
-                                                        : dmsg::video_lut_none.get();
-    const std::string before = s.lut;
-    ImGui::SetNextItemWidth(px(150.0f));
-    if (ui::BeginComboRaw("##lut", shown.c_str(), ImGuiComboFlags_HeightLarge)) {
-        if (ui::Selectable(dmsg::video_lut_auto, s.lut.empty())) s.lut.clear();
-        ui::help_on_hover(dmsg::video_lut_auto_help);
-        ImGui::Separator();
-        for (const app::BuiltinLut& b : app::builtin_luts()) {
-            const std::string spec = app::builtin_lut_spec(b.id);
-            if (ui::SelectableRaw(b.name, s.lut == spec)) s.lut = spec;
-        }
-        ImGui::Separator();
-        if (!s.lut.empty() && s.lut != kLutNone && !app::is_builtin_lut(s.lut))
-            ui::SelectableRaw(app::lut_display_name(s.lut).c_str(), true);
-        if (ui::Selectable(dmsg::video_lut_choose, false)) {
-            _pick_lut = (int)i;
-            open_pick(PickAction::SourceLut, dmsg::video_lut_pick_title.get(),
-                      FileDialog::Mode::File, {".cube"},
-                      resolved.empty() || app::is_builtin_lut(resolved)
-                          ? std::string()
-                          : fs::path(resolved).parent_path().string());
-        }
-        if (ui::Selectable(dmsg::video_lut_none, s.lut == kLutNone)) s.lut = kLutNone;
-        ImGui::EndCombo();
-    }
-    ui::help_on_hover(dmsg::video_lut_help,
-                      {resolved.empty() ? std::string(dmsg::video_lut_none.get())
-                                        : app::is_builtin_lut(resolved)
-                                              ? app::lut_display_name(resolved)
-                                              : resolved});
-    if (s.lut == before) return false;
-    close_native_previews();
-    return true;
-}
-
 void GuiApp::draw_dataset_source() {
     // One row per input. Several videos reconstruct as one scene -- each gets
     // its own folder of frames under images/, and so its own camera.
@@ -630,10 +554,6 @@ void GuiApp::draw_dataset_source() {
                                               ? dmsg::frames_per_second_help_adaptive
                                               : dmsg::frames_per_second_help)
                                        : dmsg::video_fps_this_one_help);
-                if (_ds_advanced) {
-                    ImGui::SameLine();
-                    edited |= draw_source_lut(i);
-                }
                 ImGui::EndDisabled();
                 ImGui::SameLine();
             }

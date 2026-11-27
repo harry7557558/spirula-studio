@@ -2,6 +2,7 @@
 
 #include "sfm/core/Manifest.h"
 
+#include "core/ColorSpace.h"
 #include "data/Yaml.h"
 #include "sfm/core/CameraSetup.h"
 
@@ -74,6 +75,24 @@ Manifest manifest_read(const std::string& path) {
         CameraMode parsed;
         if (!m.camera_mode.empty() && !parseCameraMode(m.camera_mode, parsed))
             bad(path, "camera_mode: expected single, folder or image");
+    }
+    if (const JsonValue* v = root.find("image_colors")) {
+        try {
+            m.image_colors = spirula::read_image_colors(*v);
+        } catch (const std::exception& e) {
+            bad(path, e.what());
+        }
+    }
+    if (const JsonValue* v = root.find("point_color")) {
+        try {
+            m.point_color = spirula::read_image_color(*v);
+            if (m.point_color->gamut.empty() || m.point_color->gamut == "none")
+                m.point_color->gamut = "Rec.709";
+            m.point_color->linear = m.point_color->linear.value_or(false);
+            (void)colorspace::gamut_to_rec709(m.point_color->gamut);
+        } catch (const std::exception& e) {
+            bad(path, e.what());
+        }
     }
     if (const JsonValue* v = root.find("image_gamut"))
         m.image_gamut = str_of(*v, path, "image_gamut");
@@ -272,6 +291,13 @@ std::string manifest_write(const Manifest& m, bool json) {
     if (!m.mask_dir.empty()) root.obj.emplace_back("mask_dir", text(m.mask_dir));
     if (m.has_mask_flipped) root.obj.emplace_back("mask_flipped", boolean(m.mask_flipped));
     if (!m.camera_mode.empty()) root.obj.emplace_back("camera_mode", text(m.camera_mode));
+    if (!m.image_colors.empty())
+        root.obj.emplace_back("image_colors", json_parse(spirula::write_image_colors(m.image_colors)));
+    if (m.point_color) {
+        JsonWriter point;
+        spirula::write_image_color(point, *m.point_color);
+        root.obj.emplace_back("point_color", json_parse(point.str()));
+    }
     if (!m.image_gamut.empty()) root.obj.emplace_back("image_gamut", text(m.image_gamut));
     if (m.image_linear >= 0) root.obj.emplace_back("image_linear", boolean(m.image_linear != 0));
     if (!m.cameras.empty()) {
@@ -397,6 +423,8 @@ std::string manifest_apply(const Manifest& m, SfmConfig& cfg,
         cfg.camera_mode = m.camera_mode;
         cfg.camera_mode_pinned = true;
     }
+    cfg.image_colors = m.image_colors;
+    if (!seen.count("point-color")) cfg.point_color = m.point_color;
     if (!m.image_gamut.empty() && !seen.count("image-gamut")) cfg.image_gamut = m.image_gamut;
     if (m.image_linear >= 0 && !seen.count("image-linear"))
         cfg.image_is_linear = m.image_linear != 0;

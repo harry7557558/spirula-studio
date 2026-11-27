@@ -70,7 +70,8 @@ namespace {
     X("image_gamut",                sfm.image_gamut)                          \
     X("image_is_linear",            sfm.image_is_linear)                      \
     X("image_exposure",             sfm.image_exposure)                       \
-    X("point_color_in_image_space", sfm.point_color_in_image_space)           \
+    X("point_color_gamut",          sfm.point_color.gamut)                    \
+    X("point_color_is_linear",      sfm.point_color.linear)                   \
     /* ---- masking ---- */                                                   \
     X("mask_enable",                sfm.prep.mask_enable)                     \
     X("mask_features",              sfm.mask_features)                        \
@@ -161,6 +162,10 @@ namespace {
 // "sfm_data_type" was a template, 1 for ordered video frames; its other
 // settings those files also carry as their own.
 void read_retired_settings(const JsonValue& fields, DatasetSettings& s) {
+    if (!fields.find("point_color_gamut") && !fields.find("point_color_is_linear"))
+        if (const auto* v = fields.find("point_color_in_image_space"))
+            s.sfm.point_color = v->as_bool() ? spirula::ImageColor{}
+                                           : spirula::ImageColor{"Rec.709", false};
     if (const JsonValue* v = fields.find("sfm_data_type")) s.videos_in_order = v->as_int() == 1;
     // The frame cap every file carried before it was off by default.
     if (s.sfm.prep.max_frames == kRetiredMaxFrames) s.sfm.prep.max_frames = 0;

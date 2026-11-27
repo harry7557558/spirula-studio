@@ -2,6 +2,8 @@
 
 #include "app/gui/GuiApp.h"
 
+#include "app/CubeLut.h"
+#include "app/LogLuts.h"
 #include "app/gui/GuiAppShared.h"
 #include "app/gui/OptionSearch.h"
 #include "app/gui/ProgressView.h"
@@ -16,9 +18,13 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include <cfloat>
+#include <filesystem>
 #include <cstdio>
 #include <cstdlib>
 
+namespace fs = std::filesystem;
+namespace i18n = spirula::i18n;
 namespace msg = spirula::i18n::msg::gui;
 namespace dmsg = spirula::i18n::msg::dataset;
 namespace smsg = spirula::i18n::msg::sfmoption;
@@ -30,42 +36,129 @@ namespace gui {
 // Advanced: the photographs' colour space
 // ---------------------------------------------------------------------------
 
+// The LUT box of a video row. Automatic is what the file says it was shot
+// for, else the row above's choice; the rest are choices of its own.
+void GuiApp::draw_source_lut(size_t i) {
+    PrepInput& s = _sources[i];
+    const std::string resolved = input_lut(_sources, i);
+    const std::string shown = !s.lut.empty()          ? (s.lut == kLutNone
+                                                             ? dmsg::video_lut_none.get()
+                                                             : app::lut_display_name(s.lut))
+                              : !s.lut_detected.empty() ? app::lut_display_name(s.lut_detected)
+                              : !resolved.empty()       ? dmsg::lens_same_as_above.get()
+                                                        : dmsg::video_lut_none.get();
+    const std::string before = s.lut;
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (ui::BeginComboRaw("##lut", shown.c_str(), ImGuiComboFlags_HeightLarge)) {
+        if (ui::Selectable(dmsg::video_lut_auto, s.lut.empty())) s.lut.clear();
+        ui::help_on_hover(dmsg::video_lut_auto_help);
+        ImGui::Separator();
+        for (const app::BuiltinLut& b : app::builtin_luts()) {
+            const std::string spec = app::builtin_lut_spec(b.id);
+            if (ui::SelectableRaw(b.name, s.lut == spec)) s.lut = spec;
+        }
+        ImGui::Separator();
+        if (!s.lut.empty() && s.lut != kLutNone && !app::is_builtin_lut(s.lut))
+            ui::SelectableRaw(app::lut_display_name(s.lut).c_str(), true);
+        if (ui::Selectable(dmsg::video_lut_choose, false)) {
+            _pick_lut = (int)i;
+            open_pick(PickAction::SourceLut, dmsg::video_lut_pick_title.get(),
+                      FileDialog::Mode::File, {".cube"},
+                      resolved.empty() || app::is_builtin_lut(resolved)
+                          ? std::string()
+                          : fs::path(resolved).parent_path().string());
+        }
+        if (ui::Selectable(dmsg::video_lut_none, s.lut == kLutNone)) s.lut = kLutNone;
+        ImGui::EndCombo();
+    }
+    ui::help_on_hover(dmsg::video_lut_help,
+                      {resolved.empty() ? std::string(dmsg::video_lut_none.get())
+                                        : app::is_builtin_lut(resolved)
+                                              ? app::lut_display_name(resolved)
+                                              : resolved});
+    if (s.lut != before) {
+        normalize_source_luts(_sources);
+        close_native_previews();
+    }
+}
+
+namespace {
+
+int gamut_index(const std::string& name) {
+    for (size_t i = 0; i < std::size(colorspace::kGamuts); ++i)
+        if (name == colorspace::kGamuts[i]) return static_cast<int>(i) + 1;
+    return 0;
+}
+
+}  // namespace
+
 void GuiApp::draw_color_space_options(bool with_point_color) {
     ui::SeparatorText(dmsg::section_color_space);
-    ui::TextDisabledWrapped(dmsg::color_space_section_caption);
     bool source_changed = false;
+    if (!_sources.empty() && ImGui::BeginTable("##source_colors", 4,
+            ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoSavedSettings)) {
+        ui::TableSetupColumn(dmsg::stencil_rows_input);
+        ui::TableSetupColumn(dmsg::source_color_lut, ImGuiTableColumnFlags_WidthStretch, 1.25f);
+        ui::TableSetupColumn(msg::viewport_gamut);
+        ui::TableSetupColumn(dmsg::source_color_encoding);
+        ImGui::TableHeadersRow();
 
-    // Item 0 of both pickers means "leave it to the file", which is what the
-    // child processes do when the flag is absent; anything else is stated on
-    // their command line, so an EXR header that lies can be overruled.
-    ImGui::SetNextItemWidth(px(kFieldW));
-    int gamut = 0;
-    for (int i = 0; i < (int)std::size(colorspace::kGamuts); i++)
-        if (_sfm_job.image_gamut == colorspace::kGamuts[i]) gamut = i + 1;
-    if (ui::ComboWithHelp(dmsg::input_gamut, &gamut, dmsg::input_gamut_help,
-        {{dmsg::space_from_file, smsg::gamut_file_help},
-         {dmsg::gamut_rec709, smsg::gamut_rec709_help},
-         {dmsg::gamut_aces2065_1, smsg::gamut_aces2065_1_help},
-         {dmsg::gamut_acescg, smsg::gamut_acescg_help},
-         {dmsg::gamut_rec2020, smsg::gamut_rec2020_help},
-         {dmsg::gamut_adobergb, smsg::gamut_adobergb_help},
-         {dmsg::gamut_dcip3, smsg::gamut_dcip3_help}})) {
-        _sfm_job.image_gamut = gamut == 0 ? "" : colorspace::kGamuts[gamut - 1];
-        _color_space_touched = true;
-        source_changed = true;
-    }
+        const spirula::ImageColor fallback{_sfm_job.image_gamut, _sfm_job.image_is_linear};
+        for (size_t i = 0; i < _sources.size(); ++i) {
+            PrepInput& source = _sources[i];
+            if (source.path.empty()) continue;
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            fs::path path(source.path);
+            if (path.filename().empty()) path = path.parent_path();
+            ImGui::AlignTextToFramePadding();
+            ui::TextRaw(path.filename().empty() ? source.path : path.filename().string());
+            if (ImGui::IsItemHovered()) ui::SetTooltipRaw(source.path);
 
-    ImGui::SetNextItemWidth(px(kFieldW));
-    int transfer = !_sfm_job.image_is_linear.has_value() ? 0
-                                                        : (*_sfm_job.image_is_linear ? 1 : 2);
-    if (ui::ComboWithHelp(dmsg::input_is_linear, &transfer, dmsg::input_is_linear_help,
-        {{dmsg::space_from_file, smsg::transfer_file_help},
-         {dmsg::transfer_linear, smsg::transfer_linear_help},
-         {dmsg::transfer_display, smsg::transfer_display_help}})) {
-        _sfm_job.image_is_linear =
-            transfer == 0 ? std::optional<bool>{} : std::optional<bool>(transfer == 1);
-        _color_space_touched = true;
-        source_changed = true;
+            ImGui::TableNextColumn();
+            if (source.is_video) {
+                ImGui::BeginDisabled(dataset_locked(Stage::Frames));
+                draw_source_lut(i);
+                ImGui::EndDisabled();
+            }
+
+            ImGui::BeginDisabled(dataset_busy());
+            spirula::ImageColor color = source.color.value_or(fallback);
+            int gamut = gamut_index(color.gamut);
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            const bool gamut_changed = ui::ComboWithHelpRaw("##gamut", &gamut, dmsg::input_gamut_help,
+                {{dmsg::space_from_file, smsg::gamut_file_help},
+                 {dmsg::gamut_rec709, smsg::gamut_rec709_help},
+                 {dmsg::gamut_aces2065_1, smsg::gamut_aces2065_1_help},
+                 {dmsg::gamut_acescg, smsg::gamut_acescg_help},
+                 {dmsg::gamut_rec2020, smsg::gamut_rec2020_help},
+                 {dmsg::gamut_adobergb, smsg::gamut_adobergb_help},
+                 {dmsg::gamut_dcip3, smsg::gamut_dcip3_help}});
+            if (gamut_changed) color.gamut = gamut == 0 ? "" : colorspace::kGamuts[gamut - 1];
+
+            int transfer = !color.linear ? 0 : *color.linear ? 1 : 2;
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            const bool transfer_changed = ui::ComboWithHelpRaw(
+                "##encoding", &transfer, dmsg::input_is_linear_help,
+                {{dmsg::space_from_file, smsg::transfer_file_help},
+                 {dmsg::transfer_linear, smsg::transfer_linear_help},
+                 {dmsg::transfer_display, smsg::transfer_display_help}});
+            if (transfer_changed)
+                color.linear = transfer == 0 ? std::optional<bool>{} : std::optional<bool>{transfer == 1};
+            if (gamut_changed || transfer_changed) {
+                if (color.gamut == fallback.gamut && color.linear == fallback.linear)
+                    source.color.reset();
+                else
+                    source.color = std::move(color);
+                source_changed = true;
+            }
+            ImGui::EndDisabled();
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
     }
 
     // "" / "auto" / a number of stops: item 2 keeps a number even at zero.
@@ -95,11 +188,31 @@ void GuiApp::draw_color_space_options(bool with_point_color) {
 
     // COLMAP writes its own point cloud, so the choice is the built-in SfM's.
     if (!with_point_color) return;
-    ImGui::BeginDisabled(colorspace::is_identity(
-        _sfm_job.image_gamut, _sfm_job.image_is_linear.value_or(false)));
-    ui::Checkbox(dmsg::point_color_image_space,
-                 &_sfm_job.point_color_in_image_space);
-    ui::help_on_hover(dmsg::point_color_image_space_help);
+    ImGui::BeginDisabled(dataset_busy());
+    auto& point = _sfm_job.point_color;
+    const auto resolved = resolve_point_color(_sfm_job, _sources);
+    const auto gamut_preview = i18n::format(dmsg::point_color_auto_value, {resolved.gamut});
+    int gamut = gamut_index(point.gamut);
+    ImGui::SetNextItemWidth(px(kFieldW));
+    if (ui::ComboWithHelp(dmsg::point_cloud_gamut, &gamut, dmsg::point_color_auto_help,
+        {{dmsg::exposure_auto, dmsg::point_color_auto_help},
+         {dmsg::gamut_rec709, smsg::gamut_rec709_help},
+         {dmsg::gamut_aces2065_1, smsg::gamut_aces2065_1_help},
+         {dmsg::gamut_acescg, smsg::gamut_acescg_help},
+         {dmsg::gamut_rec2020, smsg::gamut_rec2020_help},
+         {dmsg::gamut_adobergb, smsg::gamut_adobergb_help},
+         {dmsg::gamut_dcip3, smsg::gamut_dcip3_help}}, gamut_preview.c_str()))
+        point.gamut = gamut == 0 ? "" : colorspace::kGamuts[gamut - 1];
+
+    const auto& encoding = *resolved.linear ? dmsg::transfer_linear : dmsg::transfer_display;
+    const auto encoding_preview = i18n::format(dmsg::point_color_auto_value, {encoding.get()});
+    int transfer = !point.linear ? 0 : *point.linear ? 1 : 2;
+    ImGui::SetNextItemWidth(px(kFieldW));
+    if (ui::ComboWithHelp(dmsg::point_cloud_encoding, &transfer, dmsg::point_color_auto_help,
+        {{dmsg::exposure_auto, dmsg::point_color_auto_help},
+         {dmsg::transfer_linear, smsg::transfer_linear_help},
+         {dmsg::transfer_display, smsg::transfer_display_help}}, encoding_preview.c_str()))
+        point.linear = transfer == 0 ? std::optional<bool>{} : std::optional<bool>{transfer == 1};
     ImGui::EndDisabled();
 }
 

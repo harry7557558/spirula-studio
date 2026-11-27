@@ -1327,6 +1327,17 @@ void TrainerSession::load_dataset() {
             log(lfmt(lmsg::file_gamut_unknown, {declared.format}));
     }
 
+    // A sparse model can declare its own colors, independently of the images.
+    std::error_code seed_error;
+    if (ds.points.num() > 0 && cfg.random_init != "always" &&
+        (pcfg.seed_pointcloud.empty() ||
+         fs::is_directory(fs::path(cfg.data) / pcfg.seed_pointcloud, seed_error))) {
+        if (cfg.point_color_gamut.empty()) cfg.point_color_gamut = ds.point_color_gamut;
+        if (!cfg.point_color_is_linear) cfg.point_color_is_linear = ds.point_color_is_linear;
+        if (cfg.point_color_transfer.empty() && ds.point_color_is_linear)
+            cfg.point_color_transfer = "srgb";
+    }
+
     // Scale both cloud and cameras before baking view matrices.
     if (cfg.relative_scale.has_value()) {
         float rs = *cfg.relative_scale;

@@ -95,7 +95,7 @@ static void test_dataset_preset() {
     s.sfm.image_gamut = "Display P3";
     s.sfm.image_is_linear = true;
     s.sfm.image_exposure = "auto";
-    s.sfm.point_color_in_image_space = true;
+    s.sfm.point_color = {"Rec.2020", false};
 
     s.sfm.prep.mask_enable = true;
     s.sfm.mask_features = false;
@@ -239,7 +239,8 @@ static void test_dataset_preset() {
     CHECK_EQ(b.sfm.image_gamut, s.sfm.image_gamut);
     CHECK(b.sfm.image_is_linear == s.sfm.image_is_linear);
     CHECK(b.sfm.image_exposure == s.sfm.image_exposure);
-    CHECK_EQ(b.sfm.point_color_in_image_space, s.sfm.point_color_in_image_space);
+    CHECK_EQ(b.sfm.point_color.gamut, s.sfm.point_color.gamut);
+    CHECK_EQ(b.sfm.point_color.linear, s.sfm.point_color.linear);
 
     CHECK_EQ(b.sfm.prep.mask_enable, s.sfm.prep.mask_enable);
     CHECK_EQ(b.sfm.mask_features, s.sfm.mask_features);

@@ -1,4 +1,6 @@
 #pragma once
+
+#include "data/ImageColors.h"
 // The matcher seam: LightGlue behind IFeatureMatcher, and the factory that
 // picks between it and the GPU brute-force matcher.
 //
@@ -71,6 +73,7 @@ struct FlexGlueMatchOptions {
     // How the extractor decoded them, so the pixels match the keypoints' frame.
     std::string gamut;
     std::optional<bool> is_linear;
+    const spirula::ImageColors* image_colors = nullptr;
     colorspace::Exposure exposure;
     bool apply_exif_orientation = false;
     std::string device_selector;

@@ -23,6 +23,8 @@
 // may, or the CLI and the GUI would have to agree on the fan-out separately.
 #pragma once
 
+#include "data/ImageColors.h"
+
 #include <cmath>
 #include <cstdio>
 #include <set>
@@ -120,6 +122,8 @@ struct SfmConfig {
 
     // The input files' colour space. Pixels convert to sRGB on decode, which
     // is what the detectors and the AI models were trained on.
+    spirula::ImageColors image_colors;
+    std::optional<spirula::ImageColor> point_color;
     std::string image_gamut = "Rec.709";
     bool image_is_linear = false;
     // "auto" or stops, for what the detectors see; finalize() parses it.

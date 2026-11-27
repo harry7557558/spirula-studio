@@ -414,7 +414,7 @@ private:
     void probe_recent();
     void draw_new_dataset();
     void draw_dataset_source();       // input list / output / resume
-    bool draw_source_lut(size_t input);
+    void draw_source_lut(size_t input);
     void draw_sensor_toggles(PrepInput& s);
     void draw_dataset_basics();       // the four or five knobs a beginner needs
     void draw_source_cameras();       // one lens per input, when there are several
@@ -693,7 +693,6 @@ private:
     bool any_found_masks() const;
     // Adopt the EXR colour space when the pictures are EXRs, unless the user
     // has already set one by hand.
-    void adopt_file_color_space();
     void run_pending_if_stopped();
     void append_logs();
     void log(const std::string& s, bool detail = false);
@@ -755,7 +754,6 @@ private:
     std::string _pending_path;       // dataset dir for Pending::OpenDataset
     bool _pending_batch_skip = false;  // Pending::StartBatch's argument
     bool _parse_dirty = false;       // dataparser option edited -> reload
-    bool _color_space_touched = false;  // see adopt_file_color_space
 
     // ---- the one frozen native GPU choice ----
     // Typed request, including explicit Auto; frozen flag makes it immutable.

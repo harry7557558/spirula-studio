@@ -412,8 +412,10 @@ PreviewSource GuiApp::preview_source_for(const PrepInput& in, const std::string&
     // The one frozen choice, so a preview decodes and segments on the GPU the
     // run will use; empty leaves the panel's own precedence in charge.
     src.device = _native_device_uuid;
-    src.image_gamut = _sfm_job.image_gamut;
-    src.image_is_linear = _sfm_job.image_is_linear;
+    const spirula::ImageColor color = in.color.value_or(
+        spirula::ImageColor{_sfm_job.image_gamut, _sfm_job.image_is_linear});
+    src.image_gamut = color.gamut;
+    src.image_is_linear = color.linear;
     src.image_exposure = _sfm_job.image_exposure;
     src.look.auto_rotate = _sfm_job.prep.auto_rotate;
     src.clip_start = in.clip_start;

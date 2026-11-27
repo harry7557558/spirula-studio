@@ -1,5 +1,6 @@
 #pragma once
 
+#include "data/ImageColors.h"
 #include "dense/Geometry.h"
 #include "dense/PairSelection.h"
 #include "roma/Roma.h"
@@ -58,6 +59,7 @@ struct DenseConfig {
     // Predictions stay on disk until the run succeeds, so a cancelled run resumes;
     // keep_cache keeps them afterwards too (about 10 MB a pair at 640, 80 MB at 1280 both ways).
     bool resume = true, rebuild = false, keep_cache = false;
+    spirula::ImageColors image_colors;
     std::string device, image_gamut, image_exposure;
     std::optional<bool> image_is_linear;
     void apply_preset(const std::string& name);

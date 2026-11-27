@@ -31,6 +31,7 @@
 #include <thread>
 #include <vector>
 
+#include "core/AtomicFile.h"
 #include "core/ColorSpace.h"
 #include "core/Env.h"
 #include "core/HardwareThreads.h"
@@ -945,8 +946,15 @@ bool fixGauge(std::vector<Reconstruction>& models, const SfmConfig& cfg,
 // --point-color and the reported space both do, so adopt it before any stage.
 void adoptFileColorSpace(SfmConfig& cfg, const std::string& imagedir,
                          const std::set<std::string>& seen) {
-    const bool take_gamut = !seen.count("image-gamut");
-    const bool take_linear = !seen.count("image-linear");
+    if (cfg.image_colors.size() > 1) return;
+    const auto color = cfg.image_colors.find(".");
+    if (color != cfg.image_colors.end()) {
+        cfg.image_gamut = color->second.gamut;
+        cfg.image_is_linear = color->second.linear.value_or(false);
+    }
+    const bool from_root = color != cfg.image_colors.end();
+    const bool take_gamut = from_root ? color->second.gamut.empty() : !seen.count("image-gamut");
+    const bool take_linear = from_root ? !color->second.linear : !seen.count("image-linear");
     if (!take_gamut && !take_linear) return;
     std::error_code ec, walk;
     for (auto it = fs::recursive_directory_iterator(
@@ -1002,16 +1010,16 @@ void reportFeatureCompaction(const FeatureCompactionStats& stats) {
             (long long)stats.correspondences});
 }
 
-// Point colours are sampled from images the loader converted to sRGB, which is
-// where "srgb" leaves them. "image" puts them back in the photographs' space,
-// which is where the trainer's point_color_* assume them by default.
+// Samples reach the mapper in sRGB, regardless of their source.
 void recolorPoints(std::vector<Reconstruction>& models, const SfmConfig& cfg) {
-    if (cfg.point_color_space != "image") return;
-    if (colorspace::is_identity(cfg.image_gamut, cfg.image_is_linear)) return;
+    if (!cfg.point_color && (cfg.point_color_space != "image" || cfg.image_colors.size() > 1))
+        return;
+    const auto color = cfg.point_color.value_or(spirula::ImageColor{cfg.image_gamut, cfg.image_is_linear});
+    const bool linear = color.linear.value_or(false);
+    if (colorspace::is_identity(color.gamut, linear)) return;
     for (Reconstruction& m : models)
         for (auto& kv : m.points3D)
-            colorspace::from_srgb_inplace(kv.second.rgb, 1, cfg.image_gamut,
-                                          cfg.image_is_linear);
+            colorspace::from_srgb_inplace(kv.second.rgb, 1, color.gamut, linear);
 }
 
 // A COLMAP camera *is* a frame size, and grouping buckets sizes within 2%
@@ -1062,24 +1070,34 @@ void splitCamerasBySize(std::vector<Reconstruction>& models,
 // gauge.txt beside the model: whether +Z is up, whether a unit is a metre, and
 // where on Earth (0,0,0) is. Plain text and not hidden, because it is as much
 // for the user reading the folder as for the viewer that stops guessing an up axis.
-void writeGauge(const fs::path& dir, const ModelGauge& g) {
-    std::ofstream f(dir / "gauge.txt", std::ios::trunc);
-    if (!f) return;
+void writeGauge(const fs::path& dir, const ModelGauge& g,
+                const std::optional<spirula::ImageColor>& point_color) {
+    std::ostringstream f;
+    if (point_color) {
+        f << "point_gamut " << point_color->gamut << "\n";
+        f << "point_linear " << (point_color->linear.value_or(false) ? 1 : 0) << "\n";
+    }
     f << "# What this model's frame means, from spirula sfm.\n";
     f << "oriented " << (g.oriented ? 1 : 0) << "\n";
     f << "metric " << (g.metric ? 1 : 0) << "\n";
     f << "up " << g.up << "\n";
     f << "scale " << g.scale << "\n";
     if (g.scale_sigma > 0) f << "scale_sigma " << g.scale_sigma << "\n";
-    if (!g.origin.ok) return;
-    // 1e-9 degrees is 0.1 mm.
-    char buf[128];
-    std::snprintf(buf, sizeof buf, "origin_lat %.9f\norigin_lon %.9f\n", g.origin.at.lat_deg,
-                  g.origin.at.lon_deg);
-    f << "# x east, y north of this WGS-84 point, in metres\n" << buf;
-    if (g.origin.alt.empty()) return;
-    std::snprintf(buf, sizeof buf, "origin_alt %.3f\n", g.origin.at.alt_m);
-    f << buf << "alt_source " << g.origin.alt << "\n";
+    if (g.origin.ok) {
+        // 1e-9 degrees is 0.1 mm.
+        char buf[128];
+        std::snprintf(buf, sizeof buf, "origin_lat %.9f\norigin_lon %.9f\n",
+                      g.origin.at.lat_deg, g.origin.at.lon_deg);
+        f << "# x east, y north of this WGS-84 point, in metres\n" << buf;
+        if (!g.origin.alt.empty()) {
+            std::snprintf(buf, sizeof buf, "origin_alt %.3f\n", g.origin.at.alt_m);
+            f << buf << "alt_source " << g.origin.alt << "\n";
+        }
+    }
+    const std::string metadata = f.str();
+    const fs::path path = dir / "gauge.txt";
+    if (!spirula::write_file_atomic(path, metadata.data(), metadata.size()))
+        throw std::runtime_error("cannot write model metadata: " + path.string());
 }
 
 // rigs.txt beside a model that used one: each member's cam_from_rig as the
@@ -1165,13 +1183,14 @@ RigTable readRigs(const fs::path& dir, Reconstruction& m) {
 // view graph that is not connected. `sparse/0` has the most 3D points, so a
 // single-model dataset still writes exactly `sparse/0`.
 void writeModels(std::vector<Reconstruction>& models, const fs::path& dir,
-                 bool verbose, const std::vector<ModelGauge>& gauge, const RigTable* rigs) {
+                 bool verbose, const std::vector<ModelGauge>& gauge, const RigTable* rigs,
+                 const std::optional<spirula::ImageColor>& point_color) {
     for (size_t i = 0; i < models.size(); i++) {
         fs::path p = dir / std::to_string(i);
         fs::create_directories(p);
         models[i].updatePointErrors();
         models[i].writeBinary(p.string());
-        if (i < gauge.size()) writeGauge(p, gauge[i]);
+        if (i < gauge.size()) writeGauge(p, gauge[i], point_color);
         writeRigs(p, models[i], rigs);
         if (verbose)
             L::err(Tag::Map, M::map_wrote_model,
@@ -1716,6 +1735,10 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
     lopt.want_color = true;  // sample per-keypoint colors while the image is hot
     lopt.gamut = cfg.image_gamut;
     lopt.is_linear = cfg.image_is_linear;
+    if (!cfg.image_colors.empty()) {
+        lopt.image_colors = &cfg.image_colors;
+        lopt.image_root = fs::path(imagedir);
+    }
     lopt.exposure = cfg.exposure;
     lopt.flip_mask = cfg.flip_mask;
     lopt.mask_segment_only = cfg.mask_segment_only;
@@ -2156,6 +2179,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
     // FlexGlue reads each image's pixels, so it is handed the file behind
     // every feature set.
     FlexGlueMatchOptions fgopt = cfg.flexglue;
+    fgopt.image_colors = &cfg.image_colors;
     if (cfg.matcher == "flexglue") {
         if (fgopt.image_dir.empty() && calib) fgopt.image_dir = calib->image_dir;
         if (fgopt.image_dir.empty() || !fs::is_directory(fgopt.image_dir)) {
@@ -2886,7 +2910,7 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // one camera per frame size is not that.
     const size_t n_cameras = models.empty() ? 0 : models.front().cameras.size();
     splitCamerasBySize(models, feats);
-    writeModels(models, sparsedir, verbose, gauge, &rigs);
+    writeModels(models, sparsedir, verbose, gauge, &rigs, cfg.point_color);
     // In the mapper's frame, not the gauge's: a scorer that aligns by Sim3 reads both alike.
     if (!ast.pre_weld.empty()) {
         resolveImageNames(ast.pre_weld, _imagedir);

@@ -719,6 +719,8 @@ std::string stageSignature(const SfmConfig& cfg, uint32_t cmd,
         out += std::string(name) + "=" + fieldValue(name, valueString(cfg.member)) + "\n";
     SFM_CONFIG_FIELDS(SFM_SIG_FIELD, SFM_SIG_FIELD)
 #undef SFM_SIG_FIELD
+    if ((cmd & CMD_EXTRACT) && !cfg.image_colors.empty())
+        out += "image-colors=" + spirula::write_image_colors(cfg.image_colors) + "\n";
     // Per-group lenses reach the camera setup, and so verification, without
     // being table rows: `--camera-model cam0=opencv-fisheye` and the manifest
     // both land here.

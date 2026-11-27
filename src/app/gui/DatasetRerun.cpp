@@ -101,9 +101,7 @@ void GuiApp::draw_dataset_rerun(const WorkspaceState& prior) {
 // ---------------------------------------------------------------------------
 
 void GuiApp::reset_recon_options() {
-    // The photographs' colour space was read off the files, not chosen, so it
-    // is not one of the options this puts back -- and keeping the intermediate
-    // files is a setting of the program's rather than of this project's.
+    // Keep the source color defaults and the application's intermediate-file preference.
     const std::string gamut = _sfm_job.image_gamut;
     const std::optional<bool> linear = _sfm_job.image_is_linear;
     const bool keep = _sfm_job.keep_intermediate;

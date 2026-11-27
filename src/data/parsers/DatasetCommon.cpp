@@ -2,6 +2,7 @@
 // used by every format parser. Also built into the WebAssembly viewer, so
 // nothing here may reach the engine or the host camera math.
 
+#include "core/ColorSpace.h"
 #include "data/DatasetParser.h"
 #include "data/SourceCamera.h"
 #include "i18n/catalog/Data.h"
@@ -1204,6 +1205,12 @@ void read_gauge(const std::string& dir, ParsedDataset& ds) {
         if (!(in >> key >> value) || key[0] == '#') continue;
         if (key == "oriented") ds.gauge_oriented = value == "1";
         else if (key == "metric") ds.gauge_metric = value == "1";
+        else if (key == "point_gamut") {
+            const auto& gamuts = colorspace::kGamuts;
+            if (std::find(std::begin(gamuts), std::end(gamuts), value) != std::end(gamuts))
+                ds.point_color_gamut = value;
+        } else if (key == "point_linear" && (value == "0" || value == "1"))
+            ds.point_color_is_linear = value == "1";
         else if (key == "origin_lat") lat = number(value, geo.lat_deg);
         else if (key == "origin_lon") lon = number(value, geo.lon_deg);
         else if (key == "origin_alt") alt = number(value, geo.alt_m);

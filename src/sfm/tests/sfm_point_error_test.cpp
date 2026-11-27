@@ -1,7 +1,10 @@
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <vector>
 
 #include "sfm/Pipeline.h"
@@ -57,12 +60,26 @@ static int pointErrorTest(int, char**) {
     std::vector<Reconstruction> models = {std::move(model)};
     models.push_back(models[0]);
     models[1].images[1].points2D[0] = {400, 300};
-    writeModels(models, dir, false, {});
+    for (auto& reconstruction : models)
+        for (auto& [id, sample] : reconstruction.points3D)
+            std::fill_n(sample.rgb, 3, (uint8_t)128);
+    SfmConfig cfg;
+    cfg.point_color = spirula::ImageColor{"Rec.709", true};
+    recolorPoints(models, cfg);
+    writeModels(models, dir, false, {ModelGauge{}, ModelGauge{}}, nullptr, cfg.point_color);
     Reconstruction output = Reconstruction::readBinary((dir / "0").string());
     Reconstruction second = Reconstruction::readBinary((dir / "1").string());
+    std::ifstream gauge(dir / "1" / "gauge.txt");
+    std::string contents((std::istreambuf_iterator<char>(gauge)), {});
+    gauge.close();
     fs::remove_all(dir);
 
     int fails = 0;
+    if (output.points3D.at(1).rgb[0] != 55 || second.points3D.at(1).rgb[0] != 55 ||
+        contents.find("point_gamut Rec.709\npoint_linear 1\n") == std::string::npos) {
+        std::printf("FAIL: point colors and output encoding metadata survive export\n");
+        fails++;
+    }
     auto check = [&](uint64_t id, double expected, const char* label) {
         const double value = output.points3D.at(id).error;
         if (!std::isfinite(value) || std::fabs(value - expected) > 1e-8) {
