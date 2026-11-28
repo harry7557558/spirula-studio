@@ -322,8 +322,11 @@ agree. Only the C++ exists now, so the table said nothing the code does not.
 
 ## TODOs (rough priority)
 
-1. **Validation during training** — decode held-out views on demand with
-   `fetch_one` and compute PSNR/SSIM for early stopping.
+1. ~~Validation during training~~ DONE — periodic `fetch_one` validation
+   (`validation_every`), PSNR/SSIM tracking, patience-based early stopping
+   (`early_stop_patience`, `early_stop_min_delta`), and optional best-checkpoint
+   restoration (`early_stop_restore_best`) via `ValidationTracker` +
+   `engine_val_forward`.
 2. **Resume** — `engine_load_checkpoint` after skeleton setup; config.json
    round-trip.
 3. ~~ImGui native viewport (Phase 2)~~ DONE 2026-07-12 (the GUI, see

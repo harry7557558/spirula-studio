@@ -502,6 +502,11 @@ void engine_resolve_data_error(bool retry);
 // The installed GT remains available to the host-copy functions. Returns face count.
 int engine_eval_forward(int index, std::string primitive, int sh_degree, bool packed);
 
+// Render one held-out validation pass during training, keeping base background
+// and full-Gaussian evaluation without suppression draws or stale step flags.
+int engine_val_forward(int index, std::string primitive, int sh_degree,
+                       bool packed, int pass = 0, int* out_passes = nullptr);
+
 // Same, for ONE image (the GUI's compare view), one pass of its faces as step `cfg`
 // renders it: returns its views, `out_passes` the image's count. `apply_calib_warp`
 // stages the GT the loss reads. Overwrites a step's GT and camera -- BETWEEN steps.

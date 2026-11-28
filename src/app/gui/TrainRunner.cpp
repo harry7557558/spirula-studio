@@ -118,6 +118,11 @@ void TrainRunner::get_metrics(std::vector<MetricPoint>& out) {
     out = _metrics;
 }
 
+TrainRunner::ValStatus TrainRunner::latest_validation() {
+    std::lock_guard<std::mutex> lk(_mu);
+    return _val;
+}
+
 void TrainRunner::join_worker() {
     if (_worker.joinable()) _worker.join();
 }
@@ -187,6 +192,7 @@ void TrainRunner::start_training(const TrainConfig& cfg, const std::string& pres
         _eval = {};
         _latencies.clear();
         _metrics.clear();
+        _val = {};
     }
     _session.reset(new TrainerSession());
     _session->cfg = cfg;
@@ -234,6 +240,16 @@ void TrainRunner::start_training(const TrainConfig& cfg, const std::string& pres
             cb.on_step = [this, metrics_ready = false](const spirula::TrainerProgress& p) mutable {
                 std::lock_guard<std::mutex> lk(_mu);
                 _latest = p;
+                if (p.has_validation) {
+                    _val.has = true;
+                    _val.step = p.step + 1;
+                    _val.psnr = p.val_psnr;
+                    _val.ssim = p.val_ssim;
+                    _val.best_psnr = p.best_val_psnr;
+                    _val.best_step = p.best_val_step;
+                    _val.stale_checks = p.val_stale_checks;
+                    _val.early_stopped = _val.early_stopped || p.early_stopped;
+                }
                 _latencies.push_back(p.step_latency);
                 if (_latencies.size() > 100) _latencies.pop_front();
                 // Scalar readbacks lag one step; the first callback has no metrics yet.

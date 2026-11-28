@@ -164,6 +164,8 @@ inline std::string format_duration(double seconds) {
     return i18n::format_duration(seconds);
 }
 
+struct ValidationMetrics;
+
 struct TrainerProgress {
     int step = 0;              // 0-based step that just finished
     int total_steps = 0;
@@ -172,6 +174,13 @@ struct TrainerProgress {
     double step_latency = 0.0;
     int64_t num_splats = 0;
     std::map<std::string, float> losses;
+    bool  has_validation = false;
+    float val_psnr = 0.0f;
+    float val_ssim = 0.0f;
+    float best_val_psnr = 0.0f;
+    int   best_val_step = 0;
+    int   val_stale_checks = 0;
+    bool  early_stopped = false;
 };
 
 struct EvalProgress {
@@ -271,6 +280,13 @@ public:
     std::atomic<bool> save_on_stop{true};
     std::atomic<bool> render_pending{false};
     std::atomic<int>  cur_step{0};
+    std::atomic<bool>  early_stopped{false};
+    std::atomic<bool>  has_val_metrics{false};
+    std::atomic<float> last_val_psnr{0.0f};
+    std::atomic<float> last_val_ssim{0.0f};
+    std::atomic<float> best_val_psnr{0.0f};
+    std::atomic<float> best_val_ssim{0.0f};
+    std::atomic<int>   best_val_step{0};
 
     // Throws std::runtime_error for features the managed C++ path does not
     // support; logs warnings for approximated ones.
@@ -386,6 +402,13 @@ private:
     bool _diverged_loss_reported = false;
 
     std::future<void> write_checkpoint(int step, bool full, bool periodic);
+    std::future<void> write_checkpoint_to(const std::filesystem::path& dir,
+                                          const std::string& basename,
+                                          int step, bool full, bool async_ok);
+    int restore_checkpoint_from(const std::filesystem::path& src_ckpt,
+                                const std::filesystem::path& adapt_tmp,
+                                bool quiet, bool lock_engine);
+    ValidationMetrics evaluate_validation(int completed_step);
     void prune_checkpoints();
 
     void observe_memory(int step, int64_t splats_ran);

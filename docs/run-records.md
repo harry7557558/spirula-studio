@@ -37,6 +37,7 @@ one step, so a reader never sees half of it.
 | `num_splats` | splats at the last completed step |
 | `device`, `backend` | the GPU's name and `vulkan` or `cuda` |
 | `spirula_version`, `preset`, `data`, `resume`, `log` | the build, the preset, the dataset, the checkpoint resumed from, the log file above |
+| `early_stopped`, `best_validation_step`, `best_validation_psnr`, `best_validation_ssim`, `last_validation_psnr`, `last_validation_ssim` | optional validation summary when `validation_fraction > 0` ran mid-training checks or triggered early stopping |
 
 A run killed outright (power loss, `SIGKILL`) leaves `status: running`. A
 resumed run reuses its folder; the records already in `run.json` move into

@@ -16,6 +16,8 @@
 #include <vector>
 
 
+static int _val_fetched_index = -1;
+
 void engine_setup_data_manager(
     DataManagerConfig         cfg,
     std::vector<int32_t>      camera_models,
@@ -43,6 +45,7 @@ void engine_setup_data_manager(
 {
     // Drop the existing manager first so its scheduler / worker threads are
     // joined before we begin spinning up new ones.
+    _val_fetched_index = -1;
     engine().dm.reset();
     engine().gt_mean_luma.clear();
     engine().visit.num_post = (int32_t)(viewmats.size() / 16);
@@ -576,6 +579,58 @@ int engine_eval_forward(int index, std::string primitive, int sh_degree, bool pa
             "engine_eval_forward: the eval split must be baked with uniform "
             "faces, which is what TrainerCore does");
     return _install_and_forward(b, std::move(primitive), sh_degree, packed);
+}
+
+int engine_val_forward(int index, std::string primitive, int sh_degree,
+                       bool packed, int pass, int* out_passes) {
+    if (!engine().dm)
+        throw std::runtime_error(
+            "engine_val_forward: DataManager not configured -- call "
+            "engine_setup_data_manager(...) first.");
+
+    // Static storage keeps batch host views live across the forward pass while
+    // running sequentially under TrainerSession::engine_mutex.
+    static DecodedBatch b;
+    if (pass <= 0 || _val_fetched_index != index) {
+        engine().dm->fetch_one((int32_t)index, b);
+        _val_fetched_index = index;
+    }
+    const int passes = std::max<int>(1, (int)b.face_passes.size());
+    if (out_passes) *out_passes = passes;
+    pass = std::min(std::max(pass, 0), passes - 1);
+
+    auto& st = engine();
+    struct ValStateGuard {
+        EngineState& s;
+        bool view_active, view_draw, view_base, appearance_allow;
+        float kernel_cut;
+        ~ValStateGuard() {
+            s.background.view_active = view_active;
+            s.background.view_draw = view_draw;
+            s.background.view_base = view_base;
+            s.appearance.allow = appearance_allow;
+            s.fwd.kernel_cut = kernel_cut;
+        }
+    } guard{st, st.background.view_active, st.background.view_draw,
+            st.background.view_base, st.appearance.allow, st.fwd.kernel_cut};
+
+    st.background.view_active = true;
+    st.background.view_draw = false;
+    st.background.view_base = true;
+    st.appearance.allow = true;
+    st.fwd.kernel_cut = 0.0f;
+    st.fwd.skip_depth_pending = true;
+    st.fwd.score_pending = false;
+    st.fwd.image_fmt_pending = PixelFormat::F32;
+    st.ppisp.forward_pending = false;
+    st.ppisp.forward_pending_after_encode = false;
+    st.background.match_luma_pending = false;
+    st.fwd.tile_active = DeviceVector<int32_t>();
+
+    _install_batch(b, /*with_geometry=*/false, true, pass);
+    forward_3dgs(std::move(primitive), sh_degree, packed,
+                 /*output_median=*/false, 0);
+    return _batch_views(b, pass);
 }
 
 int engine_preview_forward(int index, std::string primitive, int sh_degree,

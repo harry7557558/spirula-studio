@@ -2293,6 +2293,36 @@ SS_MSG(status_metrics,
     RU("сплатов: {0}   psnr: {1}   ssim: {2}   потери: {3}"),
     TR("splat: {0}   psnr: {1}   ssim: {2}   kayıp: {3}"));
 
+SS_MSG(status_val_metrics,
+    EN("val psnr: {0} dB   val ssim: {1}   best: {2} dB (step {3})"),
+    JA("検証 psnr: {0} dB   検証 ssim: {1}   最良: {2} dB (ステップ {3})"),
+    ZH_HANS("验证 psnr: {0} dB   验证 ssim: {1}   最佳: {2} dB (步 {3})"),
+    ZH_HANT("驗證 psnr: {0} dB   驗證 ssim: {1}   最佳: {2} dB (步 {3})"),
+    KO("검증 psnr: {0} dB   검증 ssim: {1}   최고: {2} dB (스텝 {3})"),
+    DE("Val-PSNR: {0} dB   Val-SSIM: {1}   Bestwert: {2} dB (Schritt {3})"),
+    FR("psnr val : {0} dB   ssim val : {1}   meilleur : {2} dB (étape {3})"),
+    ES("psnr val: {0} dB   ssim val: {1}   mejor: {2} dB (paso {3})"),
+    PT("psnr val: {0} dB   ssim val: {1}   melhor: {2} dB (passo {3})"),
+    IT("psnr val: {0} dB   ssim val: {1}   migliore: {2} dB (passo {3})"),
+    NL("val psnr: {0} dB   val ssim: {1}   beste: {2} dB (stap {3})"),
+    RU("пров. psnr: {0} дБ   пров. ssim: {1}   лучший: {2} дБ (шаг {3})"),
+    TR("doğr. psnr: {0} dB   doğr. ssim: {1}   en iyi: {2} dB (adım {3})"));
+
+SS_MSG(status_early_stopped,
+    EN("Early stop -- step: {0}   best validation step: {1}"),
+    JA("早期終了 -- ステップ: {0}   最良検証ステップ: {1}"),
+    ZH_HANS("早停 —— 步数：{0}   最佳验证步数：{1}"),
+    ZH_HANT("早停 —— 步數：{0}   最佳驗證步數：{1}"),
+    KO("조기 종료 -- 스텝: {0}   최고 검증 스텝: {1}"),
+    DE("Frühstopp -- Schritt: {0}   bester Validierungsschritt: {1}"),
+    FR("Arrêt anticipé -- étape : {0}   meilleure validation : {1}"),
+    ES("Parada temprana -- paso: {0}   mejor validación: {1}"),
+    PT("Parada antecipada -- passo: {0}   melhor validação: {1}"),
+    IT("Stop anticipato -- passo: {0}   migliore validazione: {1}"),
+    NL("Vroegtijdig gestopt -- stap: {0}   beste validatiestap: {1}"),
+    RU("Ранняя остановка -- шаг: {0}   лучший шаг проверки: {1}"),
+    TR("Erken durdurma -- adım: {0}   en iyi doğrulama adımı: {1}"));
+
 SS_MSG(vram_help,
     EN("GPU memory (GiB): used by this process / total in use system-wide / "
        "device capacity. '?' means the backend could not query that value."),
