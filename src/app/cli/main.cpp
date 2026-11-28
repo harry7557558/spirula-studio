@@ -567,7 +567,7 @@ int spirula_train_main(int argc, char** argv) {
         // ---- Train loop ------------------------------------------------------
         TrainerCallbacks cb;
         cb.on_step = [&](const TrainerProgress& p) {
-            if (p.step % 100 == 0 || p.step == p.total_steps - 1) {
+            if (p.step % 100 == 0 || p.step == p.total_steps - 1 || p.early_stopped) {
                 // step + 1 is steps completed, as in the GUI. Both numbers
                 // are padded here, not by the message, so they keep their
                 // column while the words around them change length.
@@ -621,7 +621,7 @@ int spirula_train_main(int argc, char** argv) {
         }
         // Held-out eval. Replaces the engine's DataManager, so nothing may
         // train afterwards -- and the viewer, which only reads splats, is
-        // unaffected. TODO: early stopping on the validation split.
+        // unaffected.
         session.eval();
         cli::run_finish_command(finish_command,
                                 format(tmsg::finish_cmd_trained,

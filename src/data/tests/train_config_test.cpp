@@ -227,6 +227,53 @@ static void step_config_loss_map_gating() {
           "disabled refinement skips loss map and world-grad score");
 }
 
+static void validation_and_early_stop_options() {
+    TrainConfig cfg;
+    check(cfg.validation_fraction == 0.0f && cfg.validation_every == 500 &&
+              cfg.early_stop_patience == 5 && cfg.early_stop_min_delta == 0.01f &&
+              cfg.early_stop_restore_best,
+          "validation and early stopping defaults match expected values");
+
+    train_config_from_json(json_parse(R"({
+        "validation_fraction": 0.125,
+        "validation_every": 250,
+        "early_stop_patience": 3,
+        "early_stop_min_delta": 0.05,
+        "early_stop_restore_best": false
+    })"), cfg);
+    check(spirula::train_config_error(cfg).empty(), "valid validation config accepted");
+    check(cfg.validation_every == 250 && cfg.early_stop_patience == 3 &&
+              !cfg.early_stop_restore_best,
+          "validation settings survive JSON load");
+
+    cfg.validation_every = 0;
+    cfg.early_stop_patience = 0;
+    cfg.early_stop_min_delta = 0.0f;
+    check(spirula::train_config_error(cfg).empty(), "zero disable thresholds accepted");
+
+    cfg.validation_fraction = -0.1f;
+    check(spirula::train_config_error(cfg).find("--validation-fraction") != std::string::npos,
+          "negative validation_fraction rejected");
+    cfg.validation_fraction = 1.0f;
+    check(spirula::train_config_error(cfg).find("--validation-fraction") != std::string::npos,
+          "validation_fraction >= 1 rejected");
+    cfg.validation_fraction = 0.1f;
+
+    cfg.validation_every = -1;
+    check(spirula::train_config_error(cfg).find("--validation-every") != std::string::npos,
+          "negative validation_every rejected");
+    cfg.validation_every = 500;
+
+    cfg.early_stop_patience = -1;
+    check(spirula::train_config_error(cfg).find("--early-stop-patience") != std::string::npos,
+          "negative early_stop_patience rejected");
+    cfg.early_stop_patience = 5;
+
+    cfg.early_stop_min_delta = -0.01f;
+    check(spirula::train_config_error(cfg).find("--early-stop-min-delta") != std::string::npos,
+          "negative early_stop_min_delta rejected");
+}
+
 int main() {
     presets();
     background_options();
@@ -235,6 +282,7 @@ int main() {
     background_export_height();
     mask_mode_resolution();
     step_config_loss_map_gating();
+    validation_and_early_stop_options();
     if (failures) return 1;
     std::puts("train_config_test: OK");
     return 0;

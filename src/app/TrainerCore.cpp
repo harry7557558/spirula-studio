@@ -1,6 +1,7 @@
 // TrainerCore.cpp -- see TrainerCore.h.
 
 #include "app/TrainerCore.h"
+#include "app/EarlyStopping.h"
 #include "checkpoint/RegionCameras.h"
 #include "app/ForecastTrace.h"
 #include "backend/api/BackendRuntime.h"
@@ -1013,6 +1014,20 @@ void TrainerSession::write_run_record(const char* status, const std::string& err
         for (const JsonValue& r : _earlier_runs) json_write(w, r);
         w.end();
     }
+    if (has_val_metrics.load() || early_stopped.load()) {
+        w.field("early_stopped", early_stopped.load());
+        if (has_val_metrics.load()) {
+            const float bpsnr = best_val_psnr.load();
+            const float bssim = best_val_ssim.load();
+            const float lpsnr = last_val_psnr.load();
+            const float lssim = last_val_ssim.load();
+            w.field("best_validation_step", best_val_step.load());
+            if (std::isfinite(bpsnr)) w.field("best_validation_psnr", (double)bpsnr);
+            if (std::isfinite(bssim)) w.field("best_validation_ssim", (double)bssim);
+            if (std::isfinite(lpsnr)) w.field("last_validation_psnr", (double)lpsnr);
+            if (std::isfinite(lssim)) w.field("last_validation_ssim", (double)lssim);
+        }
+    }
     w.end();
     const std::string text = w.str();
     write_file_atomic(out_dir / "run.json", text.data(), text.size());
@@ -1052,6 +1067,23 @@ std::string train_config_error(const TrainConfig& c) {
         return lmsg::bad_quantization_level.get();
     if (c.sb_lobes < 0 || c.sb_lobes > ColorBasis::kMaxSbLobes)
         return lfmt(lmsg::bad_sb_lobes, {ColorBasis::kMaxSbLobes});
+    if (!std::isfinite(c.validation_fraction) || c.validation_fraction < 0.0f ||
+        c.validation_fraction >= 1.0f) {
+        char buf[32];
+        std::snprintf(buf, sizeof buf, "%g", (double)c.validation_fraction);
+        return lfmt(lmsg::err_bad_flag_value, {"--validation-fraction", buf});
+    }
+    if (c.validation_every < 0)
+        return lfmt(lmsg::err_bad_flag_value,
+                    {"--validation-every", std::to_string(c.validation_every)});
+    if (c.early_stop_patience < 0)
+        return lfmt(lmsg::err_bad_flag_value,
+                    {"--early-stop-patience", std::to_string(c.early_stop_patience)});
+    if (!std::isfinite(c.early_stop_min_delta) || c.early_stop_min_delta < 0.0f) {
+        char buf[32];
+        std::snprintf(buf, sizeof buf, "%g", (double)c.early_stop_min_delta);
+        return lfmt(lmsg::err_bad_flag_value, {"--early-stop-min-delta", buf});
+    }
     if (c.densify_learned_score &&
         (c.densify_loss_map_mode == "none" ||
          c.densify_score_blend_world_grad != 0.0f || !(c.densify_score_power > 0.0f) ||
@@ -1165,8 +1197,6 @@ void TrainerSession::check_config() {
         log(lmsg::warn_init_ply_ignored.get());
     else if (!cfg.init_ply.empty())
         find_splat_ply(cfg.init_ply);  // before the dataset is parsed, not after
-    if (cfg.validation_fraction > 0)
-        log(lmsg::warn_validation_unported.get());
     if (cfg.progressive_resolution) resolution_setpoints(cfg);
     if (cfg.progressive_resolution && cfg.progressive_splat_budget)
         progressive::resolve_budget(resolution_setpoints(cfg), cfg.progressive_splat_budget_schedule, 1, cfg.cap_max);
@@ -1385,6 +1415,19 @@ void TrainerSession::load_dataset() {
     log(lfmt(lmsg::parsed_dataset,
              {(long long)ds.num_cameras, (long long)post.n_post,
               (long long)ds.points.num(), scale}));
+    if (cfg.validation_fraction > 0.0f && ds.val_indices.empty()) {
+        log(lmsg::val_split_empty.get());
+    } else if (!ds.val_indices.empty()) {
+        if (cfg.validation_every > 0 && cfg.early_stop_patience > 0)
+            log(lfmt(lmsg::val_schedule_early_stop,
+                     {(long long)ds.val_indices.size(), (long long)cfg.validation_every,
+                      (long long)cfg.early_stop_patience}));
+        else if (cfg.validation_every > 0)
+            log(lfmt(lmsg::val_schedule,
+                     {(long long)ds.val_indices.size(), (long long)cfg.validation_every}));
+        else
+            log(lfmt(lmsg::val_holdout_disabled, {(long long)ds.val_indices.size()}));
+    }
 }
 
 // Pre-flight GPU check. A binary compiled by a newer CUDA toolkit than the
@@ -1892,11 +1935,13 @@ SeedSplats TrainerSession::seed_world(const ColorResolution& color) {
     return s;
 }
 
-// Restore engine state from cfg.resume, adapting the checkpoint's buffers on
-// the host first when its layout differs from the one just built (fewer
-// splats, different SH degree, bilagrid/PPISP added or dropped).
-void TrainerSession::restore_checkpoint() {
-    ckpt::ResolvedCheckpoint r = ckpt::resolve_checkpoint(cfg.resume);
+// Restore engine state from `src_ckpt`, adapting checkpoint buffers on the
+// host when its layout differs from the current engine skeleton.
+int TrainerSession::restore_checkpoint_from(
+    const fs::path& src_ckpt, const fs::path& adapt_tmp,
+    bool quiet, bool lock_engine)
+{
+    ckpt::ResolvedCheckpoint r = ckpt::resolve_checkpoint(src_ckpt);
     ckpt::check_resumable(r.tar_path);
 
     // The target is what the engine ACTUALLY holds, not what the config asks
@@ -1918,27 +1963,40 @@ void TrainerSession::restore_checkpoint() {
         target.calib_warp = std::array<int, 2>{cfg.calib_warp_grid, cfg.calib_warp_parallax ? 4 : 2};
 
     fs::path load_from = r.tar_path;
-    fs::path tmp;
     bool adapted = false;
     {
         JsonValue state = ckpt::read_state_json(r.tar_path);
         if (ckpt::needs_adapt(state, target)) {
-            tmp = out_dir / ".resume_adapt";
-            log(lmsg::ckpt_adapting.get());
-            adapted = ckpt::adapt_checkpoint(r.tar_path, target, tmp);
-            if (adapted) load_from = tmp;
+            if (!quiet) log(lmsg::ckpt_adapting.get());
+            adapted = ckpt::adapt_checkpoint(r.tar_path, target, adapt_tmp);
+            if (adapted) load_from = adapt_tmp;
         }
     }
 
+    int loaded_step = 0;
     try {
-        start_step = engine_load_checkpoint(load_from.string(),cfg.projective_depth_lr > 0);
+        if (lock_engine) {
+            std::lock_guard<std::mutex> lk(engine_mutex);
+            loaded_step = engine_load_checkpoint(
+                load_from.string(), cfg.projective_depth_lr > 0);
+        } else {
+            loaded_step = engine_load_checkpoint(
+                load_from.string(), cfg.projective_depth_lr > 0);
+        }
     } catch (const std::exception& e) {
-        if (adapted) remove_tree(tmp);
+        if (adapted) remove_tree(adapt_tmp);
         throw std::runtime_error(
             std::string("cannot resume from ") + r.tar_path.string() + ": " +
             e.what());
     }
-    if (adapted) remove_tree(tmp);
+    if (adapted) remove_tree(adapt_tmp);
+    return loaded_step;
+}
+
+void TrainerSession::restore_checkpoint() {
+    ckpt::ResolvedCheckpoint r = ckpt::resolve_checkpoint(cfg.resume);
+    start_step = restore_checkpoint_from(
+        r.tar_path, out_dir / ".resume_adapt", /*quiet=*/false, /*lock_engine=*/false);
     int bg_deg = 0;
     if (engine_has_background_sh(&bg_deg)) {
         cfg.background_mode = "skybox";
@@ -1958,6 +2016,28 @@ void TrainerSession::save_checkpoint(int step, bool full) {
     prune_checkpoints();
 }
 
+std::future<void> TrainerSession::write_checkpoint_to(
+    const fs::path& dir, const std::string& basename,
+    int step, bool full, bool async_ok)
+{
+    fs::create_directories(dir);
+    const std::string camera_hash =
+        roi_cameras ? save_region_cameras(dir.string(), *roi_cameras) : "";
+    const std::string root = dir.string();
+    if (async_ok) {
+        const auto vram = _forecast.vram(false);
+        auto save = engine_try_save_checkpoint_async(
+            engine_mutex, vram.peak_mean, root, full, step,
+            cfg.background_export_height, basename, cfg.export_y_up, camera_hash);
+        _perf.checkpoint(step, save.pending.valid(), save.reason);
+        if (save.pending.valid()) return std::move(save.pending);
+    }
+    std::lock_guard<std::mutex> lk(engine_mutex);
+    engine_save_checkpoint(root, full, step, cfg.background_export_height,
+                           basename, cfg.export_y_up, camera_hash);
+    return {};
+}
+
 std::future<void> TrainerSession::write_checkpoint(int step, bool full, bool periodic) {
     const std::string run_name = checkpoint_run_name(out_dir);
     std::string basename = run_name;
@@ -1966,18 +2046,7 @@ std::future<void> TrainerSession::write_checkpoint(int step, bool full, bool per
         std::snprintf(suffix, sizeof suffix, "_step-%09d", step);
         basename += suffix;
     }
-    const std::string camera_hash = roi_cameras ? save_region_cameras(out_dir.string(), *roi_cameras) : "";
-    const std::string root = out_dir.string();
-    if (periodic) {
-        const auto vram = _forecast.vram(false);
-        auto save = engine_try_save_checkpoint_async(engine_mutex, vram.peak_mean,
-            root, full, step, cfg.background_export_height, basename, cfg.export_y_up, camera_hash);
-        _perf.checkpoint(step, save.pending.valid(), save.reason);
-        if (save.pending.valid()) return std::move(save.pending);
-    }
-    std::lock_guard<std::mutex> lk(engine_mutex);
-    engine_save_checkpoint(root, full, step, cfg.background_export_height, basename, cfg.export_y_up, camera_hash);
-    return {};
+    return write_checkpoint_to(out_dir, basename, step, full, periodic);
 }
 
 void TrainerSession::prune_checkpoints() {
@@ -2160,8 +2229,116 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         write_run_record("failed", e.what());
         throw;
     }
-    write_run_record(std::max(cur_step.load(), start_step) < cfg.num_iterations ? "stopped"
-                                                                                 : "completed");
+    write_run_record(
+        !early_stopped.load() && std::max(cur_step.load(), start_step) < cfg.num_iterations
+            ? "stopped" : "completed");
+}
+
+ValidationMetrics TrainerSession::evaluate_validation(int completed_step) {
+    ValidationMetrics vm;
+    vm.step = completed_step;
+    if (ds.val_indices.empty()) return vm;
+
+    const int sh_deg = cfg.sh_degree_warmup_every > 0
+        ? std::min(cfg.sh_degree, std::max(0, completed_step - 1) / cfg.sh_degree_warmup_every)
+        : cfg.sh_degree;
+
+    double psnr_sum = 0.0, ssim_sum = 0.0, l1_sum = 0.0;
+    int finite_psnr_cams = 0, inf_psnr_cams = 0, ssim_cams = 0, valid_cams = 0;
+    std::vector<float> render, gt;
+    std::vector<uint8_t> alpha, mask_buf;
+
+    for (int32_t cam_idx : ds.val_indices) {
+        if (stop_requested.load()) break;
+
+        double cam_psnr = 0.0, cam_ssim = 0.0, cam_l1 = 0.0;
+        int cam_views = 0, cam_fin_psnr = 0, cam_inf_psnr = 0, cam_ssim_views = 0;
+
+        int passes = 1;
+        for (int pass = 0; pass < passes; ++pass) {
+            if (stop_requested.load()) break;
+
+            int views = 0;
+            int64_t H = 0, W = 0;
+            int64_t aB = 0, aH = 0, aW = 0, aC = 0;
+            {
+                std::lock_guard<std::mutex> lk(engine_mutex);
+                views = engine_val_forward(
+                    (int)cam_idx, cfg.primitive, sh_deg, cfg.packed, pass, &passes);
+                if (const char* err = backend::last_error())
+                    throw std::runtime_error(
+                        std::string("GPU backend error during validation: ") + err);
+
+                auto [rB, rH, rW, rC] = engine_get_render_rgb_shape();
+                auto [gB, gH, gW, gC] = engine_get_gt_rgb_shape();
+                if (rB != views || rC != 3 || gB != rB || gH != rH || gW != rW || gC != 3)
+                    throw std::runtime_error("validation render/GT tensor shape mismatch");
+                H = rH; W = rW;
+                const size_t total = (size_t)views * (size_t)H * (size_t)W * 3;
+                render.resize(total);
+                gt.resize(total);
+                TorchTensorView tv_r((uint64_t)render.data(), 4, {rB, rH, rW, 3});
+                TorchTensorView tv_g((uint64_t)gt.data(), 4, {rB, rH, rW, 3});
+                TorchTensorView tv_null{0, 0, {}};
+                engine_copy_render_to_host(tv_r, tv_null, tv_null, tv_null, tv_null);
+                engine_copy_gt_rgb_to_host(tv_g);
+
+                std::tie(aB, aH, aW, aC) = engine_get_gt_alpha_shape();
+                if (aB == rB && aC == 1 && aH > 0 && aW > 0) {
+                    alpha.resize((size_t)aB * (size_t)aH * (size_t)aW);
+                    engine_copy_gt_alpha_to_host(
+                        TorchTensorView{(uint64_t)alpha.data(), 1, {aB, aH, aW, 1}});
+                } else {
+                    aB = 0;
+                    alpha.clear();
+                }
+            }
+
+            const size_t view_px = (size_t)H * (size_t)W * 3;
+            const size_t mask_px = (aB > 0) ? (size_t)aH * (size_t)aW : 0;
+            for (int v = 0; v < views; ++v) {
+                float* pred_v = render.data() + (size_t)v * view_px;
+                const float* gt_v = gt.data() + (size_t)v * view_px;
+                for (size_t k = 0; k < view_px; ++k)
+                    pred_v[k] = std::min(std::max(pred_v[k], 0.0f), 1.0f);
+
+                bool all_masked = false;
+                const uint8_t* view_mask = aB > 0
+                    ? prepare_validation_mask(alpha.data() + (size_t)v * mask_px,
+                                              (int)aH, (int)aW, (int)H, (int)W,
+                                              mask_buf, &all_masked)
+                    : nullptr;
+                if (all_masked) continue;
+
+                cam_l1 += image_l1(pred_v, gt_v, (int64_t)view_px, view_mask, 3);
+                const float psnr = image_psnr(pred_v, gt_v, (int64_t)view_px, view_mask, 3);
+                if (std::isinf(psnr) && psnr > 0.0f) ++cam_inf_psnr;
+                else if (std::isfinite(psnr)) { cam_psnr += psnr; ++cam_fin_psnr; }
+                if (H >= 11 && W >= 11) {
+                    cam_ssim += image_ssim(pred_v, gt_v, (int)H, (int)W, 3, view_mask);
+                    ++cam_ssim_views;
+                }
+                ++cam_views;
+            }
+        }
+
+        if (cam_views > 0) {
+            ++valid_cams;
+            l1_sum += cam_l1 / cam_views;
+            if (cam_fin_psnr > 0) { psnr_sum += cam_psnr / cam_fin_psnr; ++finite_psnr_cams; }
+            else if (cam_inf_psnr > 0) { ++inf_psnr_cams; }
+            if (cam_ssim_views > 0) { ssim_sum += cam_ssim / cam_ssim_views; ++ssim_cams; }
+        }
+    }
+
+    vm.views = valid_cams;
+    if (valid_cams > 0) {
+        vm.l1 = (float)(l1_sum / valid_cams);
+        if (finite_psnr_cams > 0) vm.psnr = (float)(psnr_sum / finite_psnr_cams);
+        else if (inf_psnr_cams > 0) vm.psnr = std::numeric_limits<float>::infinity();
+        vm.ssim = ssim_cams > 0 ? (float)(ssim_sum / ssim_cams) : 0.0f;
+    }
+    return vm;
 }
 
 void TrainerSession::train_steps(const TrainerCallbacks& cb) {
@@ -2195,10 +2372,50 @@ void TrainerSession::train_steps(const TrainerCallbacks& cb) {
     }
 
     _perf.open(out_dir, _perf_dir);
+    early_stopped = false;
+    has_val_metrics = false;
+    last_val_psnr = 0.0f;
+    last_val_ssim = 0.0f;
+    best_val_psnr = 0.0f;
+    best_val_ssim = 0.0f;
+    best_val_step = 0;
+
+    ValidationTracker val_tracker(cfg.early_stop_patience, cfg.early_stop_min_delta);
+    const fs::path best_dir = out_dir / ".best_val";
+    const fs::path best_stage = out_dir / ".best_val_tmp";
+    bool pending_is_best = false, has_best_ckpt = false;
+    int last_val_step = -1;
+    struct BestDirCleanup {
+        fs::path a, b;
+        ~BestDirCleanup() {
+            std::error_code ec;
+            fs::remove_all(a, ec);
+            fs::remove_all(b, ec);
+        }
+    } best_cleanup{best_dir, best_stage};
+
     int step = start_step;
     std::future<void> pending;
     auto reap = [&] {
         if (!pending.valid()) return;
+        const bool was_best = pending_is_best;
+        pending_is_best = false;
+        if (was_best) {
+            try {
+                pending.get();
+                remove_tree(best_dir);
+                fs::rename(best_stage, best_dir);
+                has_best_ckpt = true;
+            } catch (const std::exception& e) {
+                std::error_code ec;
+                fs::remove_all(best_stage, ec);
+                log(lfmt(lmsg::val_best_save_failed, {e.what()}));
+            } catch (...) {
+                std::error_code ec;
+                fs::remove_all(best_stage, ec);
+            }
+            return;
+        }
         pending.get();
         prune_checkpoints();
     };
@@ -2389,6 +2606,74 @@ void TrainerSession::train_steps(const TrainerCallbacks& cb) {
                 v.commit_limited ? " (commit)" : "", v.p_oom);
         }
 
+        const int completed = step + 1;
+        ValidationMetrics val_m;
+        bool has_val_step = false;
+        const bool val_due = !ds.val_indices.empty() && cfg.validation_every > 0 &&
+            !stop_requested.load() &&
+            ((completed % cfg.validation_every == 0) ||
+             (completed == cfg.num_iterations && last_val_step > 0 && last_val_step != completed));
+        if (val_due) {
+            val_m = evaluate_validation(completed);
+            if (!stop_requested.load() && val_m.views > 0) {
+                has_val_step = true;
+                last_val_step = completed;
+                const int div = cfg.progressive_resolution
+                    ? std::max(1, engine_train_resolution_divisor()) : 1;
+                const ValidationUpdate vu =
+                    val_tracker.observe(completed, val_m.psnr, val_m.ssim, div);
+                has_val_metrics = true;
+                last_val_psnr = val_m.psnr;
+                last_val_ssim = val_m.ssim;
+                if (val_tracker.has_best) {
+                    best_val_psnr = val_tracker.best_psnr;
+                    best_val_ssim = val_tracker.best_ssim;
+                    best_val_step = val_tracker.best_step;
+                }
+                if (std::isfinite(val_m.psnr)) losses["val_psnr"] = val_m.psnr;
+                losses["val_ssim"] = val_m.ssim;
+
+                char vp[32], vs[32], bp[32];
+                std::snprintf(vp, sizeof vp, "%.2f", val_m.psnr);
+                std::snprintf(vs, sizeof vs, "%.4f", val_m.ssim);
+                if (!vu.tracked) {
+                    log(lfmt(lmsg::val_step_score_coarse,
+                             {(long long)completed, vp, vs}));
+                } else {
+                    std::snprintf(bp, sizeof bp, "%.2f", val_tracker.best_psnr);
+                    log(lfmt(lmsg::val_step_score,
+                             {(long long)completed, vp, vs, bp,
+                              (long long)val_tracker.best_step,
+                              (long long)val_tracker.stale_checks}));
+                }
+                if (vu.improved && cfg.early_stop_restore_best && cfg.steps_per_save != 0) {
+                    try {
+                        reap();
+                        remove_tree(best_stage);
+                        pending = write_checkpoint_to(best_stage, "best", completed, true, true);
+                        if (pending.valid()) {
+                            pending_is_best = true;
+                        } else {
+                            remove_tree(best_dir);
+                            fs::rename(best_stage, best_dir);
+                            has_best_ckpt = true;
+                        }
+                    } catch (const std::exception& e) {
+                        std::error_code ec;
+                        fs::remove_all(best_stage, ec);
+                        log(lfmt(lmsg::val_best_save_failed, {e.what()}));
+                    }
+                }
+                if (vu.should_stop) {
+                    early_stopped = true;
+                    std::snprintf(bp, sizeof bp, "%.2f", val_tracker.best_psnr);
+                    log(lfmt(lmsg::val_early_stop,
+                             {(long long)completed, (long long)val_tracker.stale_checks,
+                              bp, (long long)val_tracker.best_step}));
+                }
+            }
+        }
+
         if (cb.on_step) {
             TrainerProgress p;
             p.step = step;
@@ -2396,7 +2681,20 @@ void TrainerSession::train_steps(const TrainerCallbacks& cb) {
             p.step_latency = latency;
             p.num_splats = engine_get_cur_num_splats();
             p.losses = std::move(losses);
+            if (has_val_step) {
+                p.has_validation = true;
+                p.val_psnr = val_m.psnr;
+                p.val_ssim = val_m.ssim;
+                p.best_val_psnr = val_tracker.has_best ? val_tracker.best_psnr : val_m.psnr;
+                p.best_val_step = val_tracker.has_best ? val_tracker.best_step : completed;
+                p.val_stale_checks = val_tracker.stale_checks;
+                p.early_stopped = early_stopped.load();
+            }
             cb.on_step(p);
+        }
+        if (early_stopped.load()) {
+            step = completed;
+            break;
         }
     } catch (...) {
         try {
@@ -2425,6 +2723,18 @@ void TrainerSession::train_steps(const TrainerCallbacks& cb) {
     }
     engine_profile_capture_vram();
 
+    if ((early_stopped.load() || !stop_requested.load()) &&
+        cfg.early_stop_restore_best && has_best_ckpt &&
+        val_tracker.has_best && val_tracker.best_step < step &&
+        fs::is_regular_file(best_dir / "best.tar")) {
+        restore_checkpoint_from(best_dir / "best.tar", out_dir / ".best_adapt",
+                                /*quiet=*/true, /*lock_engine=*/true);
+        _live_splats = engine_get_cur_num_splats();
+        char bp[32];
+        std::snprintf(bp, sizeof bp, "%.2f", val_tracker.best_psnr);
+        log(lfmt(lmsg::val_restored_best, {(long long)val_tracker.best_step, bp}));
+    }
+
     if (cfg.steps_per_save != 0 && save_on_stop.load()) {
         // A run stopped short is one to continue later, so its save must be resumable.
         save_checkpoint(step, cfg.save_full_checkpoint || step < cfg.num_iterations);
@@ -2449,14 +2759,42 @@ std::string TrainerSession::progress_json() {
     double eta = eta_seconds();
     const VramForecast v = _forecast.vram(false);
     static const char* const kRisk[] = {"unknown", "low", "medium", "high"};
-    char tail[160];
-    if (v.projected)
-        std::snprintf(tail, sizeof tail,
+    std::string tail;
+    tail.reserve(320);
+    if (v.projected) {
+        char vb[160];
+        std::snprintf(vb, sizeof vb,
             ", \"vram_peak_bytes\": %.0f, \"vram_peak_sigma\": %.0f, "
-            "\"oom_probability\": %.4f, \"oom_risk\": \"%s\"}",
+            "\"oom_probability\": %.4f, \"oom_risk\": \"%s\"",
             v.peak_mean, v.peak_sigma, v.p_oom, kRisk[(int)v.risk]);
-    else
-        std::snprintf(tail, sizeof tail, ", \"oom_risk\": \"unknown\"}");
+        tail += vb;
+    } else {
+        tail += ", \"oom_risk\": \"unknown\"";
+    }
+    if (has_val_metrics.load()) {
+        const float vpsnr = last_val_psnr.load();
+        const float vssim = last_val_ssim.load();
+        const float bpsnr = best_val_psnr.load();
+        char vb[128];
+        std::snprintf(vb, sizeof vb, ", \"best_val_step\": %d, \"early_stopped\": %s",
+                      best_val_step.load(), early_stopped.load() ? "true" : "false");
+        tail += vb;
+        if (std::isfinite(vpsnr)) {
+            std::snprintf(vb, sizeof vb, ", \"val_psnr\": %.4f", vpsnr);
+            tail += vb;
+        }
+        if (std::isfinite(vssim)) {
+            std::snprintf(vb, sizeof vb, ", \"val_ssim\": %.4f", vssim);
+            tail += vb;
+        }
+        if (std::isfinite(bpsnr)) {
+            std::snprintf(vb, sizeof vb, ", \"best_val_psnr\": %.4f", bpsnr);
+            tail += vb;
+        }
+    } else if (early_stopped.load()) {
+        tail += ", \"early_stopped\": true";
+    }
+    tail += '}';
     char buf[256];
     if (eta >= 0.0) {
         std::snprintf(buf, sizeof buf,

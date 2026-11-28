@@ -512,6 +512,15 @@ add_test(NAME subprocess_lifecycle_test COMMAND subprocess_lifecycle_test)
 set_tests_properties(subprocess_lifecycle_test PROPERTIES
     LABELS "cpu;headless" TIMEOUT 600)
 
+add_executable(early_stopping_test ${SS_SRC}/app/tests/early_stopping_test.cpp)
+target_include_directories(early_stopping_test PRIVATE ${SS_SRC})
+set_property(TARGET early_stopping_test PROPERTY CXX_STANDARD 17)
+target_compile_options(early_stopping_test PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
+add_test(NAME early_stopping_test COMMAND early_stopping_test)
+set_tests_properties(early_stopping_test PROPERTIES
+    LABELS "cpu;headless" TIMEOUT 15)
+
 if(NOT WIN32)
     add_executable(http_server_test
         ${SS_SRC}/app/tests/http_server_test.cpp

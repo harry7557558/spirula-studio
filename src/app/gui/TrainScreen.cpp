@@ -856,6 +856,16 @@ void GuiApp::draw_metrics() {
     std::snprintf(loss, sizeof loss, "%.4f", last.rgb_loss);
     ui::TextWrapped(msg::status_metrics,
                     {format_count(last.num_splats), psnr, ssim, loss});
+    const TrainRunner::ValStatus val = _runner.latest_validation();
+    if (val.has) {
+        char vp[32], vs[32], bp[32];
+        std::snprintf(vp, sizeof vp, "%.2f", val.psnr);
+        std::snprintf(vs, sizeof vs, "%.3f", val.ssim);
+        std::snprintf(bp, sizeof bp, "%.2f", val.best_psnr);
+        ui::TextWrapped(msg::status_val_metrics, {vp, vs, bp, val.best_step});
+        if (val.early_stopped)
+            ui::TextDisabled(msg::status_early_stopped, {val.step, val.best_step});
+    }
 }
 
 // Active training time excludes pauses, including when used as the clock's time base.

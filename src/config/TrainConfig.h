@@ -167,6 +167,10 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(int, eval_interval, 8, "dataset", "advanced", "")                      \
     X(float, train_split_fraction, 0.9f, "dataset", "advanced", "")          \
     X(float, validation_fraction, 0.0f, "dataset", "expert", "")             \
+    X(int, validation_every, 500, "dataset", "expert", "")                   \
+    X(int, early_stop_patience, 5, "dataset", "expert", "")                  \
+    X(float, early_stop_min_delta, 0.01f, "dataset", "expert", "")           \
+    X(bool, early_stop_restore_best, true, "dataset", "expert", "")          \
     X(bool, warp_to_pinhole, false, "dataset", "advanced", "")               \
     X(bool, warp_spherical_to_pinhole, true, "dataset", "advanced", "")      \
     X(std::string, warp_face_fit, "uniform", "dataset", "advanced", "uniform|per-face") \

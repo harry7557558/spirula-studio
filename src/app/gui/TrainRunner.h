@@ -47,6 +47,17 @@ public:
         float num_splats = 0;
     };
 
+    struct ValStatus {
+        bool has = false;
+        bool early_stopped = false;
+        int step = 0;
+        int best_step = 0;
+        int stale_checks = 0;
+        float psnr = 0.0f;
+        float ssim = 0.0f;
+        float best_psnr = 0.0f;
+    };
+
     ~TrainRunner() { shutdown(); }
 
     // Async dataset preview (parse only; no GPU). Replaces the session.
@@ -100,6 +111,7 @@ public:
     // exists, 0 until the loop starts, frozen once it ends.
     double elapsed_seconds();
     void get_metrics(std::vector<MetricPoint>& out);
+    ValStatus latest_validation();
     std::vector<std::string> drain_log();
 
     // While start_training() downloads an LPIPS checkpoint: the line to show
@@ -142,6 +154,7 @@ private:
     spirula::EvalProgress _eval;
     std::deque<double> _latencies;
     std::vector<MetricPoint> _metrics;
+    ValStatus _val;
     std::vector<std::string> _log;
     std::string _fetch_line;
     float _fetch_progress = -1.0f;

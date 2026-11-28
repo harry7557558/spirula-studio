@@ -704,7 +704,9 @@ own up.
 - `filename` — basename contains `train` / `eval`.
 
 `validation_fraction` additionally holds out a linspace-spread slice for
-validation. Frames whose camera position exceeds `outlier_threshold` MADs from
+periodic validation PSNR/SSIM checks (`validation_every`) and optional patience-based
+early stopping (`early_stop_patience`, `early_stop_min_delta`, `early_stop_restore_best`).
+Frames whose camera position exceeds `outlier_threshold` MADs from
 the geometric median of all camera positions are rejected (default: off).
 
 `require_image_files=false` keeps frames whose image file is missing — the
