@@ -20,12 +20,7 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_height,
     // outputs
     uint32_t *__restrict__ mask_bits,
-    int32_t *__restrict__ block_counts,
-    const uint8_t* __restrict__ sh_value_packed,
-    const float2* __restrict__ sh_value_bounds,
-    const uint32_t num_sh_buffer,
-    const int sh_value_bits,
-    const int64_t sh_bounds_stride
+    int32_t *__restrict__ block_counts
 );
 
 template void projection_packed_mask_kernel_wrapper<
@@ -44,12 +39,7 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_height,
     // outputs
     uint32_t *__restrict__ mask_bits,
-    int32_t *__restrict__ block_counts,
-    const uint8_t* __restrict__ sh_value_packed,
-    const float2* __restrict__ sh_value_bounds,
-    const uint32_t num_sh_buffer,
-    const int sh_value_bits,
-    const int64_t sh_bounds_stride
+    int32_t *__restrict__ block_counts
 );
 
 template void projection_packed_mask_kernel_wrapper<
@@ -68,12 +58,7 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_height,
     // outputs
     uint32_t *__restrict__ mask_bits,
-    int32_t *__restrict__ block_counts,
-    const uint8_t* __restrict__ sh_value_packed,
-    const float2* __restrict__ sh_value_bounds,
-    const uint32_t num_sh_buffer,
-    const int sh_value_bits,
-    const int64_t sh_bounds_stride
+    int32_t *__restrict__ block_counts
 );
 
 template void projection_packed_mask_kernel_wrapper<
@@ -92,12 +77,7 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_height,
     // outputs
     uint32_t *__restrict__ mask_bits,
-    int32_t *__restrict__ block_counts,
-    const uint8_t* __restrict__ sh_value_packed,
-    const float2* __restrict__ sh_value_bounds,
-    const uint32_t num_sh_buffer,
-    const int sh_value_bits,
-    const int64_t sh_bounds_stride
+    int32_t *__restrict__ block_counts
 );
 
 template void projection_packed_mask_kernel_wrapper<
@@ -116,12 +96,7 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_height,
     // outputs
     uint32_t *__restrict__ mask_bits,
-    int32_t *__restrict__ block_counts,
-    const uint8_t* __restrict__ sh_value_packed,
-    const float2* __restrict__ sh_value_bounds,
-    const uint32_t num_sh_buffer,
-    const int sh_value_bits,
-    const int64_t sh_bounds_stride
+    int32_t *__restrict__ block_counts
 );
 
 template void projection_packed_mask_kernel_wrapper<
@@ -140,12 +115,7 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_height,
     // outputs
     uint32_t *__restrict__ mask_bits,
-    int32_t *__restrict__ block_counts,
-    const uint8_t* __restrict__ sh_value_packed,
-    const float2* __restrict__ sh_value_bounds,
-    const uint32_t num_sh_buffer,
-    const int sh_value_bits,
-    const int64_t sh_bounds_stride
+    int32_t *__restrict__ block_counts
 );
 
 template void projection_packed_mask_kernel_wrapper<
@@ -164,12 +134,7 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_height,
     // outputs
     uint32_t *__restrict__ mask_bits,
-    int32_t *__restrict__ block_counts,
-    const uint8_t* __restrict__ sh_value_packed,
-    const float2* __restrict__ sh_value_bounds,
-    const uint32_t num_sh_buffer,
-    const int sh_value_bits,
-    const int64_t sh_bounds_stride
+    int32_t *__restrict__ block_counts
 );
 
 template void projection_packed_mask_kernel_wrapper<
@@ -188,12 +153,7 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_height,
     // outputs
     uint32_t *__restrict__ mask_bits,
-    int32_t *__restrict__ block_counts,
-    const uint8_t* __restrict__ sh_value_packed,
-    const float2* __restrict__ sh_value_bounds,
-    const uint32_t num_sh_buffer,
-    const int sh_value_bits,
-    const int64_t sh_bounds_stride
+    int32_t *__restrict__ block_counts
 );
 
 template void projection_packed_mask_kernel_wrapper<
@@ -212,10 +172,5 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_height,
     // outputs
     uint32_t *__restrict__ mask_bits,
-    int32_t *__restrict__ block_counts,
-    const uint8_t* __restrict__ sh_value_packed,
-    const float2* __restrict__ sh_value_bounds,
-    const uint32_t num_sh_buffer,
-    const int sh_value_bits,
-    const int64_t sh_bounds_stride
+    int32_t *__restrict__ block_counts
 );

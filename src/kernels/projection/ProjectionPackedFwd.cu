@@ -29,13 +29,20 @@ void projection_packed_mask_kernel_wrapper(
     const uint32_t image_height,
     // outputs
     uint32_t *__restrict__ mask_bits,
-    int32_t *__restrict__ block_counts,
-    const uint8_t* __restrict__ sh_value_packed,
-    const float2* __restrict__ sh_value_bounds,
-    const uint32_t num_sh_buffer,
-    const int sh_value_bits,
-    const int64_t sh_bounds_stride
+    int32_t *__restrict__ block_counts
 );
+
+// Mask pass only tests AABB visibility, so all SH degrees share degree 0.
+template<typename SplatPrimitive>
+struct PackedMaskPrimitive { using Type = SplatPrimitive; };
+template<int sh, bool aa>
+struct PackedMaskPrimitive<_Base3DGS<sh, aa>> { using Type = _Base3DGS<0, aa>; };
+template<int sh, bool surfel, bool normal>
+struct PackedMaskPrimitive<Eval3DPrimitive<sh, surfel, normal>> {
+    using Type = Eval3DPrimitive<0, surfel, false>;
+};
+template<int sh>
+struct PackedMaskPrimitive<Vanilla2DGS<sh>> { using Type = Vanilla2DGS<0>; };
 
 template<typename SplatPrimitive, CameraModelType camera_model,
          CameraDistortionType distortion>
@@ -91,6 +98,8 @@ inline std::tuple<
     const int sh_value_bits,
     const int64_t sh_bounds_stride
 ) {
+    using MaskPrimitive = typename PackedMaskPrimitive<SplatPrimitive>::Type;
+    typename MaskPrimitive::WorldBuffer mask_world(in_splats);
     typename SplatPrimitive::WorldBuffer splats_world(in_splats);
 
     // Visibility bitmask: one bit per (camera, gaussian) pair plus one
@@ -105,16 +114,14 @@ inline std::tuple<
 
     #define _LAUNCH_ARGS ( \
             (cudaStream_t)0, C, N, \
-            splats_world, viewmats_ptr, intrins_ptr, dist_coeffs, \
+            mask_world, viewmats_ptr, intrins_ptr, dist_coeffs, \
             image_width, image_height, \
-            mask_bits.data_ptr(), block_counts.data_ptr(), \
-            sh_value_packed, sh_value_bounds, num_sh_buffer, sh_value_bits, \
-            sh_bounds_stride \
+            mask_bits.data_ptr(), block_counts.data_ptr() \
         )
 
     #define _DISPATCH(M, D) \
         if (camera_model == CameraModelType::M && distortion == CameraDistortionType::D) \
-            projection_packed_mask_kernel_wrapper<SplatPrimitive, \
+            projection_packed_mask_kernel_wrapper<MaskPrimitive, \
                 CameraModelType::M, CameraDistortionType::D> _LAUNCH_ARGS; else
     SS_FOR_EACH_FORWARD_CAMERA_VARIANT(_DISPATCH)
         throw std::runtime_error("Unsupported camera model / distortion tier");

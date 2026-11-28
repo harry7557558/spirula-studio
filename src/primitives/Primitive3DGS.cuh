@@ -36,6 +36,32 @@ struct _Base3DGS : public _BasePrimitive3DGS<sh_degree> {
             return *this;
         }
 
+        template<CameraModelType camera_model, CameraDistortionType distortion>
+        inline __device__ void project_geom(
+            ProjCameraT<distortion> cam,
+            typename _Base3DGS<sh_degree, antialiased>::Screen& screen,
+            float4& aabb, float& sorting_depth, float& radius
+        ) const {
+            Slang3DGSProj<camera_model, distortion>::fwd_2d(
+                antialiased,
+                this->mean, this->quat, this->scale, this->opacity,
+                cam.R, cam.t, cam.fx, cam.fy, cam.cx, cam.cy,
+                cam.dist_coeffs.v,
+                cam.width, cam.height,
+                &aabb, &sorting_depth, &radius,
+                &screen.xy, &screen.depth, &screen.conic, &screen.opac
+            );
+        }
+
+        template<CameraModelType camera_model, CameraDistortionType distortion>
+        inline __device__ float4 project_aabb(ProjCameraT<distortion> cam) const {
+            typename _Base3DGS<sh_degree, antialiased>::Screen screen;
+            float4 aabb;
+            float sorting_depth, radius;
+            project_geom<camera_model, distortion>(cam, screen, aabb, sorting_depth, radius);
+            return aabb;
+        }
+
         // SH value-quantization parameters. When VALUE_BITS == 32 these are
         // unused (defaults pass through) and the legacy fp32 path is taken:
         // SH coefs are read from `this->features_sh` via the existing
@@ -62,15 +88,7 @@ struct _Base3DGS : public _BasePrimitive3DGS<sh_degree> {
             int64_t  sh_bounds_stride = 256,
             int64_t  sh_pair_pitch = 0
         ) {
-            Slang3DGSProj<camera_model, distortion>::fwd_2d(
-                antialiased,
-                this->mean, this->quat, this->scale, this->opacity,
-                cam.R, cam.t, cam.fx, cam.fy, cam.cx, cam.cy,
-                cam.dist_coeffs.v,
-                cam.width, cam.height,
-                &aabb, &sorting_depth, &radius,
-                &screen.xy, &screen.depth, &screen.conic, &screen.opac
-            );
+            project_geom<camera_model, distortion>(cam, screen, aabb, sorting_depth, radius);
             if (aabb.z > aabb.x && aabb.w > aabb.y) {
                 if constexpr (VALUE_BITS == 32) {
                     // screen.rgb = SlangHarmonics::sh_coeffs_to_color(

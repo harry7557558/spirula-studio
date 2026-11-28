@@ -346,8 +346,7 @@ bool run_packed_mask<let cam: CameraModelType, D : ICameraDistortion,
     float depth;
     float3 conic;
     float opac;
-    // The mask only consumes the AABB; SH evaluation is skipped (the CUDA
-    // mask kernel computes and discards it).
+    // The mask only consumes the AABB; SH evaluation is skipped.
     projection_3dgs<cam, D, false, eval3d, surfel>(
         !eval3d && kAntialiased != 0,
         mean, quat, scale, in_opacity, R, t,
