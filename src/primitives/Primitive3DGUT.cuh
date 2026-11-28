@@ -46,6 +46,32 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
             return *this;
         }
 
+        template<CameraModelType camera_model, CameraDistortionType distortion>
+        inline __device__ void project_geom(
+            ProjCameraT<distortion> cam,
+            Screen& proj, float4& aabb, float& sorting_depth, float& radius
+        ) const {
+            float2 xy;
+            float depth;
+            Slang3DGSProj<camera_model, distortion>::template fwd_eval3d<surfel>(
+                false,
+                this->mean, this->quat, this->scale, this->opacity,
+                cam.R, cam.t, cam.fx, cam.fy, cam.cx, cam.cy,
+                cam.dist_coeffs.v,
+                cam.width, cam.height,
+                &aabb, &sorting_depth, &radius, &xy, &depth, &proj.scale, &proj.opacity
+            );
+        }
+
+        template<CameraModelType camera_model, CameraDistortionType distortion>
+        inline __device__ float4 project_aabb(ProjCameraT<distortion> cam) const {
+            Screen proj;
+            float4 aabb;
+            float sorting_depth, radius;
+            project_geom<camera_model, distortion>(cam, proj, aabb, sorting_depth, radius);
+            return aabb;
+        }
+
         // See Primitive3DGS::project() for VALUE_BITS semantics. Identical
         // contract; the 3dgut path uses a different projection geometry but
         // shares the SH eval pipeline.
@@ -60,16 +86,7 @@ struct Eval3DPrimitive : public _BasePrimitive3DGUT<sh_degree> {
             int64_t  sh_bounds_stride = 256,
             int64_t  sh_pair_pitch = 0
         ) {
-            float2 xy;
-            float depth;
-            Slang3DGSProj<camera_model, distortion>::template fwd_eval3d<surfel>(
-                false,
-                this->mean, this->quat, this->scale, this->opacity,
-                cam.R, cam.t, cam.fx, cam.fy, cam.cx, cam.cy,
-                cam.dist_coeffs.v,
-                cam.width, cam.height,
-                &aabb, &sorting_depth, &radius, &xy, &depth, &proj.scale, &proj.opacity
-            );
+            project_geom<camera_model, distortion>(cam, proj, aabb, sorting_depth, radius);
             if (aabb.z > aabb.x && aabb.w > aabb.y) {
                 if constexpr (VALUE_BITS == 32) {
                     if constexpr (sh_degree == 0) proj.rgb = SlangHarmonics::sh0_to_color

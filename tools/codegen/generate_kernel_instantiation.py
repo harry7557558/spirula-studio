@@ -237,35 +237,39 @@ def generate_kernel_instantiation(
 
 
 def generate_ProjectionFwd():
-    for filename, kernel_filename, prefix, wrapper_name in [
-        ("kernels/projection/ProjectionFwd.cu", "kernels/projection/ProjectionFwd_kernel.cuh", "ProjectionFwd", "projection_fused_fwd_kernel_wrapper"),
-        ("kernels/projection/ProjectionPackedFwd.cu", "kernels/projection/ProjectionPackedFwd_kernel.cuh", "ProjectionPackedMask", "projection_packed_mask_kernel_wrapper"),
-        ("kernels/projection/ProjectionPackedFwd.cu", "kernels/projection/ProjectionPackedFwd_kernel.cuh", "ProjectionPackedFwd", "projection_packed_fwd_kernel_wrapper"),
+    kMaskPrims = ["Vanilla3DGS<0>", "MipSplatting<0>", "Vanilla3DGUT<0>"]
+    kMask2DGS = ["Vanilla2DGS<0>"]
+    for filename, kernel_filename, prefix, wrapper_name, prims, prims_2dgs in [
+        ("kernels/projection/ProjectionFwd.cu", "kernels/projection/ProjectionFwd_kernel.cuh", "ProjectionFwd", "projection_fused_fwd_kernel_wrapper", kPrimitives, k2DGS),
+        ("kernels/projection/ProjectionPackedFwd.cu", "kernels/projection/ProjectionPackedFwd_kernel.cuh", "ProjectionPackedMask", "projection_packed_mask_kernel_wrapper", kMaskPrims, kMask2DGS),
+        ("kernels/projection/ProjectionPackedFwd.cu", "kernels/projection/ProjectionPackedFwd_kernel.cuh", "ProjectionPackedFwd", "projection_packed_fwd_kernel_wrapper", kPrimitives, k2DGS),
     ]:
         definition = extract_kernel_definition(filename, wrapper_name)
         map_header = ["typename SplatPrimitive", None, None]
         map_body = [
             (prim, cam, dist)
-            for prim in kPrimitives
+            for prim in prims
             for cam, dist in kCameraVariants
         ]
         nv = len(kCameraVariants)
-        includes = [*(
-            [("primitives/Primitive3DGS.cuh", kernel_filename)] * (2 * nv) +
-            [("primitives/Primitive3DGUT.cuh", kernel_filename)] * nv
-        )] * 5
+        includes = [
+            ("primitives/Primitive3DGUT.cuh" if "3DGUT" in prim
+             else "primitives/Primitive3DGS.cuh", kernel_filename)
+            for prim in prims
+            for _ in range(nv)
+        ]
 
         generate_kernel_instantiation(prefix, definition, map_header, map_body, includes)
         # Separate files preserve the existing forward batches and compile cache.
         ortho_maps = [(prim, "CameraModelType::ORTHOGRAPHIC", "CameraDistortionType::None")
-                      for prim in kPrimitives]
+                      for prim in prims]
         ortho_includes = [("primitives/Primitive3DGUT.cuh" if "3DGUT" in prim
                            else "primitives/Primitive3DGS.cuh", kernel_filename)
-                          for prim in kPrimitives]
+                          for prim in prims]
         generate_kernel_instantiation(prefix + "Ortho", definition, map_header,
                                       ortho_maps, ortho_includes)
 
-        maps_2dgs = [(prim, cam, dist) for prim in k2DGS
+        maps_2dgs = [(prim, cam, dist) for prim in prims_2dgs
                      for cam, dist in kCameraVariants + [
                          ("CameraModelType::ORTHOGRAPHIC", "CameraDistortionType::None")]]
         generate_kernel_instantiation(prefix + "2DGS", definition, map_header, maps_2dgs,

@@ -17,7 +17,7 @@ namespace cg = cooperative_groups;
 
 
 template<typename SplatPrimitive, CameraModelType camera_model,
-         CameraDistortionType distortion, int VALUE_BITS = 32>
+         CameraDistortionType distortion>
 __global__ void projection_packed_mask_kernel(
     const uint32_t C,
     const uint32_t N,
@@ -29,14 +29,7 @@ __global__ void projection_packed_mask_kernel(
     const uint32_t image_height,
     // outputs
     uint32_t *__restrict__ mask_bits,     // [gridDim.x * SS_PMASK_WORDS]
-    int32_t *__restrict__ block_counts,   // [gridDim.x]
-    // SH VALUE-quant. The mask kernel discards splat_screen.rgb but still
-    // calls project() which evaluates SH internally; passing the codec args
-    // keeps the SH eval well-defined when fp32 features_sh is stale.
-    const uint8_t* __restrict__ sh_value_packed = nullptr,
-    const float2* __restrict__ sh_value_bounds  = nullptr,
-    const uint32_t num_sh_buffer = 0,
-    const int64_t  sh_bounds_stride = 0
+    int32_t *__restrict__ block_counts    // [gridDim.x]
 ) {
     // parallelize over C * N.
     __shared__ uint32_t sh_bits[SS_PMASK_WORDS];
@@ -68,28 +61,11 @@ __global__ void projection_packed_mask_kernel(
         };
         cam.dist_coeffs = dist_coeffs_buffer.load<distortion>(cid);
 
-        // Load splat
-        // TODO: verify that SH is not loaded after compiler optimization
+        // Mask pass only needs geometry to test screen AABB; skip DC/SH load and SH eval.
         typename SplatPrimitive::World splat_world;
-        splat_world.load(splats_world, gid);
+        splat_world.load_geom(splats_world, gid);
 
-        // Projection
-        float sorting_depth;
-        float4 aabb;
-        float radius;
-        typename SplatPrimitive::Screen splat_screen;
-        if constexpr (VALUE_BITS == 32) {
-            splat_world.template project<camera_model, distortion, 32>(
-                cam, splat_screen, aabb, sorting_depth, radius);
-        } else {
-            const ShQuantAddr sha = sh_quant_addr(num_sh_buffer, sh_bounds_stride);
-            const int64_t sh_base = sha.base(gid);
-            splat_world.template project<camera_model, distortion, VALUE_BITS>(
-                cam, splat_screen, aabb, sorting_depth, radius,
-                const_cast<uint8_t*>(sh_value_packed),
-                const_cast<float2*>(sh_value_bounds),
-                sh_base, sha.bounds_stride, sha.pair_pitch);
-        }
+        float4 aabb = splat_world.template project_aabb<camera_model, distortion>(cam);
 
         // Save results
         aabb.x = fminf(fmaxf(aabb.x, 0.0f), (float)image_width);
@@ -222,26 +198,15 @@ void projection_packed_mask_kernel_wrapper(
     const uint32_t image_height,
     // outputs
     uint32_t *__restrict__ mask_bits,
-    int32_t *__restrict__ block_counts,
-    const uint8_t* __restrict__ sh_value_packed,
-    const float2* __restrict__ sh_value_bounds,
-    const uint32_t num_sh_buffer,
-    const int sh_value_bits,
-    const int64_t sh_bounds_stride
+    int32_t *__restrict__ block_counts
 ) {
     constexpr uint block = SS_PMASK_BLOCK;
-    #define _LAUNCH(VB) \
-        projection_packed_mask_kernel<SplatPrimitive, camera_model, distortion, VB> \
-        <<<_CEIL_DIV(C*N, block), block, 0, stream>>>( \
-            C, N, \
-            splats_world, viewmats, intrins, dist_coeffs_buffer, \
-            image_width, image_height, \
-            mask_bits, block_counts, \
-            sh_value_packed, sh_value_bounds, num_sh_buffer, sh_bounds_stride)
-    if      (sh_value_bits == 8)  { _LAUNCH(8); }
-    else if (sh_value_bits == 16) { _LAUNCH(16); }
-    else                          { _LAUNCH(32); }
-    #undef _LAUNCH
+    projection_packed_mask_kernel<SplatPrimitive, camera_model, distortion>
+        <<<_CEIL_DIV(C*N, block), block, 0, stream>>>(
+            C, N,
+            splats_world, viewmats, intrins, dist_coeffs_buffer,
+            image_width, image_height,
+            mask_bits, block_counts);
 }
 
 template<typename SplatPrimitive, CameraModelType camera_model,

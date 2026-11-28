@@ -54,11 +54,15 @@ struct _BasePrimitive3DGS {
             return w;
         }
 
-        __device__ __forceinline__ void load(WorldBuffer &buffer, int64_t i) {
+        __device__ __forceinline__ void load_geom(const WorldBuffer &buffer, int64_t i) {
             mean = buffer.means(i);
             quat = buffer.quats(i);
             scale = buffer.scales(i);
             opacity = buffer.opacities(i);
+        }
+
+        __device__ __forceinline__ void load(WorldBuffer &buffer, int64_t i) {
+            load_geom(buffer, i);
             features_dc = buffer.features_dc(i);
             features_sh = buffer.features_sh(i);
         }
